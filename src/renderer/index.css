@@ -1,12 +1,9 @@
-/* Geist - Vercel's font, designed for developer tools.
-   Geist Mono is used for monospace labels, kbd hints, and IDs. */
-@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap');
-
 @import "tailwindcss";
 
 /* ============================================
-   KPM Design System - Warm Linear
-   Dense, border-defined, warm grays + terracotta
+   KPM Design System
+   Dense, border-defined, cool neutrals + one signal accent.
+   Theme color values live in src/shared/theme.ts, not here.
    ============================================ */
 
 /* ============================================
@@ -29,12 +26,12 @@
   --text-2xl: 1.25rem;     /* 20px - section headings */
   --text-3xl: 1.5rem;      /* 24px - page headings */
 
-  /* Spacing Scale — tightened for density */
-  --spacing-xs: 0.125rem;
-  --spacing-sm: 0.25rem;
-  --spacing-md: 0.5rem;
-  --spacing-lg: 0.75rem;
-  --spacing-xl: 1rem;
+  /* No named spacing keys (`--spacing-md` and friends). Tailwind resolves
+     `max-w-md` / `max-w-sm` / `max-w-xs` from the spacing namespace before the
+     container namespace, so a named spacing token silently redefines those
+     widths: with `--spacing-md: 0.5rem` in place, `max-w-md` was 8px and every
+     element carrying it collapsed to one word per line. Use the numeric scale
+     (`p-2`, `gap-3`) for spacing, which reads off Tailwind's `--spacing` base. */
 
   /* Border Radius — compact, structural */
   --radius-sm: 3px;
@@ -49,7 +46,6 @@
   --transition-default: 150ms ease-out;
   --transition-slow: 250ms ease-out;
   --transition-theme: 200ms ease-out;
-  --transition-bounce: 200ms cubic-bezier(0.34, 1.56, 0.64, 1);
 
   /* Depth colors — aliases so Tailwind can resolve depth-* utilities.
      Concrete values are set per-theme via JS in generateThemeVariables(). */
@@ -76,6 +72,7 @@
   --color-text-tertiary: var(--color-text-tertiary);
   --color-text-muted: var(--color-text-muted);
   --color-text-on-accent: var(--color-text-on-accent);
+  --color-text-on-danger: var(--color-text-on-danger);
 
   /* Borders */
   --color-border-subtle: var(--color-border-subtle);
@@ -126,7 +123,12 @@
 
 :root {
   background: #0e0f12;
-  --titlebar-height: 48px;
+  /* The real height of the app header, and the only place it is stated.
+     Anything that hangs off the header — the proposed-change panel, the toast
+     stack — offsets by this token, so a number here that disagrees with the
+     header leaves those surfaces floating clear of it and running past the
+     bottom of the window by the same amount. */
+  --titlebar-height: 40px;
   /* Reserve space for macOS traffic-light controls + breathing room before
      the first interactive element. Lights are positioned at x=16 (see
      trafficLightPosition in main config); cluster spans ~62px, so 92px
@@ -134,7 +136,44 @@
      html[data-platform]. */
   --traffic-light-inset: 92px;
 
-  --chat-measure: min(1400px, 94%);
+  /* The user's own turn caps; the answer deliberately does not. The panel
+     width is the answer's measure — the user sized the panel — and legibility
+     at length is bought with the reading register and section hierarchy
+     instead (see "Answer typography" below). A one-line question stretched
+     across a 1600px panel is the opposite problem, hence this cap. */
+  --chat-note-max: min(78%, 44rem);
+
+  /* Measure, in two places with two answers.
+
+     Side by side in the workspace, the document pane does not cap. The user
+     sized that pane by dragging the seam, so the pane width *is* the measure
+     they asked for, and a column that stops short of it leaves empty bands
+     down both sides of a workbench that is dense everywhere else. This is the
+     same position the chat transcript already takes, so the two columns now
+     hold one line, which matters because they sit next to each other.
+
+     It also fixes a cap that never fired: the old 43rem floor was 688px and
+     this pane runs nearer 600px, so the clamp resolved to the floor and the
+     column was the pane width anyway. The rule was decorative, not active.
+
+     `none` rather than `100%`, so the blocks in `.prose-measured` stay
+     unconstrained instead of being re-measured against their own container. */
+  --doc-measure: none;
+
+  /* The focus reader is a different problem: a full window with no second
+     column and no seam to drag, so nothing about its width is a choice the
+     user made, and an uncapped line runs the full monitor. It gets a real cap.
+
+     Stated in `ch` because a reading measure is counted in characters — 72 of
+     them, the long end of the comfortable range. Safe here in a way it is not
+     inside prose: this token is applied to the reader's wrapper, which sits at
+     the 16px root size, so one value governs the whole column. Applied to
+     prose blocks individually, a 1.75em h1 would resolve `72ch` against its own
+     size and run half again as wide as the paragraphs under it.
+
+     The `min()` lets a narrow window fall back to its own width instead of
+     forcing a horizontal scrollbar. */
+  --doc-reader-measure: min(100%, 72ch);
 }
 
 [data-kpm-diff-viewer] > div {
@@ -183,10 +222,9 @@ html {
 
 body {
   font-family: var(--font-sans);
-  /* Geist variants: cv11 = single-storey 'a' (cleaner at small sizes),
-     ss01 = stylistic set with tabular figures + alt characters. Tabular
-     figures matter for timestamps, durations, counts. */
-  font-feature-settings: 'cv11', 'ss01';
+  /* Tabular figures keep timestamps, durations, and counters that update
+     in place from reflowing as their digits change. */
+  font-variant-numeric: tabular-nums;
   background: var(--color-surface-0);
   color: var(--color-text-primary);
   line-height: 1.5;
@@ -228,8 +266,8 @@ body {
    ============================================ */
 
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 12px;
+  height: 12px;
 }
 
 ::-webkit-scrollbar-track {
@@ -240,7 +278,7 @@ body {
 ::-webkit-scrollbar-thumb {
   background: var(--scrollbar-thumb);
   border-radius: 4px;
-  border: 2px solid transparent;
+  border: 3px solid transparent;
   background-clip: padding-box;
   transition: background var(--transition-default);
 }
@@ -252,6 +290,31 @@ body {
 
 ::-webkit-scrollbar-corner {
   background: transparent;
+}
+
+/* ============================================
+   Selection & Caret
+
+   The two surfaces the app doesn't draw but the OS does. Left alone they ship
+   the browser's own blue, which belongs to no theme here and survives an
+   imported palette unchanged.
+
+   Selection takes `accent-muted` — the composited tint, not an alpha wash, so
+   the highlight reads the same over a panel, a card, and a code well — and
+   forces `text-primary` on top, because a selection over `text-muted` or a
+   link colour is otherwise the one place contrast is left to chance. The caret
+   takes the solid accent, matching the accent border a focused input already
+   grows. Both fall inside The One Signal Rule: a caret and a selection are the
+   place the user is acting. */
+::selection {
+  background: var(--color-accent-muted);
+  color: var(--color-text-primary);
+}
+
+input,
+textarea,
+[contenteditable="true"] {
+  caret-color: var(--color-accent);
 }
 
 /* ============================================
@@ -294,6 +357,22 @@ textarea,
   -webkit-user-select: text;
 }
 
+/* Escape hatch for content that should be copyable despite the app-wide
+   user-select: none on body (error text, IDs, anything a user would want
+   to paste elsewhere). */
+.selectable {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* Monospace content is how KPM renders paths, branches, SHAs, and IDs —
+   restore selection there too, but not inside a button/role="button",
+   where selectable text fights with click-and-drag. */
+:where(.font-mono, code):not(:where(button, [role="button"]) *):not(:where(button, [role="button"])) {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible {
@@ -323,7 +402,7 @@ button:focus-visible {
   font-weight: 500;
   border-radius: var(--radius-sm);
   border: none;
-  transition: all var(--transition-default);
+  transition: background-color var(--transition-default), color var(--transition-default);
   cursor: pointer;
   position: relative;
 }
@@ -383,33 +462,7 @@ button:focus-visible {
 
 .btn-danger:hover:not(:disabled) {
   background: var(--color-danger);
-  color: white;
-}
-
-/* ============================================
-   Cards - Border-Defined
-   ============================================ */
-
-.card {
-  background: var(--color-surface-1);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--color-border-subtle);
-  padding: var(--spacing-md);
-  transition: all var(--transition-default);
-}
-
-.card:hover {
-  background: var(--color-surface-4);
-}
-
-.card-elevated {
-  background: var(--color-surface-elevated);
-  border: 1px solid var(--color-border-strong);
-}
-
-.card-flat {
-  background: var(--color-surface-2);
-  border: 1px solid var(--color-border-default);
+  color: var(--color-text-on-danger);
 }
 
 /* ============================================
@@ -424,7 +477,7 @@ button:focus-visible {
   border: 1px solid var(--color-border-default);
   border-radius: var(--radius-sm);
   color: var(--color-text-primary);
-  transition: all var(--transition-default);
+  transition: border-color var(--transition-default), box-shadow var(--transition-default);
 }
 
 .input::placeholder {
@@ -446,30 +499,6 @@ button:focus-visible {
   cursor: not-allowed;
 }
 
-/* Input with visible border (legacy compat) */
-.input-bordered {
-  border: 1px solid var(--color-border-default);
-}
-
-.input-bordered:hover:not(:focus):not(:disabled) {
-  border-color: var(--color-border-strong);
-}
-
-.input-bordered:focus {
-  border-color: var(--color-accent);
-}
-
-/* ============================================
-   Section Headers
-   ============================================ */
-
-.section-header {
-  font-size: var(--text-sm);
-  font-weight: 500;
-  letter-spacing: 0.01em;
-  color: var(--color-text-secondary);
-}
-
 /* ============================================
    Plan Card Depth Styles
    ============================================ */
@@ -485,19 +514,15 @@ button:focus-visible {
   background: var(--color-surface-elevated);
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border-default);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-card-lift);
   transition: background var(--transition-default), border-color var(--transition-default), box-shadow var(--transition-default);
   overflow: hidden;
-}
-
-.plan-card::after {
-  content: none;
 }
 
 .plan-card:hover {
   background: var(--color-surface-elevated);
   border-color: var(--color-border-strong);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--shadow-card-lift-hover);
 }
 
 .plan-card.selected {
@@ -523,41 +548,199 @@ button:focus-visible {
    Chat Styles
    ============================================ */
 
-.chat-message-user,
-.chat-message-assistant {
-  position: relative;
+/* Turn spacing is padding, never margin: the virtualizer measures each row's
+   bounding rect to place the next one, and a margin sits outside that rect —
+   so a margin-spaced transcript overlaps its own rows once virtualization
+   kicks in at 40 messages.
+
+   The asymmetry is deliberate: an answer sits close under the question that
+   prompted it, and the next exchange starts far below the last one, so the
+   pair reads as a unit. */
+.chat-turn-user {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  padding-top: 1.75rem;
+  padding-bottom: 0.5rem;
 }
 
-/* Vertical rail on each message; assistant uses accent, user uses a muted tone. */
-.chat-message-user::before,
-.chat-message-assistant::before {
-  content: '';
-  position: absolute;
-  left: -12px; /* push into the list's px-4 gutter so it sits at the panel edge */
-  top: 6px;
-  bottom: 6px;
-  width: 2px;
-  border-radius: 1px;
+.chat-turn-assistant {
+  padding-top: 0.25rem;
+  padding-bottom: 1.25rem;
 }
 
-.chat-message-assistant::before {
-  background: color-mix(in srgb, var(--color-accent) 70%, transparent);
+/* Your own turn, quoted back at you. Fill is `surface-3`, two steps off the
+   panel: at `surface-2` over `surface-1` the step measures under a percent of
+   luminance and the note disappears into the panel in every dark theme. */
+.chat-note {
+  max-width: var(--chat-note-max);
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-3);
+  text-align: left;
 }
 
-.chat-message-user::before {
-  left: auto;
-  right: -12px;
-  background: color-mix(in srgb, var(--color-text-muted) 35%, transparent);
+/* A queued follow-up has not been sent yet, so it reads as an outline of a
+   note rather than a note. */
+.chat-note-queued {
+  background: transparent;
+  border-color: var(--color-border-strong);
+  border-style: dashed;
 }
 
 .chat-message-content {
   font-family: var(--font-sans);
   font-size: var(--text-base);
-  line-height: 1.65;
+  line-height: 1.6;
   word-break: break-word;
   user-select: text;
   -webkit-user-select: text;
   cursor: text;
+}
+
+/* An answer is read for minutes at a stretch, so it leaves the workbench's
+   15px UI register for the document register the markdown reader already uses.
+   Your own turn stays at UI size; the size gap is what tells the two apart. */
+.chat-message-assistant .chat-message-content {
+  font-size: var(--text-lg);
+  line-height: 1.75;
+}
+
+.chat-message-assistant .chat-message-content .prose {
+  font-size: inherit;
+  line-height: inherit;
+  font-variant-numeric: proportional-nums;
+}
+
+/* ---- Answer typography -------------------------------------------------
+   Everything below overrides the base `.prose` rules, which are tuned for
+   dense panels — a tree node, a card body, a tooltip — where the reader is
+   scanning a few lines. Applied to a long answer they collapse it into a
+   single block.
+
+   These selectors carry three classes so they beat the base rules without
+   needing !important; the base ones wrap their subject in :where(), which
+   contributes nothing to specificity, so they sit at two.
+   ---------------------------------------------------------------------- */
+.chat-message-assistant .chat-message-content .prose :where(p):not(:where([class~="not-prose"] *)) {
+  margin-top: 1.1em;
+  margin-bottom: 1.1em;
+}
+
+.chat-message-assistant .chat-message-content .prose :where(p:first-child):not(:where([class~="not-prose"] *)) {
+  margin-top: 0;
+}
+
+.chat-message-assistant .chat-message-content .prose :where(p:last-child):not(:where([class~="not-prose"] *)) {
+  margin-bottom: 0;
+}
+
+/* Sections. The chat prompt caps heading depth at `###`, so an h3 is the only
+   structural mark most answers carry — and the base rule renders it at 1em/600,
+   indistinguishable from the sentence above it. That one fact is most of why a
+   long answer reads as a wall. Each level steps a size and takes far more space
+   above than below, so it binds to the text it introduces. */
+.chat-message-assistant .chat-message-content .prose h1,
+.chat-message-assistant .chat-message-content .prose h2,
+.chat-message-assistant .chat-message-content .prose h3 {
+  color: var(--color-text-primary);
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  margin-top: 2em;
+  margin-bottom: 0.8em;
+  padding-bottom: 0.35em;
+  /* `border-default`, not `subtle`: subtle is 4% white, which vanishes as a
+     single hairline under text. This rule has to survive a fast scroll. */
+  border-bottom: 1px solid var(--color-border-default);
+}
+
+.chat-message-assistant .chat-message-content .prose h1 {
+  font-size: 1.375em;
+}
+
+.chat-message-assistant .chat-message-content .prose h2 {
+  font-size: 1.25em;
+}
+
+.chat-message-assistant .chat-message-content .prose h3 {
+  font-size: 1.125em;
+}
+
+/* A sub-head inside a section, so it stays unruled — two ruled levels in one
+   section would compete for the same job. */
+.chat-message-assistant .chat-message-content .prose h4,
+.chat-message-assistant .chat-message-content .prose h5,
+.chat-message-assistant .chat-message-content .prose h6 {
+  color: var(--color-text-primary);
+  font-size: 1em;
+  font-weight: 600;
+  line-height: 1.45;
+  margin-top: 1.6em;
+  margin-bottom: 0.4em;
+}
+
+.chat-message-assistant .chat-message-content .prose > :first-child {
+  margin-top: 0;
+}
+
+/* The base rule packs list items tighter than the surrounding paragraphs —
+   0.1em against 1.75 leading — so the one element meant to create air was
+   removing it. */
+.chat-message-assistant .chat-message-content .prose :where(ul, ol):not(:where([class~="not-prose"] *)) {
+  margin-top: 1.1em;
+  margin-bottom: 1.1em;
+  padding-left: 1.4em;
+  line-height: 1.65;
+}
+
+.chat-message-assistant .chat-message-content .prose :where(li + li):not(:where([class~="not-prose"] *)) {
+  margin-top: 0.6em;
+}
+
+.chat-message-assistant .chat-message-content .prose :where(li > ul, li > ol):not(:where([class~="not-prose"] *)) {
+  margin-top: 0.6em;
+  margin-bottom: 0;
+}
+
+.chat-message-assistant .chat-message-content .prose :where(li):not(:where([class~="not-prose"] *))::marker {
+  color: var(--color-text-muted);
+}
+
+/* Code, tables, and quotes are set for dense panels at 0.5em of air, which
+   against 1.1em paragraphs makes them cling to the line above. */
+.chat-message-assistant .chat-message-content .prose :where(pre, table, blockquote):not(:where([class~="not-prose"] *)) {
+  margin-top: 1.25em;
+  margin-bottom: 1.25em;
+}
+
+/* The base rule marks a quote with a 2px line at 8% white, which against this
+   panel is invisible — leaving an indented paragraph with nothing to explain
+   why it is indented. */
+.chat-message-assistant .chat-message-content .prose :where(blockquote):not(:where([class~="not-prose"] *)) {
+  padding: 0.15em 0 0.15em 1em;
+  border-left-color: var(--color-border-strong);
+}
+
+/* A rule the model wrote itself has to outrank the ones the headings draw. */
+.chat-message-assistant .chat-message-content .prose :where(hr):not(:where([class~="not-prose"] *)) {
+  margin-top: 2.25em;
+  margin-bottom: 2.25em;
+  border-color: var(--color-border-default);
+}
+
+/* Narration is what the agent said between tool calls, not its answer, so it
+   drops back to the UI register: in a finished turn the 16px prose is the
+   answer and the 15px text is the commentary around it. Neither is hidden. */
+.chat-message-assistant .chat-message-content .prose.prose-narration {
+  font-size: var(--text-base);
+  line-height: 1.6;
+}
+
+.chat-message-assistant .chat-message-content .prose.prose-narration :where(p):not(:where([class~="not-prose"] *)) {
+  margin-top: 0.7em;
+  margin-bottom: 0.7em;
 }
 
 .chat-message-content pre {
@@ -573,8 +756,11 @@ button:focus-visible {
   cursor: text;
 }
 
-.chat-message-user,
-.chat-message-assistant {
+/* Entrance is opt-in per turn, not a property of every message. The list
+   virtualizes, so a row scrolled back into view remounts — if the animation
+   lived on the base class, scrolling a long transcript would replay it on
+   every message the user passed. Only an arriving turn gets it. */
+.chat-message-enter {
   animation: message-in 180ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -589,16 +775,23 @@ button:focus-visible {
   }
 }
 
-/* Respect reduced-motion: keep the fade, drop the travel. */
-@media (prefers-reduced-motion: reduce) {
-  .chat-message-user,
-  .chat-message-assistant {
-    animation: none;
-  }
+/* What the agent did is a log; what it said is prose. Both sit on the answer's
+   left edge, so the register has to carry the difference — a hairline and the
+   UI type size against 16px prose, rather than a bordered card, which read as
+   a third kind of object competing with both.
+
+   Tabular figures for the durations and diff counts, but no blanket mono: the
+   rows that are data set it themselves, and an expanded thought is prose. */
+.chat-process-channel {
+  border-top: 1px solid var(--color-border-subtle);
+  font-variant-numeric: tabular-nums;
 }
 
-/* User and assistant content sit flush-left under their author header.
-   Spacing/alignment is handled by Tailwind utilities in MessageRow. */
+.chat-process-marker {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+}
 
 /* ============================================
    Sidebar - Dense & Border-Separated
@@ -616,96 +809,6 @@ button:focus-visible {
   border-left: 1px solid var(--color-border-default);
   box-shadow: var(--shadow-panel-seam);
   transition: background var(--transition-theme);
-}
-
-.sidebar-item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 4px 8px;
-  min-height: 30px;
-  font-size: var(--text-sm);
-  color: var(--color-text-secondary);
-  border-radius: var(--radius-sm);
-  transition: all var(--transition-fast);
-  cursor: pointer;
-}
-
-.sidebar-item:hover {
-  background: var(--color-surface-3);
-  color: var(--color-text-primary);
-}
-
-.sidebar-item.active {
-  background: var(--color-surface-selected);
-  color: var(--color-text-primary);
-}
-
-/* ============================================
-   Backlog Items - Distinctive Style
-   ============================================ */
-
-.backlog-item {
-  position: relative;
-  background: var(--color-surface-2);
-  border-radius: var(--radius-sm);
-  padding-left: 1rem;
-  transition: all var(--transition-default);
-}
-
-.backlog-item::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0.5rem;
-  bottom: 0.5rem;
-  width: 3px;
-  background: var(--color-border-default);
-  border-radius: 2px;
-  transition: all var(--transition-default);
-}
-
-.backlog-item:hover {
-  background: var(--color-surface-3);
-}
-
-.backlog-item:hover::before {
-  background: var(--color-accent);
-}
-
-/* ============================================
-   Badges - Compact
-   ============================================ */
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 6px;
-  font-size: var(--text-xxs);
-  font-weight: 500;
-  border-radius: var(--radius-full);
-  background: var(--color-surface-3);
-  color: var(--color-text-secondary);
-}
-
-.badge-accent {
-  background: var(--color-accent-muted);
-  color: var(--color-accent);
-}
-
-.badge-success {
-  background: var(--color-success-muted);
-  color: var(--color-success);
-}
-
-.badge-warning {
-  background: var(--color-warning-muted);
-  color: var(--color-warning);
-}
-
-.badge-danger {
-  background: var(--color-danger-muted);
-  color: var(--color-danger);
 }
 
 /* ============================================
@@ -729,8 +832,11 @@ button:focus-visible {
     border: 1px solid var(--color-border-strong);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-lg);
-    overflow: auto;
-    /* max-height is set per-size in Modal.tsx to ensure horizontal proportions */
+    /* Only the body scrolls (see Modal.tsx), so headers and footers stay on
+       screen. Height is set per-size in Modal.tsx; don't override it here. */
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
   }
 }
 
@@ -755,15 +861,6 @@ button:focus-visible {
 }
 
 @keyframes dropdown-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes submenu-in {
   from {
     opacity: 0;
   }
@@ -799,7 +896,7 @@ button:focus-visible {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.625rem;
+  font-size: var(--text-xxs);
   font-weight: 600;
   color: var(--color-accent);
   text-transform: uppercase;
@@ -826,14 +923,26 @@ button:focus-visible {
   }
 }
 
-.project-switch-overlay {
-  animation: overlay-in 200ms cubic-bezier(0.4, 0, 0.2, 1);
+/*
+ * Project switch progress. A sliding sliver rather than a determinate bar:
+ * the load has no measurable stages, and it must never look like it is
+ * blocking the outgoing project, which stays interactive throughout.
+ */
+@keyframes project-switch-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(400%);
+  }
 }
 
-.project-switch-content {
-  animation: overlay-content-in 250ms cubic-bezier(0.4, 0, 0.2, 1);
-  animation-delay: 50ms;
-  animation-fill-mode: backwards;
+.project-switch-progress {
+  animation: overlay-in 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.project-switch-progress-bar {
+  animation: project-switch-slide 1100ms cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
 /* Refined spinner */
@@ -859,7 +968,7 @@ button:focus-visible {
   color: var(--color-text-secondary);
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: background-color var(--transition-fast), color var(--transition-fast);
   white-space: nowrap;
 }
 
@@ -906,11 +1015,6 @@ button:focus-visible {
   background: var(--color-border-subtle);
 }
 
-.divider-vertical {
-  width: 1px;
-  background: var(--color-border-subtle);
-}
-
 /* ============================================
    Tooltips - Soft & Subtle
    ============================================ */
@@ -920,7 +1024,7 @@ button:focus-visible {
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-border-strong);
   padding: 4px 8px;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   color: var(--color-text-primary);
   box-shadow: var(--shadow-md);
   transform-origin: var(--radix-tooltip-content-transform-origin);
@@ -960,21 +1064,32 @@ button:focus-visible {
    Loading States
    ============================================ */
 
+/* The shimmer is a translateX sweep on a ::after overlay rather than an
+   animated background-position, so it runs on the compositor thread
+   instead of repainting every frame. */
 .skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--color-surface-2);
+  border-radius: var(--radius-md);
+}
+
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
   background: linear-gradient(
     90deg,
     var(--color-surface-2) 0%,
     var(--color-surface-3) 50%,
     var(--color-surface-2) 100%
   );
-  background-size: 200% 100%;
   animation: skeleton-shimmer 1.5s ease-in-out infinite;
-  border-radius: var(--radius-md);
 }
 
 @keyframes skeleton-shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
 }
 
 .pulse-dot {
@@ -988,76 +1103,6 @@ button:focus-visible {
 @keyframes pulse {
   0%, 100% { opacity: 0.5; }
   50% { opacity: 1; }
-}
-
-/* ============================================
-   Activity Chips - Soft Tags
-   ============================================ */
-
-.activity-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.375rem 0.625rem;
-  font-size: var(--text-xs);
-  font-weight: 500;
-  background: var(--color-surface-3);
-  border-radius: var(--radius-full);
-  color: var(--color-text-secondary);
-  border: 1px solid var(--color-border-subtle);
-  animation: chip-appear 100ms ease-out;
-  position: relative;
-  overflow: hidden;
-}
-
-.activity-chip::before {
-  content: none;
-}
-
-.activity-chip-small {
-  padding: 0.375rem 0.625rem;
-  font-size: var(--text-xs);
-}
-
-.activity-chip-icon {
-  font-size: var(--text-base);
-  line-height: 1;
-  z-index: 1;
-}
-
-.activity-chip-small .activity-chip-icon {
-  font-size: 0.75rem;
-}
-
-.activity-chip-label {
-  max-width: 120px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  z-index: 1;
-}
-
-.activity-chip-overflow {
-  background: var(--color-surface-2);
-  color: var(--color-text-muted);
-}
-
-.activity-chip-overflow::before {
-  display: none;
-}
-
-@keyframes chip-appear {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes chip-shimmer {
-  0% { transform: translateX(-100%); }
-  50%, 100% { transform: translateX(100%); }
 }
 
 /* ============================================
@@ -1085,33 +1130,7 @@ button:focus-visible {
   overflow: hidden;
 }
 
-.transition-fast { transition: all var(--transition-fast); }
-.transition-default { transition: all var(--transition-default); }
-.transition-slow { transition: all var(--transition-slow); }
-
-/* ============================================
-   Interactive Enhancements
-   ============================================ */
-
-/* Subtle press effect for interactive elements */
-.pressable:active {
-  opacity: 0.9;
-}
-
-/* Hover highlight */
-.liftable {
-  transition: background var(--transition-default);
-}
-
-.liftable:hover {
-  background: var(--color-surface-3);
-}
-
-/* Focus highlight */
-.glowable:focus-within,
-.glowable.active {
-  box-shadow: 0 0 0 2px var(--color-focus-ring);
-}
+.transition-default { transition: background-color var(--transition-default), border-color var(--transition-default), color var(--transition-default); }
 
 /* ============================================
    Resize Handle
@@ -1714,7 +1733,7 @@ button:focus-visible {
 
 .prose.prose-review {
   color: var(--color-text-secondary);
-  font-size: 0.8125rem;
+  font-size: var(--text-xs);
   line-height: 1.55;
 }
 
@@ -1750,6 +1769,9 @@ button:focus-visible {
   font-size: var(--text-lg);
   line-height: 1.7;
   max-width: none;
+  /* Long-form reading is the one surface where proportional figures read
+     better than the app-wide tabular default. */
+  font-variant-numeric: proportional-nums;
 }
 
 .prose-document :where(p):not(:where([class~="not-prose"] *)) {
@@ -2037,33 +2059,180 @@ button:focus-visible {
 }
 
 /* ============================================
-   Theme Toggle Animation
+   Measured reading column
+
+   A measure exists to keep a *line* readable, so it belongs to the prose and
+   nothing else. Capping the whole column narrows a table or a code block too,
+   which starves the one element that wanted the room while the gutters beside
+   it sit empty. So the column runs the full width of its panel, prose blocks
+   are individually held to the measure, and figures break out.
+
+   `--doc-measure` is `none` on the side-by-side document pane, which is the
+   only surface carrying this class, so today these rules hand out no cap at
+   all — see the token. They stay because they are the seam: a surface that
+   later earns a measure sets the token on its own container and the prose
+   blocks narrow while the figures keep the room, without a second class.
+
+   The focus reader does not use this. Its container is already the measure,
+   so there is no slack to hand out.
    ============================================ */
 
-.theme-transition,
-.theme-transition *,
-.theme-transition *::before,
-.theme-transition *::after {
-  transition:
-    background-color var(--transition-theme),
-    border-color var(--transition-theme),
-    color var(--transition-theme),
-    box-shadow var(--transition-theme),
-    transform var(--transition-theme) !important;
+.prose-measured > * {
+  max-width: var(--doc-measure);
+  margin-inline: auto;
+}
+
+.prose-measured > :where(table, pre, img, .focus-code-block) {
+  max-width: 100%;
+}
+
+/* ============================================
+   Reading focus — the column you are not reading steps back
+
+   The workspace sets two prose columns side by side, and they are typographic
+   twins: a document preview and an agent's answer are both 16px proportional
+   prose in `text-primary` under ruled headings. Two equals means no primary,
+   so the eye has to pick one every time it comes back to the screen.
+   `WorkspaceView` names the column being read on `[data-reading-focus]` —
+   "document", "chat", or "none" before either has been touched — and the other
+   one recedes here.
+
+   Only colour and heading scale move. Body `font-size` and `line-height` are
+   deliberately untouched: the 16px register is the same on both surfaces on
+   purpose, and reflowing the column you are *not* reading would land as a
+   layout jump instead of a recede. The attribute is inferred from a scroll or
+   a click, so it will sometimes guess wrong, and a wrong guess has to cost
+   nothing more than a shade.
+
+   Body text drops one rung of the text ladder, primary -> secondary: 15.1:1
+   down to 11.7:1 on `surface-1` in Graphite, 11.9:1 in Fog, so the demoted
+   column stays far above the 4.5:1 floor and is quiet rather than dimmed.
+   Headings drop one step of their own size ladder and soften their rule, so
+   the column's structure recedes with its text and a fast scroll finds the
+   engaged column's sections first.
+
+   Two guards. The attribute only holds "document" or "chat" while both
+   columns are on screen, so a single-column workspace is already exempt; and
+   `[role="dialog"]` keeps the focus reader and the document modal out of it,
+   since a full-window reading surface has no second column to lose to.
+   ============================================ */
+
+/* On both the demoted and the engaged state, so promoting back is as gentle
+   as demoting. Colour only — transitioning `font-size` would animate a
+   reflow. The global reduced-motion block collapses this to 0.01ms with
+   everything else, which is the right answer here too. */
+[data-reading-focus] .prose-document,
+[data-reading-focus] .prose-document :where(h1, h2, h3, h4, strong),
+[data-reading-focus] .chat-message-assistant .chat-message-content,
+[data-reading-focus] .chat-message-assistant .chat-message-content .prose :where(h1, h2, h3, h4, h5, h6) {
+  transition: color var(--transition-default);
+}
+
+/* Reading the chat: the document pane steps back. */
+[data-reading-focus="chat"] .prose-document:not(:where([role="dialog"] *)),
+[data-reading-focus="chat"] .prose-document:not(:where([role="dialog"] *)) :where(h1, h2, h3, h4, strong) {
+  color: var(--color-text-secondary);
+}
+
+/* The ladder compresses toward 1em rather than collapsing onto it: h4 is
+   already 1em, and an h3 that matches its own paragraph is the wall-of-text
+   failure this whole surface exists to avoid. `.prose-document` rules its h2
+   with `border-subtle` already, which is the softest hairline there is, so
+   there is nothing left to soften on this side. */
+[data-reading-focus="chat"] .prose-document:not(:where([role="dialog"] *)) :where(h1) {
+  font-size: 1.4em;
+}
+
+[data-reading-focus="chat"] .prose-document:not(:where([role="dialog"] *)) :where(h2) {
+  font-size: 1.2em;
+}
+
+[data-reading-focus="chat"] .prose-document:not(:where([role="dialog"] *)) :where(h3) {
+  font-size: 1.1em;
+}
+
+/* Reading the document: the answer steps back. */
+[data-reading-focus="document"] .chat-message-assistant .chat-message-content,
+[data-reading-focus="document"] .chat-message-assistant .chat-message-content .prose :where(h1, h2, h3, h4, h5, h6) {
+  color: var(--color-text-secondary);
+}
+
+[data-reading-focus="document"] .chat-message-assistant .chat-message-content .prose :where(h1) {
+  font-size: 1.25em;
+}
+
+[data-reading-focus="document"] .chat-message-assistant .chat-message-content .prose :where(h2) {
+  font-size: 1.125em;
+}
+
+[data-reading-focus="document"] .chat-message-assistant .chat-message-content .prose :where(h3) {
+  font-size: 1.05em;
+}
+
+/* The answer's heading rule is `border-default` because it has to survive a
+   fast scroll; demoted, surviving a fast scroll is exactly what it should stop
+   doing. */
+[data-reading-focus="document"] .chat-message-assistant .chat-message-content .prose :where(h1, h2, h3) {
+  border-bottom-color: var(--color-border-subtle);
 }
 
 /* ============================================
    Reduced Motion Support
+
+   KPM's core job is watching long-running agents, so looping progress
+   indicators (spinners, the skeleton shimmer, opacity pulses) are the only
+   signal that work is still happening — a blanket animation-duration kill
+   would silence them along with everything else, so this block is
+   deliberate about what stops and what doesn't:
+     - Transitions become instant. The state change still happens, it's
+       just not tweened.
+     - Looping/progress animations are left alone; rotation and opacity at
+       this scale aren't vestibular triggers.
+     - Entrance animations that travel (translate/scale) lose the travel
+       but keep the fade, via `fade-in`, so arrivals are still announced.
+     - animate-ping's scale(1 -> 2) is a real vestibular trigger, so it is
+       held static and visible instead of muted or hidden.
    ============================================ */
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+
+  .chat-message-enter {
+    animation: fade-in var(--transition-default) ease-out;
+  }
+
+  .collapse-reveal {
+    animation: fade-in var(--transition-default) ease-out;
+  }
+
+  /* Opacity-only entrances keep their fade but lose their travel time; the
+     three looping progress indicators (spinner, shimmer, pulse dot) are
+     deliberately left running above, since they are the only signal that a
+     long agent turn is still alive. */
+  .dropdown-menu {
+    animation: fade-in var(--transition-fast) ease-out;
+  }
+
+  .tooltip[data-state='delayed-open'] {
+    animation: fade-in var(--transition-fast) ease-out;
+  }
+
+  .tooltip[data-state='closed'] {
+    animation: fade-in var(--transition-fast) ease-in reverse;
+  }
+
+  .animate-ping {
+    animation: none;
   }
 }
 
@@ -2116,188 +2285,6 @@ button:focus-visible {
   background: var(--color-surface-3);
 }
 
-/* Selection highlight animation */
-@keyframes tree-select-pulse {
-  0% {
-    box-shadow: inset 0 0 0 1px var(--color-accent);
-  }
-  50% {
-    box-shadow: inset 0 0 0 2px var(--color-accent);
-  }
-  100% {
-    box-shadow: inset 0 0 0 1px var(--color-accent);
-  }
-}
-
-/* ============================================
-   Scratchpad Action Buttons - Tactile Toolkit
-   ============================================ */
-
-/* Action buttons for refinement status (Apply/Undo) */
-.scratchpad-action-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.375rem 0.75rem;
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  border-radius: var(--radius-sm);
-  border: none;
-  cursor: pointer;
-  transition: all var(--transition-default);
-  position: relative;
-  overflow: hidden;
-}
-
-.scratchpad-action-btn:active {
-  opacity: 0.9;
-}
-
-/* Primary action button (Apply) */
-.scratchpad-action-btn-primary {
-  background: var(--color-accent);
-  color: var(--color-text-on-accent);
-}
-
-.scratchpad-action-btn-primary:hover {
-  background: var(--color-accent-hover);
-}
-
-/* Ghost action button (Undo) */
-.scratchpad-action-btn-ghost {
-  background: var(--color-surface-3);
-  color: var(--color-text-secondary);
-  border: 1px solid var(--color-border-default);
-  padding: 0.375rem;
-}
-
-.scratchpad-action-btn-ghost:hover {
-  background: var(--color-surface-4);
-  color: var(--color-text-primary);
-  border-color: var(--color-border-strong);
-}
-
-/* Hover toolbar for note actions */
-.scratchpad-hover-toolbar {
-  position: absolute;
-  right: 0.5rem;
-  top: 0.5rem;
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.25rem;
-  background: var(--color-surface-elevated);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-md);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--transition-default);
-}
-
-.group:hover .scratchpad-hover-toolbar {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-/* Tool buttons in hover toolbar */
-.scratchpad-tool-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: none;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  position: relative;
-  transition: all var(--transition-fast);
-  background: transparent;
-}
-
-.scratchpad-tool-btn::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: var(--radius-sm);
-  opacity: 0;
-  transition: all var(--transition-fast);
-}
-
-.scratchpad-tool-btn:hover::before {
-  opacity: 1;
-}
-
-.scratchpad-tool-btn:active {
-  opacity: 0.9;
-}
-
-/* Accent tool button (AI Refine) */
-.scratchpad-tool-btn-accent {
-  color: var(--color-accent);
-}
-
-.scratchpad-tool-btn-accent::before {
-  background: var(--color-accent-muted);
-}
-
-.scratchpad-tool-btn-accent:hover {
-  color: var(--color-accent-hover);
-}
-
-/* Info tool button (Edit) */
-.scratchpad-tool-btn-info {
-  color: var(--color-info);
-}
-
-.scratchpad-tool-btn-info::before {
-  background: var(--color-info-muted);
-}
-
-/* Warning tool button (Archive) */
-.scratchpad-tool-btn-warning {
-  color: var(--color-warning);
-}
-
-.scratchpad-tool-btn-warning::before {
-  background: var(--color-warning-muted);
-}
-
-/* Danger tool button (Delete) */
-.scratchpad-tool-btn-danger {
-  color: var(--color-danger);
-}
-
-.scratchpad-tool-btn-danger::before {
-  background: var(--color-danger-muted);
-}
-
-/* Staggered animation for toolbar buttons */
-.scratchpad-hover-toolbar .scratchpad-tool-btn:nth-child(1) {
-  transition-delay: 0ms;
-}
-
-.scratchpad-hover-toolbar .scratchpad-tool-btn:nth-child(2) {
-  transition-delay: 20ms;
-}
-
-.scratchpad-hover-toolbar .scratchpad-tool-btn:nth-child(3) {
-  transition-delay: 40ms;
-}
-
-.scratchpad-hover-toolbar .scratchpad-tool-btn:nth-child(4) {
-  transition-delay: 60ms;
-}
-
-/* Reduced motion support */
-@media (prefers-reduced-motion: reduce) {
-  .scratchpad-hover-toolbar .scratchpad-tool-btn {
-    transition-delay: 0ms;
-  }
-}
-
 /* ============================================
    Enhanced Drop Target Indicator
    ============================================ */
@@ -2318,52 +2305,6 @@ button:focus-visible {
   animation: drop-target-pulse 1s ease-in-out infinite;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .plan-card.drop-target {
-    animation: none;
-  }
-}
-
-/* ============================================
-   Worktree Indicator - Agent Status Badge
-   ============================================ */
-
-.worktree-indicator {
-  background: rgba(16, 185, 129, 0.12);
-  color: #10b981;
-  border: 1px solid rgba(16, 185, 129, 0.2);
-}
-
-.worktree-indicator:hover {
-  background: rgba(16, 185, 129, 0.2);
-  border-color: rgba(16, 185, 129, 0.3);
-}
-
-/* Pulse animation for worktree indicator */
-@media (prefers-reduced-motion: no-preference) {
-  .worktree-pulse .animate-ping {
-    animation: worktree-ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
-  }
-}
-
-@keyframes worktree-ping {
-  0% {
-    transform: scale(1);
-    opacity: 0.75;
-  }
-  75%, 100% {
-    transform: scale(2);
-    opacity: 0;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .worktree-pulse .animate-ping {
-    animation: none;
-    display: none;
-  }
-}
-
 /* ============================================
    Plan Card State Indicators
    ============================================ */
@@ -2382,10 +2323,4 @@ button:focus-visible {
 .plan-card.focused {
   background: var(--color-surface-elevated);
   border-color: var(--color-accent);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .plan-card.plan-card-imported {
-    animation: none;
-  }
 }

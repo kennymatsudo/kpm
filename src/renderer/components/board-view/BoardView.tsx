@@ -16,6 +16,8 @@ import type { PlanItem, StatusCategory, DevSessionWithPlanItem } from '../../../
 import type { RangeSelectHandler } from '../../utils/rangeSelection';
 import { getBoardDropDecision } from './dropBehavior';
 import { isMergeQueueSession } from './mergeQueue';
+import { useBoardKeyboard } from './useBoardKeyboard';
+import { ConfirmActionDialog } from '../ui';
 
 /**
  * A board tree node: a plan item with children that share the same status column.
@@ -24,6 +26,14 @@ import { isMergeQueueSession } from './mergeQueue';
 export interface BoardTreeNode {
   item: PlanItem;
   children: BoardTreeNode[];
+}
+
+interface PendingStopMove {
+  itemId: string;
+  title: string;
+  previousStatus: StatusCategory;
+  newStatus: StatusCategory;
+  devSessionId: string;
 }
 
 // Columns to display
@@ -259,8 +269,24 @@ export const BoardView = memo(function BoardView({
     await stopAgentSession({ devSessionId });
   }, []);
 
-  // Handle drop - update status category with agent lifecycle awareness
-  const handleDrop = useCallback(
+  // A move that stops a running agent is not undoable, so it is confirmed up
+  // front instead of being offered a false Undo afterwards.
+  const [pendingStopMove, setPendingStopMove] = useState<PendingStopMove | null>(null);
+
+  const commitMove = useCallback(
+    (itemId: string, title: string, previousStatus: StatusCategory, newStatus: StatusCategory) => {
+      void updateStatusCategory(itemId, newStatus);
+      toast.info(`Moved "${title}" to ${STATUS_CATEGORY_CONFIG[newStatus].label}`, {
+        label: 'Undo',
+        onClick: () => {
+          void updateStatusCategory(itemId, previousStatus);
+        },
+      });
+    },
+    [updateStatusCategory]
+  );
+
+  const requestMove = useCallback(
     (itemId: string, newStatus: StatusCategory) => {
       const item = allItems.find((candidate) => candidate.id === itemId);
       if (!item) {
@@ -273,34 +299,47 @@ export const BoardView = memo(function BoardView({
         (s) => s.plan_item_id === itemId && ['pending', 'active'].includes(s.status)
       );
       const decision = getBoardDropDecision(previousStatus, newStatus, !!activeSession);
+      setDraggedItemId(null);
 
-      if (decision.action === 'noop') {
-        setDraggedItemId(null);
-        return;
-      }
+      if (decision.action === 'noop') return;
 
       if (decision.action === 'start_agent') {
-        setDraggedItemId(null);
         handleStartAgent(itemId);
         return;
       }
 
       if (decision.stopActiveSession && activeSession) {
-        void stopAgentSession({ devSessionId: activeSession.id });
+        setPendingStopMove({
+          itemId,
+          title: item.title,
+          previousStatus,
+          newStatus,
+          devSessionId: activeSession.id,
+        });
+        return;
       }
 
-      void updateStatusCategory(itemId, newStatus);
-      setDraggedItemId(null);
+      commitMove(itemId, item.title, previousStatus, newStatus);
+    },
+    [allItems, commitMove, handleStartAgent]
+  );
 
-      toast.info(`Moved "${item.title}" to ${STATUS_CATEGORY_CONFIG[newStatus].label}`, {
-        label: 'Undo',
+  const confirmStopMove = useCallback(async () => {
+    if (!pendingStopMove) return;
+    const { itemId, title, previousStatus, newStatus, devSessionId } = pendingStopMove;
+    setPendingStopMove(null);
+    await stopAgentSession({ devSessionId });
+    await updateStatusCategory(itemId, newStatus);
+    toast.info(
+      `Moved "${title}" to ${STATUS_CATEGORY_CONFIG[newStatus].label} · stopped the running agent`,
+      {
+        label: 'Undo move',
         onClick: () => {
           void updateStatusCategory(itemId, previousStatus);
         },
-      });
-    },
-    [allItems, updateStatusCategory, handleStartAgent]
-  );
+      },
+    );
+  }, [pendingStopMove, updateStatusCategory]);
 
   // Open detail pane from merge queue click. Opening a detail also selects its
   // card (mirroring a plain click), so the board never shows a selected card
@@ -355,6 +394,17 @@ export const BoardView = memo(function BoardView({
     }
   }, [detailSessionId, detailSessionIsOpenable, onDetailSessionChange]);
 
+  const handleCloseDetail = useCallback(() => {
+    if (detailSessionId) onDetailSessionChange(null);
+  }, [detailSessionId, onDetailSessionChange]);
+
+  const handleBoardKeyDown = useBoardKeyboard({
+    boardRef,
+    onSelectItem: handleSelectItem,
+    onMoveItem: requestMove,
+    onEscape: handleCloseDetail,
+  });
+
   // Determine which columns to show
   const visibleColumns = useMemo(() => {
     return VISIBLE_COLUMNS.filter((status) => {
@@ -367,6 +417,7 @@ export const BoardView = memo(function BoardView({
     <div
       ref={boardRef}
       className="relative flex h-full overflow-hidden bg-surface-0"
+      onKeyDown={handleBoardKeyDown}
     >
       {/* Board area */}
       <div className="flex-1 flex flex-col min-w-0">
@@ -445,7 +496,7 @@ export const BoardView = memo(function BoardView({
             onContextMenu={onContextMenu}
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
-            onDrop={handleDrop}
+            onDrop={requestMove}
             onCreateItem={onCreateItem}
             onStartAgent={handleStartAgent}
             onStopAgent={handleStopAgent}
@@ -468,6 +519,28 @@ export const BoardView = memo(function BoardView({
             onClose={() => onDetailSessionChange(null)}
           />
         </div>
+      )}
+
+      {pendingStopMove && (
+        <ConfirmActionDialog
+          title="Stop the running agent?"
+          message={
+            <>
+              Moving <span className="text-text-primary">{pendingStopMove.title}</span> to{' '}
+              {STATUS_CATEGORY_CONFIG[pendingStopMove.newStatus].label} stops the agent working on
+              it. Its worktree is kept, but the run cannot be resumed.
+            </>
+          }
+          cancelLabel="Keep it running"
+          onCancel={() => setPendingStopMove(null)}
+          action={{
+            label: `Stop and move to ${STATUS_CATEGORY_CONFIG[pendingStopMove.newStatus].label}`,
+            loadingText: 'Stopping…',
+            variant: 'danger',
+            onClick: confirmStopMove,
+          }}
+          dialogId="board-stop-move"
+        />
       )}
 
     </div>

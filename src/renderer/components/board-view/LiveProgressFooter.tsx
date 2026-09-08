@@ -82,7 +82,7 @@ export const LiveProgressFooter = memo(function LiveProgressFooter({
         <button
           type="button"
           onClick={onStop}
-          className="shrink-0 rounded px-2 py-1 text-tiny text-red-400 transition-colors hover:bg-red-400/10"
+          className="shrink-0 rounded px-2 py-1 text-tiny text-danger transition-colors hover:bg-danger-muted"
         >
           Stop
         </button>

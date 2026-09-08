@@ -176,12 +176,11 @@ export function TypeMappingDialog({ projectId, scopeId, projectKey, onClose }: P
       isOpen={true}
       onClose={handleClose}
       size="md"
-      className="max-h-[85vh] flex flex-col"
       aria-labelledby="type-mapping-title"
     >
       {renderHeader()}
 
-      <ModalBody className="flex-1 overflow-y-auto">
+      <ModalBody>
         {/* No mappings state - show info about depth-based defaults */}
         {typeMappings.length === 0 && (
           <div className="text-center py-6">

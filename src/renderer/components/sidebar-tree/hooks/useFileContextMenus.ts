@@ -47,11 +47,11 @@ export function useFileContextMenus({
     setContextMenu(null);
   }, []);
 
-  const handleRepoContextMenu = useCallback(
-    (e: React.MouseEvent, repoId: string) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setRepoContextMenu({ x: e.clientX, y: e.clientY, repoId });
+  // Takes a point rather than an event: the repo row opens this menu from a
+  // right-click, a button, and a keypress, and only the first has a pointer.
+  const openRepoContextMenu = useCallback(
+    (repoId: string, point: { x: number; y: number }) => {
+      setRepoContextMenu({ x: point.x, y: point.y, repoId });
     },
     []
   );
@@ -153,7 +153,7 @@ export function useFileContextMenus({
     setEmptySpaceMenu,
     handleContextMenu,
     handleCloseContextMenu,
-    handleRepoContextMenu,
+    openRepoContextMenu,
     handleCloseRepoContextMenu,
     handleEmptySpaceContextMenu,
     handleRequestDelete,

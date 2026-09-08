@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, type ReactNode } from 'react';
-import { Modal } from './Modal';
+import { Modal, ModalBody } from './Modal';
 import { MotionButton, ActionButton } from './MotionButton';
 
 interface ActionOption {
@@ -148,7 +148,7 @@ export function ConfirmActionDialog({
       aria-labelledby={`${dialogId}-title`}
       aria-describedby={`${dialogId}-description`}
     >
-      <div className="p-5">
+      <ModalBody className="pb-0">
         <h3
           id={`${dialogId}-title`}
           className="text-base font-medium text-text-primary mb-2"
@@ -157,10 +157,12 @@ export function ConfirmActionDialog({
         </h3>
         <div
           id={`${dialogId}-description`}
-          className="text-sm text-text-secondary mb-5"
+          className="text-sm text-text-secondary"
         >
           {message}
         </div>
+      </ModalBody>
+      <div className="shrink-0 p-5">
         <div className="flex flex-col gap-2" onKeyDown={handleArrowKeys}>
           {dualActions && (
             <>

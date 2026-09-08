@@ -144,7 +144,7 @@ export const DetailPaneHeader = memo(function DetailPaneHeader({
           {session.reviewer_agents_seen?.includes('codex') && (
             <Tooltip content="Reviewed by Codex" side="top">
               <span
-                className="text-tiny px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 flex items-center gap-1"
+                className="text-tiny px-1.5 py-0.5 rounded bg-success-muted text-success flex items-center gap-1"
                 aria-label="Reviewed by Codex"
               >
                 <svg

@@ -16,6 +16,10 @@ export interface TurnRenderInput {
   /** Duration of the final turn; earlier turns carry theirs on their closing checkpoint. */
   durationMs?: number;
   live?: LiveProcess;
+  /** Identity of the message this turn belongs to. Only used to namespace
+   * `disclosureKey`, so a strip's open/closed state survives the virtualizer
+   * unmounting its row. */
+  turnId?: string;
 }
 
 export type TurnRenderNode =
@@ -30,6 +34,10 @@ export type TurnRenderNode =
   | {
       key: string;
       kind: 'process';
+      /** Globally unique across the transcript, unlike `key`, which is only
+       * unique within its own turn. Absent on the in-flight turn, which has no
+       * message id yet. */
+      disclosureKey?: string;
       segments: MessageSegment[];
       hasAnswer: boolean;
       durationMs?: number;
@@ -64,6 +72,7 @@ export function buildTurnRenderPlan({
   startTimestamp,
   durationMs,
   live,
+  turnId,
 }: TurnRenderInput): TurnRenderPlan {
   const groups = groupSegmentsForRender(segments, startTimestamp);
   const lastProcessIndex = groups.reduce(
@@ -93,6 +102,7 @@ export function buildTurnRenderPlan({
     if (group.kind === 'process') {
       nodes.push({
         key: `process-${turnIndex}`,
+        ...(turnId ? { disclosureKey: `${turnId}:process-${turnIndex}` } : {}),
         kind: 'process',
         segments: group.segments,
         hasAnswer: group.hasAnswer,

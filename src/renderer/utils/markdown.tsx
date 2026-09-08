@@ -370,18 +370,46 @@ export const githubMarkdownOptions: MarkdownToJSX.Options = buildProseMarkdownOp
   { disableParsingRawHTML: false, sanitizer: sanitizeGitHubHtml }
 );
 
+/* A line this long was written to fill a column, not to stand on its own, so a
+   paragraph made only of shorter lines is taken to be line-oriented content. */
+const LINE_ORIENTED_MAX_LENGTH = 56;
+
+/** Whether a paragraph's newlines are meaningful or just where the author's editor wrapped. */
+function isLineOriented(block: string): boolean {
+  return block
+    .split('\n')
+    .filter((line) => line.trim().length > 0)
+    .every((line) => line.trim().length <= LINE_ORIENTED_MAX_LENGTH);
+}
+
 /**
  * Converts single newlines to Markdown hard breaks (two trailing spaces + newline)
  * so that line-by-line content (e.g. metadata blocks) renders as separate lines.
  * Code fences and inline code are left untouched.
+ *
+ * Hard-wrapped prose is left alone: a file wrapped at 80 columns would otherwise
+ * keep its source line endings forever and render as a narrow ragged column no
+ * matter how much room the reader gives it.
  */
 export function addSoftBreaks(markdown: string): string {
-  const parts = markdown.split(/(```[\s\S]*?```|`[^`]+`)/g);
-  return parts
-    .map((part, i) => {
-      if (i % 2 === 1) return part;
-      return part.replace(/(?<!\n)\n(?!\n)/g, '  \n');
+  // Fences come off first: they are the one construct whose blank lines do not
+  // end a paragraph, so splitting into blocks before this would cut them apart.
+  return markdown
+    .split(/(```[\s\S]*?```)/g)
+    .map((segment, segmentIndex) => {
+      if (segmentIndex % 2 === 1) return segment;
+      return segment
+        .split(/(\n{2,})/)
+        .map((block) => (isLineOriented(block) ? breakLines(block) : block))
+        .join('');
     })
+    .join('');
+}
+
+function breakLines(block: string): string {
+  return block
+    .split(/(`[^`]+`)/g)
+    .map((part, i) => (i % 2 === 1 ? part : part.replace(/(?<!\n)\n(?!\n)/g, '  \n')))
     .join('');
 }
 

@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
+import { TooltipProvider } from '../ui/Tooltip';
 import { SessionHistory } from './SessionHistory';
 
 const { chatState, projectState } = vi.hoisted(() => ({
@@ -27,7 +28,11 @@ vi.mock('../../stores', () => ({
 
 describe('SessionHistory', () => {
   it('keeps the history trigger enabled while the viewed chat is streaming', () => {
-    const markup = renderToStaticMarkup(<SessionHistory />);
+    const markup = renderToStaticMarkup(
+      <TooltipProvider>
+        <SessionHistory />
+      </TooltipProvider>
+    );
 
     expect(markup).toMatch(/<button[^>]*aria-label="Session history"/);
     expect(markup).not.toMatch(/<button[^>]*disabled=""[^>]*aria-label="Session history"/);

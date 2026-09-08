@@ -44,7 +44,7 @@ export function StepScopeFeature({
           onChange={e => onDescriptionChange(e.target.value)}
           placeholder="Any context the AI can't infer from code, e.g. external integrations, migration goals..."
           rows={3}
-          className="input input-bordered resize-none"
+          className="input resize-none"
         />
       </div>
 

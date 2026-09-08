@@ -629,7 +629,7 @@ function getActionTypeLabel(type: PlanAction['type']): string {
   switch (type) {
     case 'create_item': return 'create';
     case 'update_item': return 'update';
-    case 'revise_work_brief': return 'brief';
+    case 'revise_work_brief': return 'rewrite';
     case 'set_repo_targets': return 'repos';
     case 'delete_item': return 'delete';
     case 'reparent': return 'move';

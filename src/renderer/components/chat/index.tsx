@@ -1,8 +1,6 @@
 import { useCallback, useEffect } from 'react';
 import { MessageList } from './MessageList';
 import { ChatInput } from './ChatInput';
-import { SessionList } from './SessionList';
-import { PermissionPrompt } from '../permission/PermissionPrompt';
 import { useChat } from '../../hooks/useChat';
 import {
   useProjectDomainStore,
@@ -14,7 +12,8 @@ import {
 import type { ChatAttachment, FocusedResource } from '../../../shared/types';
 import { useShallow } from 'zustand/react/shallow';
 import { CloseIcon } from '../icons';
-import { LoadingSpinner } from '../ui';
+import { LoadingSpinner, Tooltip } from '../ui';
+import { toast } from '../../stores/toastStore';
 import { getBaseName } from '../../utils/path';
 import { findRetryMessage } from './retryMessage';
 
@@ -67,6 +66,7 @@ export function Chat({ currentView }: ChatProps) {
     addFocusedResource,
     removeFocusedResource,
     clearFocusedResources,
+    setFocusedResources,
     syncFocusedResourcesForSession,
   } = useProjectUiDomainStore(
     useShallow((state) => ({
@@ -74,6 +74,7 @@ export function Chat({ currentView }: ChatProps) {
       addFocusedResource: state.addFocusedResource,
       removeFocusedResource: state.removeFocusedResource,
       clearFocusedResources: state.clearFocusedResources,
+      setFocusedResources: state.setFocusedResources,
       syncFocusedResourcesForSession: state.syncFocusedResourcesForSession,
     }))
   );
@@ -83,7 +84,11 @@ export function Chat({ currentView }: ChatProps) {
     return {
       viewedSessionId: state.viewedSessionId,
       viewedHydrated: session?.hydrated ?? true,
-      retryMessage: session ? findRetryMessage(session.messages) : undefined,
+      // No retry offer while a turn is in flight: the last user message is
+      // then the one being answered, not the one that failed, so retrying it
+      // would resend the wrong text. This is the case a rejected live
+      // follow-up produces, since its own bubble is pulled back out.
+      retryMessage: session && !session.isStreaming ? findRetryMessage(session.messages) : undefined,
       error: session?.error ?? null,
       mcpDegraded: session?.mcpDegraded ?? false,
       mcpError: session?.mcpError ?? null,
@@ -122,6 +127,25 @@ export function Chat({ currentView }: ChatProps) {
     }
   }, [retry, retryMessage]);
 
+  // Clearing takes everything in one press, so the way back is offered rather
+  // than a confirmation asked for. The restore is dropped if the user has moved
+  // to another conversation in the meantime — context belongs to the session it
+  // was gathered in, and putting it back somewhere else would be worse than
+  // losing it.
+  const handleClearContext = useCallback(() => {
+    const cleared = focusedResources;
+    if (cleared.length === 0) return;
+    const clearedFrom = viewedSessionId;
+    clearFocusedResources();
+    toast.info('Context cleared', {
+      label: 'Undo',
+      onClick: () => {
+        if (useChatStore.getState().viewedSessionId !== clearedFrom) return;
+        setFocusedResources(cleared);
+      },
+    });
+  }, [focusedResources, viewedSessionId, clearFocusedResources, setFocusedResources]);
+
   // Keep project store's visible focused resources aligned to the viewed chat session.
   useEffect(() => {
     syncFocusedResourcesForSession(viewedSessionId);
@@ -152,87 +176,71 @@ export function Chat({ currentView }: ChatProps) {
 
   return (
     <div className="flex flex-col h-full min-h-0 bg-surface-1 overflow-x-hidden">
-      {/* Session tabs */}
-      <SessionList />
-
-      {/* Focused resources banner - animated height to prevent layout shift */}
+      {/* What the next turn is being pointed at. A band, not a highlight: it is
+          always-on chrome rather than an action, so it is drawn with hairlines
+          and the panel's own surface. Height animates to zero when empty so the
+          transcript below never jumps. The borders come off with it — a 0px box
+          with two hairlines is still a 2px line. */}
       <div
-        className="bg-accent-subtle flex items-center gap-2 overflow-hidden transition-all duration-100 ease-out"
+        className={`bg-surface-1 overflow-hidden transition-all duration-100 ease-out px-3 ${
+          hasFocus ? 'border-y border-border-default' : ''
+        }`}
         style={{
           height: hasFocus ? '36px' : '0px',
-          padding: hasFocus ? '8px 12px' : '0 12px',
+          paddingBlock: hasFocus ? '6px' : '0',
           opacity: hasFocus ? 1 : 0,
         }}
       >
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: 'var(--color-accent)' }} />
-          <span className="text-xs font-medium whitespace-nowrap" style={{ color: 'var(--color-accent)' }}>
-            Context
-          </span>
+        <div className="flex items-center gap-2 min-w-0">
+          <Tooltip content="The agent sees these alongside your next message">
+            <span className="font-mono text-tiny text-text-tertiary flex-shrink-0">context</span>
+          </Tooltip>
           {focusCount > 1 && (
-            <span className="text-xxs font-medium px-1.5 py-0.5 rounded-full bg-accent/20 text-accent">
+            <span className="text-xxs font-medium px-1.5 py-0.5 rounded-full bg-surface-3 text-text-secondary flex-shrink-0">
               {focusCount}
             </span>
           )}
-        </div>
-        <div className="flex-1 flex items-center gap-1 min-w-0 overflow-x-auto scrollbar-none">
-          {focusedResources.map((resource, idx) => (
+          <div className="flex-1 flex items-center gap-1 min-w-0 overflow-x-auto scrollbar-none">
+            {focusedResources.map((resource, idx) => (
+              // The chip body is inert: only the trailing control removes the
+              // resource, so brushing a chip can't silently drop context.
+              <Tooltip key={`${resource.type}-${idx}`} content={getResourceLabel(resource)}>
+                <span className="text-xs text-text-primary bg-surface-3 pl-1.5 pr-0.5 py-0.5 rounded-sm flex items-center gap-1 max-w-[140px] transition-colors flex-shrink-0">
+                  <ResourceIcon type={resource.type} />
+                  <span className="truncate">{getResourceLabel(resource)}</span>
+                  <button
+                    onClick={() => removeFocusedResource(resource)}
+                    className="p-0.5 rounded-sm text-text-muted hover:text-text-primary hover:bg-surface-4 transition-colors flex-shrink-0"
+                    aria-label={`Remove ${getResourceLabel(resource)} from context`}
+                  >
+                    <CloseIcon className="w-2.5 h-2.5" />
+                  </button>
+                </span>
+              </Tooltip>
+            ))}
+          </div>
+          <Tooltip content="Clear all">
             <button
-              key={`${resource.type}-${idx}`}
-              onClick={() => removeFocusedResource(resource)}
-              className="text-xs text-text-primary bg-surface-2/60 hover:bg-surface-2 pl-1.5 pr-1 py-0.5 rounded-md flex items-center gap-1 max-w-[140px] group transition-colors flex-shrink-0"
-              title={`Remove: ${getResourceLabel(resource)}`}
+              onClick={handleClearContext}
+              className="transition-colors flex-shrink-0 text-text-muted hover:text-text-primary hover:bg-surface-3 p-1 rounded-sm"
+              aria-label="Clear all context"
             >
-              <ResourceIcon type={resource.type} />
-              <span className="truncate">{getResourceLabel(resource)}</span>
-              <CloseIcon className="w-2.5 h-2.5 flex-shrink-0 opacity-40 group-hover:opacity-100" />
+              <CloseIcon className="w-3.5 h-3.5" />
             </button>
-          ))}
+          </Tooltip>
         </div>
-        <button
-          onClick={clearFocusedResources}
-          className="transition-colors flex-shrink-0 hover:bg-surface-2/50 p-1 rounded"
-          style={{ color: 'color-mix(in srgb, var(--color-accent) 60%, transparent)' }}
-          title="Clear all"
-        >
-          <CloseIcon className="w-3.5 h-3.5" />
-        </button>
       </div>
 
-      {/* Error banner */}
-      {error && (
-        <div className="bg-danger-muted px-3 py-2 flex items-start gap-3">
-          <svg className="w-4 h-4 text-danger flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm text-danger">{error}</p>
-            {retryMessage && (
-              <button
-                onClick={handleRetry}
-                className="text-xs text-danger/80 hover:text-danger underline mt-1"
-              >
-                Retry last message
-              </button>
-            )}
-          </div>
-          <button
-            onClick={() => viewedSessionId && clearError(viewedSessionId)}
-            className="text-danger/60 hover:text-danger transition-colors flex-shrink-0"
-          >
-            <CloseIcon className="w-4 h-4" />
-          </button>
-        </div>
-      )}
-
-      {/* MCP degraded warning banner — auto-clears when server reconnects */}
+      {/* Session-wide degradation stays as chrome because it outlives any one
+          turn. A failed turn does not: it renders inside the transcript, at
+          the message it belongs to. */}
       {mcpDegraded && (
-        <div className="bg-warning-muted px-3 py-2 flex items-center gap-3">
-          <svg className="w-4 h-4 text-warning flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
-          <p className="text-sm text-warning">
-            {mcpError ?? 'KPM tools are temporarily unavailable. Attempting to reconnect...'}
+        <div className="bg-warning-muted px-3 py-2" role="status">
+          <p className="flex items-start gap-2 text-sm text-warning">
+            <svg className="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <span>{mcpError ?? 'Plan, search, and repo tools are offline, so answers will not see your plan. Reconnecting.'}</span>
           </p>
         </div>
       )}
@@ -240,8 +248,10 @@ export function Chat({ currentView }: ChatProps) {
       {viewedHydrated ? (
         <MessageList
           key={viewedSessionId ?? 'no-session'}
-          currentView={currentView}
           onCancelQueued={cancelQueued}
+          error={error}
+          onRetry={retryMessage ? handleRetry : undefined}
+          onDismissError={() => viewedSessionId && clearError(viewedSessionId)}
         />
       ) : (
         <div className="flex-1 min-h-0 flex items-center justify-center">
@@ -251,13 +261,11 @@ export function Chat({ currentView }: ChatProps) {
           </div>
         </div>
       )}
-      <PermissionPrompt chatSessionId={viewedSessionId} />
       <ChatInput
         onSend={handleSend}
         onCancel={cancel}
         disabled={!currentProjectId}
         addFocusedResource={addFocusedResource}
-        currentView={currentView}
       />
     </div>
   );

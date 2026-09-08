@@ -175,12 +175,12 @@ function ImageLightbox({
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="full" className="!bg-transparent !shadow-none !border-0">
-      <div className="flex flex-col items-center justify-center gap-3 p-4">
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 overflow-auto p-4">
         {status === 'loaded' && dataUrl ? (
           <img
             src={dataUrl}
             alt={attachment.filename}
-            className="max-h-[80vh] max-w-full rounded shadow-lg"
+            className="max-h-full max-w-full rounded-md border border-border-strong"
           />
         ) : status === 'errored' ? (
           <div className="flex flex-col items-center gap-3 text-text-muted">

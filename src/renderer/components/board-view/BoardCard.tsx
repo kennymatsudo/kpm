@@ -6,19 +6,31 @@ import { useDevSessionsStore } from '../../stores/devSessions';
 import { useResourceDomainStore } from '../../stores';
 import { CardActivityLine } from './CardActivityLine';
 import { derivePanelStatus, type PanelPhase, type NextAction } from './panelStatus';
-import { toReviewPhaseStats } from './usePanelStatus';
+import {
+  buildReviewActionableLabel,
+  resolveCardIndicator,
+  type CardIndicatorForm,
+  type CardIndicatorTone,
+} from './cardIndicator';
 import { getStats } from '../development/reviewStats';
-import { resolveStatusCategory } from '../../constants/statusConfig';
+import { resolveStatusCategory, STATUS_CATEGORY_CONFIG } from '../../constants/statusConfig';
 import { ACTIVE_SESSION_STATUSES, isLiveAutomationPhase, OPENABLE_SESSION_STATUSES } from '../../../shared/types';
 import type { PlanItem } from '../../../shared/types';
-import { toReviewSessionId } from '../../../shared/agent-types';
+import { resolveReviewRuntime } from './reviewSession';
 import { openExternalUrl } from '../../services/shellService';
 import { TrackerIcon, trackerLabelFor } from '../tracker/shared/trackerDisplay';
 import { Tooltip } from '../ui';
 
 const STALE_ACTIVITY_MS = 5 * 60 * 1000;
 
-/** Phases that read as "an agent process is actively running" for card border/pulse styling. */
+const INDICATOR_CLASSES: Record<CardIndicatorTone, Record<CardIndicatorForm, string>> = {
+  danger: { solid: 'bg-danger', ring: 'border border-danger' },
+  warning: { solid: 'bg-warning', ring: 'border border-warning' },
+  info: { solid: 'bg-info', ring: 'border border-info' },
+  success: { solid: 'bg-success', ring: 'border border-success' },
+};
+
+/** Phases that read as "an agent process is actively running" for card border styling. */
 const LIVE_PANEL_PHASES: ReadonlySet<PanelPhase> = new Set([
   'committing', 'fixing_hooks', 'implementing', 'reviewing', 'addressing',
 ]);
@@ -47,36 +59,8 @@ interface BoardCardProps {
   onStartAgent?: (itemId: string) => void;
   onStopAgent?: (devSessionId: string) => void;
   onOpenDetail?: (itemId: string) => void;
-}
-
-function buildReviewActionableTooltip(
-  counts: { needsInput: number; failed: number; stale: number; errored: number },
-  automationFailure: string | null,
-): string {
-  const parts: string[] = [];
-  if (counts.needsInput > 0) parts.push(`${counts.needsInput} need your input`);
-  if (counts.failed > 0) parts.push(`${counts.failed} failed`);
-  if (counts.stale > 0) parts.push(`${counts.stale} stale`);
-  if (counts.errored > 0) parts.push(`${counts.errored} errored`);
-  const head = parts.length > 0
-    ? `Review: ${parts.join(', ')}`
-    : 'Review requires attention';
-  return automationFailure
-    ? `${head} · ${automationFailure}`
-    : `${head} — open Review tab`;
-}
-
-function buildReviewActionableLabel(
-  counts: { needsInput: number; failed: number; stale: number; errored: number },
-): string {
-  const failures = counts.failed + counts.stale + counts.errored;
-  if (failures > 0) {
-    return `${failures} review ${failures === 1 ? 'task needs' : 'tasks need'} reassessment`;
-  }
-  if (counts.needsInput > 0) {
-    return `${counts.needsInput} review ${counts.needsInput === 1 ? 'decision needs' : 'decisions need'} you`;
-  }
-  return 'Review requires a decision';
+  /** Roving tab stop: one card per column is reachable by Tab, the rest by arrow keys. */
+  isTabStop?: boolean;
 }
 
 /**
@@ -87,9 +71,9 @@ function buildReviewActionableLabel(
  */
 type CardVisualState = 'idle' | 'active' | 'attention' | 'complete' | 'error';
 
-// Automation failures get their own dedicated orange dot elsewhere on the card
-// (not the amber attention state) — kept as 'idle' here so it doesn't also
-// pick up the attention-only styling (shadow, stop-button eligibility).
+// Automation failures resolve to their own danger indicator via resolveCardIndicator
+// — kept as 'idle' here so they don't also pick up attention-only styling
+// (border promotion, stop-button eligibility).
 const PHASE_TO_VISUAL_STATE: Record<PanelPhase, CardVisualState> = {
   committing: 'active',
   fixing_hooks: 'active',
@@ -147,6 +131,7 @@ export const BoardCard = memo(function BoardCard({
   onStartAgent,
   onStopAgent,
   onOpenDetail,
+  isTabStop = false,
 }: BoardCardProps) {
   // Single consolidated selector: re-renders only when this item's derived
   // session state actually changes, not on every store update. Using useShallow
@@ -159,7 +144,10 @@ export const BoardCard = memo(function BoardCard({
     prSession,
     agentState,
     latestActivity,
+    reviewSessionId,
     reviewState,
+    reviewIsVisible,
+    reviewIsActive,
     latestReviewActivity,
     isMergeBlocked,
     reviewActionable,
@@ -190,7 +178,14 @@ export const BoardCard = memo(function BoardCard({
         .filter((s) => s.pr_url)
         .sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at))[0];
 
-      const reviewId = active ? toReviewSessionId(active.id) : undefined;
+      const reviewRuntime = active
+        ? resolveReviewRuntime(
+            active.id,
+            active.current_step_id,
+            state.agentStateBySessionId,
+            state.reviewRunsByImplementationId.get(active.id) ?? [],
+          )
+        : undefined;
 
       let mergeBlocked = false;
       let blockedByNames: string[] = [];
@@ -226,8 +221,13 @@ export const BoardCard = memo(function BoardCard({
         prSession: pr,
         agentState: active ? state.agentStateBySessionId.get(active.id) : undefined,
         latestActivity: active ? state.latestActivityBySessionId.get(active.id) : undefined,
-        reviewState: reviewId ? state.agentStateBySessionId.get(reviewId) : undefined,
-        latestReviewActivity: reviewId ? state.latestActivityBySessionId.get(reviewId) : undefined,
+        reviewSessionId: reviewRuntime?.sessionId,
+        reviewState: reviewRuntime?.agentState,
+        reviewIsVisible: reviewRuntime?.isVisible ?? false,
+        reviewIsActive: reviewRuntime?.isActive ?? false,
+        latestReviewActivity: reviewRuntime
+          ? state.latestActivityBySessionId.get(reviewRuntime.sessionId)
+          : undefined,
         isMergeBlocked: mergeBlocked,
         // Return stable primitives/refs only: useShallow compares one level
         // deep, so a freshly-built array/object here would never compare equal
@@ -245,11 +245,8 @@ export const BoardCard = memo(function BoardCard({
   );
 
   const reviewStats = useMemo(
-    () =>
-      reviewInbox && activeSession
-        ? toReviewPhaseStats(getStats(reviewInbox, activeSession.id), reviewAssessmentRunning)
-        : null,
-    [reviewInbox, activeSession, reviewAssessmentRunning],
+    () => (reviewInbox && activeSession ? getStats(reviewInbox, activeSession.id) : null),
+    [reviewInbox, activeSession],
   );
   const mergeBlockedByNames = useMemo(
     () => JSON.parse(mergeBlockedByNamesKey) as string[],
@@ -268,13 +265,6 @@ export const BoardCard = memo(function BoardCard({
   const repoName = repoSession?.repo_name ?? assignedRepoName;
   const automationPhase = activeSession?.automation_phase;
   const attentionReason = activeSession?.attention_reason ?? null;
-  const reviewSessionId = activeSession ? toReviewSessionId(activeSession.id) : undefined;
-  const isReviewVisible =
-    reviewState === 'starting'
-    || reviewState === 'working'
-    || reviewState === 'waiting_for_input'
-    || reviewState === 'failed'
-    || reviewState === 'stopped';
 
   const panelStatus = derivePanelStatus({
     implAgentState: agentState,
@@ -288,12 +278,8 @@ export const BoardCard = memo(function BoardCard({
     itemStatus,
     commitStatus,
     reviewStats,
-    // Mirrors usePanelStatus.ts's reviewActive check exactly (starting/working
-    // only, narrower than isReviewVisible below) so the "current step" text
-    // agrees with the detail panel while the review agent is running.
-    latestActivitySummary: (
-      reviewState === 'starting' || reviewState === 'working' ? latestReviewActivity : latestActivity
-    )?.summary ?? null,
+    reviewAssessmentRunning,
+    latestActivitySummary: (reviewIsActive ? latestReviewActivity : latestActivity)?.summary ?? null,
     terminalReason: completionStats?.terminalReason ?? null,
     elapsedMs: null,
     diffStats: completionStats
@@ -305,8 +291,8 @@ export const BoardCard = memo(function BoardCard({
   // Card-specific staleness: derivePanelStatus models the deterministic agent
   // lifecycle with no "stuck" state by design (see panelStatus.ts) — the card
   // layers its own 5-minute no-activity heuristic on top for a slow poller tick.
-  const effectiveAgentState = isReviewVisible ? reviewState : agentState;
-  const effectiveLatestActivity = isReviewVisible ? latestReviewActivity : latestActivity;
+  const effectiveAgentState = reviewIsVisible ? reviewState : agentState;
+  const effectiveLatestActivity = reviewIsVisible ? latestReviewActivity : latestActivity;
   const isSessionStale =
     !!effectiveLatestActivity &&
     effectiveLatestActivity.status !== 'running' &&
@@ -361,14 +347,14 @@ export const BoardCard = memo(function BoardCard({
 
   const handleStopClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    if (reviewSessionId && isReviewVisible) {
+    if (reviewSessionId && reviewIsVisible) {
       onStopAgent?.(reviewSessionId);
       return;
     }
     if (activeSession) {
       onStopAgent?.(activeSession.id);
     }
-  }, [activeSession, isReviewVisible, onStopAgent, reviewSessionId]);
+  }, [activeSession, reviewIsVisible, onStopAgent, reviewSessionId]);
 
   const handleOpenPrClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -377,6 +363,24 @@ export const BoardCard = memo(function BoardCard({
     }
   }, [prSession?.pr_url]);
 
+  // Enter mirrors the card's own primary control: open the session if there is
+  // one, otherwise start an agent (which opens the confirm modal, never runs).
+  const handleCardKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.currentTarget !== e.target) return;
+
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (hasOpenableSession) onOpenDetail?.(item.id);
+      else onStartAgent?.(item.id);
+      return;
+    }
+
+    if (e.key === ' ' && onToggleExpand) {
+      e.preventDefault();
+      onToggleExpand();
+    }
+  }, [hasOpenableSession, item.id, onOpenDetail, onStartAgent, onToggleExpand]);
+
   // Search match detection
   const isSearchActive = searchQuery.trim().length > 0;
   const titleMatches = isSearchActive && item.title.toLowerCase().includes(searchQuery.toLowerCase());
@@ -384,31 +388,55 @@ export const BoardCard = memo(function BoardCard({
   const isMatch = titleMatches || keyMatches;
   const isDimmed = isSearchActive && !isMatch;
 
+  const cardAccessibleName = [
+    item.external_key,
+    item.title,
+    panelStatus.nextAction?.text ?? STATUS_CATEGORY_CONFIG[itemStatus].label,
+  ]
+    .filter(Boolean)
+    .join(', ');
+
   // Border color based on agent state
   const borderClass = (() => {
     if (isSelected) return 'border-accent';
     switch (visualState) {
       case 'active': return 'border-accent/40';
-      case 'attention': return 'border-amber-500/60';
-      case 'complete': return 'border-emerald-500/40';
-      case 'error': return 'border-red-500/30';
-      case 'stale': return 'border-amber-500/50';
-      case 'idle': return activeSessionCount > 0 ? 'border-emerald-500/40' : 'border-border-subtle';
+      case 'attention': return 'border-warning/60';
+      case 'complete': return 'border-success/40';
+      case 'error': return 'border-danger/30';
+      case 'stale': return 'border-warning/50';
+      case 'idle': return activeSessionCount > 0 ? 'border-success/40' : 'border-border-subtle';
     }
   })();
+
+  const indicator = resolveCardIndicator({
+    isAttention: visualState === 'attention',
+    isStale: visualState === 'stale',
+    isActive: visualState === 'active',
+    hasAutomationFailure: automationPhase === 'needs_attention' && !!attentionReason,
+    automationFailureText: panelStatus.nextAction?.text ?? null,
+    reviewActionable: reviewActionable ?? null,
+    isIdle: visualState === 'idle',
+    isMergeBlocked,
+    activeSessionCount,
+    hasPhaseIndicator: !!phaseIndicator,
+  });
 
   return (
     <div
       data-plan-item-id={item.id}
       draggable
+      role="group"
+      tabIndex={isTabStop ? 0 : -1}
+      aria-label={cardAccessibleName}
+      aria-current={isSelected ? 'true' : undefined}
       className={`
         min-w-0 overflow-hidden p-2.5 bg-surface-0 rounded-lg border cursor-grab active:cursor-grabbing
         transition-[border-color,box-shadow,opacity] duration-150 ease-out
+        focus-ring
         ${borderClass}
         ${isFocused && !isSelected ? 'ring-1 ring-accent/50' : ''}
         ${isDimmed ? 'opacity-40' : ''}
-        ${visualState === 'attention' || visualState === 'stale' ? 'shadow-sm shadow-amber-500/10' : ''}
-        ${visualState === 'active' ? 'animate-pulse-subtle' : ''}
         hover:shadow-sm ${isSelected ? '' : 'hover:border-border-default'}
         group
       `}
@@ -443,8 +471,8 @@ export const BoardCard = memo(function BoardCard({
         dragImage.style.cssText = `
           position: absolute;
           top: -1000px;
-          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2), 0 4px 8px rgba(0, 0, 0, 0.1);
-          border: 1px solid var(--color-border-default);
+          box-shadow: var(--shadow-lg);
+          border: 1px solid var(--color-border-strong);
           transform: rotate(-2deg);
         `;
         dragImage.textContent = item.title;
@@ -455,6 +483,7 @@ export const BoardCard = memo(function BoardCard({
         onDragStart();
       }}
       onDragEnd={onDragEnd}
+      onKeyDown={handleCardKeyDown}
     >
       {/* Breadcrumb (parent hierarchy) */}
       {breadcrumb.length > 0 && (
@@ -480,63 +509,11 @@ export const BoardCard = memo(function BoardCard({
           )}
         </div>
 
-        {/* Attention indicator (waiting for input) */}
-        {visualState === 'attention' && (
-          <Tooltip content="Agent needs your attention" side="top">
+        {indicator && (
+          <Tooltip content={indicator.tooltip} side="top">
             <span
-              className="flex-shrink-0 mt-1 w-2 h-2 rounded-full bg-amber-500"
-              aria-label="Agent needs your attention"
-            />
-          </Tooltip>
-        )}
-
-        {visualState === 'stale' && (
-          <Tooltip content="Session state is stale" side="top">
-            <span
-              className="flex-shrink-0 mt-1 w-2 h-2 rounded-full bg-amber-500"
-              aria-label="Session state is stale"
-            />
-          </Tooltip>
-        )}
-
-        {/* Failure indicator: automation failure or review items requiring user action */}
-        {((automationPhase === 'needs_attention' && attentionReason) || reviewActionable?.hasActionable) && visualState !== 'active' && visualState !== 'attention' && (
-          <Tooltip
-            content={
-              reviewActionable?.hasActionable
-                ? buildReviewActionableTooltip(
-                    reviewActionable.counts,
-                    automationPhase === 'needs_attention' && attentionReason
-                      ? panelStatus.nextAction?.text ?? 'Automation failed'
-                      : null,
-                  )
-                : panelStatus.nextAction?.text ?? 'Automation failed'
-            }
-            side="top"
-          >
-            <span
-              className="flex-shrink-0 mt-1 w-2 h-2 rounded-full bg-orange-500"
-              aria-label={panelStatus.nextAction?.text ?? 'Automation failed'}
-            />
-          </Tooltip>
-        )}
-
-        {/* Active session indicator (legacy green dot) */}
-        {visualState === 'idle' && activeSessionCount > 0 && !phaseIndicator && (
-          <Tooltip content={activeSessionCount === 1 ? 'Agent running' : `${activeSessionCount} agents running`} side="top">
-            <span
-              className="flex-shrink-0 mt-1.5 w-1.5 h-1.5 rounded-full bg-emerald-500"
-              aria-label={activeSessionCount === 1 ? 'Agent running' : `${activeSessionCount} agents running`}
-            />
-          </Tooltip>
-        )}
-
-        {/* Merge blocked indicator — PR open but a dependency hasn't merged yet */}
-        {isMergeBlocked && (
-          <Tooltip content="Merge blocked — a dependency PR hasn't merged yet" side="top">
-            <span
-              className="flex-shrink-0 mt-1 w-2 h-2 rounded-full bg-amber-400"
-              aria-label="Merge blocked"
+              className={`flex-shrink-0 mt-1 w-2 h-2 rounded-full ${INDICATOR_CLASSES[indicator.tone][indicator.form]}`}
+              aria-label={indicator.label}
             />
           </Tooltip>
         )}
@@ -687,10 +664,10 @@ export const BoardCard = memo(function BoardCard({
             <Tooltip content="Stop agent" side="top">
               <button
                 onClick={handleStopClick}
-                className="p-1 hover:bg-red-500/10 rounded transition-colors"
+                className="p-1 hover:bg-danger-muted rounded transition-colors"
                 aria-label="Stop agent"
               >
-                <svg className="w-3 h-3 text-red-400" viewBox="0 0 16 16" fill="currentColor">
+                <svg className="w-3 h-3 text-danger" viewBox="0 0 16 16" fill="currentColor">
                   <rect x="3" y="3" width="10" height="10" rx="1.5" />
                 </svg>
               </button>
@@ -703,7 +680,7 @@ export const BoardCard = memo(function BoardCard({
                 onClick={handlePlayClick}
                 className="
                   p-1 hover:bg-accent/10 rounded transition-all duration-150
-                  opacity-0 group-hover:opacity-100
+                  opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100
                 "
                 aria-label="Start agent"
               >
@@ -720,7 +697,7 @@ export const BoardCard = memo(function BoardCard({
                 onClick={handleOpenDetailClick}
                 className="
                   p-1 hover:bg-accent/10 rounded transition-all duration-150
-                  opacity-0 group-hover:opacity-100
+                  opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100
                 "
                 aria-label="Open details"
               >
@@ -753,7 +730,7 @@ export const BoardCard = memo(function BoardCard({
               onMouseEnter={onPrepareEdit}
               onFocus={onPrepareEdit}
               className="
-                opacity-0 group-hover:opacity-100
+                opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100
                 p-1 hover:bg-surface-3 rounded
                 transition-all duration-150
               "

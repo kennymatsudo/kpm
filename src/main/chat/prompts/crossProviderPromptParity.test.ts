@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { PlanContext } from './types';
 import { buildPlanReferenceRulesSection } from './index';
-import { buildResponseModesSection } from './modes';
+import { buildPlanModificationsSection } from './modes';
 import { PROMPT_REGISTRY_MAP } from './promptRegistry';
 import { GROUNDING, CONSTRAINTS, WORKSPACE_SECTION, PLAN_SYSTEM_RULES, RESPONSE_STYLE } from './workspace';
 import { focusFixture } from './__fixtures__/promptContextFixtures';
@@ -69,7 +69,7 @@ describe.each(Object.keys(providerPromptBuilders))('%s main-scope system prompt'
     expect(prompt).toContain(WORKSPACE_SECTION);
     expect(prompt).toContain(PLAN_SYSTEM_RULES);
     expect(prompt).toContain(RESPONSE_STYLE);
-    expect(prompt).toContain(buildResponseModesSection(true, context.planItems, undefined));
+    expect(prompt).toContain(buildPlanModificationsSection());
     expect(prompt).toContain(buildPlanReferenceRulesSection());
   });
 

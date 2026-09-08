@@ -87,6 +87,13 @@ export const BoardColumn = memo(function BoardColumn({
     [expandedIdsRef, treeNodesRef],
   );
 
+  // Exactly one card per column is reachable by Tab — the selected one if this
+  // column holds it, otherwise the first. Arrow keys reach the rest.
+  const tabStopId = useMemo(() => {
+    const ordered = getVisibleBoardSelectionOrder(treeNodes, expandedIds);
+    return ordered.find((id) => selectedIds.has(id)) ?? ordered[0] ?? null;
+  }, [treeNodes, expandedIds, selectedIds]);
+
   const toggleExpanded = useCallback((id: string) => {
     setExpandedIds((prev) => {
       const next = new Set(prev);
@@ -175,6 +182,9 @@ export const BoardColumn = memo(function BoardColumn({
 
   return (
     <div
+      data-board-column={status}
+      role="group"
+      aria-label={`${config.label}, ${totalItemCount} ${totalItemCount === 1 ? 'item' : 'items'}`}
       className={`
         flex flex-col flex-1 min-w-64 overflow-hidden bg-surface-1 border border-border-subtle rounded-[10px]
         transition-[background-color,box-shadow] duration-150
@@ -206,6 +216,7 @@ export const BoardColumn = memo(function BoardColumn({
             toggleExpanded={toggleExpanded}
             selectedIds={selectedIds}
             focusedItemId={focusedItemId}
+            tabStopId={tabStopId}
             searchQuery={searchQuery}
             onSelectItem={onSelectItem}
             onSelectRange={onSelectRange}
@@ -249,6 +260,7 @@ interface BoardTreeNodeRendererProps {
   toggleExpanded: (id: string) => void;
   selectedIds: Set<string>;
   focusedItemId: string | null;
+  tabStopId: string | null;
   searchQuery: string;
   onSelectItem: (id: string | null, addToSelection?: boolean) => void;
   onSelectRange?: RangeSelectHandler;
@@ -271,6 +283,7 @@ const BoardTreeNodeRenderer = memo(function BoardTreeNodeRenderer({
   toggleExpanded,
   selectedIds,
   focusedItemId,
+  tabStopId,
   searchQuery,
   onSelectItem,
   onSelectRange,
@@ -313,6 +326,7 @@ const BoardTreeNodeRenderer = memo(function BoardTreeNodeRenderer({
         onStartAgent={onStartAgent}
         onStopAgent={onStopAgent}
         onOpenDetail={onOpenDetail}
+        isTabStop={tabStopId === item.id}
       />
       {hasChildren && isExpanded && (
         <div className="mt-1 space-y-1">
@@ -326,6 +340,7 @@ const BoardTreeNodeRenderer = memo(function BoardTreeNodeRenderer({
               toggleExpanded={toggleExpanded}
               selectedIds={selectedIds}
               focusedItemId={focusedItemId}
+              tabStopId={tabStopId}
               searchQuery={searchQuery}
               onSelectItem={onSelectItem}
               onSelectRange={onSelectRange}

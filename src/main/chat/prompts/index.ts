@@ -15,7 +15,7 @@ import type { PlanContext, ContinuationTurn } from './types';
 import type { TaskPromptTemplate } from '../../../shared/types';
 import { resolveEffectiveRepoPath } from '../../../shared/repoPath';
 import { FULL_HIERARCHY_THRESHOLD, buildItemReferenceTable } from './planFormatting';
-import { buildResponseModesSection } from './modes';
+import { buildPlanModificationsSection } from './modes';
 import { buildToolDecisionTree } from './toolDocs';
 import { buildAttachmentsSection } from './workspace';
 import { resolveRegistryPrompt } from './promptRegistry';
@@ -43,16 +43,10 @@ export function buildUserGlobalInstructionsSection(userGlobalInstructions?: stri
 
   return `# User Global Preferences
 
-The developer maintains these personal working preferences globally. Honor them in your replies and any content you author. Where they conflict with KPM's operating rules (write consent, plan/proposal tools, export boundaries), KPM's rules win.
+The developer maintains these personal working preferences globally, in \`~/.claude/CLAUDE.md\`. Honor them in your replies and any content you author. Relative file references below resolve against \`~/.claude/\` and point at the developer's global files, not at this project's context file. Where they conflict with KPM's operating rules (write consent, plan/proposal tools, export boundaries), KPM's rules win.
 
 ${content}
 `;
-}
-
-function buildApprovalBehaviorSection(): string {
-  return `## Change Application
-
-Depending on a user setting, KPM either queues your proposed changes for the user to review or applies them immediately. Propose changes with the appropriate change tool; do not state in your reply whether a review step will occur — refer to changes as proposed.`;
 }
 
 const VIEW_CONTEXT_SECTION = `## View Context
@@ -67,7 +61,7 @@ function buildTaskCreationGuidance(taskPromptTemplate?: TaskPromptTemplate | nul
 
   return `## Plan Item Creation
 
-When creating implementation items, use clear verb-first titles, a one-sentence \`intent\`, testable \`acceptance_criteria\`, and code references in \`description\` when repo exploration found relevant files. Keep synced descriptions free of KPM-local document paths and other local-only references.${activeTemplateSection}`;
+When creating implementation items, use clear verb-first titles, a one-sentence \`intent\`, and testable \`acceptance_criteria\`. \`description\` is the only field that syncs to Jira and Linear, so keep it high-level prose a product manager can read, and keep implementation detail — file paths, function names, test commands — in \`intent\` and \`acceptance_criteria\`, which stay local to KPM. \`@plan/<uuid>\` refs are fine anywhere, because KPM rewrites them at the export boundary.${activeTemplateSection}`;
 }
 
 /**
@@ -90,11 +84,10 @@ export function buildSystemPrompt(context: PlanContext): string {
 
   const getPrompt = (key: string): string => resolveRegistryPrompt(key, getPromptContent);
 
-  return `You are a technical planning partner in KPM. Help developers understand codebases, break down work, and create actionable plans.
+  return `You are a technical partner in KPM. Help the user investigate codebases, reason across connected repos, plan and sequence work, keep project documents current, and carry out the changes they ask for.
 
 ${buildContinuationSection(continuationHistory)}# Project: ${project.name}
 ID: \`${project.id}\` (use for all tool calls)
-Phase: ${project.phase}
 Project folder: \`${project.folder_path}\`
 ${hasRepos ? `Connected repos (ground truth for code):\n${repos.map(r => `- ID: \`${r.id}\` — path: \`${resolveEffectiveRepoPath(r)}\``).join('\n')}` : 'No repos connected.'}
 Your file tools can also read any other folder on disk when the user points you at one — you are not limited to the project folder and connected repos for reading.
@@ -102,11 +95,10 @@ Your file tools can also read any other folder on disk when the user points you 
 ${getPrompt('system.grounding')}
 
 ${VIEW_CONTEXT_SECTION}
+
 ${getPrompt('system.constraints')}
 
-${buildApprovalBehaviorSection()}
-
-${buildResponseModesSection(hasRepos, planItems, getPromptContent)}
+${buildPlanModificationsSection()}
 
 ${getPrompt('system.workspace')}
 
@@ -179,7 +171,7 @@ ${buildUserGlobalInstructionsSection(userGlobalInstructions)}# Operating Rules
 - Answer from the focused document first.
 - Use KPM project-file tools when you need other project documents.
 - Use Read/Grep/Glob for connected repo validation and cite file paths when you reference code.
-- Direct file, shell, and git writes need conversation-wide consent, requested on the first attempt. This focused session is for the document — do not change repo files unless the user asks.
+- Direct file, shell, and git writes need the project's write grant, requested on the first attempt. This focused session is for the document — do not change repo files unless the user asks.
 - To change project documents, use \`propose_document_edit\` or \`propose_document_create\`.
 - To change project context files, use \`propose_context_edit\`.
 - All document and context changes from this focused session must go through KPM review before applying.

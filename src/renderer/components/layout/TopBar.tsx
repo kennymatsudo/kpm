@@ -6,6 +6,7 @@ import {
   useExportStore,
   useSyncStore,
   useTrackerStore,
+  useChatStore,
 } from '../../stores';
 import { ConfirmActionDialog } from '../ui/ConfirmActionDialog';
 import { JiraIcon, LinearIcon } from '../icons';
@@ -18,10 +19,12 @@ import { TopBarPlanningControls } from './TopBarPlanningControls';
 import { TopBarProjectSection } from './TopBarProjectSection';
 import { BackgroundTaskBadge } from '../background-tasks';
 import { NotificationBadge } from '../notifications';
+import { PendingRequestsBadge } from '../permission/PendingRequestsBadge';
 import { ONBOARDING_TASK_KIND } from '../../services/onboardingTaskBridge';
 import { useProjectEdit } from './hooks/useProjectEdit';
 import { useProjectMenu } from './hooks/useProjectMenu';
 import { useTrackerTopBarIntegration } from './hooks/useTrackerTopBarIntegration';
+import { useActivityStore, describeActivity } from '../../stores/activityStore';
 import { Tooltip } from '../ui';
 import type { PersonFilterOption } from './hooks/useLayoutPlanViewState';
 
@@ -91,20 +94,42 @@ export function TopBar({
     }))
   );
   const currentProject = projects.find((p) => p.id === currentProjectId) || null;
+  const activityByProject = useActivityStore((state) => state.byProject);
   // Projects are ordered oldest-first by ProjectRepository.list (created_at ASC).
   // ⌥⌘1 binds to the oldest project; new projects get the next-highest number
   // so existing bindings don't shift on create.
-  const projectMenuOptions = projects.map((project, index) => ({
-    id: project.id,
-    name: project.name,
-    shortcutPosition: index < 10 ? index + 1 : null,
-  }));
+  const projectMenuOptions = projects.map((project, index) => {
+    const activity = activityByProject[project.id];
+    return {
+      id: project.id,
+      name: project.name,
+      shortcutPosition: index < 10 ? index + 1 : null,
+      // Switching away doesn't stop work, so the switcher has to say which
+      // projects are still busy — and which are blocked on the user.
+      activity: activity
+        ? { summary: describeActivity(activity), needsAttention: activity.agentsAwaitingInput > 0 }
+        : null,
+    };
+  });
   const currentProjectMenuOption = projectMenuOptions.find((p) => p.id === currentProjectId) ?? null;
   const otherProjectsMenuOptions = projectMenuOptions.filter((p) => p.id !== currentProjectId);
   const { selectedTrackerType } = useCredentialStore(
     useShallow((state) => ({ selectedTrackerType: state.selectedTrackerType }))
   );
   const trackerLabel = selectedTrackerType === 'jira' ? 'Jira' : 'Linear';
+
+  // Collapsing the panel takes the per-tab spinners with it, so a conversation
+  // can be answering, running a command, or editing files with nothing on
+  // screen saying so. The control that brings chat back carries the mark.
+  const hiddenChatIsWorking = useChatStore((state) => {
+    if (!chatCollapsed) return false;
+    for (const sessionId of state.activeSessionIds) {
+      const session = state.sessions.get(sessionId);
+      if (!session) continue;
+      if (session.isStreaming || session.backgroundTasks.length > 0) return true;
+    }
+    return false;
+  });
 
   const {
     isEditing,
@@ -153,7 +178,11 @@ export function TopBar({
 
   return (
     <>
-      <header className="h-10 flex items-center bg-surface-1 border-b border-border-subtle drag-region flex-shrink-0 relative overflow-visible" style={{ zIndex: Z_INDEX.panel - 10 }}>
+      {/*
+        Height reads the same token the approval overlay and toasts offset by.
+        Hardcoding it here is what let the two drift 8px apart.
+      */}
+      <header className="flex items-center bg-surface-1 border-b border-border-subtle drag-region flex-shrink-0 relative overflow-visible" style={{ zIndex: Z_INDEX.panel - 10, height: 'var(--titlebar-height)' }}>
         <TopBarProjectSection
           currentProject={currentProjectMenuOption}
           otherProjects={otherProjectsMenuOptions}
@@ -236,7 +265,7 @@ export function TopBar({
                     )}
                     <span>{trackerLabel}</span>
                     {queueCount > 0 && (
-                      <span className="ml-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-tiny font-semibold bg-accent text-white rounded-full">
+                      <span className="ml-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-tiny font-semibold bg-surface-3 text-text-secondary rounded-full">
                         {queueCount > 99 ? '99+' : queueCount}
                       </span>
                     )}
@@ -255,22 +284,51 @@ export function TopBar({
             }}
           />
 
+          {/*
+            Permission requests the user can't see from here — a background
+            chat tab, or another project. Renders nothing when there are none.
+          */}
+          <PendingRequestsBadge />
+
           {/* Generic notification bell (loop findings today, future event kinds later) */}
           <NotificationBadge />
 
           {/* Chat toggle - panel chrome, sits at the far right edge to mirror the sidebar toggle on the left */}
           {(mainView === 'planning' || mainView === 'workspace') && (
-            <Tooltip content={chatCollapsed ? 'Show chat' : 'Hide chat'} side="bottom">
+            <Tooltip
+              content={
+                hiddenChatIsWorking
+                  ? 'Show chat. A conversation is still working.'
+                  : chatCollapsed ? 'Show chat' : 'Hide chat'
+              }
+              side="bottom"
+            >
               <button
                 onClick={onToggleChat}
-                className={`flex-shrink-0 p-1.5 rounded-lg transition-colors ml-1 ${
+                className={`relative flex-shrink-0 p-1.5 rounded-lg transition-colors ml-1 ${
                   chatCollapsed
                     ? 'text-text-muted hover:text-text-primary hover:bg-surface-3'
-                    : 'text-accent bg-accent/10 hover:bg-accent/20'
+                    : 'text-text-primary bg-surface-3 hover:bg-surface-4'
                 }`}
-                aria-label={chatCollapsed ? 'Expand chat panel' : 'Collapse chat panel'}
+                aria-pressed={!chatCollapsed}
+                aria-label={
+                  chatCollapsed
+                    ? hiddenChatIsWorking
+                      ? 'Expand chat panel. A conversation is still working.'
+                      : 'Expand chat panel'
+                    : 'Collapse chat panel'
+                }
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                {/* Sits over the icon's corner rather than beside it: the
+                    toggle mirrors the sidebar button and must not change width
+                    when a turn starts. */}
+                {hiddenChatIsWorking && (
+                  <span
+                    className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-accent"
+                    aria-hidden="true"
+                  />
+                )}
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
@@ -295,8 +353,9 @@ export function TopBar({
               <br />
               <span className="text-warning text-xs mt-2 block">
                 This removes the project from KPM, including its plan items and
-                attachments, and disconnects any linked repos. Your repo folders
-                and the code inside them are left untouched.
+                attachments, and disconnects any linked repos. Nothing on disk is
+                deleted: the project folder, your repo folders, and the files inside
+                them are all left untouched.
               </span>
             </>
           }

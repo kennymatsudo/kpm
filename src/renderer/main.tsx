@@ -1,3 +1,4 @@
+import './assets/fonts/fonts.css';
 import './index.css';
 import { bootTheme } from './themeBoot';
 import { StrictMode } from 'react';

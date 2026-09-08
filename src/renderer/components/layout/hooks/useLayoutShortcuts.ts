@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import type { MainView } from '../MainViewSwitcher';
-import { useSettingsUIStore, useArtifactsStore, useSearchStore } from '../../../stores';
+import { useSettingsUIStore, useCommandPaletteStore, useSearchStore } from '../../../stores';
 import { subscribeToCloseContextMenu } from '../../../services/menuService';
 
 export interface UseLayoutShortcutsOptions {
@@ -19,6 +19,10 @@ export interface UseLayoutShortcutsOptions {
   onToggleFocusMode?: () => void;
   /** Close the currently focused context (file editor, chat session, or window). */
   onClose?: () => void;
+  /** Move to the previous (-1) or next (1) chat session. Bound to Cmd/Ctrl+Shift+[ and ]. */
+  onCycleChatSession?: (direction: -1 | 1) => void;
+  /** Move to the previous (-1) or next (1) open document. Bound to Cmd/Ctrl+Option+[ and ]. */
+  onCycleDocument?: (direction: -1 | 1) => void;
 }
 
 export function useLayoutShortcuts({
@@ -33,12 +37,14 @@ export function useLayoutShortcuts({
   onSwitchProjectByPosition,
   onToggleFocusMode,
   onClose,
+  onCycleChatSession,
+  onCycleDocument,
 }: UseLayoutShortcutsOptions): void {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       const isEditableElement = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
-      const isCommandPaletteOpen = useArtifactsStore.getState().isCommandPaletteOpen;
+      const isCommandPaletteOpen = useCommandPaletteStore.getState().isCommandPaletteOpen;
       const isGlobalSearchOpen = useSearchStore.getState().isOpen;
 
       // Avoid layout-level shortcut collisions while full-screen overlays are active.
@@ -99,6 +105,34 @@ export function useLayoutShortcuts({
         e.stopPropagation();
         onToggleTerminal?.();
       }
+      // Cmd+Shift+[ / ] to move between chat sessions, matching how browsers
+      // cycle tabs on macOS. Uses e.code because Shift rewrites the bracket
+      // keys, and runs inside editable elements so a session switch never
+      // requires leaving the composer first.
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        e.shiftKey &&
+        !e.altKey &&
+        (e.code === 'BracketLeft' || e.code === 'BracketRight')
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        onCycleChatSession?.(e.code === 'BracketLeft' ? -1 : 1);
+        return;
+      }
+      // Cmd+Option+[ / ] to move between open documents — the same gesture as
+      // the chat strip one modifier over, since both are tab strips.
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        e.altKey &&
+        !e.shiftKey &&
+        (e.code === 'BracketLeft' || e.code === 'BracketRight')
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        onCycleDocument?.(e.code === 'BracketLeft' ? -1 : 1);
+        return;
+      }
       // Cmd+Option+1-9 / Cmd+Option+0 - Switch projects by stable position.
       // Use e.code (Digit1..Digit9, Digit0) because Option held on macOS rewrites e.key
       // to special characters (¡, ™, etc.). Handle even in editable elements so users
@@ -143,7 +177,7 @@ export function useLayoutShortcuts({
     // Use capture phase to catch event before it reaches other elements
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [onToggleSidebar, onToggleChat, onMainViewChange, onOpenCommandPalette, onCreateItem, onToggleToolLog, onOpenGlobalSearch, onToggleTerminal, onSwitchProjectByPosition, onToggleFocusMode]);
+  }, [onToggleSidebar, onToggleChat, onMainViewChange, onOpenCommandPalette, onCreateItem, onToggleToolLog, onOpenGlobalSearch, onToggleTerminal, onSwitchProjectByPosition, onToggleFocusMode, onCycleChatSession]);
 
   useEffect(() => {
     return subscribeToCloseContextMenu(() => {

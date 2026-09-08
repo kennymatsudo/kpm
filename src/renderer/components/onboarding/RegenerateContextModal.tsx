@@ -196,7 +196,7 @@ export function RegenerateContextModal() {
       aria-labelledby="regen-context-title"
     >
       {/* Header */}
-      <div className="px-5 py-4 flex items-center justify-between border-b border-border-default">
+      <div className="shrink-0 px-5 py-4 flex items-center justify-between border-b border-border-default">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-accent-subtle flex items-center justify-center shrink-0">
             <svg className="w-4.5 h-4.5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
@@ -220,7 +220,7 @@ export function RegenerateContextModal() {
       </div>
 
       {/* Body */}
-      <ModalBody className={phase === 'generate' ? 'flex flex-col min-h-[300px]' : ''}>
+      <ModalBody className={phase === 'generate' ? 'flex flex-col' : ''}>
         {phase === 'configure' && (
           <StepScopeFeature
             description={description}

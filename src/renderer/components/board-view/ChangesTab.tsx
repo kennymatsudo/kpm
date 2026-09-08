@@ -43,6 +43,18 @@ interface FileStat {
   content: string;
 }
 
+/**
+ * Split a unified-diff line into its marker column and its text. Only added,
+ * removed, and context lines carry a marker — hunk and file headers are literal
+ * text, so slicing them would drop a real character.
+ */
+export function splitDiffLine(line: string): { marker: '+' | '-' | ' '; text: string } {
+  if (line.startsWith('+') && !line.startsWith('+++')) return { marker: '+', text: line.slice(1) };
+  if (line.startsWith('-') && !line.startsWith('---')) return { marker: '-', text: line.slice(1) };
+  if (line.startsWith(' ')) return { marker: ' ', text: line.slice(1) };
+  return { marker: ' ', text: line };
+}
+
 export function shouldShowDiffLoading(diff: string | null | undefined, isLoading: boolean): boolean {
   return isLoading && diff === undefined;
 }
@@ -106,10 +118,10 @@ const FileEntry = memo(function FileEntry({ file }: { file: FileStat }) {
 
         <span className="flex items-center gap-1.5 shrink-0">
           {file.additions > 0 && (
-            <span className="text-tiny text-emerald-400 tabular-nums">+{file.additions}</span>
+            <span className="text-tiny text-success tabular-nums">+{file.additions}</span>
           )}
           {file.deletions > 0 && (
-            <span className="text-tiny text-red-400 tabular-nums">-{file.deletions}</span>
+            <span className="text-tiny text-danger tabular-nums">-{file.deletions}</span>
           )}
         </span>
       </button>
@@ -118,23 +130,19 @@ const FileEntry = memo(function FileEntry({ file }: { file: FileStat }) {
         <div className="overflow-x-auto border-t border-border-subtle bg-surface-1">
           <pre className="text-tiny font-mono leading-relaxed">
             {file.content.split('\n').map((line, i) => {
-              const isAdd = line.startsWith('+') && !line.startsWith('+++');
-              const isDel = line.startsWith('-') && !line.startsWith('---');
-              const isHunk = line.startsWith('@@');
+              const { marker, text } = splitDiffLine(line);
               return (
                 <div
                   key={i}
                   className={
-                    isAdd ? 'bg-emerald-500/10 text-emerald-300' :
-                    isDel ? 'bg-red-500/10 text-red-300' :
-                    isHunk ? 'text-accent/70' :
+                    marker === '+' ? 'bg-success-muted text-success' :
+                    marker === '-' ? 'bg-danger-muted text-danger' :
+                    line.startsWith('@@') ? 'text-accent/70' :
                     'text-text-muted'
                   }
                 >
-                  <span className="select-none px-2 opacity-40 inline-block w-4">{
-                    isAdd ? '+' : isDel ? '-' : ' '
-                  }</span>
-                  <span className="px-1">{line.slice(1)}</span>
+                  <span className="select-none px-2 opacity-40 inline-block w-4">{marker}</span>
+                  <span className="px-1">{text}</span>
                 </div>
               );
             })}
@@ -151,10 +159,10 @@ const CommitErrorPanel = memo(function CommitErrorPanel({ error }: { error: stri
   }, [error]);
 
   return (
-    <div className="w-full border-b border-red-400/20 bg-red-400/[0.04] px-3 py-2 text-left">
+    <div className="w-full border-b border-danger/20 bg-danger/[0.04] px-3 py-2 text-left">
       <div className="mb-1.5 flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-xs font-medium text-red-400">Commit checks failed</p>
+          <p className="text-xs font-medium text-danger">Commit checks failed</p>
           <p className="mt-0.5 text-tiny text-text-tertiary">
             Review the hook output before retrying.
           </p>
@@ -263,10 +271,10 @@ const ExpandableCommitEntry = memo(function ExpandableCommitEntry({
                 </span>
                 <span className="flex items-center gap-1.5 shrink-0">
                   {file.additions > 0 && (
-                    <span className="text-tiny text-emerald-400 tabular-nums">+{file.additions}</span>
+                    <span className="text-tiny text-success tabular-nums">+{file.additions}</span>
                   )}
                   {file.deletions > 0 && (
-                    <span className="text-tiny text-red-400 tabular-nums">-{file.deletions}</span>
+                    <span className="text-tiny text-danger tabular-nums">-{file.deletions}</span>
                   )}
                 </span>
               </div>
@@ -444,7 +452,7 @@ export const ChangesTab = memo(function ChangesTab({
         <div className="flex flex-col justify-center gap-2 px-4 py-6 text-center">
           {diffError ? (
             <>
-              <span className="text-xs text-red-400">Failed to load diff</span>
+              <span className="text-xs text-danger">Failed to load diff</span>
               <span className="text-tiny text-text-tertiary font-mono break-all">{diffError}</span>
             </>
           ) : commitError ? (
@@ -490,18 +498,18 @@ export const ChangesTab = memo(function ChangesTab({
         {/* Uncommitted changes header */}
         <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border-subtle bg-surface-1">
           <div className="flex min-w-0 items-center gap-2">
-            <span className="shrink-0 text-xs font-medium text-amber-400">
+            <span className="shrink-0 text-xs font-medium text-warning">
               Uncommitted
             </span>
             <span className="shrink-0 whitespace-nowrap text-xs text-text-tertiary">
               {files.length} file{files.length !== 1 ? 's' : ''}
             </span>
             <span className="flex shrink-0 items-center gap-1.5">
-              <span className="text-tiny text-emerald-400 tabular-nums">+{totalAdditions}</span>
-              <span className="text-tiny text-red-400 tabular-nums">-{totalDeletions}</span>
+              <span className="text-tiny text-success tabular-nums">+{totalAdditions}</span>
+              <span className="text-tiny text-danger tabular-nums">-{totalDeletions}</span>
             </span>
             {commitError && (
-              <span className="min-w-0 truncate text-tiny text-red-400" title={commitError}>Commit checks failed</span>
+              <span className="min-w-0 truncate text-tiny text-danger" title={commitError}>Commit checks failed</span>
             )}
           </div>
           <div className="flex shrink-0 items-center gap-1">

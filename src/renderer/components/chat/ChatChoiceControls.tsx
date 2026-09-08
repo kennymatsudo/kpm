@@ -87,7 +87,7 @@ function ChoiceSelect({
       </SelectTrigger>
 
       <SelectContent side="top" align="start" sideOffset={8} className="min-w-48 max-w-72">
-        <div className="px-2 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+        <div className="px-2 pb-1 pt-1.5 text-xxs font-semibold uppercase tracking-wider text-text-muted">
           {label}
         </div>
         {options.map((option) => (
@@ -95,14 +95,14 @@ function ChoiceSelect({
             key={option.value}
             value={option.value}
             disabled={option.available === false && option.value !== value}
-            className="relative min-h-9 rounded-lg px-2.5 py-1.5"
+            className="relative min-h-9 rounded-sm px-2.5 py-1.5"
           >
             <SelectItemText>
               <span className="flex min-w-0 flex-col pr-7 leading-tight">
                 <span className={`truncate text-xs font-medium ${option.available === false ? 'text-text-muted' : 'text-text-primary'}`}>
                   {option.label}
                 </span>
-                {option.detail ? <span className="mt-0.5 truncate text-[10px] text-text-muted">{option.detail}</span> : null}
+                {option.detail ? <span className="mt-0.5 truncate text-tiny text-text-muted">{option.detail}</span> : null}
               </span>
             </SelectItemText>
             <SelectItemIndicator className="absolute right-2.5 inline-flex items-center text-accent">
@@ -177,7 +177,7 @@ export function ChatChoiceControls({
 
   return (
     <>
-      <div className={`inline-flex min-w-0 items-center gap-1 rounded-lg border border-border-subtle bg-surface-0/70 p-0.5 ${className}`}>
+      <div className={`inline-flex min-w-0 items-center gap-1 rounded-md border border-border-subtle bg-surface-0/70 p-0.5 ${className}`}>
         <ChoiceSelect
           label={`${ariaLabelPrefix} provider`}
           value={choice.selected.provider}
@@ -189,12 +189,16 @@ export function ChatChoiceControls({
             provider: nextProvider as ChatChoiceView['selected']['provider'],
           })}
         />
+        {/* The model name is the one label worth reading, so it absorbs the
+            slack the fixed-width provider and effort selects leave — but only
+            up to its own width. Growing without a ceiling leaves a lone word
+            floating in a half-empty control on a wide panel. */}
         <ChoiceSelect
           label={`${ariaLabelPrefix} model`}
           value={choice.selected.model}
           options={modelOptions}
           disabled={controlsDisabled}
-          className="max-w-48"
+          className="min-w-0 flex-1 max-w-48"
           onChange={selectModel}
         />
         {model && effortOptions.length > 0 ? (

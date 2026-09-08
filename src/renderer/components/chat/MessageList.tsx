@@ -9,9 +9,9 @@ import {
   type ReactNode,
 } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { useChatStore, type Activity, type MessageSegment } from '../../stores';
+import { useChatStore, usePermissionStore, type Activity, type MessageSegment } from '../../stores';
 import type { Message } from '../../stores/chat';
-import type { ChatViewMode } from '../../../shared/types';
+import type { AgentBackgroundTask } from '../../../shared/types';
 import { parseUserMessage } from '../../utils/messageFormatter';
 import { Markdown } from 'markdown-to-jsx';
 import {
@@ -20,14 +20,17 @@ import {
   transformPlanRefs,
 } from '../../utils/markdown';
 import { splitMarkdownBlocks } from '../../utils/markdownBlocks';
-import { CopyIcon, CheckIcon } from '../icons';
-import { ChatColumn } from './ChatColumn';
+import { CopyIcon, CheckIcon, CloseIcon } from '../icons';
+import { PermissionPrompt } from '../permission/PermissionPrompt';
 import { ProcessTimeline } from './ProcessTimeline';
+import { BackgroundTaskStrip } from './BackgroundTaskStrip';
 import { Tooltip } from '../ui/Tooltip';
 import { AttachmentChip } from './AttachmentChip';
 import { formatModel } from '../../utils/usageFormatters';
 import { buildTurnRenderPlan, type TurnRenderNode } from './turnRenderPlan';
 import { resolveSessionDisplayModel } from '../../stores/chat/sessionModel';
+import { canMergeAssistantTurn } from '../../stores/chat/messageMerge';
+import { prefersReducedMotion } from '../../utils/reducedMotion';
 
 /** Extract text content from message segments for copy/display */
 function getTextContent(segments: MessageSegment[]): string {
@@ -53,11 +56,14 @@ const CheckpointDivider = memo(function CheckpointDivider({ gapMs, model }: { ga
       : `${durationLabel} later`
     : null;
   const text = [modelLabel, timeText].filter(Boolean).join(' · ');
+  // Not aria-hidden: a mid-turn model switch is what explains a change in
+  // tone, so it has to reach a screen reader too. The rules are decoration
+  // and stay hidden.
   return (
-    <div className="flex items-center gap-2 my-2 text-xxs text-text-muted/60" aria-hidden="true">
-      <span className="flex-1 h-px bg-border-subtle" />
+    <div className="flex items-center gap-2 my-2 text-xs text-text-muted">
+      <span className="flex-1 h-px bg-border-subtle" aria-hidden="true" />
       <span>{text}</span>
-      <span className="flex-1 h-px bg-border-subtle" />
+      <span className="flex-1 h-px bg-border-subtle" aria-hidden="true" />
     </div>
   );
 });
@@ -75,7 +81,7 @@ const UserMessageText = memo(function UserMessageText({ content }: { content: st
   if (!command) return <>{content}</>;
   return (
     <>
-      <span className="inline-flex items-baseline px-1.5 py-0.5 rounded text-[11px] font-mono font-medium bg-accent-subtle text-accent align-baseline">
+      <span className="inline-flex items-baseline px-1.5 py-0.5 rounded-sm text-tiny font-mono font-medium bg-accent-subtle text-accent align-baseline">
         /{command}
       </span>
       {content.slice(command.length + 1)}
@@ -92,14 +98,9 @@ const PlanUpdateIndicator = memo(function PlanUpdateIndicator() {
   );
 });
 
-/** Copy button that appears on hover */
-const CopyButton = memo(function CopyButton({
-  content,
-  className,
-}: {
-  content: string;
-  className?: string;
-}) {
+/** Hidden until the turn is hovered, but always in the caption's flow, so
+ * revealing it never shifts the timestamp beside it. */
+const CopyButton = memo(function CopyButton({ content }: { content: string }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async (e: React.MouseEvent) => {
@@ -113,10 +114,7 @@ const CopyButton = memo(function CopyButton({
     <Tooltip content={copied ? 'Copied!' : 'Copy message'} side="top">
       <button
         onClick={handleCopy}
-        className={
-          className ??
-          'absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-md hover:bg-surface-3 text-text-muted hover:text-text-primary'
-        }
+        className="flex-shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity p-0.5 rounded-sm hover:bg-surface-3 text-text-muted hover:text-text-primary"
         aria-label={copied ? 'Message copied' : 'Copy message'}
       >
         {copied ? (
@@ -129,90 +127,130 @@ const CopyButton = memo(function CopyButton({
   );
 });
 
+/** The in-flight turn's header. Its clock reads the turn's start time, not
+ * now — a header built from `new Date()` ticks forward while the turn streams
+ * and then jumps backwards when the finalized message supplies its real
+ * timestamp. */
 const StreamingHeader = memo(function StreamingHeader({
   model,
   elapsedSeconds,
+  startedAt,
 }: {
   model?: string;
   elapsedSeconds: number | null;
+  startedAt: number | null;
 }) {
   const durationMs = elapsedSeconds != null ? elapsedSeconds * 1000 : undefined;
-  return (
-    <MessageHeader
-      isUser={false}
-      timestamp={new Date()}
-      model={model}
-      durationMs={durationMs}
-    />
+  const timestamp = useMemo(
+    () => (startedAt != null ? new Date(startedAt) : new Date()),
+    [startedAt]
   );
-});
-
-const PLAN_EMPTY_STATE = {
-  title: 'What needs to get done?',
-  suggestions: [
-    'Create or update tickets',
-    'Ask what to prioritize next',
-    'Break a feature into tasks',
-  ],
-  hint: 'Tasks sync to your tracker when ready',
-};
-
-const PlanEmptyState = memo(function PlanEmptyState() {
-  return (
-    <div className="flex-1 min-h-0 flex flex-col items-center justify-center text-center px-8">
-      <div className="w-12 h-12 rounded bg-accent/10 flex items-center justify-center mb-5">
-        <svg className="w-6 h-6 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-        </svg>
-      </div>
-      <h2 className="text-text-primary text-base font-medium mb-4">{PLAN_EMPTY_STATE.title}</h2>
-      <ul className="text-text-secondary text-sm space-y-2.5 mb-5">
-        {PLAN_EMPTY_STATE.suggestions.map((suggestion, idx) => (
-          <li key={idx} className="flex items-center gap-2.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-accent/40 flex-shrink-0" />
-            {suggestion}
-          </li>
-        ))}
-      </ul>
-      <p className="text-text-muted text-xs">{PLAN_EMPTY_STATE.hint}</p>
-    </div>
-  );
+  return <AssistantCaption timestamp={timestamp} model={model} durationMs={durationMs} />;
 });
 
 const InterruptedIndicator = memo(function InterruptedIndicator() {
   return (
-    <div
-      className="flex items-center gap-2 mt-3 pt-3 border-t border-border-subtle"
-      aria-label="Response was interrupted"
-    >
-      <span className="w-1.5 h-1.5 rounded-full bg-warning flex-shrink-0" />
-      <span className="text-xs text-text-muted italic">Interrupted</span>
+    <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border-subtle">
+      <span className="w-1.5 h-1.5 rounded-full bg-warning flex-shrink-0" aria-hidden="true" />
+      <span className="text-xs text-text-secondary">
+        You stopped this response. Work already done above was kept.
+      </span>
     </div>
   );
 });
 
-/** Render assistant message segments within a single bubble */
+/** A failed turn, rendered where it happened rather than as a banner pinned to
+ * the top of the panel — the recovery action has to sit next to the message it
+ * would resend. */
+const TurnError = memo(function TurnError({
+  error,
+  onRetry,
+  onDismiss,
+}: {
+  error: string;
+  onRetry?: () => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <div
+      role="alert"
+      className="my-3 rounded-md border border-border-default bg-surface-elevated overflow-hidden"
+    >
+      <div className="flex items-start gap-2 px-3 py-2 bg-danger-muted border-b border-border-subtle">
+        <svg
+          className="w-4 h-4 text-danger flex-shrink-0 mt-0.5"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+        <p className="flex-1 min-w-0 text-sm text-text-primary">This turn didn't finish.</p>
+        <button
+          onClick={onDismiss}
+          className="text-text-muted hover:text-text-primary transition-colors flex-shrink-0 p-0.5 rounded-sm"
+          aria-label="Dismiss error"
+        >
+          <CloseIcon className="w-3.5 h-3.5" />
+        </button>
+      </div>
+      <div className="px-3 py-2.5">
+        <p className="text-xs text-text-secondary break-words">{error}</p>
+        {onRetry && (
+          <button onClick={onRetry} className="btn btn-secondary mt-2.5">
+            Send it again
+          </button>
+        )}
+      </div>
+    </div>
+  );
+});
+
+/** A finished answer: its caption, then its prose. The caption is built here
+ * rather than by the row above, because the copy control belongs in it and
+ * only the render plan knows what the answer's text actually is once plan
+ * markers and process segments are stripped out. */
 export const AssistantMessageContent = memo(function AssistantMessageContent({
   segments,
   interrupted,
   startTimestamp,
   durationMs,
+  turnId,
+  timestamp,
+  model,
 }: {
   segments: MessageSegment[];
   interrupted?: boolean;
+  /** Namespaces the process strip's remembered open state. */
+  turnId?: string;
   /** The message's own start time — anchors the gap shown by the first checkpoint divider. */
   startTimestamp?: number;
   /** Duration of the message's final turn; earlier turns carry theirs on the checkpoint that closed them. */
   durationMs?: number;
+  /** Omitted when this turn is attached to the one above it as a continuation. */
+  timestamp?: Date;
+  model?: string;
 }) {
   const plan = useMemo(
-    () => buildTurnRenderPlan({ segments, startTimestamp, durationMs }),
-    [segments, startTimestamp, durationMs]
+    () => buildTurnRenderPlan({ segments, startTimestamp, durationMs, turnId }),
+    [segments, startTimestamp, durationMs, turnId]
   );
 
   return (
-    <AssistantTurnContent nodes={plan.nodes}>
-      <CopyButton content={plan.copyText} />
+    <AssistantTurnContent
+      nodes={plan.nodes}
+      caption={
+        timestamp && (
+          <AssistantCaption
+            timestamp={timestamp}
+            model={model}
+            durationMs={durationMs}
+            copyContent={plan.copyText}
+          />
+        )
+      }
+    >
       {interrupted && <InterruptedIndicator />}
       {plan.hasPlanUpdate && <PlanUpdateIndicator />}
     </AssistantTurnContent>
@@ -298,6 +336,7 @@ const TurnNodes = memo(function TurnNodes({ nodes }: { nodes: TurnRenderNode[] }
         return (
           <ProcessTimeline
             key={node.key}
+            disclosureKey={node.disclosureKey}
             segments={node.segments}
             hasAnswer={node.hasAnswer}
             durationMs={node.durationMs}
@@ -312,26 +351,29 @@ const TurnNodes = memo(function TurnNodes({ nodes }: { nodes: TurnRenderNode[] }
   );
 });
 
-/** Horizontal padding reserves the CopyButton's gutter for the whole turn,
- * streaming or finalized, so that padding — and thus the prose measure —
- * never changes when a turn finalizes. */
-const ASSISTANT_TURN_CONTENT_CLASS = 'chat-message-content text-text-primary relative pl-0 pr-8';
+const ASSISTANT_TURN_CONTENT_CLASS = 'chat-message-content text-text-primary';
 
 /** The one wrapper an assistant turn's content renders through. Both the
- * streaming and finalized paths go through this, so their padding cannot
- * drift from each other. */
+ * streaming and finalized paths go through it, so the prose measure cannot
+ * shift at the moment a turn finalizes. */
 const AssistantTurnContent = memo(function AssistantTurnContent({
   nodes,
+  caption,
   children,
 }: {
   nodes: TurnRenderNode[];
+  /** Sits outside the reading register so the caption keeps the UI's type. */
+  caption?: ReactNode;
   children?: ReactNode;
 }) {
   return (
-    <div className={ASSISTANT_TURN_CONTENT_CLASS}>
-      <TurnNodes nodes={nodes} />
-      {children}
-    </div>
+    <>
+      {caption}
+      <div className={ASSISTANT_TURN_CONTENT_CLASS}>
+        <TurnNodes nodes={nodes} />
+        {children}
+      </div>
+    </>
   );
 });
 
@@ -343,11 +385,13 @@ export const StreamingContent = memo(function StreamingContent({
   thinkingContent,
   activities,
   elapsedSeconds,
+  caption,
 }: {
   segments: MessageSegment[];
   thinkingContent?: string;
   activities: Activity[];
   elapsedSeconds: number | null;
+  caption?: ReactNode;
 }) {
   const plan = useMemo(
     () =>
@@ -358,7 +402,7 @@ export const StreamingContent = memo(function StreamingContent({
     [segments, activities, thinkingContent, elapsedSeconds]
   );
 
-  return <AssistantTurnContent nodes={plan.nodes} />;
+  return <AssistantTurnContent nodes={plan.nodes} caption={caption} />;
 });
 
 /** The in-flight turn's own header + wrapper — the real ancestor chain
@@ -372,6 +416,7 @@ export const StreamingTurn = memo(function StreamingTurn({
   elapsedSeconds,
   model,
   isMergeableContinuation,
+  startedAt,
 }: {
   segments: MessageSegment[];
   thinkingContent?: string;
@@ -379,20 +424,26 @@ export const StreamingTurn = memo(function StreamingTurn({
   elapsedSeconds: number | null;
   model?: string;
   isMergeableContinuation: boolean;
+  startedAt: number | null;
 }) {
   return (
     <div
-      className={`chat-message-assistant ${isMergeableContinuation ? 'pt-0 pb-3' : 'py-3'}`}
+      role="article"
+      className={`chat-message-assistant chat-message-enter ${
+        isMergeableContinuation ? 'pt-0 pb-5' : 'chat-turn-assistant'
+      }`}
       aria-label="Assistant response"
     >
-      {!isMergeableContinuation && (
-        <StreamingHeader model={model} elapsedSeconds={elapsedSeconds} />
-      )}
       <StreamingContent
         segments={segments}
         thinkingContent={thinkingContent}
         activities={activities}
         elapsedSeconds={elapsedSeconds}
+        caption={
+          isMergeableContinuation ? undefined : (
+            <StreamingHeader model={model} elapsedSeconds={elapsedSeconds} startedAt={startedAt} />
+          )
+        }
       />
     </div>
   );
@@ -427,35 +478,49 @@ function formatModelLabel(model: string | undefined): string | null {
   return formatModel(model).toLowerCase();
 }
 
-const MessageHeader = memo(function MessageHeader({
-  isUser,
+/** What answered, on what model, for how long, and when.
+ *
+ * Every part stays in one group on the left rather than pushing the clock to
+ * the far edge. The panel is resizable to 1600px, and a clock flung out there
+ * stops reading as part of the caption it belongs to — it just floats. */
+const AssistantCaption = memo(function AssistantCaption({
   timestamp,
   model,
   durationMs,
+  copyContent,
 }: {
-  isUser: boolean;
   timestamp: Date;
   model?: string;
   durationMs?: number;
+  /** Omitted while the turn is still streaming, when there is nothing final to copy. */
+  copyContent?: string;
 }) {
-  const name = isUser ? 'You' : 'KPM';
-  const modelLabel = !isUser ? formatModelLabel(model) : null;
-  const durationLabel = !isUser ? formatTurnDuration(durationMs) : null;
-
+  const modelLabel = formatModelLabel(model);
+  const durationLabel = formatTurnDuration(durationMs);
   return (
-    <div className={`flex items-center gap-2 mb-1.5 ${isUser ? 'flex-row-reverse' : ''}`}>
-      <span className="text-xs font-medium text-text-primary">{name}</span>
-      {modelLabel && (
-        <span className="font-mono text-xxs text-text-muted/80">{modelLabel}</span>
-      )}
-      {durationLabel && (
-        <span className="font-mono text-xxs text-text-muted/60">· {durationLabel}</span>
-      )}
-      <span
-        className={`font-mono text-xxs text-text-muted/50 ${isUser ? 'mr-auto' : 'ml-auto'}`}
-      >
-        {formatClockTime(timestamp)}
-      </span>
+    <div className="flex h-6 items-center gap-2 font-mono text-tiny text-text-muted">
+      <span className="flex-shrink-0 text-text-secondary">kpm</span>
+      {modelLabel && <span className="truncate">{modelLabel}</span>}
+      {durationLabel && <span className="flex-shrink-0">· {durationLabel}</span>}
+      <span className="flex-shrink-0">· {formatClockTime(timestamp)}</span>
+      {copyContent !== undefined && <CopyButton content={copyContent} />}
+    </div>
+  );
+});
+
+/** Your turn's caption. The note's position already says whose it is, so this
+ * row only has to carry the clock. */
+const UserCaption = memo(function UserCaption({
+  timestamp,
+  copyContent,
+}: {
+  timestamp: Date;
+  copyContent: string;
+}) {
+  return (
+    <div className="flex h-5 items-center gap-1.5 font-mono text-tiny text-text-muted">
+      <CopyButton content={copyContent} />
+      <span>you · {formatClockTime(timestamp)}</span>
     </div>
   );
 });
@@ -463,9 +528,12 @@ const MessageHeader = memo(function MessageHeader({
 export const MessageRow = memo(function MessageRow({
   message,
   onCancelQueued,
+  /** Only the newest turn animates in; see `.chat-message-enter`. */
+  entering,
 }: {
   message: Message;
   onCancelQueued?: (clientMessageId: string) => void;
+  entering?: boolean;
 }) {
   const isUser = message.role === 'user';
   const textContent = useMemo(() => getTextContent(message.segments), [message.segments]);
@@ -478,36 +546,50 @@ export const MessageRow = memo(function MessageRow({
     [isUser, hasStructuredAttachments, textContent]
   );
 
+  const attachmentChips = hasStructuredAttachments ? (
+    <div className={`flex flex-wrap gap-2 ${isUser ? 'mb-1.5 justify-end' : 'mb-1.5'}`}>
+      {message.attachments!.map((attachment) => (
+        <AttachmentChip key={attachment.path} attachment={attachment} thumbnailSize={40} />
+      ))}
+    </div>
+  ) : null;
+
+  if (!isUser) {
+    return (
+      <div
+        role="article"
+        className={`chat-message-assistant chat-turn-assistant group${
+          entering ? ' chat-message-enter' : ''
+        }`}
+        aria-label="Assistant response"
+      >
+        {attachmentChips}
+        <AssistantMessageContent
+          segments={message.segments}
+          interrupted={message.interrupted}
+          startTimestamp={message.timestamp.getTime()}
+          durationMs={message.durationMs}
+          turnId={message.id}
+          timestamp={message.timestamp}
+          model={message.model}
+        />
+      </div>
+    );
+  }
+
+  const userText = userParsed?.cleanContent || textContent;
+
   return (
     <div
-      className={`py-3 group relative ${isUser ? 'chat-message-user' : 'chat-message-assistant'}`}
-      aria-label={isUser ? 'Your message' : 'Assistant response'}
+      role="article"
+      className={`chat-message-user chat-turn-user group${entering ? ' chat-message-enter' : ''}`}
+      aria-label="Your message"
     >
-      <MessageHeader
-        isUser={isUser}
-        timestamp={message.timestamp}
-        model={message.model}
-        durationMs={message.durationMs}
-      />
-
-      {/* Structured attachment chips (current-session messages) */}
-      {hasStructuredAttachments && (
-        <div
-          className={`mb-1.5 flex flex-wrap gap-2 ${isUser ? 'justify-end' : ''}`}
-        >
-          {message.attachments!.map((attachment) => (
-            <AttachmentChip
-              key={attachment.path}
-              attachment={attachment}
-              thumbnailSize={40}
-            />
-          ))}
-        </div>
-      )}
+      {attachmentChips}
 
       {/* Legacy fallback: count chip for old "Images attached:" prefixed messages */}
-      {isUser && userParsed && userParsed.imageCount > 0 && (
-        <div className="mb-1.5 flex justify-end">
+      {userParsed && userParsed.imageCount > 0 && (
+        <div className="mb-1.5 flex">
           <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-accent-subtle text-accent text-xs rounded">
             <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 16 16">
               <path d="M6.002 5.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z" />
@@ -520,64 +602,47 @@ export const MessageRow = memo(function MessageRow({
         </div>
       )}
 
-      {isUser ? (
-        // pl-8 reserves space for the absolutely-positioned CopyButton. The
-        // assistant branch has no wrapper here — AssistantMessageContent
-        // supplies its own via AssistantTurnContent, the one place that owns
-        // the assistant content wrapper's padding.
-        <div className="chat-message-content text-text-primary relative pl-8 pr-0">
-          <div className="flex justify-end">
-            <div className="flex flex-col items-end max-w-[80%] gap-1">
-              <div
-                className={`whitespace-pre-wrap text-right rounded-lg px-3 py-1.5 ${
-                  message.queued
-                    ? 'bg-surface-2/50 ring-1 ring-border-default'
-                    : 'bg-surface-2/60'
-                }`}
-              >
-                <UserMessageText content={userParsed?.cleanContent || textContent} />
-              </div>
-              {message.liveFollowUp && (
-                <div className="flex items-center gap-2 text-xxs text-text-muted">
-                  <span className="inline-flex items-center gap-1">
-                    {message.queued && (
-                      <svg className="w-3 h-3 animate-pulse" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
-                        <circle cx="8" cy="8" r="6" />
-                      </svg>
-                    )}
-                    {message.queued ? 'Adding to current response…' : 'Added while KPM was responding'}
-                  </span>
-                  {message.queued && onCancelQueued && message.clientMessageId && (
-                    <button
-                      type="button"
-                      onClick={() => onCancelQueued(message.clientMessageId!)}
-                      className="underline hover:text-text-primary"
-                    >
-                      Cancel
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-          <CopyButton
-            content={userParsed?.cleanContent || textContent}
-            className="absolute top-2 left-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-md hover:bg-surface-3 text-text-muted hover:text-text-primary"
-          />
+      <div
+        className={`chat-message-content chat-note text-text-secondary whitespace-pre-wrap ${
+          message.queued ? 'chat-note-queued' : ''
+        }`}
+      >
+        <UserMessageText content={userText} />
+      </div>
+
+      {message.liveFollowUp && (
+        <div className="mt-1 flex items-center gap-2 text-xs text-text-muted">
+          <span className="inline-flex items-center gap-1">
+            {message.queued && (
+              <svg className="w-3 h-3 animate-pulse" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+                <circle cx="8" cy="8" r="6" />
+              </svg>
+            )}
+            {message.queued ? 'Adding to current response…' : 'Added while KPM was responding'}
+          </span>
+          {message.queued && onCancelQueued && message.clientMessageId && (
+            <button
+              type="button"
+              onClick={() => onCancelQueued(message.clientMessageId!)}
+              className="underline hover:text-text-primary"
+            >
+              Cancel
+            </button>
+          )}
         </div>
-      ) : (
-        <AssistantMessageContent
-          segments={message.segments}
-          interrupted={message.interrupted}
-          startTimestamp={message.timestamp.getTime()}
-          durationMs={message.durationMs}
-        />
       )}
+
+      <UserCaption timestamp={message.timestamp} copyContent={userText} />
     </div>
   );
 });
 
-const ESTIMATED_MESSAGE_HEIGHT = 132;
+/** Pre-measurement fallbacks for the virtualizer, split by role because an
+ * answer at reading size runs far taller than the turn that prompted it. */
+const EMPTY_BACKGROUND_TASKS: AgentBackgroundTask[] = [];
+
+const ESTIMATED_ASSISTANT_HEIGHT = 168;
+const ESTIMATED_USER_HEIGHT = 120;
 const VIRTUAL_OVERSCAN_PX = 640;
 const VIRTUALIZATION_MIN_MESSAGES = 40;
 
@@ -586,11 +651,13 @@ const VirtualizedMessageRow = memo(function VirtualizedMessageRow({
   top,
   onHeightChange,
   onCancelQueued,
+  entering,
 }: {
   message: Message;
   top: number;
   onHeightChange: (id: string, height: number) => void;
   onCancelQueued?: (clientMessageId: string) => void;
+  entering?: boolean;
 }) {
   const rowRef = useRef<HTMLDivElement>(null);
 
@@ -614,28 +681,44 @@ const VirtualizedMessageRow = memo(function VirtualizedMessageRow({
       className="absolute left-0 right-0"
       style={{ top }}
     >
-      <MessageRow message={message} onCancelQueued={onCancelQueued} />
+      <MessageRow message={message} onCancelQueued={onCancelQueued} entering={entering} />
     </div>
   );
 });
 
 interface MessageListProps {
-  currentView?: ChatViewMode;
   onCancelQueued?: (clientMessageId: string) => void;
+  /** The failed turn's message, rendered at the end of the transcript. */
+  error?: string | null;
+  /** Omitted when there is no message it would be correct to resend. */
+  onRetry?: () => void;
+  onDismissError?: () => void;
 }
 
-export function MessageList({ currentView, onCancelQueued }: MessageListProps) {
+export function MessageList({
+  onCancelQueued,
+  error,
+  onRetry,
+  onDismissError,
+}: MessageListProps) {
   // Access per-session chat state
-  const { viewedSession, model } = useChatStore(
+  const { viewedSession, viewedSessionId, model } = useChatStore(
     useShallow((state) => {
       const session = state.viewedSessionId
         ? state.sessions.get(state.viewedSessionId) ?? null
         : null;
       return {
         viewedSession: session,
+        viewedSessionId: state.viewedSessionId,
         model: session ? resolveSessionDisplayModel(session) : undefined,
       };
     })
+  );
+
+  const hasPendingPermission = usePermissionStore((state) =>
+    viewedSessionId
+      ? (state.pendingRequests.get(viewedSessionId)?.length ?? 0) > 0
+      : state.unscopedPendingRequests.length > 0
   );
 
   const messages = viewedSession?.messages ?? [];
@@ -643,18 +726,18 @@ export function MessageList({ currentView, onCancelQueued }: MessageListProps) {
   const streamingContent = viewedSession?.streamingContent ?? '';
   const streamingThinking = viewedSession?.streamingThinking ?? '';
   const isStreaming = viewedSession?.isStreaming ?? false;
+  const backgroundTasks = viewedSession?.backgroundTasks ?? EMPTY_BACKGROUND_TASKS;
   // Every message renders in chronological order, including follow-ups
   // interjected mid-turn: they appear above the in-flight response (which the
   // backend finalizes after them), so the response never sits above the
   // messages it answered. The per-message "queued"/"Added while…" caption
   // (see MessageRow) carries the interjection status instead of a separate group.
   const staticMessages = messages;
-  // Mirrors the merge condition in `finalizeMessage` (streamingSlice.ts): when
-  // the last committed message is an uninterrupted assistant turn, a new live
-  // turn starting now has nothing in between and will merge into it once
+  // When the last committed message is one `mergeAssistantTurns` (messageMerge.ts)
+  // would merge into, a new live turn starting now will merge into it once
   // finalized — so render it attached (no header) rather than as a new card.
   const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
-  const isMergeableContinuation = lastMessage?.role === 'assistant' && !lastMessage.interrupted;
+  const isMergeableContinuation = canMergeAssistantTurn(lastMessage ?? undefined);
   const activities = viewedSession?.activities ?? [];
   const streamStartedAt = viewedSession?.streamStartedAt ?? null;
 
@@ -669,6 +752,7 @@ export function MessageList({ currentView, onCancelQueued }: MessageListProps) {
   const [autoFollow, setAutoFollow] = useState(true);
   const [hasUnseenMessages, setHasUnseenMessages] = useState(false);
   const [scrollTop, setScrollTop] = useState(0);
+  const [newestMessageId, setNewestMessageId] = useState<string | null>(null);
   const [viewportHeight, setViewportHeight] = useState(0);
   const [measurementVersion, setMeasurementVersion] = useState(0);
   const [timeNow, setTimeNow] = useState(() => Date.now());
@@ -679,6 +763,19 @@ export function MessageList({ currentView, onCancelQueued }: MessageListProps) {
     return () => clearInterval(interval);
   }, [isStreaming]);
 
+  // Mark a turn as arriving only when it is appended to a list that was
+  // already painted. A stored conversation opening for the first time is not
+  // an arrival, and neither is a row the virtualizer remounts on scroll.
+  const messageCount = messages.length;
+  const lastMessageId = lastMessage?.id ?? null;
+  const prevMessageCountRef = useRef(messageCount);
+  useEffect(() => {
+    if (messageCount > prevMessageCountRef.current) {
+      setNewestMessageId(lastMessageId);
+    }
+    prevMessageCountRef.current = messageCount;
+  }, [messageCount, lastMessageId]);
+
   const elapsedSeconds = useMemo(() => {
     if (!streamStartedAt) return null;
     return Math.max(0, Math.floor((timeNow - streamStartedAt) / 1000));
@@ -687,10 +784,14 @@ export function MessageList({ currentView, onCancelQueued }: MessageListProps) {
   const scrollToBottom = (behavior: ScrollBehavior = 'auto') => {
     const list = listRef.current;
     if (!list) return;
-    if (behavior === 'auto') {
+    // An explicit 'smooth' here outranks the reduced-motion block in CSS, so
+    // the preference has to be answered in the call itself or a long scroll
+    // still animates for someone who asked it not to.
+    const effective = behavior === 'smooth' && prefersReducedMotion() ? 'auto' : behavior;
+    if (effective === 'auto') {
       setScrollTop(Math.max(0, list.scrollHeight - list.clientHeight));
     }
-    list.scrollTo({ top: list.scrollHeight, behavior });
+    list.scrollTo({ top: list.scrollHeight, behavior: effective });
   };
 
   const isNearBottom = () => {
@@ -700,10 +801,27 @@ export function MessageList({ currentView, onCancelQueued }: MessageListProps) {
     return list.scrollHeight - (list.scrollTop + list.clientHeight) <= threshold;
   };
 
+  // `scrollTop` only feeds the virtualizer's visible-window math, so short
+  // conversations never need it, and long ones need it at most once a frame —
+  // writing it on every scroll event re-renders the whole list per event.
+  const scrollFrameRef = useRef<number | null>(null);
+  const trackScrollTop = (list: HTMLDivElement) => {
+    if (staticMessages.length < VIRTUALIZATION_MIN_MESSAGES) return;
+    if (scrollFrameRef.current !== null) return;
+    scrollFrameRef.current = requestAnimationFrame(() => {
+      scrollFrameRef.current = null;
+      setScrollTop(list.scrollTop);
+    });
+  };
+
+  useEffect(() => () => {
+    if (scrollFrameRef.current !== null) cancelAnimationFrame(scrollFrameRef.current);
+  }, []);
+
   const handleScroll = () => {
     const list = listRef.current;
     if (list) {
-      setScrollTop(list.scrollTop);
+      trackScrollTop(list);
     }
     const nearBottom = isNearBottom();
     if (nearBottom) {
@@ -757,7 +875,9 @@ export function MessageList({ currentView, onCancelQueued }: MessageListProps) {
   const { totalStaticHeight, virtualizedMessages } = useMemo(() => {
     let runningTop = 0;
     const measurements = staticMessages.map((message) => {
-      const measuredHeight = messageHeightsRef.current.get(message.id) ?? ESTIMATED_MESSAGE_HEIGHT;
+      const measuredHeight =
+        messageHeightsRef.current.get(message.id) ??
+        (message.role === 'user' ? ESTIMATED_USER_HEIGHT : ESTIMATED_ASSISTANT_HEIGHT);
       const item = {
         message,
         top: runningTop,
@@ -853,8 +973,10 @@ export function MessageList({ currentView, onCancelQueued }: MessageListProps) {
     hasUnseenMessages,
   ]);
 
-  if (messages.length === 0 && !isStreaming) {
-    return currentView === 'plan' ? <PlanEmptyState /> : <div className="flex-1 min-h-0" />;
+  // The permission prompt and the failed-turn card live inside the transcript
+  // now, so the empty state must not short-circuit past either of them.
+  if (messages.length === 0 && !isStreaming && !error && !hasPendingPermission) {
+    return <div className="flex-1 min-h-0" />;
   }
 
   return (
@@ -862,10 +984,17 @@ export function MessageList({ currentView, onCancelQueued }: MessageListProps) {
       <div
         ref={listRef}
         onScroll={handleScroll}
-        className="h-full overflow-y-auto px-4 py-3"
+        role="log"
+        aria-label="Conversation"
+        aria-live="polite"
+        aria-relevant="additions text"
+        // The foot of the scroller is where the jump-to-latest control sits, so
+        // the transcript ends above it rather than under it. Padding on the
+        // scroller, not the measured content: the virtualizer's tops are
+        // relative to the content box and must not move.
+        className="h-full overflow-y-auto px-3 pt-3 pb-10"
         style={{ scrollbarGutter: 'stable' }}
       >
-        <ChatColumn>
         <div className="relative" style={{ height: totalStaticHeight }}>
           {virtualizedMessages.map(({ message, top }) => (
             <VirtualizedMessageRow
@@ -874,6 +1003,7 @@ export function MessageList({ currentView, onCancelQueued }: MessageListProps) {
               top={top}
               onHeightChange={handleMessageHeightChange}
               onCancelQueued={onCancelQueued}
+              entering={message.id === newestMessageId}
             />
           ))}
         </div>
@@ -892,35 +1022,43 @@ export function MessageList({ currentView, onCancelQueued }: MessageListProps) {
             elapsedSeconds={elapsedSeconds}
             model={model}
             isMergeableContinuation={isMergeableContinuation}
+            startedAt={streamStartedAt}
           />
         )}
-        </ChatColumn>
 
+        <BackgroundTaskStrip tasks={backgroundTasks} />
+
+        {/* Both of these belong to the conversation, not to the panel: they sit
+            on the answer's left edge, scroll with the messages they refer to,
+            and never permanently deduct from the reading area. */}
+        <PermissionPrompt chatSessionId={viewedSessionId} />
+
+        {error && onDismissError && (
+          <TurnError error={error} onRetry={onRetry} onDismiss={onDismissError} />
+        )}
       </div>
 
+      {/* Only the control itself takes pointer events: a strip across the foot
+          of the scroller would swallow selection and link clicks on whatever
+          line of the transcript happened to sit under it. */}
       {!autoFollow && (
-        <div className="absolute bottom-3 right-4 pointer-events-none">
+        <div className="absolute bottom-3 right-3 pointer-events-none">
           <button
             onClick={() => {
               scrollToBottom('smooth');
               setAutoFollow(true);
               setHasUnseenMessages(false);
             }}
-            className="pointer-events-auto inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-3/95 border border-border-default shadow-md text-xs text-text-primary hover:bg-surface-3 transition-colors"
-            title="Jump to latest messages"
+            className="pointer-events-auto inline-flex items-center gap-1.5 px-2 py-1 rounded-sm font-mono text-tiny text-text-secondary bg-surface-elevated border border-border-strong hover:text-text-primary hover:bg-surface-3 transition-colors"
+            aria-label="Jump to the latest messages"
           >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19 14l-7 7-7-7m7 7V3"
-              />
-            </svg>
-            <span>{hasUnseenMessages ? 'Jump to latest' : 'Latest'}</span>
             {hasUnseenMessages && (
-              <span className="w-1.5 h-1.5 rounded-full bg-accent" />
+              <span className="w-1.5 h-1.5 rounded-full bg-accent" aria-hidden="true" />
             )}
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7-7-7m7 7V3" />
+            </svg>
+            <span>{hasUnseenMessages ? 'new below' : 'latest'}</span>
           </button>
         </div>
       )}

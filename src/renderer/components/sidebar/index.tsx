@@ -76,7 +76,7 @@ const SidebarSettingsButton = memo(function SidebarSettingsButton() {
       >
         <SettingsIcon className="w-3.5 h-3.5" />
         <span>Settings</span>
-        <span className="ml-auto font-mono text-[10px] text-text-muted">v{__APP_VERSION__}</span>
+        <span className="ml-auto font-mono text-tiny text-text-muted">v{__APP_VERSION__}</span>
       </button>
     </div>
   );

@@ -42,27 +42,32 @@ export type ThemeOption = ThemeDefinition | CustomThemeOption;
 // Theme Definitions
 // ============================================
 
+/** Swatches read from the palette they represent, so a palette edit can't leave them stale. */
+function previewOf(colors: ThemeColors): ThemeDefinition['preview'] {
+  return { surface: colors.surface0, accent: colors.accent, text: colors.textPrimary };
+}
+
 export const THEMES: ThemeDefinition[] = [
   {
     id: 'system',
     name: 'System',
     description: 'Follow OS preference',
     colors: graphiteColors, // Used for preview only — matches the new dark default
-    preview: { surface: '#0e0f12', accent: '#6ea8fe', text: '#e8eaef' },
+    preview: previewOf(graphiteColors),
   },
   {
     id: 'fog',
     name: 'Fog',
     description: 'Cool neutral gray',
     colors: fogColors,
-    preview: { surface: '#f4f5f7', accent: '#4f56e6', text: '#16181c' },
+    preview: previewOf(fogColors),
   },
   {
     id: 'graphite',
     name: 'Graphite',
     description: 'Cool neutral charcoal',
     colors: graphiteColors,
-    preview: { surface: '#0e0f12', accent: '#6ea8fe', text: '#e8eaef' },
+    preview: previewOf(graphiteColors),
   },
 ];
 

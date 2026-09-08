@@ -157,15 +157,15 @@ export function WorkspaceHome({ onShowChat }: WorkspaceHomeProps) {
         }}
       >
         <div className="w-[480px] max-w-full flex flex-col items-center gap-5">
-          <div className="w-14 h-14 rounded-2xl bg-surface-2 border border-border-default grid place-items-center text-accent">
+          <div className="w-14 h-14 rounded-lg bg-surface-2 border border-border-default grid place-items-center text-accent">
             <BullseyeIcon />
           </div>
 
           <div className="text-center space-y-2">
-            <h2 className="text-[20px] font-semibold tracking-tight text-text-primary">
-              What are we shipping today?
+            <h2 className="text-2xl font-semibold tracking-tight text-text-primary">
+              What are you working on?
             </h2>
-            <p className="text-[13px] leading-snug text-text-tertiary max-w-[380px] mx-auto">
+            <p className="text-xs leading-snug text-text-tertiary max-w-[380px] mx-auto">
               Pick a starting point or open chat.
             </p>
           </div>
@@ -177,10 +177,10 @@ export function WorkspaceHome({ onShowChat }: WorkspaceHomeProps) {
                 onClick={() => handleQuickStart(q.text)}
                 className="text-left bg-surface-1 border border-border-subtle hover:border-border-strong rounded-lg px-3.5 py-3 transition-colors"
               >
-                <div className="text-[10px] font-mono uppercase tracking-[0.1em] text-text-tertiary mb-1">
+                <div className="text-xxs font-mono uppercase tracking-[0.1em] text-text-tertiary mb-1">
                   {q.label}
                 </div>
-                <div className="text-[13px] leading-snug text-text-primary">
+                <div className="text-sm leading-snug text-text-primary">
                   {q.text}
                 </div>
               </button>
@@ -190,15 +190,15 @@ export function WorkspaceHome({ onShowChat }: WorkspaceHomeProps) {
           {contextNudge.visible && (
             <div className="w-full flex items-start gap-3 bg-surface-1 border border-border-subtle rounded-lg px-3.5 py-3">
               <div className="flex-1">
-                <div className="text-[13px] font-medium text-text-primary">
+                <div className="text-sm font-medium text-text-primary">
                   Project context
                 </div>
-                <p className="mt-0.5 text-[12px] leading-snug text-text-tertiary">
+                <p className="mt-0.5 text-xs leading-snug text-text-tertiary">
                   Scan connected repos to draft an AGENTS.md orientation file. Review it before it saves.
                 </p>
                 <button
                   onClick={() => useContextRegenerationStore.getState().open()}
-                  className="mt-2 rounded-md bg-accent text-surface-0 hover:bg-accent/90 px-3 py-1.5 text-[12px] font-medium transition-colors"
+                  className="btn btn-primary mt-2"
                 >
                   Generate context
                 </button>
@@ -216,7 +216,7 @@ export function WorkspaceHome({ onShowChat }: WorkspaceHomeProps) {
           <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
             <button
               onClick={onShowChat}
-              className="rounded-md bg-accent text-surface-0 hover:bg-accent/90 px-3 py-1.5 text-[12px] font-medium transition-colors"
+              className="btn btn-primary"
             >
               {hasConversation ? `Resume chat · ${viewedSessionMessageCount} msgs` : 'Open chat'}
             </button>
@@ -224,7 +224,7 @@ export function WorkspaceHome({ onShowChat }: WorkspaceHomeProps) {
 
           {contextPreview.length > 0 && (
             <div className="w-full mt-2 pt-4 border-t border-border-subtle">
-              <div className="mb-2 text-[10px] font-mono uppercase tracking-[0.1em] text-text-tertiary text-center">
+              <div className="mb-2 text-xxs font-mono uppercase tracking-[0.1em] text-text-tertiary text-center">
                 Current Context
               </div>
               <div className="flex flex-wrap justify-center gap-2">
@@ -233,10 +233,10 @@ export function WorkspaceHome({ onShowChat }: WorkspaceHomeProps) {
                     key={`${resource.type}-${index}`}
                     className="max-w-full rounded-md bg-surface-2 border border-border-subtle px-2.5 py-1.5"
                   >
-                    <div className="text-[9px] font-mono uppercase tracking-wide text-text-tertiary">
+                    <div className="text-xxs font-mono uppercase tracking-wide text-text-tertiary">
                       {getResourceTypeLabel(resource)}
                     </div>
-                    <div className="mt-0.5 truncate text-[12px] text-text-primary" title={getResourceLabel(resource)}>
+                    <div className="mt-0.5 truncate text-xs text-text-primary" title={getResourceLabel(resource)}>
                       {getResourceLabel(resource)}
                     </div>
                   </div>

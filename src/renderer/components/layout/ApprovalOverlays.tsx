@@ -239,15 +239,16 @@ export function ApprovalOverlays() {
         onClick={() => setUserMinimized(false)}
         className="fixed left-5 bottom-5 group" style={{ zIndex: focusModeOpen ? Z_INDEX.modal + 30 : Z_INDEX.panel }}
       >
+        {/* text-on-accent, not white: an imported theme can hand us a pale accent. */}
         <div className="relative flex items-center gap-2.5 px-3 py-2
-                        bg-[color-mix(in_srgb,var(--color-accent)_85%,black)]
-                        text-white rounded
-                        border border-accent/30
+                        bg-accent
+                        text-text-on-accent rounded
+                        border border-accent
                         transition-colors duration-100">
           {/* Pulsing indicator */}
           <div className="relative">
-            <div className="w-2 h-2 rounded-full bg-white" />
-            <div className="absolute inset-0 w-2 h-2 rounded-full bg-white animate-ping opacity-75" />
+            <div className="w-2 h-2 rounded-full bg-current" />
+            <div className="absolute inset-0 w-2 h-2 rounded-full bg-current animate-ping opacity-75" />
           </div>
           <span className="text-sm font-semibold tracking-tight">
             {queueLength} pending

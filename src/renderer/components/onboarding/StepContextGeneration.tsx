@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { m, AnimatePresence } from 'framer-motion';
 import { LoadingSpinner } from '../ui/LoadingButton';
+import { scrollBehavior } from '../../utils/reducedMotion';
 
 interface StepContextGenerationProps {
   messages: string[];
@@ -18,7 +19,7 @@ export function StepContextGeneration({
   const logEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    logEndRef.current?.scrollIntoView({ behavior: scrollBehavior() });
   }, [messages]);
 
   return (

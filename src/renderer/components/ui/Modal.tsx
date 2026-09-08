@@ -39,19 +39,28 @@ interface ModalProps {
   onAnimationComplete?: () => void;
 }
 
+/**
+ * The `100%` term clamps height to the overlay's padded area, so a short window
+ * shrinks the modal instead of clipping its footer. Never override max-height
+ * from a call site.
+ */
 const sizeClasses: Record<ModalSize, string> = {
-  sm: 'w-full max-w-lg max-h-[420px]',       // 512px wide, ~420px max height
-  md: 'w-full max-w-2xl max-h-[560px]',      // 672px wide, ~560px max height
-  lg: 'w-full max-w-3xl max-h-[640px]',      // 768px wide, ~640px max height
-  xl: 'w-full max-w-4xl max-h-[720px]',      // 896px wide, ~720px max height
-  '2xl': 'w-full max-w-5xl max-h-[800px]',   // 1024px wide, ~800px max height
-  '3xl': 'w-full max-w-6xl max-h-[880px]',   // 1152px wide, ~880px max height
-  '4xl': 'w-full max-w-7xl max-h-[960px]',   // 1280px wide, ~960px max height
-  full: 'w-full max-w-[90vw] max-h-[85vh]',
+  sm: 'w-full max-w-lg max-h-[min(420px,100%)]',       // 512px wide, ~420px max height
+  md: 'w-full max-w-2xl max-h-[min(560px,100%)]',      // 672px wide, ~560px max height
+  lg: 'w-full max-w-3xl max-h-[min(680px,100%)]',      // 768px wide, ~680px max height
+  xl: 'w-full max-w-4xl max-h-[min(760px,100%)]',      // 896px wide, ~760px max height
+  '2xl': 'w-full max-w-5xl max-h-[min(820px,100%)]',   // 1024px wide, ~820px max height
+  '3xl': 'w-full max-w-6xl max-h-[min(880px,100%)]',   // 1152px wide, ~880px max height
+  '4xl': 'w-full max-w-7xl max-h-[min(960px,100%)]',   // 1280px wide, ~960px max height
+  full: 'w-full max-w-[90vw] max-h-full',
 };
 
 /**
  * Base Modal component with Portal, animations, focus trap, and consistent styling.
+ *
+ * The shell is a flex column that never scrolls, so headers, footers, and action
+ * bars outside `ModalBody` stay visible. `size` owns the height — a call site's
+ * own `max-h` will fight the preset and can push the footer out of reach.
  *
  * @example
  * // Simple usage
@@ -124,6 +133,8 @@ export function Modal({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            // Gutter the size presets clamp against, so a modal never runs edge to edge.
+            padding: '2rem 0',
             zIndex,
           }}
           onClick={handleBackdropClick}
@@ -173,7 +184,7 @@ interface ModalHeaderProps {
  */
 export function ModalHeader({ children, onClose, className = '', id, icon, subtitle }: ModalHeaderProps) {
   return (
-    <div className={`dialog-header px-5 py-4 flex items-center justify-between border-b ${className}`}>
+    <div className={`dialog-header shrink-0 px-5 py-4 flex items-center justify-between border-b ${className}`}>
       <div className="flex items-center gap-3">
         {icon && (
           <div className="w-9 h-9 rounded-xl bg-accent-subtle flex items-center justify-center shrink-0">
@@ -208,14 +219,20 @@ interface ModalBodyProps {
   className?: string;
   /** ID for aria-describedby */
   id?: string;
+  /** Set false when the body lays out its own scrolling regions, e.g. a split pane. */
+  scrollable?: boolean;
 }
 
 /**
- * Modal body for main content.
+ * Modal body for main content. This is the modal's only scroller, so the header
+ * and footer stay put however long the content gets.
  */
-export function ModalBody({ children, className = '', id }: ModalBodyProps) {
+export function ModalBody({ children, className = '', id, scrollable = true }: ModalBodyProps) {
   return (
-    <div id={id} className={`p-5 ${className}`}>
+    <div
+      id={id}
+      className={`min-h-0 flex-1 ${scrollable ? 'overflow-y-auto' : 'overflow-hidden'} p-5 ${className}`}
+    >
       {children}
     </div>
   );
@@ -232,7 +249,7 @@ interface ModalFooterProps {
  */
 export function ModalFooter({ children, className = '' }: ModalFooterProps) {
   return (
-    <div className={`dialog-footer px-5 py-4 flex items-center justify-end gap-2 border-t ${className}`}>
+    <div className={`dialog-footer shrink-0 px-5 py-4 flex items-center justify-end gap-2 border-t ${className}`}>
       {children}
     </div>
   );

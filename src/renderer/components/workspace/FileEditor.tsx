@@ -1,54 +1,68 @@
-import { memo, useCallback, useEffect, useState, useMemo } from 'react';
-import { useWorkspaceStore, useHasUnsavedChanges, useProjectUiDomainStore, useFocusModeStore } from '../../stores';
+import { memo, useCallback, useMemo } from 'react';
+import { useProjectUiDomainStore, useProjectDomainStore, useFocusModeStore } from '../../stores';
+import {
+  useWorkspaceStore,
+  useSaveStatus,
+  type SaveStatus,
+} from '../../stores/workspaceStore';
 import { useShallow } from 'zustand/react/shallow';
 import { CodeEditorLazy, MarkdownEditorLazy } from '../ui';
-import { ConfirmActionDialog } from '../ui/ConfirmActionDialog';
-import { BookOpenIcon } from '../icons';
+import { Tooltip } from '../ui/Tooltip';
+import { BookOpenIcon, CheckIcon, CloseIcon, PlusIcon, WarningTriangleIcon } from '../icons';
 import type { FocusedResource } from '../../../shared/types';
 import { getBaseName } from '../../utils/path';
+import { LinearPublishChip } from '../linearDocuments';
 
 interface FileEditorProps {
-  source: string;
-  path: string;
+  documentId: string;
   onClose: () => void;
 }
 
-function FileTypeIcon({ isMarkdown }: { isMarkdown: boolean }) {
-  if (isMarkdown) {
-    return (
-      <svg className="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-      </svg>
-    );
-  }
+/** The autosave states worth a word. A written, idle buffer is not one of them. */
+type ReportableSaveState = 'saving' | 'unsaved' | 'failed';
+
+/**
+ * Autosave state, shown only when there is something to say: a write in flight,
+ * an edit not yet written, or a write that failed. A permanent "Saved" occupies
+ * the slot without ever reporting a change, which trains the eye to skip it.
+ */
+function SaveIndicator({ state }: { state: ReportableSaveState }) {
+  const tone =
+    state === 'saving' ? 'text-text-secondary' : state === 'failed' ? 'text-danger' : 'text-warning';
+  const dot = state === 'saving' ? 'bg-accent animate-pulse' : state === 'failed' ? 'bg-danger' : 'bg-warning';
+  const label = state === 'saving' ? 'Saving...' : state === 'failed' ? 'Not saved' : 'Unsaved';
+
   return (
-    <svg className="w-4 h-4 text-text-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-        d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-    </svg>
+    <span className={`text-tiny flex items-center gap-1.5 flex-shrink-0 ${tone}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${dot}`} aria-hidden="true" />
+      {label}
+    </span>
   );
 }
 
+function reportableSaveState(status: SaveStatus, hasSaveError: boolean): ReportableSaveState | null {
+  if (hasSaveError) return 'failed';
+  return status === 'saved' ? null : status;
+}
+
 /**
- * File editor wrapper for the workspace view.
- * - Markdown files: Full MarkdownEditor with toolbar, shortcuts, side-by-side preview
- * - Other files: Monaco-based editor/viewer
+ * File editor for the workspace panel.
+ *
+ * Both file kinds get the same header — autosave state when there is any, then
+ * the same actions in the same order — because the only thing that differs
+ * is the body: markdown opens the shared MarkdownEditor (which absorbs the
+ * header into its own toolbar row), everything else opens Monaco.
  */
-export const FileEditor = memo(function FileEditor({ source: _source, path, onClose }: FileEditorProps) {
-  const { editingFile, updateContent, saveFile, isSaving: _isSaving, saveError } = useWorkspaceStore(
-    useShallow((state) => ({
-      editingFile: state.editingFile,
-      updateContent: state.updateContent,
-      saveFile: state.saveFile,
-      isSaving: state.isSaving,
-      saveError: state.saveError,
-    }))
+export const FileEditor = memo(function FileEditor({ documentId, onClose }: FileEditorProps) {
+  const document = useWorkspaceStore(
+    (state) => state.openDocuments.find((candidate) => candidate.id === documentId) ?? null
   );
-  const hasUnsavedChanges = useHasUnsavedChanges();
+  const projectId = useProjectDomainStore((state) => state.currentProjectId);
+  const updateContent = useWorkspaceStore((state) => state.updateContent);
+  const saveDocument = useWorkspaceStore((state) => state.saveDocument);
+  const saveStatus = useSaveStatus(documentId);
   const openFocusMode = useFocusModeStore((s) => s.open);
-  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
-  const [showUnsavedConfirm, setShowUnsavedConfirm] = useState(false);
+  const path = document?.path ?? '';
 
   // Context management for chat
   const { focusedResources, addFocusedResource, removeFocusedResource } = useProjectUiDomainStore(
@@ -59,14 +73,12 @@ export const FileEditor = memo(function FileEditor({ source: _source, path, onCl
     }))
   );
 
-  // Check if current file is in focused resources
   const isInContext = useMemo(() => {
     return focusedResources.some(
       (r) => r.type === 'project_file' && r.path === path
     );
   }, [focusedResources, path]);
 
-  // Toggle context for current file
   const handleToggleContext = useCallback(() => {
     const resource: FocusedResource = {
       type: 'project_file',
@@ -81,230 +93,148 @@ export const FileEditor = memo(function FileEditor({ source: _source, path, onCl
     }
   }, [path, isInContext, addFocusedResource, removeFocusedResource]);
 
-  // Auto-save with debounce
-  useEffect(() => {
-    if (!editingFile) return;
-    if (editingFile.content === editingFile.originalContent) {
-      setSaveStatus('saved');
-      return;
-    }
+  // Autosave is not here any more: it belongs above the editor, where it keeps
+  // running for tabs that are not on screen. See useDocumentAutosave.
+  const handleContentChange = useCallback((newContent: string) => {
+    updateContent(documentId, newContent);
+  }, [documentId, updateContent]);
 
-    setSaveStatus('unsaved');
-    const timer = setTimeout(() => {
-      setSaveStatus('saving');
-      void saveFile().then(() => setSaveStatus('saved'));
-    }, 1000);
+  const isMarkdown = path.toLowerCase().endsWith('.md');
+  const filename = getBaseName(path, 'Untitled');
 
-    return () => clearTimeout(timer);
-  }, [editingFile?.content, editingFile?.originalContent, saveFile]);
+  const handleRetrySave = useCallback(() => {
+    void saveDocument(documentId);
+  }, [documentId, saveDocument]);
 
-  if (!editingFile) {
+  const handleEnterFocus = useCallback(() => {
+    if (!document) return;
+    openFocusMode({
+      path: document.path,
+      title: filename,
+      content: document.content,
+    });
+  }, [document, filename, openFocusMode]);
+
+  if (!document) {
     return null;
   }
 
-  const isMarkdown = editingFile.path.toLowerCase().endsWith('.md');
-  const filename = getBaseName(editingFile.path, 'Untitled');
+  // Neither the filename nor the file kind belongs here: the tab strip directly
+  // above already carries both. All that is left is autosave state, and only
+  // when it has something to report. The slot sits between the left-anchored
+  // tabs and the right-anchored actions, so its collapsing moves nothing.
+  const saveState = reportableSaveState(saveStatus, Boolean(document.saveError));
+  const identity = saveState ? <SaveIndicator state={saveState} /> : undefined;
 
-  // Handle content change
-  const handleContentChange = useCallback((newContent: string) => {
-    updateContent(newContent);
-  }, [updateContent]);
+  const fileActions = (
+    <>
+      {projectId && isMarkdown && (
+        <LinearPublishChip
+          projectId={projectId}
+          documentId={documentId}
+          documentPath={document.path}
+        />
+      )}
+      <Tooltip content={isInContext ? 'Remove from context' : 'Add to context'} side="bottom">
+        <button
+          type="button"
+          onClick={handleToggleContext}
+          aria-pressed={isInContext}
+          className={`h-7 px-2 rounded-sm text-xs flex items-center gap-1.5 transition-colors ${
+            isInContext
+              ? 'bg-accent-muted text-accent hover:bg-accent-subtle'
+              : 'text-text-muted hover:text-text-primary hover:bg-surface-3'
+          }`}
+        >
+          {isInContext ? <CheckIcon className="w-3.5 h-3.5" /> : <PlusIcon className="w-3.5 h-3.5" />}
+          <span>{isInContext ? 'In context' : 'Add to context'}</span>
+        </button>
+      </Tooltip>
+      {isMarkdown && (
+        <Tooltip content="Open in focus reader" side="bottom">
+          <button
+            type="button"
+            onClick={handleEnterFocus}
+            aria-label="Open in focus reader"
+            className="w-7 h-7 flex items-center justify-center rounded-sm text-text-muted
+                       hover:text-text-primary hover:bg-surface-3 transition-colors"
+          >
+            <BookOpenIcon className="w-4 h-4" />
+          </button>
+        </Tooltip>
+      )}
+      <Tooltip content="Close file" side="bottom">
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close file"
+          className="w-7 h-7 flex items-center justify-center rounded-sm text-text-muted
+                     hover:text-text-primary hover:bg-surface-3 transition-colors"
+        >
+          <CloseIcon className="w-4 h-4" />
+        </button>
+      </Tooltip>
+    </>
+  );
 
-  // Handle close with unsaved changes check
-  const handleClose = useCallback(() => {
-    if (hasUnsavedChanges) {
-      setShowUnsavedConfirm(true);
-      return;
-    }
-    onClose();
-  }, [hasUnsavedChanges, onClose]);
-
-  const handleEnterFocus = useCallback(() => {
-    if (!editingFile) return;
-    openFocusMode({
-      path: editingFile.path,
-      title: filename,
-      content: editingFile.content,
-    });
-  }, [editingFile, filename, openFocusMode]);
-
-  const focusButton = isMarkdown ? (
-    <button
-      onClick={handleEnterFocus}
-      className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-surface-3 text-text-muted hover:text-text-primary transition-all flex-shrink-0"
-      title="Open in focus reader"
-      aria-label="Open in focus reader"
-    >
-      <BookOpenIcon className="w-4 h-4" />
-    </button>
+  // The raw failure is usually a system string ("Error: EACCES..."), which names
+  // no recovery. Lead with what happened to the user's work, keep the raw text
+  // one hover away for whoever needs it, and offer the write again.
+  const saveErrorBanner = document.saveError ? (
+    <div className="px-3 py-2 bg-danger-muted border-b border-border-subtle flex items-start gap-2" role="alert">
+      <WarningTriangleIcon className="w-4 h-4 text-danger flex-shrink-0 mt-0.5" />
+      <div className="min-w-0 flex-1">
+        <p className="text-xs text-danger">
+          Could not write {filename} to disk. Your edits are still open here.
+        </p>
+        <Tooltip content={document.saveError} side="bottom">
+          <p className="text-tiny text-text-secondary truncate cursor-default">{document.saveError}</p>
+        </Tooltip>
+      </div>
+      <button
+        type="button"
+        onClick={handleRetrySave}
+        disabled={saveStatus === 'saving'}
+        className="btn btn-secondary h-7 px-2 text-xs flex-shrink-0"
+      >
+        Save again
+      </button>
+    </div>
   ) : null;
 
-  // Confirmation shown when closing with unsaved changes. Shared across both
-  // editor layouts (markdown / non-markdown).
-  const unsavedConfirmDialog = showUnsavedConfirm ? (
-    <ConfirmActionDialog
-      title="Discard unsaved changes?"
-      message="This file has unsaved changes that will be lost if you close it now."
-      dialogId="file-editor-unsaved"
-      cancelLabel="Keep editing"
-      onCancel={() => setShowUnsavedConfirm(false)}
-      action={{
-        label: 'Discard changes',
-        variant: 'danger',
-        onClick: () => {
-          setShowUnsavedConfirm(false);
-          onClose();
-        },
-      }}
-    />
-  ) : null;
-
-  // For markdown files, use the full-featured MarkdownEditor
   if (isMarkdown) {
     return (
       <div className="flex flex-col h-full bg-surface-1">
-        {/* Header */}
-        <div className="flex items-center gap-3 px-4 py-3 min-w-0">
-          <div className="flex items-center gap-3 flex-1 min-w-0">
-            <FileTypeIcon isMarkdown={isMarkdown} />
-            <span className="text-sm font-medium text-text-primary truncate" title={editingFile.path}>
-              {filename}
-            </span>
-            <div className="flex items-center gap-1.5 flex-shrink-0">
-              <div
-                className={`
-                  w-1.5 h-1.5 rounded-full transition-colors duration-200
-                  ${saveStatus === 'saved' ? 'bg-success' : ''}
-                  ${saveStatus === 'unsaved' ? 'bg-warning' : ''}
-                  ${saveStatus === 'saving' ? 'bg-accent animate-pulse' : ''}
-                `}
-              />
-              <span className={`text-xs transition-colors ${saveStatus === 'unsaved' ? 'text-warning' : 'text-text-muted'}`}>
-                {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'unsaved' ? 'Unsaved' : 'Saved'}
-              </span>
-            </div>
-          </div>
-          <div className="flex items-center gap-1 flex-shrink-0">
-            {focusButton}
-            <button
-              onClick={handleClose}
-              className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-surface-3 text-text-muted hover:text-text-primary transition-all"
-              title="Close editor (Esc)"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        {/* Error display */}
-        {saveError && (
-          <div className="px-4 py-2.5 bg-danger/10 flex items-center gap-2">
-            <svg className="w-4 h-4 text-danger flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-            <p className="text-xs text-danger">{saveError}</p>
-          </div>
-        )}
-
-        {/* MarkdownEditor takes the rest */}
+        {saveErrorBanner}
         <div className="flex-1 overflow-hidden">
           <MarkdownEditorLazy
-            content={editingFile.content}
+            content={document.content}
             onChange={handleContentChange}
+            scrollKey={document.path}
+            leading={identity}
+            actions={fileActions}
           />
         </div>
-        {unsavedConfirmDialog}
       </div>
     );
   }
 
-  // For non-markdown files, use the simpler layout
   return (
     <div className="flex flex-col h-full bg-surface-1">
-      {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3 min-w-0">
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          <FileTypeIcon isMarkdown={isMarkdown} />
-          <span className="text-sm font-medium text-text-primary truncate" title={editingFile.path}>
-            {filename}
-          </span>
-
-          <div className="flex items-center gap-1.5">
-            <div
-              className={`
-                w-1.5 h-1.5 rounded-full transition-colors duration-200
-                ${saveStatus === 'saved' ? 'bg-success' : ''}
-                ${saveStatus === 'unsaved' ? 'bg-warning' : ''}
-                ${saveStatus === 'saving' ? 'bg-accent animate-pulse' : ''}
-              `}
-            />
-            <span className={`text-xs transition-colors ${saveStatus === 'unsaved' ? 'text-warning' : 'text-text-muted'}`}>
-              {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'unsaved' ? 'Unsaved' : 'Saved'}
-            </span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {focusButton}
-          <button
-            onClick={handleToggleContext}
-            className={`
-              px-2 py-1 text-xs rounded-md flex items-center gap-1.5 transition-all
-              ${isInContext
-                ? 'bg-accent/15 text-accent hover:bg-accent/25'
-                : 'bg-surface-3 text-text-muted hover:text-text-primary hover:bg-surface-4'
-              }
-            `}
-            title={isInContext ? 'Remove from chat context' : 'Add to chat context'}
-          >
-            {isInContext ? (
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-            ) : (
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-            )}
-            <span>{isInContext ? 'In context' : 'Add to context'}</span>
-          </button>
-          <button
-            onClick={handleClose}
-            className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-surface-3 text-text-muted hover:text-text-primary transition-all"
-            title="Close editor (Esc)"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+      <div className="flex items-center gap-2 px-3 py-1 min-w-0 bg-surface-1 border-b border-border-subtle">
+        {identity}
+        <div className="flex items-center gap-0.5 flex-shrink-0 ml-auto">{fileActions}</div>
       </div>
 
-      <div className="divider mx-4" />
+      {saveErrorBanner}
 
-      {/* Content area */}
       <div className="flex-1 overflow-hidden">
         <CodeEditorLazy
-          path={editingFile.path}
-          content={editingFile.content}
+          path={document.path}
+          content={document.content}
           onChange={handleContentChange}
         />
       </div>
-
-      {/* Error display */}
-      {saveError && (
-        <div className="px-4 py-2.5 bg-danger/10 flex items-center gap-2">
-          <svg className="w-4 h-4 text-danger flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
-          <p className="text-xs text-danger">{saveError}</p>
-        </div>
-      )}
-      {unsavedConfirmDialog}
     </div>
   );
 });

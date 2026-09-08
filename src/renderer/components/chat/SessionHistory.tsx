@@ -4,6 +4,9 @@ import { useShallow } from 'zustand/react/shallow';
 import { Z_INDEX } from '../../constants/zIndex';
 import { formatRelativeTime } from '../../utils/relativeTime';
 import { getProviderCapabilities } from '../../../shared/providerCapabilities';
+import { ClockIcon } from '../icons';
+import { Tooltip } from '../ui/Tooltip';
+import { HEADER_ICON_BUTTON } from './headerControls';
 
 /**
  * Session history dropdown showing recent chat sessions.
@@ -65,70 +68,34 @@ export function SessionHistory() {
 
   return (
     <div className="relative" ref={dropdownRef}>
-      {/* Trigger button - subtle icon */}
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className={`
-          flex items-center gap-1.5 px-2 py-1 rounded-lg
-          transition-all duration-150
-          ${isOpen
-            ? 'bg-accent-subtle text-accent'
-            : 'text-text-tertiary hover:text-text-secondary hover:bg-surface-3'
-          }
-        `}
-        title="Session history"
-        aria-label="Session history"
-        aria-expanded={isOpen}
-      >
-        <svg
-          className="w-3.5 h-3.5"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-          strokeWidth={2}
+      <Tooltip content="Session history">
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className={`${HEADER_ICON_BUTTON} ${
+            isOpen ? 'bg-surface-selected text-text-primary hover:bg-surface-selected hover:text-text-primary' : ''
+          }`}
+          aria-label="Session history"
+          aria-haspopup="menu"
+          aria-expanded={isOpen}
         >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-          />
-        </svg>
-        <span className="text-xs font-medium">History</span>
-        <svg
-          className={`w-3 h-3 transition-transform duration-150 ${isOpen ? 'rotate-180' : ''}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-          strokeWidth={2}
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
+          <ClockIcon className="w-3.5 h-3.5" />
+        </button>
+      </Tooltip>
 
       {/* Dropdown menu - KPM styled */}
       {isOpen && (
         <div
           className="dropdown-menu absolute right-0 top-full mt-1.5 w-72"
-          style={{
-            zIndex: Z_INDEX.dropdown,
-            boxShadow: 'var(--shadow-md)',
-            border: '1px solid var(--color-border-default)',
-          }}
+          style={{ zIndex: Z_INDEX.dropdown }}
         >
           {/* Header */}
-          <div className="px-3 py-2.5 border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
+          <div className="px-3 py-2.5 border-b border-border-subtle">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-text-secondary uppercase tracking-wider">
                 Recent Sessions
               </span>
               {sessionHistory.length > 0 && (
-                <span
-                  className="text-xxs font-medium px-1.5 py-0.5 rounded-full"
-                  style={{
-                    background: 'var(--color-accent-subtle)',
-                    color: 'var(--color-accent)'
-                  }}
-                >
+                <span className="text-xxs font-medium px-1.5 py-0.5 rounded-full bg-surface-3 text-text-secondary">
                   {sessionHistory.length}
                 </span>
               )}
@@ -176,15 +143,15 @@ export function SessionHistory() {
                         {primary}
                       </p>
                       {/* Secondary: compact meta line */}
-                      <div className="flex items-center gap-1.5 mt-px text-xxs text-text-muted min-w-0">
+                      <div className="flex items-center gap-1.5 mt-px text-tiny text-text-muted min-w-0">
                         {secondary && (
                           <>
                             <span className="truncate">{secondary}</span>
-                            <span className="opacity-60 flex-shrink-0">·</span>
+                            <span className="flex-shrink-0" aria-hidden="true">·</span>
                           </>
                         )}
                         <span className="flex-shrink-0">{formatRelativeTime(session.last_activity)}</span>
-                        <span className="opacity-60 flex-shrink-0">·</span>
+                        <span className="flex-shrink-0" aria-hidden="true">·</span>
                         <span className="flex-shrink-0">
                           {session.message_count} {session.message_count === 1 ? 'message' : 'messages'}
                         </span>

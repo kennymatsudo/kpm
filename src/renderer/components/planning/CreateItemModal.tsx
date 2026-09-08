@@ -274,7 +274,7 @@ export function CreateItemModal({
       preventClose={isSubmitting}
       closeOnBackdropClick={!isDirty}
     >
-      <div className="relative overflow-hidden">
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
         {/* Subtle gradient accent line */}
         <div
           className="absolute top-0 left-0 right-0 h-[2px]"
@@ -314,7 +314,7 @@ export function CreateItemModal({
         </ModalHeader>
 
         {/* Content */}
-        <div className="px-6 pb-3">
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-3">
           {/* Title field with dynamic border */}
           <div className="relative">
             <m.div
@@ -399,12 +399,12 @@ export function CreateItemModal({
                 <div className="space-y-4 pt-5">
                   <WorkBriefEditor
                     value={{
-                      context: description,
+                      description,
                       intent,
                       acceptance_criteria: acceptanceCriteria,
                     }}
                     onChange={(workBrief) => {
-                      setDescription(workBrief.context ?? '');
+                      setDescription(workBrief.description ?? '');
                       setIntent(workBrief.intent ?? '');
                       setAcceptanceCriteria(workBrief.acceptance_criteria);
                     }}
@@ -552,7 +552,7 @@ export function CreateItemModal({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-border-subtle flex items-center justify-between bg-surface-1/30">
+        <div className="shrink-0 px-6 py-4 border-t border-border-subtle flex items-center justify-between bg-surface-1/30">
           <div className="flex items-center gap-3 text-xs text-text-muted">
             {!isFullMode && (
               <button

@@ -1,12 +1,13 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { RefObject } from 'react';
-import { Tree, type NodeApi, type TreeApi } from 'react-arborist';
+import { Tree, type NodeApi, type RowRendererProps, type TreeApi } from 'react-arborist';
 import type { FileNode } from '../../../shared/types';
 import { getParentPath } from '../../utils/path';
 import { SidebarSection } from './SidebarSection';
 import { NewItemInput } from './NewItemInput';
 import { ProjectTreeNode, type UIFileNode } from './ProjectTreeNode';
 import { areSetsEqual, getOpenPathSet } from './treeUtils';
+import { FolderIcon, PlusIcon } from '../icons';
 
 function injectPhantomNode(
   nodes: UIFileNode[],
@@ -28,12 +29,36 @@ function injectPhantomNode(
   });
 }
 
+/**
+ * react-arborist gives every row `min-width: max-content` so a selection
+ * highlight can span a horizontally scrolled tree. Here that backfires: a long
+ * or deeply nested name widens the row past the sidebar, which pushes the
+ * trailing context toggle off-screen and hides whether the file is in context.
+ * Pinning the row to the viewport width lets the name truncate instead.
+ */
+function ClampedRow({ node, attrs, innerRef, children }: RowRendererProps<UIFileNode>) {
+  return (
+    <div
+      {...attrs}
+      ref={innerRef}
+      style={{ ...attrs.style, minWidth: 0 }}
+      onFocus={(e) => e.stopPropagation()}
+      onClick={node.handleClick}
+    >
+      {children}
+    </div>
+  );
+}
+
 interface ProjectFilesTreeSectionProps {
   projectNodes: FileNode[];
   expandedPaths: Set<string>;
   loadingPaths: Set<string>;
   selectedPaths: Set<string>;
-  editingPath: string | null;
+  /** The file the editor is showing. */
+  activePath: string | null;
+  /** Every file open in the editor, the active one included. */
+  openPaths: Set<string>;
   renamingPath: string | null;
   creatingItem: { type: 'file' | 'folder'; parentPath: string } | null;
   isCollapsed: boolean;
@@ -61,7 +86,8 @@ export const ProjectFilesTreeSection = memo(function ProjectFilesTreeSection({
   expandedPaths,
   loadingPaths,
   selectedPaths,
-  editingPath,
+  activePath,
+  openPaths,
   renamingPath,
   creatingItem,
   isCollapsed,
@@ -283,6 +309,7 @@ export const ProjectFilesTreeSection = memo(function ProjectFilesTreeSection({
   return (
     <SidebarSection
       title="Project Files"
+      icon={<FolderIcon className="w-3.5 h-3.5 text-text-tertiary flex-shrink-0" />}
       isCollapsed={isCollapsed}
       onToggleCollapsed={onToggleCollapsed}
       isDropZoneActive={isRootExternalDragActive}
@@ -291,22 +318,11 @@ export const ProjectFilesTreeSection = memo(function ProjectFilesTreeSection({
         <button
           ref={addButtonRef}
           onClick={onToggleAddMenu}
-          className="p-1.5 rounded-md text-text-muted hover:text-accent hover:bg-accent/10 transition-all"
+          className="p-1.5 rounded-sm text-text-muted hover:text-text-primary hover:bg-surface-3 transition-colors"
           title="New file or folder"
+          aria-label="New file or folder"
         >
-          <svg
-            className="w-3.5 h-3.5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 4v16m8-8H4"
-            />
-          </svg>
+          <PlusIcon className="w-3.5 h-3.5" />
         </button>
       }
     >
@@ -329,9 +345,12 @@ export const ProjectFilesTreeSection = memo(function ProjectFilesTreeSection({
         )}
 
         {showEmptyState ? (
-          <div className="flex items-center justify-center h-24 p-6">
+          <div className="flex items-center justify-center h-24 p-4">
             <div className="text-center">
               <p className="text-sm text-text-muted">No project files</p>
+              <p className="text-xs text-text-muted mt-1 leading-relaxed">
+                Notes and plans for this work live here, kept out of your repositories.
+              </p>
             </div>
           </div>
         ) : (
@@ -346,6 +365,7 @@ export const ProjectFilesTreeSection = memo(function ProjectFilesTreeSection({
                 }
                 width="100%"
                 height={treeHeight}
+                renderRow={ClampedRow}
                 indent={16}
                 rowHeight={32}
                 openByDefault={false}
@@ -364,7 +384,8 @@ export const ProjectFilesTreeSection = memo(function ProjectFilesTreeSection({
                   <ProjectTreeNode
                     {...props}
                     loadingPaths={loadingPaths}
-                    editingPath={editingPath}
+                    activePath={activePath}
+                    openPaths={openPaths}
                     renamingPath={renamingPath}
                     isPathFocused={isPathFocused}
                     isLinkedToConfluence={isLinkedToConfluence}

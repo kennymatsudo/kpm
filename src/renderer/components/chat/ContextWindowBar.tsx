@@ -22,14 +22,14 @@ export function ContextWindowBar({ usage, model, provider, contextWindow: select
   const total = reportedPromptTokens(usage);
   const cacheRead = usage?.cacheReadTokens ?? 0;
 
+  const usedLabel = `${formatK(total)}${cacheRead > 0 ? ` (${formatK(cacheRead)} cached)` : ''}`;
+
   if (provider === 'pi') {
     return (
       <div className="pointer-events-none mb-1.5 px-1 flex items-center gap-2">
-        <div className="flex-1 h-px bg-surface-3 rounded-full overflow-hidden" />
-        <span className="text-xxs text-text-muted tabular-nums shrink-0">
-          {usage
-            ? `${formatK(total)}${cacheRead > 0 ? ` (${formatK(cacheRead)} cached)` : ''} reported`
-            : `limit ${formatK(contextWindow)}`}
+        <div className="flex-1 h-px bg-surface-3 rounded-full overflow-hidden" aria-hidden="true" />
+        <span className="text-tiny text-text-muted tabular-nums shrink-0">
+          {usage ? `${usedLabel} used` : `limit ${formatK(contextWindow)}`}
         </span>
       </div>
     );
@@ -37,22 +37,39 @@ export function ContextWindowBar({ usage, model, provider, contextWindow: select
 
   const pct = Math.min(100, (total / contextWindow) * 100);
 
-  let barColor = 'bg-text-muted/40';
-  if (pct >= 90) barColor = 'bg-danger';
-  else if (pct >= 75) barColor = 'bg-warning';
+  // Fullness is reported in words as well as in hue: the bar is 1px tall, so
+  // color alone would be the only carrier of a state worth acting on.
+  let barColor = 'bg-surface-4';
+  let level: string | null = null;
+  if (pct >= 90) {
+    barColor = 'bg-danger';
+    level = 'nearly full';
+  } else if (pct >= 75) {
+    barColor = 'bg-warning';
+    level = 'filling up';
+  }
 
   return (
-    <div className="pointer-events-none mb-1.5 px-1 flex items-center gap-2">
-      <div className="flex-1 h-px bg-surface-3 rounded-full overflow-hidden">
+    <div className="mb-1.5 px-1 flex items-center gap-2">
+      <div
+        className="flex-1 h-px bg-surface-3 rounded-full overflow-hidden"
+        role="progressbar"
+        aria-label="Context window used"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(pct)}
+        aria-valuetext={`${usedLabel} of ${formatK(contextWindow)}${level ? `, ${level}` : ''}`}
+      >
         <div
-          className={`h-full rounded-full transition-all duration-500 ${barColor}`}
+          className={`h-full rounded-full transition-all duration-150 ${barColor}`}
           style={{ width: `${pct}%` }}
         />
       </div>
-      <span className="text-xxs text-text-muted tabular-nums shrink-0">
-        {usage
-          ? `${formatK(total)}${cacheRead > 0 ? ` (${formatK(cacheRead)} cached)` : ''} / ${formatK(contextWindow)}`
-          : `— / ${formatK(contextWindow)}`}
+      <span
+        className={`text-tiny tabular-nums shrink-0 ${level ? 'text-text-secondary' : 'text-text-muted'}`}
+      >
+        {usage ? `${usedLabel} / ${formatK(contextWindow)}` : `— / ${formatK(contextWindow)}`}
+        {level && <span className="ml-1">· {level}</span>}
       </span>
     </div>
   );

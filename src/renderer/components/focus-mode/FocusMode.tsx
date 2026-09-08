@@ -15,6 +15,7 @@ import { generateThemeVariables } from '../../../shared/theme';
 import { getThemeById } from '../../themes';
 import { Z_INDEX } from '../../constants/zIndex';
 import { ChevronRightIcon, CloseIcon, ListIcon, MessageCircleIcon, MoonIcon, SearchIcon, SunIcon } from '../icons';
+import { scrollBehavior } from '../../utils/reducedMotion';
 import { useReadingProgress } from './useReadingProgress';
 import { FocusChatPanel } from './FocusChatPanel';
 
@@ -78,7 +79,7 @@ export function FocusMode() {
 
   const scrollToId = useCallback((id: string) => {
     const target = scrollRef.current?.querySelector(`#${CSS.escape(id)}`);
-    target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    target?.scrollIntoView({ behavior: scrollBehavior(), block: 'start' });
   }, []);
 
   const handleHeadingJump = useCallback(
@@ -164,7 +165,7 @@ export function FocusMode() {
     if (!showSearch || !searchQuery.trim() || totalMatches === 0) return;
     const timeout = window.setTimeout(() => {
       const current = scrollRef.current?.querySelector<HTMLElement>(CURRENT_SEARCH_MATCH_SELECTOR);
-      current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      current?.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
     }, 50);
     return () => window.clearTimeout(timeout);
   }, [showSearch, searchQuery, currentMatchIndex, totalMatches]);
@@ -362,7 +363,7 @@ export function FocusMode() {
           <div className="relative flex min-h-0 flex-1">
             <OutlineRail headings={headings} activeId={activeId} onJump={handleHeadingJump} />
             <main ref={scrollRef} tabIndex={-1} className="min-h-0 flex-1 overflow-y-auto outline-none">
-              <div className="mx-auto max-w-[72ch] px-6 py-12 sm:px-10 sm:py-14">
+              <div className="mx-auto max-w-[var(--doc-reader-measure)] px-6 py-12 sm:px-10 sm:py-14">
                 <article className="prose-document">{rendered}</article>
               </div>
             </main>
@@ -424,7 +425,7 @@ function ReaderSearchBar({
           transition={{ duration: 0.15 }}
           className="shrink-0 overflow-hidden border-b border-border-subtle bg-surface-1"
         >
-          <div className="mx-auto flex max-w-[72ch] items-center gap-2 px-4 py-2 sm:px-6">
+          <div className="mx-auto flex max-w-[var(--doc-reader-measure)] items-center gap-2 px-4 py-2 sm:px-6">
             <SearchIcon className="h-4 w-4 shrink-0 text-text-muted" />
             <input
               ref={inputRef}

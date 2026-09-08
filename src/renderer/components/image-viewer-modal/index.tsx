@@ -79,7 +79,7 @@ export function ImageViewerModal({
       size="full"
       aria-labelledby="image-viewer-title"
     >
-      <div className="flex flex-col h-full max-h-[85vh]">
+      <div className="flex min-h-0 flex-1 flex-col">
         {/* Header */}
         <ModalHeader onClose={onClose} id="image-viewer-title">
           <div className="flex items-center gap-3">
@@ -147,7 +147,7 @@ export function ImageViewerModal({
         </div>
 
         {/* Image container */}
-        <div className="flex-1 overflow-auto bg-surface-2 p-4">
+        <div className="min-h-0 flex-1 overflow-auto bg-surface-2 p-4">
           <div className="min-h-full flex items-center justify-center">
             <img
               ref={imageRef}

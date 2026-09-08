@@ -29,13 +29,11 @@ export function SettingsModal({ onClose, currentProjectId }: Props) {
       onClose={onClose}
       size="2xl"
       aria-labelledby="settings-title"
-      className="!overflow-hidden flex flex-col !h-[80vh]"
+      className="h-[80vh]"
     >
-      <div className="shrink-0">
-        <ModalHeader id="settings-title" onClose={onClose}>
-          Settings
-        </ModalHeader>
-      </div>
+      <ModalHeader id="settings-title" onClose={onClose}>
+        Settings
+      </ModalHeader>
 
       <div className="flex flex-1 min-h-0">
         {/* Sidebar nav */}

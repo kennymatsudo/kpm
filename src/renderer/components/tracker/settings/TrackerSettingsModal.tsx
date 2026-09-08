@@ -112,7 +112,7 @@ export function TrackerSettingsModal({ isOpen, onClose, currentProjectId, initia
       isOpen={isOpen}
       onClose={onClose}
       size="2xl"
-      className="max-h-[85vh]"
+      className="h-[720px]"
       aria-labelledby="tracker-settings-title"
     >
       <ModalHeader id="tracker-settings-title" onClose={onClose}>
@@ -126,7 +126,7 @@ export function TrackerSettingsModal({ isOpen, onClose, currentProjectId, initia
         </div>
       </ModalHeader>
 
-      <ModalBody className="p-0 flex min-h-[480px]">
+      <ModalBody scrollable={false} className="p-0 flex">
         {/* Sidebar */}
         <TrackerSidebar
           trackerType={activeTrackerType}
@@ -140,7 +140,7 @@ export function TrackerSettingsModal({ isOpen, onClose, currentProjectId, initia
         />
 
         {/* Main Panel */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto">
           <AnimatePresence mode="wait">
             <m.div
               key={

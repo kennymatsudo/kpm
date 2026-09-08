@@ -39,9 +39,10 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('propose_document_edit');
   });
 
-  it('includes the neutral Change Application section without mode-specific wording', () => {
+  it('states change application once, neutrally, without mode-specific wording', () => {
     const prompt = buildSystemPrompt(buildContext());
-    expect(prompt).toContain('## Change Application');
+    expect(prompt).toContain('refer to changes as proposed');
+    expect(prompt).not.toContain('## Change Application');
     expect(prompt).not.toContain('applies those changes immediately');
     expect(prompt).not.toContain('will approve, edit, or dismiss');
     expect(prompt).not.toContain('Do not tell the user they will need to approve a modal');
@@ -96,8 +97,7 @@ describe('buildSystemPrompt', () => {
       contextFileContent: '# Project notes\nUse the shared client.',
     }));
 
-    expect(prompt).toContain("The first file write, shell command, or git operation pauses for the user to enable writes for the conversation");
-    expect(prompt).toContain('Use your file tools to explore the project and connected repos.');
+    expect(prompt).toContain("The first file write, shell command, or state-changing git operation pauses for the user to enable writes for the conversation");
     expect(prompt).toContain('Your file tools can also read any other folder on disk when the user points you at one — you are not limited to the project folder and connected repos for reading.');
 
     expect(prompt).not.toContain('Connected repos are read-only in chat.');

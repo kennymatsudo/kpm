@@ -1,7 +1,14 @@
 import type { ReactNode } from 'react';
+import { ChevronRightIcon } from '../icons';
 
 interface SidebarSectionProps {
   title: string;
+  /**
+   * Glyph shown beside the title. Two lists of the same shape need more than a
+   * word to tell them apart. Size it `w-3.5 h-3.5` — the header's alignment
+   * math below assumes that width.
+   */
+  icon?: ReactNode;
   count?: number;
   isCollapsed: boolean;
   onToggleCollapsed: () => void;
@@ -27,6 +34,7 @@ interface SidebarSectionProps {
  */
 export function SidebarSection({
   title,
+  icon,
   count,
   isCollapsed,
   onToggleCollapsed,
@@ -38,29 +46,36 @@ export function SidebarSection({
 }: SidebarSectionProps) {
   return (
     <div
-      className={`flex flex-col rounded-lg transition-all ${
-        isDropZoneActive ? 'bg-accent/10 ring-2 ring-inset ring-accent ring-dashed mx-2' : ''
+      className={`flex flex-col rounded-sm ${
+        isDropZoneActive ? 'bg-accent-subtle ring-1 ring-inset ring-accent mx-2' : ''
       } ${className}`}
       {...dropZoneProps}
     >
-      {/* Section header */}
-      <div className="flex items-center gap-2 px-4 py-2">
+      {/*
+        The header's left inset is computed to land the title on the row titles
+        beneath it. A row's text starts at its margin (8) + padding (12) + icon
+        (14) + gap (8) = 42px, so the header spends the same: 8px of padding,
+        then a chevron (12) and a glyph (14) sharing one gapless column, then
+        the same 8px gap. The right side keeps its wider inset — that edge
+        answers to the panel, not to the rows.
+      */}
+      <div className="flex items-center gap-2 pl-2 pr-4 py-2">
         <button
           onClick={onToggleCollapsed}
-          className="flex items-center gap-2 flex-1 hover:bg-surface-2/50 transition-colors rounded -mx-2 -my-1 px-2 py-1"
+          aria-expanded={!isCollapsed}
+          className="flex items-center gap-2 flex-1 min-w-0 hover:bg-surface-3 transition-colors duration-150 rounded-sm -my-1 py-1"
         >
-          <svg
-            className={`w-3 h-3 text-text-muted transition-transform duration-200 ${isCollapsed ? '' : 'rotate-90'}`}
-            fill="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z" />
-          </svg>
-          <span className="text-tiny font-medium text-text-muted uppercase tracking-wider">
+          <span className="flex items-center flex-shrink-0">
+            <ChevronRightIcon
+              className={`w-3 h-3 flex-shrink-0 text-text-tertiary transition-transform duration-200 ${isCollapsed ? '' : 'rotate-90'}`}
+            />
+            {icon}
+          </span>
+          <span className="min-w-0 text-tiny font-medium text-text-tertiary uppercase tracking-wider truncate">
             {title}
           </span>
           {count !== undefined && (
-            <span className="text-xxs text-text-muted bg-surface-3 px-1.5 py-0.5 rounded-full ml-auto">
+            <span className="text-xxs text-text-secondary bg-surface-3 px-1.5 py-0.5 rounded-full ml-auto">
               {count}
             </span>
           )}
@@ -70,7 +85,7 @@ export function SidebarSection({
 
       {/* Collapsible content */}
       <div
-        className={`overflow-hidden transition-all duration-200 ${
+        className={`overflow-hidden transition-opacity duration-150 ${
           isCollapsed
             ? 'max-h-0 opacity-0 flex-none'
             : `flex flex-1 min-h-0 flex-col opacity-100 pt-1 ${dropZoneProps ? 'pb-4' : ''}`

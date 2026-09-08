@@ -28,7 +28,7 @@ export interface ThemeColors {
   accent: string;
   accentHover: string;
   accentActive: string; // Pressed state for accent fills
-  focusRing: string; // Focus ring color (rgba string)
+  focusRing: string; // Focus ring color (solid — needs 3:1 non-text contrast per WCAG 2.2 SC 1.4.11)
 
   // Link colors (markdown / prose)
   link: string;
@@ -117,7 +117,7 @@ export function mix(base: string, tint: string, amount: number): string {
   return `#${[m(a.r, b.r), m(a.g, b.g), m(a.b, b.b)].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
 }
 
-/** Compute relative luminance per WCAG; used to pick black/white as on-accent text. */
+/** Compute relative luminance per WCAG; used to pick a foreground for a fill. */
 function relativeLuminance(hex: string): number {
   const { r, g, b } = hexToRgb(hex);
   const channel = (c: number) => {
@@ -125,6 +125,28 @@ function relativeLuminance(hex: string): number {
     return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
   };
   return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+}
+
+const ON_FILL_DARK = '#0e0f12';
+const ON_FILL_LIGHT = '#ffffff';
+
+/**
+ * Pick the more readable of near-black / white for text sitting on a `fill`
+ * background, by WCAG contrast ratio. A mid-tone fill (a pastel danger red,
+ * a pale accent) scores higher against near-black than against white even
+ * though it looks "dark enough" for white text, so compare ratios rather than
+ * thresholding luminance.
+ */
+function onColorFor(fill: string): string {
+  const fillLuminance = relativeLuminance(fill);
+  const ratioAgainst = (foreground: string) => {
+    const foregroundLuminance = relativeLuminance(foreground);
+    const [lighter, darker] = fillLuminance > foregroundLuminance
+      ? [fillLuminance, foregroundLuminance]
+      : [foregroundLuminance, fillLuminance];
+    return (lighter + 0.05) / (darker + 0.05);
+  };
+  return ratioAgainst(ON_FILL_DARK) >= ratioAgainst(ON_FILL_LIGHT) ? ON_FILL_DARK : ON_FILL_LIGHT;
 }
 
 // ============================================
@@ -150,7 +172,7 @@ export interface DepthColors {
 /** Fallback semantic hues used when a theme leaves a semantic token unset. */
 export const SEMANTIC_COLOR_DEFAULTS: Record<ColorScheme, SemanticColors> = {
   dark: { success: '#4ade80', warning: '#fbbf24', danger: '#f87171', info: '#60a5fa', purple: '#c084fc' },
-  light: { success: '#16a34a', warning: '#ca8a04', danger: '#dc2626', info: '#2563eb', purple: '#9333ea' },
+  light: { success: '#16a34a', warning: '#ca8a04', danger: '#dc2626', info: '#2563eb', purple: '#8f2be9' },
 };
 
 /**
@@ -160,7 +182,7 @@ export const SEMANTIC_COLOR_DEFAULTS: Record<ColorScheme, SemanticColors> = {
  */
 export const DEPTH_COLOR_DEFAULTS: Record<ColorScheme, DepthColors> = {
   dark: { depth0: '#818cf8', depth1: '#60a5fa', depth2: '#4ade80', depth3: '#c084fc', depth4: '#f472b6' },
-  light: { depth0: '#6366f1', depth1: '#2563eb', depth2: '#16a34a', depth3: '#9333ea', depth4: '#db2777' },
+  light: { depth0: '#6366f1', depth1: '#2563eb', depth2: '#16a34a', depth3: '#8f2be9', depth4: '#db2777' },
 };
 
 /** Resolve semantic colors, filling any unset token from the scheme defaults. */
@@ -195,19 +217,15 @@ export function resolveDepthColors(colors: PartialThemeColors, isDark: boolean):
  */
 export function withDerivedExtendedTokens(colors: PartialThemeColors): ThemeColors {
   const isDark = colors.colorScheme === 'dark';
-  const accentLuminance = relativeLuminance(colors.accent);
-  // Pick whichever of black/white has more contrast against the accent fill.
-  const onAccentDefault = accentLuminance > 0.45
-    ? '#0e0f12'
-    : '#ffffff';
 
   return {
     ...colors,
     surfaceCode: colors.surfaceCode ?? (isDark ? darken(colors.surface1, 0.3) : colors.surface3),
     surfaceSelected: colors.surfaceSelected ?? rgba(colors.accent, isDark ? 0.12 : 0.10),
-    textOnAccent: colors.textOnAccent ?? onAccentDefault,
+    textOnAccent: colors.textOnAccent ?? onColorFor(colors.accent),
     accentActive: colors.accentActive ?? darken(colors.accent, 0.12),
-    focusRing: colors.focusRing ?? rgba(colors.accent, isDark ? 0.45 : 0.35),
+    // Solid, not alpha: a translucent ring measured under 3:1 against the surface behind it (WCAG 2.2 SC 1.4.11).
+    focusRing: colors.focusRing ?? colors.accent,
     link: colors.link ?? colors.accent,
     linkVisited: colors.linkVisited ?? (isDark ? '#c69cff' : '#7a4fa0'),
   };
@@ -229,14 +247,17 @@ export const graphiteColors: ThemeColors = {
   surfaceCode: '#0a0b0d',
   surfaceSelected: 'rgba(110, 168, 254, 0.14)',
   textPrimary: '#e8eaef',
-  textSecondary: '#a8adb8',
-  textTertiary: '#7a8090',
-  textMuted: '#4f5563',
+  // Ladder re-spaced as a geometric progression (~1.44x/step) from textPrimary's ~15.9:1 down to
+  // textMuted's floor, so each step stays >=1.4:1 from its neighbor — not just individually >=4.5:1.
+  textSecondary: '#c3c5c9',
+  textTertiary: '#a1a4ac',
+  // Solved against surface2 (harder than surface0): 4.68:1 there, with muted the floor of the ladder.
+  textMuted: '#8c9199',
   textOnAccent: '#0e0f12',
   accent: '#6ea8fe',
   accentHover: '#8bbcff',
   accentActive: '#5a92e8',
-  focusRing: 'rgba(110, 168, 254, 0.45)',
+  focusRing: '#6ea8fe',
   link: '#8bbcff',
   linkVisited: '#c69cff',
   success: '#7ec27a',
@@ -255,22 +276,25 @@ export const fogColors: ThemeColors = {
   surface4: '#cdd2da',
   surfaceElevated: '#ffffff',
   surfaceCode: '#eef0f3',
-  surfaceSelected: 'rgba(79, 86, 230, 0.10)',
+  surfaceSelected: 'rgba(76, 83, 230, 0.10)',
   textPrimary: '#16181c',
-  textSecondary: '#4a4f57',
-  textTertiary: '#717680',
-  textMuted: '#a0a4ad',
+  // Ladder re-spaced as a geometric progression (~1.5x/step) from textPrimary's ~16.3:1 down to
+  // textMuted's floor, so each step stays >=1.4:1 from its neighbor — not just individually >=4.5:1.
+  textSecondary: '#36373b',
+  textTertiary: '#505156',
+  // Solved against surface2 (harder than surface0): 4.67:1 there, with muted the floor of the ladder.
+  textMuted: '#65666c',
   textOnAccent: '#ffffff',
-  accent: '#4f56e6',
+  accent: '#4c53e6',
   accentHover: '#6970f0',
   accentActive: '#3d44c8',
-  focusRing: 'rgba(79, 86, 230, 0.35)',
-  link: '#4f56e6',
+  focusRing: '#4c53e6',
+  link: '#4c53e6',
   linkVisited: '#7a4fa0',
-  success: '#1f8a4c',
-  warning: '#c87514',
-  danger: '#d04444',
-  info: '#1976d2',
+  success: '#1a7541',
+  warning: '#95570f',
+  danger: '#bf3030',
+  info: '#1667b8',
 };
 
 // ============================================
@@ -354,8 +378,10 @@ export function generateThemeVariables(colors: ThemeColors): Record<string, stri
     '--color-accent': colors.accent,
     '--color-accent-hover': colors.accentHover,
     '--color-accent-active': colors.accentActive,
-    '--color-accent-muted': rgba(colors.accent, mutedOpacity),
-    '--color-accent-subtle': rgba(colors.accent, subtleOpacity),
+    // Composited over surface1, not alpha: a translucent fill's effective contrast depends on
+    // whatever surface sits behind it, so the same badge can pass on a panel and fail on a hover row.
+    '--color-accent-muted': mix(colors.surface1, colors.accent, mutedOpacity),
+    '--color-accent-subtle': mix(colors.surface1, colors.accent, subtleOpacity),
     '--color-focus-ring': colors.focusRing,
 
     // Links
@@ -364,15 +390,16 @@ export function generateThemeVariables(colors: ThemeColors): Record<string, stri
 
     // Semantic colors
     '--color-success': success,
-    '--color-success-muted': rgba(success, mutedOpacity),
+    '--color-success-muted': mix(colors.surface1, success, mutedOpacity),
     '--color-warning': warning,
-    '--color-warning-muted': rgba(warning, mutedOpacity),
+    '--color-warning-muted': mix(colors.surface1, warning, mutedOpacity),
     '--color-danger': danger,
-    '--color-danger-muted': rgba(danger, mutedOpacity),
+    '--color-danger-muted': mix(colors.surface1, danger, mutedOpacity),
+    '--color-text-on-danger': onColorFor(danger),
     '--color-info': info,
-    '--color-info-muted': rgba(info, mutedOpacity),
+    '--color-info-muted': mix(colors.surface1, info, mutedOpacity),
     '--color-purple': purple,
-    '--color-purple-subtle': rgba(purple, mutedOpacity),
+    '--color-purple-subtle': mix(colors.surface1, purple, mutedOpacity),
 
     // Depth colors (plan card hierarchy)
     '--color-depth-0': depth0,
@@ -394,13 +421,19 @@ export function generateThemeVariables(colors: ThemeColors): Record<string, stri
       : 'inset 1px 0 0 rgba(255, 255, 255, 0.7), -2px 0 8px rgba(0, 0, 0, 0.05)',
     '--shadow-card': 'none',
     '--shadow-card-hover': 'none',
+    '--shadow-card-lift': isDark
+      ? `0 1px 3px rgba(0, 0, 0, 0.08)`
+      : `0 1px 3px rgba(0, 0, 0, 0.03)`,
+    '--shadow-card-lift-hover': isDark
+      ? `0 2px 6px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.06)`
+      : `0 2px 6px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.02)`,
 
     // Canvas dots — subtle orientation cues
     '--canvas-dot-color': rgba(colors.textPrimary, 0.02),
 
-    // Scrollbar
-    '--scrollbar-thumb': rgba(colors.textPrimary, isDark ? 0.08 : 0.12),
-    '--scrollbar-thumb-hover': rgba(colors.textPrimary, isDark ? 0.15 : 0.2),
+    // Scrollbar — alpha raised to actually clear 3:1 against surface-1 (0.08/0.12 measured ~1.2:1, invisible)
+    '--scrollbar-thumb': rgba(colors.textPrimary, isDark ? 0.4 : 0.5),
+    '--scrollbar-thumb-hover': rgba(colors.textPrimary, isDark ? 0.55 : 0.62),
 
     // Overlay
     '--overlay-color': isDark ? 'rgba(0, 0, 0, 0.6)' : 'rgba(0, 0, 0, 0.4)',

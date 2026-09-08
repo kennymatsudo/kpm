@@ -8,7 +8,6 @@ import {
   saveDroppedFile,
 } from '../../services/attachmentService';
 import { useShallow } from 'zustand/react/shallow';
-import { ChatColumn } from './ChatColumn';
 import { ModelSelector } from './ModelSelector';
 import { AttachmentChip } from './AttachmentChip';
 import { SlashCommandMenu } from './SlashCommandMenu';
@@ -16,27 +15,14 @@ import { useSlashCommandTypeahead } from './useSlashCommandTypeahead';
 import { CHAT_STYLES } from '../../constants/chatStyles';
 import { CODEX_CHAT_MODELS } from '../../../shared/types';
 import { getProviderCapabilities } from '../../../shared/providerCapabilities';
-import type { ChatAttachment, FocusedResource, ChatViewMode } from '../../../shared/types';
+import type { ChatAttachment, FocusedResource } from '../../../shared/types';
 import { findPiProviderOption } from '../../stores/chat/piProviderSelection';
 import { resolveSessionDisplayModel } from '../../stores/chat/sessionModel';
 
-const WORKSPACE_PLACEHOLDERS = [
-  'Reply or ask a follow-up…',
-  'Explain how authentication works...',
-  'Draft a technical spec for...',
-  'Summarize these files...',
-  'Help me understand this codebase...',
-];
-
-const PLAN_PLACEHOLDERS = [
-  'Reply or ask a follow-up…',
-  'Create a task to refactor the...',
-  'Break this feature into subtasks...',
-  "What's left to do on this project?",
-  'Generate a test plan for...',
-];
-
-const DEFAULT_PLACEHOLDER = 'Reply or ask a follow-up…';
+/** Shown once the transcript has something in it to follow up on. */
+const FOLLOW_UP_PLACEHOLDER = 'Reply or ask a follow-up…';
+/** Shown on an empty conversation, where "follow-up" refers to nothing. */
+const OPENING_PLACEHOLDER = 'Ask anything about this project…';
 
 const NO_ATTACHMENTS: ChatAttachment[] = [];
 const NO_SUGGESTIONS: string[] = [];
@@ -47,11 +33,9 @@ interface ChatInputProps {
   disabled?: boolean;
   /** Handler for adding files dragged from file tree to chat context */
   addFocusedResource?: (resource: FocusedResource) => void;
-  /** Current view mode for placeholder customization */
-  currentView?: ChatViewMode;
 }
 
-export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, currentView }: ChatInputProps) {
+export function ChatInput({ onSend, onCancel, disabled, addFocusedResource }: ChatInputProps) {
   // Draft message and streaming state from viewed session
   const {
     viewedSessionId,
@@ -61,6 +45,7 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
     viewedSessionContextWindow,
     attachments,
     isStreaming,
+    hasMessages,
     suggestions,
     lastTurnUsage,
     choiceSendAllowed,
@@ -83,6 +68,7 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
           : undefined,
       attachments: session?.pendingAttachments ?? NO_ATTACHMENTS,
       isStreaming: session?.isStreaming ?? false,
+      hasMessages: (session?.messages.length ?? 0) > 0,
       suggestions: session?.suggestions ?? NO_SUGGESTIONS,
       lastTurnUsage: session?.lastTurnUsage ?? null,
       choiceSendAllowed: session?.choice?.send.allowed ?? true,
@@ -195,11 +181,8 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
   const [isPickingFiles, setIsPickingFiles] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Placeholder: use SDK suggestions when available, fall back to static rotation
-  const fallbackPlaceholders = currentView === 'plan' ? PLAN_PLACEHOLDERS : WORKSPACE_PLACEHOLDERS;
-  // Start with the canonical "Reply or ask a follow-up…" prompt; rotate to
-  // view-specific examples only after the user focuses the input.
-  const [fallbackIndex, setFallbackIndex] = useState(0);
+  // Placeholder: the provider's own suggestions when it has any, else a resting prompt.
+  const restingPlaceholder = hasMessages ? FOLLOW_UP_PLACEHOLDER : OPENING_PLACEHOLDER;
   const [suggestionIndex, setSuggestionIndex] = useState(0);
 
   // Reset suggestion index when new suggestions arrive
@@ -208,20 +191,20 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
     setSuggestionIndex(0);
   }, [suggestionsKey]);
 
-  // Rotate placeholder on focus
+  // Focus cycles the provider's own suggestions, which Tab then accepts. It no
+  // longer cycles a canned list: text that changes under you every time you
+  // click into the box is noise on a surface built for reading.
   const handleFocus = useCallback(() => {
     if (visibleSuggestions.length > 0) {
       setSuggestionIndex((prev) => (prev + 1) % visibleSuggestions.length);
-    } else {
-      setFallbackIndex((prev) => (prev + 1) % fallbackPlaceholders.length);
     }
-  }, [visibleSuggestions.length, fallbackPlaceholders.length]);
+  }, [visibleSuggestions.length]);
 
   const currentPlaceholder = disabled
     ? 'Select a project first'
     : visibleSuggestions.length > 0
       ? visibleSuggestions[suggestionIndex % visibleSuggestions.length]
-      : (fallbackPlaceholders[fallbackIndex] ?? DEFAULT_PLACEHOLDER);
+      : restingPlaceholder;
 
   // Auto-resize textarea
   useEffect(() => {
@@ -500,12 +483,11 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
   return (
     <div
       ref={containerRef}
-      className={`flex-shrink-0 p-2 transition-colors ${isDragOver ? 'bg-accent/10 ring-2 ring-accent/50 ring-inset rounded-lg' : ''}`}
+      className={`flex-shrink-0 px-3 pb-2 pt-1 transition-colors ${isDragOver ? 'bg-accent/10 ring-2 ring-accent/50 ring-inset' : ''}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <ChatColumn>
       {/* Drop zone indicator */}
       {isDragOver && (
         <div className="collapse-reveal mb-2 px-3 py-2 bg-accent-subtle text-accent text-xs rounded-lg text-center">
@@ -569,7 +551,12 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
           showEmptyState={slashTypeahead.showEmptyState}
         />
       )}
-      <div className="rounded-xl border border-border-default bg-surface-2/60 transition-all duration-150 focus-within:border-accent/40 focus-within:bg-surface-2/80 focus-within:ring-4 focus-within:ring-accent/10">
+      {/* The focus treatment belongs to the panel, not the bare textarea, because
+          the panel is what carries the border. It answers the textarea alone —
+          focus landing on the model picker or the attach button must not light
+          up the whole composer — and only on focus-visible, so a click to start
+          typing does not draw a ring. */}
+      <div className="rounded-md border border-border-default bg-surface-2/60 transition-colors duration-150 focus-within:bg-surface-2/80 has-[textarea:focus-visible]:border-accent has-[textarea:focus-visible]:ring-2 has-[textarea:focus-visible]:ring-focus-ring">
         <textarea
           ref={textareaRef}
           value={message}
@@ -585,7 +572,10 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
           placeholder={currentPlaceholder}
           disabled={disabled || sendDisabledWhileStreaming}
           rows={1}
-          className="w-full bg-transparent border-0 outline-none px-3.5 pt-3 pb-1 resize-none text-sm leading-relaxed text-text-primary placeholder:text-text-muted caret-accent selection:bg-accent/30 transition-[height] duration-100 ease-out"
+          // 16px rather than the 15px other inputs use: what you type here is
+          // read back in the transcript at 16px, and the two sizes side by side
+          // make the composer look like a different document.
+          className="w-full bg-transparent border-0 outline-none px-3 pt-2.5 pb-1 resize-none text-base leading-relaxed text-text-primary placeholder:text-text-muted caret-accent selection:bg-accent/30 transition-[height] duration-100 ease-out"
           style={{ minHeight: `${CHAT_STYLES.composer.minHeightPx}px`, maxHeight: `${CHAT_STYLES.composer.maxHeightPx}px` }}
         />
 
@@ -641,7 +631,6 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource, curr
         </div>
       </div>
       </div>
-      </ChatColumn>
     </div>
   );
 }

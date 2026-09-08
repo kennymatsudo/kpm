@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import { SidebarSection } from './SidebarSection';
 import { RepoItem } from './RepoItem';
+import { GitBranchIcon, PlusIcon } from '../icons';
 import { getBaseName } from '../../utils/path';
 import type { RepoEnvironmentMode } from '../../../shared/types';
 
@@ -17,7 +18,7 @@ interface RepoListSectionProps {
   onAddRepo: () => void;
   isRepoFocused: (repoId: string) => boolean;
   onToggleRepoFocus: (repoId: string) => void;
-  onRepoContextMenu: (e: React.MouseEvent, repoId: string) => void;
+  onOpenRepoMenu: (repoId: string, point: { x: number; y: number }) => void;
 }
 
 export const RepoListSection = memo(function RepoListSection({
@@ -28,40 +29,32 @@ export const RepoListSection = memo(function RepoListSection({
   onAddRepo,
   isRepoFocused,
   onToggleRepoFocus,
-  onRepoContextMenu,
+  onOpenRepoMenu,
 }: RepoListSectionProps) {
   return (
     <SidebarSection
       title="Repositories"
+      icon={<GitBranchIcon className="w-3.5 h-3.5 text-text-tertiary flex-shrink-0" />}
       isCollapsed={isCollapsed}
       onToggleCollapsed={onToggleCollapsed}
       className="flex-none"
       action={
         <button
           onClick={onAddRepo}
-          className="p-1.5 rounded-md text-text-muted hover:text-accent hover:bg-accent/10 transition-all"
+          className="p-1.5 rounded-sm text-text-muted hover:text-text-primary hover:bg-surface-3 transition-colors"
           title="Add repository"
+          aria-label="Add repository"
         >
-          <svg
-            className="w-3.5 h-3.5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 4v16m8-8H4"
-            />
-          </svg>
+          <PlusIcon className="w-3.5 h-3.5" />
         </button>
       }
     >
       <div className="max-h-56 overflow-y-auto pb-1" style={{ scrollbarGutter: 'stable' }}>
         {repos.length === 0 ? (
           <div className="px-3 py-2 mx-2">
-            <p className="text-xs text-text-muted">No repositories connected</p>
+            <p className="text-xs text-text-muted leading-relaxed">
+              No repositories connected. Add the codebases you want to read and change.
+            </p>
           </div>
         ) : (
           repos.map((repo) => (
@@ -75,7 +68,7 @@ export const RepoListSection = memo(function RepoListSection({
               activeWorktreePath={repo.active_worktree_path}
               isFocused={isRepoFocused(repo.id)}
               onToggleFocus={onToggleRepoFocus}
-              onContextMenu={onRepoContextMenu}
+              onOpenMenu={onOpenRepoMenu}
             />
           ))
         )}

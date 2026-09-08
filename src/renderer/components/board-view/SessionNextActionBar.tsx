@@ -32,7 +32,7 @@ const TONE_CLASS: Record<NextAction['tone'], string> = {
 };
 
 const PRIMARY_BTN =
-  'inline-flex h-7 items-center justify-center gap-1.5 rounded border border-accent bg-accent px-2.5 text-xxs font-medium text-white transition-colors hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-50';
+  'inline-flex h-7 items-center justify-center gap-1.5 rounded border border-accent bg-accent px-2.5 text-xxs font-medium text-text-on-accent transition-colors hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-50';
 const SECONDARY_BTN =
   'inline-flex h-7 items-center justify-center gap-1.5 rounded border border-border-subtle bg-surface-2 px-2.5 text-xxs font-medium text-text-secondary transition-colors hover:bg-surface-3 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50';
 

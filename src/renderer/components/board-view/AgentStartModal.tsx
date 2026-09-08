@@ -227,7 +227,7 @@ export const AgentStartModal = memo(function AgentStartModal({
       isOpen
       onClose={onClose}
       size="3xl"
-      className="flex h-[calc(100vh-2rem)] max-h-[860px] flex-col overflow-hidden sm:h-[min(88vh,860px)]"
+      className="h-[880px]"
     >
       <ModalHeader
         onClose={onClose}
@@ -237,7 +237,7 @@ export const AgentStartModal = memo(function AgentStartModal({
         Start Agent
       </ModalHeader>
 
-      <ModalBody className="flex-1 min-h-0 overflow-hidden p-0">
+      <ModalBody scrollable={false} className="p-0">
         <div
           className="grid h-full min-h-0 grid-rows-[minmax(0,0.48fr)_minmax(0,0.52fr)] lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.1fr)] lg:grid-rows-none"
           onKeyDown={handleKeyDown}
@@ -400,7 +400,7 @@ export const AgentStartModal = memo(function AgentStartModal({
                       className={`
                         flex-1 rounded px-2 py-1.5 text-xs font-medium transition-colors
                         ${environmentMode === opt.value
-                          ? 'bg-accent text-white'
+                          ? 'bg-accent text-text-on-accent'
                           : 'border border-border-subtle bg-surface-1 text-text-secondary hover:bg-surface-2'
                         }
                       `}
@@ -497,7 +497,7 @@ export const AgentStartModal = memo(function AgentStartModal({
           disabled={!selectedRepoId || !selectedPlaybookId || isStarting || loadingBranches || Boolean(resolvedPlan?.steps.some((step) => step.runs.some((run) => !run)))}
           className="
             px-4 py-1.5 rounded-lg text-sm font-medium
-            bg-accent text-white hover:bg-accent/90
+            bg-accent text-text-on-accent hover:bg-accent/90
             disabled:opacity-50 disabled:cursor-not-allowed
             transition-colors flex shrink-0 items-center gap-2
           "

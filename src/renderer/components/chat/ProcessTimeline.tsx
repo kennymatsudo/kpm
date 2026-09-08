@@ -1,6 +1,7 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { Activity, ActivityType, MessageSegment } from '../../../shared/types';
 import { formatWorkedFor, summarizeActivities } from './processSummary';
+import { useTurnDisclosure } from './useTurnDisclosure';
 
 type Step =
   | { kind: 'thought'; content: string; key: string }
@@ -30,6 +31,8 @@ interface ProcessTimelineProps {
   hasAnswer?: boolean;
   /** Wall-clock duration of the finished turn this strip belongs to. */
   durationMs?: number;
+  /** Identity used to remember whether the user opened this strip. */
+  disclosureKey?: string;
 }
 
 const TOOL_NAME_BY_TYPE: Record<ActivityType, string> = {
@@ -139,18 +142,18 @@ function toolStatus(activity: Activity, isActive: boolean): React.ReactNode {
     return (
       <span className="flex items-center gap-1.5">
         {activity.elapsedSeconds != null && (
-          <span className="font-mono text-xxs text-text-muted/60 tabular-nums">
+          <span className="font-mono text-tiny text-text-muted tabular-nums">
             {activity.elapsedSeconds}s
           </span>
         )}
-        <span className="pulse-dot" style={{ width: 6, height: 6 }} />
+        <span className="pulse-dot" style={{ width: 6, height: 6 }} aria-hidden="true" />
       </span>
     );
   }
   if (activity.diffStats) {
     const { additions, deletions } = activity.diffStats;
     return (
-      <span className="font-mono text-xxs flex items-center gap-1">
+      <span className="font-mono text-tiny flex items-center gap-1">
         {additions > 0 && <span className="text-success">+{additions}</span>}
         {deletions > 0 && <span className="text-danger">-{deletions}</span>}
       </span>
@@ -160,7 +163,7 @@ function toolStatus(activity: Activity, isActive: boolean): React.ReactNode {
   // a "0 matches" / "N matches" hint when present; otherwise use a checkmark.
   const matchHint = extractMatchHint(activity.detail);
   if (matchHint) {
-    return <span className="font-mono text-text-muted/70">{matchHint}</span>;
+    return <span className="font-mono text-text-muted">{matchHint}</span>;
   }
   return <CheckIcon />;
 }
@@ -180,6 +183,7 @@ const CheckIcon = memo(function CheckIcon() {
       fill="none"
       stroke="currentColor"
       viewBox="0 0 24 24"
+      role="img"
       aria-label="completed"
     >
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.25} d="M5 13l4 4L19 7" />
@@ -202,7 +206,7 @@ const ToolRow = memo(function ToolRow({
   const expandable = hasHunks || hasDetail;
 
   return (
-    <div className={`${indent ? 'pl-8 pr-3' : 'px-3'} py-1`}>
+    <div className={`${indent ? 'pl-5' : ''} py-1`}>
       <button
         type="button"
         onClick={expandable ? () => setExpanded((v) => !v) : undefined}
@@ -213,10 +217,10 @@ const ToolRow = memo(function ToolRow({
         aria-expanded={expandable ? expanded : undefined}
       >
         {!indent && <ToolGlyph />}
-        <span className="text-accent flex-shrink-0">{getToolName(activity)}</span>
+        <span className="text-text-primary flex-shrink-0">{getToolName(activity)}</span>
         {activity.label && (
           <span
-            className="text-text-muted/80 truncate min-w-0"
+            className="text-text-secondary truncate min-w-0"
             title={activity.detail ?? activity.label}
           >
             {activity.label}
@@ -229,7 +233,7 @@ const ToolRow = memo(function ToolRow({
       {expanded && expandable && (
         <div className={`collapse-reveal mt-1.5 ${indent ? 'ml-0' : 'ml-5'}`}>
           {hasHunks ? (
-            <div className="px-2 py-1 bg-surface-1 border border-border-subtle/60 rounded font-mono text-xxs leading-relaxed overflow-x-auto">
+            <div className="px-2 py-1 bg-surface-1 border border-border-subtle/60 rounded-sm font-mono text-tiny leading-relaxed overflow-x-auto">
               {activity.diffHunks!.map((line, idx) => {
                 const cls = line.startsWith('+')
                   ? 'text-success'
@@ -244,7 +248,7 @@ const ToolRow = memo(function ToolRow({
               })}
             </div>
           ) : (
-            <div className="font-mono text-xxs text-text-muted/70 break-all">
+            <div className="font-mono text-tiny text-text-secondary break-all">
               {activity.detail ?? activity.label}
             </div>
           )}
@@ -279,7 +283,7 @@ const ToolGroupRow = memo(function ToolGroupRow({
   );
 
   return (
-    <div className="px-3 py-1">
+    <div className="py-1">
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
@@ -287,13 +291,13 @@ const ToolGroupRow = memo(function ToolGroupRow({
         aria-expanded={expanded}
       >
         <Chevron expanded={expanded} />
-        <span className="text-accent flex-shrink-0">{toolName}</span>
-        <span className="text-text-muted/60 flex-shrink-0">×{count}</span>
+        <span className="text-text-primary flex-shrink-0">{toolName}</span>
+        <span className="text-text-muted flex-shrink-0">×{count}</span>
         <span className="ml-auto flex-shrink-0 flex items-center">
           {isActive ? (
-            <span className="pulse-dot" style={{ width: 6, height: 6 }} />
+            <span className="pulse-dot" style={{ width: 6, height: 6 }} aria-hidden="true" />
           ) : aggDiffs.hasDiffs ? (
-            <span className="font-mono text-xxs flex items-center gap-1">
+            <span className="font-mono text-tiny flex items-center gap-1">
               {aggDiffs.additions > 0 && (
                 <span className="text-success">+{aggDiffs.additions}</span>
               )}
@@ -333,7 +337,7 @@ const ThoughtRow = memo(function ThoughtRow({
   const isLong = content.length > THOUGHT_PREVIEW_CHARS || content.includes('\n');
 
   return (
-    <div className="px-3 py-1">
+    <div className="py-1">
       <button
         type="button"
         onClick={isLong ? () => setExpanded((v) => !v) : undefined}
@@ -346,11 +350,11 @@ const ThoughtRow = memo(function ThoughtRow({
         <Chevron expanded={expanded && isLong} dim={!isLong} />
         <span className="text-text-muted">Thinking</span>
         {!expanded && isActive && (
-          <span className="ml-2 pulse-dot" style={{ width: 5, height: 5 }} />
+          <span className="ml-2 pulse-dot" style={{ width: 5, height: 5 }} aria-hidden="true" />
         )}
       </button>
       {expanded && isLong && (
-        <p className="collapse-reveal mt-1.5 ml-5 text-xxs text-text-muted/80 italic whitespace-pre-wrap break-words">
+        <p className="collapse-reveal mt-1.5 ml-5 text-xs text-text-secondary whitespace-pre-wrap break-words">
           {content}
         </p>
       )}
@@ -362,7 +366,7 @@ const Chevron = memo(function Chevron({ expanded, dim }: { expanded: boolean; di
   return (
     <svg
       className={`w-3 h-3 flex-shrink-0 transition-transform ${expanded ? 'rotate-90' : ''} ${
-        dim ? 'text-text-muted/30' : 'text-text-muted/70'
+        dim ? 'text-text-tertiary' : 'text-text-muted'
       }`}
       fill="none"
       stroke="currentColor"
@@ -376,7 +380,7 @@ const Chevron = memo(function Chevron({ expanded, dim }: { expanded: boolean; di
 const ToolGlyph = memo(function ToolGlyph() {
   return (
     <svg
-      className="w-3 h-3 flex-shrink-0 text-text-muted/60"
+      className="w-3 h-3 flex-shrink-0 text-text-muted"
       fill="none"
       stroke="currentColor"
       viewBox="0 0 24 24"
@@ -398,6 +402,7 @@ export const ProcessTimeline = memo(function ProcessTimeline({
   elapsedSeconds,
   hasAnswer = false,
   durationMs,
+  disclosureKey,
 }: ProcessTimelineProps) {
   const steps = useMemo(
     () => buildSteps({ segments, streamingThinking, streamingActivities }),
@@ -405,8 +410,7 @@ export const ProcessTimeline = memo(function ProcessTimeline({
   );
   const rows = useMemo(() => collapseToolRuns(steps), [steps]);
 
-  const [expanded, setExpanded] = useState(false);
-  const toggleExpanded = useCallback(() => setExpanded((value) => !value), []);
+  const [expanded, toggleExpanded] = useTurnDisclosure(disclosureKey);
 
   const bodyRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -440,22 +444,25 @@ export const ProcessTimeline = memo(function ProcessTimeline({
 
   return (
     <div
-      className={`rounded-md border border-border-subtle/60 bg-surface-2/30 overflow-hidden ${
-        hasAnswer ? 'mt-2 mb-4' : 'my-2'
-      }`}
+      className={`chat-process-channel ${hasAnswer ? 'mt-3 mb-5' : 'my-3'}`}
     >
       <button
         type="button"
         onClick={toggleExpanded}
         disabled={steps.length === 0}
-        className="w-full flex items-center gap-2 px-3 py-1.5 text-xxs text-text-muted hover:text-text-secondary transition-colors text-left"
+        className="w-full flex items-center gap-2 py-1.5 font-mono text-tiny text-text-muted hover:text-text-secondary transition-colors text-left"
         aria-expanded={expanded}
+        // The pulse dot is the only "still alive" signal on screen and has no
+        // text of its own, so the state rides on the button's own name.
+        aria-label={`${label || 'Working'}${isStreaming ? ', still running' : ''}`}
       >
-        {steps.length === 0 ? (
-          <span className="pulse-dot flex-shrink-0" style={{ width: 6, height: 6 }} />
-        ) : (
-          <Chevron expanded={expanded} />
-        )}
+        <span className="chat-process-marker" aria-hidden="true">
+          {steps.length === 0 ? (
+            <span className="pulse-dot block" style={{ width: 6, height: 6 }} />
+          ) : (
+            <Chevron expanded={expanded} />
+          )}
+        </span>
         <span className="truncate">{label || 'Working'}</span>
         {hasDiff && (
           <span className="ml-auto flex-shrink-0 font-mono flex items-center gap-1">
@@ -467,13 +474,14 @@ export const ProcessTimeline = memo(function ProcessTimeline({
           <span
             className={`pulse-dot flex-shrink-0 ${hasDiff ? '' : 'ml-auto'}`}
             style={{ width: 6, height: 6 }}
+            aria-hidden="true"
           />
         )}
       </button>
       {expanded && steps.length > 0 && (
         <div
           ref={bodyRef}
-          className={`${EXPANDED_BODY_MAX_HEIGHT} overflow-y-auto border-t border-border-subtle/40`}
+          className={`${EXPANDED_BODY_MAX_HEIGHT} overflow-y-auto pb-1`}
         >
           {rows.map((row, idx) => {
             const isLast = idx === rows.length - 1;

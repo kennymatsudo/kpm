@@ -28,14 +28,14 @@ function ActivityIcon({ type, status }: { type: AgentActivity['type']; status?: 
   }
   if (status === 'failed') {
     return (
-      <svg className="w-3 h-3 text-red-400" viewBox="0 0 16 16" fill="currentColor">
+      <svg className="w-3 h-3 text-danger" viewBox="0 0 16 16" fill="currentColor">
         <path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1ZM6.354 5.646a.5.5 0 1 0-.708.708L7.293 8l-1.647 1.646a.5.5 0 0 0 .708.708L8 8.707l1.646 1.647a.5.5 0 0 0 .708-.708L8.707 8l1.647-1.646a.5.5 0 0 0-.708-.708L8 7.293 6.354 5.646Z" />
       </svg>
     );
   }
   if (status === 'success') {
     return (
-      <svg className="w-3 h-3 text-emerald-400" viewBox="0 0 16 16" fill="currentColor">
+      <svg className="w-3 h-3 text-success" viewBox="0 0 16 16" fill="currentColor">
         <path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm3.354 5.354-4 4a.5.5 0 0 1-.708 0l-2-2a.5.5 0 1 1 .708-.708L7 9.293l3.646-3.647a.5.5 0 0 1 .708.708Z" />
       </svg>
     );
@@ -43,7 +43,13 @@ function ActivityIcon({ type, status }: { type: AgentActivity['type']; status?: 
 
   // Type-based default icons
   if (type === 'thinking') {
-    return <span className="w-3 h-3 flex items-center justify-center text-text-muted text-[10px]">...</span>;
+    return (
+      <svg className="w-3 h-3 text-text-muted" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+        <circle cx="3" cy="8" r="1.5" />
+        <circle cx="8" cy="8" r="1.5" />
+        <circle cx="13" cy="8" r="1.5" />
+      </svg>
+    );
   }
 
   return (
@@ -57,9 +63,9 @@ function phaseToneClass(tone: NonNullable<CardActivityLineProps['phaseTone']>): 
   switch (tone) {
     case 'accent': return 'text-accent';
     case 'info': return 'text-info';
-    case 'warning': return 'text-amber-500';
-    case 'danger': return 'text-red-400';
-    case 'success': return 'text-emerald-400';
+    case 'warning': return 'text-warning';
+    case 'danger': return 'text-danger';
+    case 'success': return 'text-success';
     case 'neutral': return 'text-text-muted';
   }
 }
@@ -79,7 +85,7 @@ export const CardActivityLine = memo(function CardActivityLine({
   // Failed state
   if (agentState === 'failed') {
     return (
-      <div className="flex items-center gap-1.5 mt-1.5 text-tiny text-red-400 truncate">
+      <div className="flex items-center gap-1.5 mt-1.5 text-tiny text-danger truncate">
         <svg className="w-3 h-3 shrink-0" viewBox="0 0 16 16" fill="currentColor">
           <path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1ZM6.354 5.646a.5.5 0 1 0-.708.708L7.293 8l-1.647 1.646a.5.5 0 0 0 .708.708L8 8.707l1.646 1.647a.5.5 0 0 0 .708-.708L8.707 8l1.647-1.646a.5.5 0 0 0-.708-.708L8 7.293 6.354 5.646Z" />
         </svg>
@@ -102,7 +108,7 @@ export const CardActivityLine = memo(function CardActivityLine({
 
   if (isSessionStale) {
     return (
-      <div className="flex items-center gap-1.5 mt-1.5 text-tiny text-amber-500 truncate">
+      <div className="flex items-center gap-1.5 mt-1.5 text-tiny text-warning truncate">
         <svg className="w-3 h-3 shrink-0" viewBox="0 0 16 16" fill="currentColor">
           <path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm-.5 3a.5.5 0 0 1 1 0v4a.5.5 0 0 1-1 0V4Zm.5 7.5a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5Z" />
         </svg>

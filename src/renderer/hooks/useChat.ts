@@ -5,9 +5,7 @@ import type { ChatAttachment, ChatViewMode } from '../../shared/types';
 import {
   cancelChatSession,
   cancelQueuedChatMessage,
-  disconnectChatSession,
   sendChatMessage,
-  startNewBackendChatSession,
 } from '../services/chatService';
 
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -28,22 +26,18 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
     setError,
     setRetrying,
     finalizeMessage,
-    markSessionInactive,
     viewedSessionId,
     getChatSessionId,
     getOrCreateSession,
-    startNewChatSession,
     removeQueuedUserMessage,
   } = useChatStore(useShallow((state) => ({
     addUserMessage: state.addUserMessage,
     setError: state.setError,
     setRetrying: state.setRetrying,
     finalizeMessage: state.finalizeMessage,
-    markSessionInactive: state.markSessionInactive,
     viewedSessionId: state.viewedSessionId,
     getChatSessionId: state.getChatSessionId,
     getOrCreateSession: state.getOrCreateSession,
-    startNewChatSession: state.startNewChatSession,
     removeQueuedUserMessage: state.removeQueuedUserMessage,
   })));
 
@@ -177,23 +171,6 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
     }
   }, [projectId, currentView, getChatSessionId, getOrCreateSession, setRetrying, setError]);
 
-  const newSession = useCallback(async (keepCurrentActive = true) => {
-    if (!projectId) return;
-
-    if (!keepCurrentActive && viewedSessionId) {
-      // End current session before starting new one
-      await disconnectChatSession(projectId, viewedSessionId);
-    }
-
-    // Start a new chat session in the store
-    const newSessionId = startNewChatSession(keepCurrentActive);
-
-    // Reset tokens for new session
-    await startNewBackendChatSession(projectId);
-
-    return newSessionId;
-  }, [projectId, viewedSessionId, startNewChatSession]);
-
   const cancel = useCallback(() => {
     if (!projectId || !viewedSessionId) return;
 
@@ -224,11 +201,5 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode) {
     });
   }, [projectId, viewedSessionId]);
 
-  const closeSession = useCallback(async (chatSessionId: string) => {
-    if (!projectId) return;
-    await disconnectChatSession(projectId, chatSessionId);
-    markSessionInactive(chatSessionId);
-  }, [projectId, markSessionInactive]);
-
-  return { send, retry, newSession, cancel, cancelQueued, closeSession };
+  return { send, retry, cancel, cancelQueued };
 }

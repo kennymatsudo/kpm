@@ -37,6 +37,7 @@ function renderStreaming(streamSegments: MessageSegment[]): string {
         activities={[]}
         elapsedSeconds={3}
         isMergeableContinuation={false}
+        startedAt={null}
       />
     </TooltipProvider>
   );

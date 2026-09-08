@@ -1,142 +1,28 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+/**
+ * MarkdownDocumentModal - a markdown file opened as a dialog, from the planning
+ * view's file tree or as a proposed document awaiting acceptance.
+ *
+ * The reading, editing, and find behaviour all come from the shared
+ * `MarkdownEditor`, which the workspace file panel also mounts, so a file looks
+ * and behaves the same wherever you opened it. What is specific here is the
+ * dialog frame: a buffered draft with an explicit Save (a proposal has to be
+ * accepted, not autosaved), a diff against the version on disk, and the
+ * reconciliation banner for a file that changed underneath an unsaved edit.
+ */
+
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { m, AnimatePresence } from 'framer-motion';
-import { Markdown } from 'markdown-to-jsx';
-import { BookOpenIcon, CloseIcon } from '../icons';
+import { BookOpenIcon, CloseIcon, WarningTriangleIcon } from '../icons';
 import { MotionButton } from '../ui/MotionButton';
+import { Tooltip } from '../ui/Tooltip';
+import { ConfirmActionDialog } from '../ui/ConfirmActionDialog';
+import { MarkdownEditorLazy, type MarkdownView } from '../ui';
 import { DiffViewer, computeDiff, getDiffStatsFromDiff } from '../ui/DiffViewer';
 import { Z_INDEX } from '../../constants/zIndex';
-import { useMarkdownSearch, useMarkdownFormatting, useMarkdownKeyboard } from './hooks';
-import { transformPlanRefs, addSoftBreaks } from '../../utils/markdown';
-import { splitFrontmatter } from '../../utils/frontmatter';
-import { FrontmatterBlock } from '../ui/FrontmatterBlock';
 
-/**
- * Preview scroll offsets keyed by `documentKey`, so reopening a document
- * restores the reader's place. Session-only by design — not worth persisting.
- */
-const previewScrollMemory = new Map<string, number>();
-
-// Toolbar button component
-interface ToolbarButtonProps {
-  onClick: () => void;
-  title: string;
-  children: React.ReactNode;
-  className?: string;
-}
-
-function ToolbarButton({ onClick, title, children, className = '' }: ToolbarButtonProps) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      className={`p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-1
-                  transition-colors ${className}`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function ToolbarDivider() {
-  return <div className="w-px h-5 bg-border-default mx-1" />;
-}
-
-// Icons for toolbar
-const BoldIcon = () => (
-  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M6 4h8a4 4 0 014 4 4 4 0 01-4 4H6V4zm0 8h9a4 4 0 014 4 4 4 0 01-4 4H6v-8z" stroke="currentColor" strokeWidth="2" fill="none" />
-  </svg>
-);
-
-const ItalicIcon = () => (
-  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <line x1="19" y1="4" x2="10" y2="4" />
-    <line x1="14" y1="20" x2="5" y2="20" />
-    <line x1="15" y1="4" x2="9" y2="20" />
-  </svg>
-);
-
-const StrikethroughIcon = () => (
-  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M17.5 12h-11M6 16.5c0 1.5 1.5 3 4.5 3 4 0 5-2 5-3.5 0-2-1.5-3-5-3" />
-    <path d="M8.5 8.5c0-1.5 1.5-3 4-3 3.5 0 4.5 1.5 4.5 3 0 1-0.5 1.5-1 2" />
-  </svg>
-);
-
-const HeadingIcon = ({ level }: { level: 1 | 2 | 3 }) => (
-  <span className="font-bold text-xs">H{level}</span>
-);
-
-const CodeIcon = () => (
-  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <polyline points="16 18 22 12 16 6" />
-    <polyline points="8 6 2 12 8 18" />
-  </svg>
-);
-
-const CodeBlockIcon = () => (
-  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <rect x="3" y="3" width="18" height="18" rx="2" />
-    <polyline points="9 9 6 12 9 15" />
-    <polyline points="15 9 18 12 15 15" />
-  </svg>
-);
-
-const ListIcon = () => (
-  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <line x1="8" y1="6" x2="21" y2="6" />
-    <line x1="8" y1="12" x2="21" y2="12" />
-    <line x1="8" y1="18" x2="21" y2="18" />
-    <circle cx="4" cy="6" r="1" fill="currentColor" />
-    <circle cx="4" cy="12" r="1" fill="currentColor" />
-    <circle cx="4" cy="18" r="1" fill="currentColor" />
-  </svg>
-);
-
-const NumberedListIcon = () => (
-  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <line x1="10" y1="6" x2="21" y2="6" />
-    <line x1="10" y1="12" x2="21" y2="12" />
-    <line x1="10" y1="18" x2="21" y2="18" />
-    <text x="3" y="8" fontSize="6" fill="currentColor" stroke="none">1</text>
-    <text x="3" y="14" fontSize="6" fill="currentColor" stroke="none">2</text>
-    <text x="3" y="20" fontSize="6" fill="currentColor" stroke="none">3</text>
-  </svg>
-);
-
-const QuoteIcon = () => (
-  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V21z" />
-    <path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2h.75c0 2.25.25 4-2.75 4v3z" />
-  </svg>
-);
-
-const LinkIcon = () => (
-  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" />
-    <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" />
-  </svg>
-);
-
-const TaskListIcon = () => (
-  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <rect x="3" y="5" width="4" height="4" rx="0.5" />
-    <line x1="10" y1="7" x2="21" y2="7" />
-    <rect x="3" y="15" width="4" height="4" rx="0.5" />
-    <line x1="10" y1="17" x2="21" y2="17" />
-    <path d="M4 16.5l1 1 2-2" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
-
-const HorizontalRuleIcon = () => (
-  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <line x1="3" y1="12" x2="21" y2="12" />
-  </svg>
-);
-
-type ViewMode = 'diff' | 'preview' | 'edit';
+/** Flat ease-out, matching the app's 150ms interaction transitions. */
+const EASE_OUT = [0, 0, 0.2, 1] as const;
 
 interface MarkdownDocumentModalProps {
   isOpen: boolean;
@@ -147,7 +33,6 @@ interface MarkdownDocumentModalProps {
   title: string;
   subtitle: string;
   content: string;
-  placeholder?: string;
   icon: React.ReactNode;
   initialEditMode?: boolean;
   /** Show Accept button in preview mode (for proposed documents) */
@@ -169,7 +54,6 @@ export function MarkdownDocumentModal({
   title,
   subtitle,
   content,
-  placeholder,
   icon,
   initialEditMode = false,
   showAcceptButton = false,
@@ -177,88 +61,47 @@ export function MarkdownDocumentModal({
   documentKey,
   onEnterFocusMode,
 }: MarkdownDocumentModalProps) {
-  // Determine initial view mode based on oldContent
-  const initialViewMode: ViewMode = oldContent !== undefined ? 'diff' : initialEditMode ? 'edit' : 'preview';
-  const [viewMode, setViewMode] = useState<ViewMode>(initialViewMode);
   const [draft, setDraft] = useState(content);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const previewRef = useRef<HTMLDivElement>(null);
-  const searchInputRef = useRef<HTMLInputElement>(null);
+  const [view, setView] = useState<MarkdownView>('preview');
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
 
   // Tracks the content version we've already synced into `draft`, so we can
   // tell apart "user is editing" from "the file changed underneath us."
   // The working-tree change tiering described in
   // `docs/shared-project-context.md` § "Detection layer" lives here.
-  const lastSyncedContentRef = useRef(content);
+  const [lastSyncedContent, setLastSyncedContent] = useState(content);
   const [externalChange, setExternalChange] = useState(false);
 
-  // Compute diff stats for display
   const diffLines = useMemo(() => {
     if (oldContent === undefined) return null;
     return computeDiff(oldContent, content);
   }, [oldContent, content]);
   const diffStats = diffLines ? getDiffStatsFromDiff(diffLines) : null;
 
-  // Frontmatter is split off in preview and shown as a collapsed metadata
-  // block; edit mode keeps showing the raw file.
-  const { frontmatter, body } = useMemo(() => splitFrontmatter(draft), [draft]);
+  const diff = useMemo(() => {
+    if (oldContent === undefined || !diffStats) return undefined;
+    return {
+      added: diffStats.addedCount,
+      removed: diffStats.removedCount,
+      render: () => (
+        <div className="max-w-4xl mx-auto">
+          <DiffViewer oldContent={oldContent} newContent={content} diffLines={diffLines ?? undefined} />
+        </div>
+      ),
+    };
+  }, [oldContent, content, diffLines, diffStats]);
 
-  // Preview scroll position. The preview pane is unmounted on every tab
-  // switch (AnimatePresence mode="wait"), so restoration happens in the ref
-  // callback below — an effect would fire before the node remounts.
-  const previewScrollTopRef = useRef(0);
-
-  const attachPreviewNode = useCallback((node: HTMLDivElement | null) => {
-    previewRef.current = node;
-    if (node) {
-      // The browser clamps to scrollHeight, so a stale offset (file shrank
-      // since last view) degrades to "scroll to bottom" rather than erroring.
-      node.scrollTop = previewScrollTopRef.current;
-    }
-  }, []);
-
-  const handlePreviewScroll = useCallback(
-    (e: React.UIEvent<HTMLDivElement>) => {
-      previewScrollTopRef.current = e.currentTarget.scrollTop;
-      if (documentKey) {
-        previewScrollMemory.set(documentKey, e.currentTarget.scrollTop);
-      }
-    },
-    [documentKey]
-  );
-
-  // Search functionality
-  const {
-    showSearch,
-    searchQuery,
-    currentMatchIndex,
-    totalMatches,
-    searchOptions,
-    setShowSearch,
-    setSearchQuery,
-    closeSearch,
-    goToNextMatch,
-    goToPrevMatch,
-    // Preview renders only the body, so count matches against it — counting
-    // the full draft would desync match navigation from the rendered marks.
-  } = useMarkdownSearch({ draft: viewMode === 'preview' ? body : draft, viewMode, previewRef, searchInputRef });
-
-  // Reset draft to fresh content on open, and reset view mode + search.
-  // Intentionally only runs on `isOpen` — see the next effect for the in-flight
-  // case where `content` changes while the modal is open.
+  // Reset the draft to fresh content on open. Intentionally keyed on `isOpen`
+  // only — the effect below handles the in-flight case where `content` changes
+  // while the modal is open, and syncing here would clobber unsaved edits.
   useEffect(() => {
     if (isOpen) {
       setDraft(content);
-      lastSyncedContentRef.current = content;
+      setLastSyncedContent(content);
       setExternalChange(false);
-      const newViewMode: ViewMode = oldContent !== undefined ? 'diff' : initialEditMode ? 'edit' : 'preview';
-      setViewMode(newViewMode);
-      closeSearch();
-      previewScrollTopRef.current = documentKey ? previewScrollMemory.get(documentKey) ?? 0 : 0;
+      setConfirmDiscard(false);
+      setView(oldContent !== undefined ? 'diff' : initialEditMode ? 'edit' : 'preview');
     }
-    // Note: `content` is deliberately not in the deps array. The next effect
-    // handles in-flight content changes — synchronizing here would clobber
-    // unsaved drafts.
   }, [isOpen]);
 
   // While the modal is open, if `content` changes from underneath us
@@ -273,63 +116,50 @@ export function MarkdownDocumentModal({
   //    surface, soft prompt is the right default until streams are in scope.
   useEffect(() => {
     if (!isOpen) return;
-    if (content === lastSyncedContentRef.current) return;
-    if (draft === lastSyncedContentRef.current) {
+    if (content === lastSyncedContent) return;
+    if (draft === lastSyncedContent) {
       setDraft(content);
-      lastSyncedContentRef.current = content;
+      setLastSyncedContent(content);
       setExternalChange(false);
     } else {
       setExternalChange(true);
     }
-  }, [content, isOpen, draft]);
+  }, [content, isOpen, draft, lastSyncedContent]);
 
   const reloadFromDisk = useCallback(() => {
     setDraft(content);
-    lastSyncedContentRef.current = content;
+    setLastSyncedContent(content);
     setExternalChange(false);
   }, [content]);
 
   const dismissExternalChange = useCallback(() => {
-    lastSyncedContentRef.current = content;
+    setLastSyncedContent(content);
     setExternalChange(false);
   }, [content]);
 
-  // Formatting actions
-  const {
-    formatBold,
-    formatItalic,
-    formatStrikethrough,
-    formatCode,
-    formatCodeBlock,
-    formatH1,
-    formatH2,
-    formatH3,
-    formatBulletList,
-    formatNumberedList,
-    formatTaskList,
-    formatQuote,
-    formatLink,
-    formatHorizontalRule,
-  } = useMarkdownFormatting({ draft, setDraft, viewMode, textareaRef });
-
-  // Keyboard shortcuts
-  useMarkdownKeyboard({
-    isOpen,
-    viewMode,
-    draft,
-    showSearch,
-    oldContent,
-    onClose,
-    onSave,
-    setViewMode,
-    setShowSearch,
-    closeSearch,
-    formatBold,
-    formatItalic,
-    formatLink,
-  });
-
   const hasChanges = draft !== content;
+
+  // Every close route lands here so an unsaved draft can never leave silently —
+  // not via Escape, not via the overlay, not via the footer button.
+  const requestClose = useCallback(() => {
+    if (hasChanges) {
+      setConfirmDiscard(true);
+      return;
+    }
+    onClose();
+  }, [hasChanges, onClose]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && view === 'edit') {
+        e.preventDefault();
+        onSave(draft);
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, view, draft, onSave]);
 
   return createPortal(
     <AnimatePresence>
@@ -338,475 +168,188 @@ export function MarkdownDocumentModal({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.15 }}
+          transition={{ duration: 0.15, ease: EASE_OUT }}
           className="dialog-overlay flex items-center justify-center"
           style={{ zIndex: Z_INDEX.modal }}
-          onClick={(e) => e.target === e.currentTarget && onClose()}
+          onClick={(e) => e.target === e.currentTarget && requestClose()}
         >
           <m.div
-            initial={{ opacity: 0, scale: 0.95, y: 10 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 10 }}
-            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 6 }}
+            transition={{ duration: 0.15, ease: EASE_OUT }}
             className="dialog-content w-[900px] min-w-[500px] max-w-[92vw] h-[85vh] max-h-[900px] flex flex-col overflow-hidden"
+            role="dialog"
+            aria-modal="true"
+            aria-label={title}
           >
-            {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-border-subtle">
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border-default flex-shrink-0">
               <div className="flex items-center gap-3 min-w-0">
                 {icon}
                 <div className="min-w-0">
-                  <h3 className="text-base font-medium text-text-primary truncate">{title}</h3>
-                  <p className="text-xs text-text-muted truncate">{subtitle}</p>
+                  <h3 className="text-sm font-medium text-text-primary truncate">{title}</h3>
+                  <p className="text-tiny text-text-muted truncate">{subtitle}</p>
                 </div>
               </div>
-              <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+              <div className="flex items-center gap-0.5 flex-shrink-0">
                 {onEnterFocusMode && !hasChanges && (
-                  <button
-                    onClick={onEnterFocusMode}
-                    className="text-text-muted hover:text-text-primary transition-colors p-2 hover:bg-surface-2 rounded-lg"
-                    title="Open in focus reader"
-                    aria-label="Open in focus reader"
-                  >
-                    <BookOpenIcon className="w-5 h-5" />
-                  </button>
+                  <Tooltip content="Open in focus reader" side="bottom">
+                    <button
+                      type="button"
+                      onClick={onEnterFocusMode}
+                      aria-label="Open in focus reader"
+                      className="w-7 h-7 flex items-center justify-center rounded-sm text-text-muted
+                                 hover:text-text-primary hover:bg-surface-3 transition-colors"
+                    >
+                      <BookOpenIcon className="w-4 h-4" />
+                    </button>
+                  </Tooltip>
                 )}
                 {onDelete && (
-                  <button
-                    onClick={onDelete}
-                    disabled={isDeleting}
-                    className="text-text-muted hover:text-danger transition-colors p-2 hover:bg-danger/10 rounded-lg
-                               disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Delete"
-                  >
-                    {isDeleting ? (
-                      <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                      </svg>
-                    ) : (
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    )}
-                  </button>
+                  <Tooltip content="Delete document" side="bottom">
+                    <button
+                      type="button"
+                      onClick={onDelete}
+                      disabled={isDeleting}
+                      aria-label="Delete document"
+                      className="w-7 h-7 flex items-center justify-center rounded-sm text-text-muted
+                                 hover:text-danger hover:bg-danger-muted transition-colors
+                                 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isDeleting ? (
+                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                      ) : (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      )}
+                    </button>
+                  </Tooltip>
                 )}
-                <MotionButton
-                  onClick={onClose}
-                  className="text-text-muted hover:text-text-primary transition-colors p-2 hover:bg-surface-2 rounded-lg"
-                >
-                  <CloseIcon className="w-5 h-5" />
-                </MotionButton>
+                <Tooltip content="Close (Esc)" side="bottom">
+                  <button
+                    type="button"
+                    onClick={requestClose}
+                    aria-label="Close"
+                    className="w-7 h-7 flex items-center justify-center rounded-sm text-text-muted
+                               hover:text-text-primary hover:bg-surface-3 transition-colors"
+                  >
+                    <CloseIcon className="w-4 h-4" />
+                  </button>
+                </Tooltip>
               </div>
             </div>
 
-            {/* External change banner — soft prompt when the file changed
-                underneath an unsaved draft. */}
-            <AnimatePresence>
-              {externalChange && (
-                <m.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.15 }}
-                  className="px-6 py-3 bg-amber-500/10 border-b border-amber-500/30 overflow-hidden"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2 min-w-0 text-amber-200 text-sm">
-                      <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                          d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z" />
-                      </svg>
-                      <span className="truncate">
-                        This file changed on disk while you were editing.
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <button
-                        onClick={dismissExternalChange}
-                        className="text-xs px-2.5 py-1 rounded-md text-amber-200 hover:bg-amber-500/20 transition-colors"
-                      >
-                        Keep mine
-                      </button>
-                      <button
-                        onClick={reloadFromDisk}
-                        className="text-xs px-2.5 py-1 rounded-md bg-amber-500/20 text-amber-100 hover:bg-amber-500/30 transition-colors font-medium"
-                      >
-                        Reload from disk
-                      </button>
-                    </div>
+            {/* Soft prompt for a file that changed on disk under an unsaved draft. */}
+            {externalChange && (
+              <div className="px-4 py-2 bg-warning-muted border-b border-border-default flex-shrink-0" role="alert">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 min-w-0 text-warning text-xs">
+                    <WarningTriangleIcon className="w-4 h-4 flex-shrink-0" />
+                    <span className="truncate">This file changed on disk while you were editing.</span>
                   </div>
-                </m.div>
-              )}
-            </AnimatePresence>
-
-            {/* Tab bar */}
-            <div className="px-6 pt-3 pb-0 flex flex-wrap gap-1 bg-surface-1/50">
-              {/* Diff tab - only shown if oldContent exists */}
-              {oldContent !== undefined && (
-                <button
-                  onClick={() => setViewMode('diff')}
-                  className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-all ${
-                    viewMode === 'diff'
-                      ? 'text-text-primary bg-surface-2 shadow-sm'
-                      : 'text-text-muted hover:text-text-secondary hover:bg-surface-2/50'
-                  }`}
-                >
-                  <span className="flex items-center gap-2">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                    </svg>
-                    Diff
-                    {diffStats && (
-                      <span className="flex items-center gap-1.5 text-xs font-semibold">
-                        <span className="text-success bg-success/10 px-1.5 py-0.5 rounded">
-                          +{diffStats.addedCount}
-                        </span>
-                        <span className="text-danger bg-danger/10 px-1.5 py-0.5 rounded">
-                          −{diffStats.removedCount}
-                        </span>
-                      </span>
-                    )}
-                  </span>
-                </button>
-              )}
-
-              {/* Preview tab */}
-              <button
-                onClick={() => setViewMode('preview')}
-                className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-all ${
-                  viewMode === 'preview'
-                    ? 'text-text-primary bg-surface-2 shadow-sm'
-                    : 'text-text-muted hover:text-text-secondary hover:bg-surface-2/50'
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                  </svg>
-                  Preview
-                </span>
-              </button>
-
-              {/* Edit tab */}
-              <button
-                onClick={() => setViewMode('edit')}
-                className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-all ${
-                  viewMode === 'edit'
-                    ? 'text-text-primary bg-surface-2 shadow-sm'
-                    : 'text-text-muted hover:text-text-secondary hover:bg-surface-2/50'
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                  </svg>
-                  Edit
-                </span>
-              </button>
-            </div>
-
-            {/* Search bar */}
-            <AnimatePresence>
-              {showSearch && (
-                <m.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.15 }}
-                  className="px-6 py-2 bg-surface-2 border-b border-border-subtle overflow-hidden"
-                >
-                  <div className="flex items-center gap-2">
-                    {/* Search icon */}
-                    <svg className="w-4 h-4 text-text-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-
-                    {/* Search input */}
-                    <input
-                      ref={searchInputRef}
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          if (e.shiftKey) {
-                            goToPrevMatch();
-                          } else {
-                            goToNextMatch();
-                          }
-                        }
-                      }}
-                      placeholder="Search in document..."
-                      className="flex-1 bg-surface-1 border border-border-subtle rounded-md px-3 py-1.5 text-sm
-                                 text-text-primary placeholder-text-muted
-                                 focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/30"
-                    />
-
-                    {/* Match count */}
-                    {searchQuery && (
-                      <span className="text-xs text-text-muted whitespace-nowrap">
-                        {totalMatches === 0
-                          ? 'No matches'
-                          : `${currentMatchIndex + 1} of ${totalMatches}`}
-                      </span>
-                    )}
-
-                    {/* Navigation buttons */}
-                    <div className="flex items-center gap-0.5">
-                      <button
-                        onClick={goToPrevMatch}
-                        disabled={totalMatches === 0}
-                        className="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-1
-                                   transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                        title="Previous match (Shift+Enter)"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                        </svg>
-                      </button>
-                      <button
-                        onClick={goToNextMatch}
-                        disabled={totalMatches === 0}
-                        className="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-1
-                                   transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                        title="Next match (Enter)"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                        </svg>
-                      </button>
-                    </div>
-
-                    {/* Close button */}
+                  <div className="flex items-center gap-1 flex-shrink-0">
                     <button
-                      onClick={closeSearch}
-                      className="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-1 transition-colors"
-                      title="Close search (Esc)"
+                      type="button"
+                      onClick={dismissExternalChange}
+                      className="h-7 px-2 rounded-sm text-xs text-warning hover:bg-surface-3 transition-colors"
                     >
-                      <CloseIcon className="w-4 h-4" />
+                      Keep mine
+                    </button>
+                    <button
+                      type="button"
+                      onClick={reloadFromDisk}
+                      className="h-7 px-2 rounded-sm text-xs font-medium text-warning bg-surface-3
+                                 hover:bg-surface-4 transition-colors"
+                    >
+                      Reload from disk
                     </button>
                   </div>
-                </m.div>
-              )}
-            </AnimatePresence>
+                </div>
+              </div>
+            )}
 
-            {/* Toolbar (only in edit mode) */}
-            <AnimatePresence>
-              {viewMode === 'edit' && (
-                <m.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.15 }}
-                  className="px-6 bg-surface-2 border-b border-border-subtle overflow-hidden"
-                >
-                  <div className="flex items-center gap-0.5 py-2 flex-wrap">
-                    {/* Text formatting */}
-                    <ToolbarButton onClick={formatBold} title="Bold (⌘B)">
-                      <BoldIcon />
-                    </ToolbarButton>
-                    <ToolbarButton onClick={formatItalic} title="Italic (⌘I)">
-                      <ItalicIcon />
-                    </ToolbarButton>
-                    <ToolbarButton onClick={formatStrikethrough} title="Strikethrough">
-                      <StrikethroughIcon />
-                    </ToolbarButton>
-
-                    <ToolbarDivider />
-
-                    {/* Headings */}
-                    <ToolbarButton onClick={formatH1} title="Heading 1">
-                      <HeadingIcon level={1} />
-                    </ToolbarButton>
-                    <ToolbarButton onClick={formatH2} title="Heading 2">
-                      <HeadingIcon level={2} />
-                    </ToolbarButton>
-                    <ToolbarButton onClick={formatH3} title="Heading 3">
-                      <HeadingIcon level={3} />
-                    </ToolbarButton>
-
-                    <ToolbarDivider />
-
-                    {/* Code */}
-                    <ToolbarButton onClick={formatCode} title="Inline Code">
-                      <CodeIcon />
-                    </ToolbarButton>
-                    <ToolbarButton onClick={formatCodeBlock} title="Code Block">
-                      <CodeBlockIcon />
-                    </ToolbarButton>
-
-                    <ToolbarDivider />
-
-                    {/* Lists */}
-                    <ToolbarButton onClick={formatBulletList} title="Bullet List">
-                      <ListIcon />
-                    </ToolbarButton>
-                    <ToolbarButton onClick={formatNumberedList} title="Numbered List">
-                      <NumberedListIcon />
-                    </ToolbarButton>
-                    <ToolbarButton onClick={formatTaskList} title="Task List">
-                      <TaskListIcon />
-                    </ToolbarButton>
-
-                    <ToolbarDivider />
-
-                    {/* Other */}
-                    <ToolbarButton onClick={formatQuote} title="Quote">
-                      <QuoteIcon />
-                    </ToolbarButton>
-                    <ToolbarButton onClick={formatLink} title="Link (⌘K)">
-                      <LinkIcon />
-                    </ToolbarButton>
-                    <ToolbarButton onClick={formatHorizontalRule} title="Horizontal Rule">
-                      <HorizontalRuleIcon />
-                    </ToolbarButton>
-                  </div>
-                </m.div>
-              )}
-            </AnimatePresence>
-
-            {/* Content area */}
-            <div className="flex-1 overflow-hidden bg-surface-2">
-              <AnimatePresence mode="wait">
-                {viewMode === 'diff' && oldContent !== undefined ? (
-                  <m.div
-                    key="diff"
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 20 }}
-                    transition={{ duration: 0.15 }}
-                    className="h-full overflow-y-auto p-6"
-                  >
-                    <div className="max-w-4xl mx-auto">
-                      <DiffViewer oldContent={oldContent} newContent={content} diffLines={diffLines ?? undefined} />
-                    </div>
-                  </m.div>
-                ) : viewMode === 'edit' ? (
-                  <m.div
-                    key="edit"
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -20 }}
-                    transition={{ duration: 0.15 }}
-                    className="h-full p-4"
-                  >
-                    <textarea
-                      ref={textareaRef}
-                      value={draft}
-                      onChange={(e) => setDraft(e.target.value)}
-                      className="w-full h-full p-5 text-sm font-mono leading-relaxed bg-surface-1
-                                 rounded-xl border border-border-subtle
-                                 text-text-primary placeholder-text-muted resize-none
-                                 focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/30"
-                      placeholder={placeholder}
-                      autoFocus
-                    />
-                  </m.div>
-                ) : (
-                  <m.div
-                    key="preview"
-                    ref={attachPreviewNode}
-                    onScroll={handlePreviewScroll}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 20 }}
-                    transition={{ duration: 0.15 }}
-                    className="h-full overflow-y-auto"
-                  >
-                    {draft ? (
-                      <div className="p-8 max-w-3xl mx-auto">
-                        {frontmatter !== null && <FrontmatterBlock source={frontmatter} />}
-                        <div className="prose">
-                          <Markdown options={searchOptions}>{addSoftBreaks(transformPlanRefs(body))}</Markdown>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="h-full flex items-center justify-center">
-                        <div className="text-center space-y-3 p-8">
-                          <div className="w-16 h-16 mx-auto rounded-2xl bg-surface-1 flex items-center justify-center">
-                            <svg className="w-8 h-8 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                          </div>
-                          <p className="text-text-muted text-sm">No content yet</p>
-                          <button
-                            onClick={() => setViewMode('edit')}
-                            className="text-accent text-sm hover:underline"
-                          >
-                            Start writing
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </m.div>
-                )}
-              </AnimatePresence>
+            <div className="flex-1 min-h-0">
+              <MarkdownEditorLazy
+                content={draft}
+                onChange={setDraft}
+                diff={diff}
+                startInEdit={initialEditMode}
+                scrollKey={documentKey}
+                onViewChange={setView}
+                onEscape={requestClose}
+              />
             </div>
 
-            {/* Footer */}
-            <div className="flex items-center justify-between gap-4 px-6 py-4 border-t border-border-subtle bg-surface-1/50">
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-muted min-w-0">
-                <span className="flex items-center gap-1.5">
-                  <kbd className="px-1.5 py-0.5 rounded bg-surface-2 text-xxs font-mono">⌘F</kbd>
-                  <span>search</span>
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <kbd className="px-1.5 py-0.5 rounded bg-surface-2 text-xxs font-mono">⌘E</kbd>
-                  <span>toggle view</span>
-                </span>
-                {viewMode === 'edit' && (
+            <div className="flex items-center justify-between gap-4 px-4 py-2.5 border-t border-border-default
+                            bg-surface-2 flex-shrink-0">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-tiny text-text-muted min-w-0">
+                <ShortcutHint keys="⌘F" label="find" />
+                <ShortcutHint keys="⌘E" label="switch view" />
+                {view === 'edit' && (
                   <>
-                    <span className="flex items-center gap-1.5">
-                      <kbd className="px-1.5 py-0.5 rounded bg-surface-2 text-xxs font-mono">⌘↵</kbd>
-                      <span>save</span>
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <kbd className="px-1.5 py-0.5 rounded bg-surface-2 text-xxs font-mono">⌘B</kbd>
-                      <span>bold</span>
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <kbd className="px-1.5 py-0.5 rounded bg-surface-2 text-xxs font-mono">⌘I</kbd>
-                      <span>italic</span>
-                    </span>
+                    <ShortcutHint keys="⌘↵" label="save" />
+                    <ShortcutHint keys="⌘B" label="bold" />
+                    <ShortcutHint keys="⌘K" label="link" />
                   </>
                 )}
               </div>
               <div className="flex gap-2 flex-shrink-0">
-                <MotionButton
-                  variant="secondary"
-                  onClick={onClose}
-                >
-                  {viewMode === 'edit' && hasChanges ? 'Discard' : 'Close'}
+                <MotionButton variant="secondary" onClick={requestClose}>
+                  {hasChanges ? 'Discard' : 'Close'}
                 </MotionButton>
-                {/* Accept button for proposals (visible in non-edit modes) */}
-                {viewMode !== 'edit' && showAcceptButton && (
-                  <MotionButton
-                    variant="primary"
-                    onClick={() => onSave(draft)}
-                  >
+                {view !== 'edit' && showAcceptButton && (
+                  <MotionButton variant="primary" onClick={() => onSave(draft)}>
                     Accept
                   </MotionButton>
                 )}
-                {/* Save button for edit mode */}
-                {viewMode === 'edit' && (
+                {view === 'edit' && (
                   <MotionButton
                     variant="primary"
                     onClick={() => onSave(draft)}
                     disabled={!hasChanges}
                     className="disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Save Changes
+                    Save changes
                   </MotionButton>
                 )}
               </div>
             </div>
           </m.div>
+
+          {confirmDiscard && (
+            <ConfirmActionDialog
+              title="Discard unsaved changes?"
+              message="This document has unsaved changes that will be lost if you close it now."
+              dialogId="markdown-document-unsaved"
+              cancelLabel="Keep editing"
+              onCancel={() => setConfirmDiscard(false)}
+              action={{
+                label: 'Discard changes',
+                variant: 'danger',
+                onClick: () => {
+                  setConfirmDiscard(false);
+                  onClose();
+                },
+              }}
+            />
+          )}
         </m.div>
       )}
     </AnimatePresence>,
     document.body
+  );
+}
+
+function ShortcutHint({ keys, label }: { keys: string; label: string }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <kbd className="px-1.5 py-0.5 rounded-sm bg-surface-3 text-xxs font-mono text-text-secondary">{keys}</kbd>
+      <span>{label}</span>
+    </span>
   );
 }

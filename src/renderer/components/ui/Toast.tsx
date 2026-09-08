@@ -92,7 +92,7 @@ const ToastItem = memo(function ToastItem({ toast, onDismiss }: ToastItemProps) 
       </div>
 
       {/* Message */}
-      <p className={`min-w-0 flex-1 text-sm leading-5 break-words ${textByType[toast.type]}`}>
+      <p className={`min-w-0 flex-1 text-sm leading-5 break-words selectable ${textByType[toast.type]}`}>
         {toast.message}
       </p>
 

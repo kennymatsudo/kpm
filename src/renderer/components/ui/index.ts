@@ -6,7 +6,7 @@ export { EmptyState } from './EmptyState';
 export { DeleteConfirmDialog } from './DeleteConfirmDialog';
 export { ConfirmActionDialog } from './ConfirmActionDialog';
 export { MarkdownEditorLazy } from './MarkdownEditorLazy';
-export type { MarkdownEditorProps } from './MarkdownEditor';
+export type { MarkdownEditorProps, MarkdownView } from './MarkdownEditor';
 export { CodeEditorLazy } from './CodeEditorLazy';
 export type { CodeEditorProps } from './CodeEditor';
 export { DiffViewer, InlineDiff, computeDiff, getDiffStats, getInlineDiffHunks } from './DiffViewer';
