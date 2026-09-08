@@ -113,7 +113,6 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
       onProjectFileWrite?: (projectId: string, filePath: string, content: string) => void;
       peekPendingFile?: (relativeFilePath: string) => string | undefined;
       onElicitation?: OnElicitation;
-      autoApprove?: boolean;
     }) => {
       const pluginPathsResult = services.mcpDiscoveryService.getEnabledPluginPaths();
       const enabledPluginPaths = pluginPathsResult.ok ? pluginPathsResult.data : [];
@@ -142,7 +141,6 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
         onProjectFileWrite: options.onProjectFileWrite,
         peekPendingFile: options.peekPendingFile,
         onElicitation: options.onElicitation,
-        autoApprove: options.autoApprove,
         enabledPluginPaths,
         enabledUserMcpConfigs,
         disabledMcpTools,
@@ -184,6 +182,7 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
 
   const chatService = createChatService({
     projects: container.projects,
+    repos: container.repos,
     chatMessages: container.chatMessages,
     chatSessions: container.chatSessions,
     modelChoice,

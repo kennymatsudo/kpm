@@ -12,6 +12,7 @@
 import type { Options as SDKOptions } from '@anthropic-ai/claude-agent-sdk';
 import { runClaudeQuery, type ClaudeQueryUsage } from '../claude/runClaudeQuery';
 import { getClaudeSdkSpawnOptions } from '../claude/findClaude';
+import { getAgentEnv } from '../services/streaming/envUtils';
 import type {
   GenerationOutcome,
   GenerationProviderAdapter,
@@ -28,7 +29,7 @@ function buildClaudeSdkOptions(request: ResolvedGenerationRequest): SDKOptions {
     tools: [],
     persistSession: false,
     ...getClaudeSdkSpawnOptions(),
-    env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'kpm' },
+    env: { ...getAgentEnv(), CLAUDE_AGENT_SDK_CLIENT_APP: 'kpm' },
   };
   if (request.systemPrompt !== undefined) {
     options.systemPrompt = request.systemPrompt;

@@ -15,10 +15,9 @@ import { DeleteConfirmDialog } from '../ui/DeleteConfirmDialog';
 import { resolveStatusCategory } from '../../constants/statusConfig';
 import { isPerfLoggingEnabled, logPerfEvent } from '../../utils/perfLogger';
 import type { OrderedIdsGetter, RangeSelectHandler } from '../../utils/rangeSelection';
-import { PlanCardMenu, type MenuPosition } from './PlanCardMenu';
+import { PlanCardMenu } from './PlanCardMenu';
+import type { DropdownPosition } from '../ui/DropdownMenu';
 import {
-  getPlanCardMenuPositionForPoint,
-  getPlanCardMenuPositionForRect,
   PlanCardHeader,
   PlanCardMetadataRow,
 } from './PlanCardSections';
@@ -236,7 +235,7 @@ export const PlanCard = memo(function PlanCard({
   const [isDragging, setIsDragging] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [menuPosition, setMenuPosition] = useState<MenuPosition | null>(null);
+  const [menuPosition, setMenuPosition] = useState<DropdownPosition | null>(null);
 
   const {
     deletePlanItem,
@@ -372,7 +371,7 @@ export const PlanCard = memo(function PlanCard({
           onSelectItem?.(item.id, false);
         }
 
-        setMenuPosition(getPlanCardMenuPositionForPoint(e.clientX, e.clientY));
+        setMenuPosition({ type: 'point', x: e.clientX, y: e.clientY });
         setShowMenu(true);
 
         // Mark as handled so parent cards don't also open menus
@@ -517,7 +516,7 @@ export const PlanCard = memo(function PlanCard({
         onPrepareEdit={() => onPrepareEditItem?.(item.id)}
         onToggleMenu={(event) => {
           const rect = event.currentTarget.getBoundingClientRect();
-          setMenuPosition(getPlanCardMenuPositionForRect(rect));
+          setMenuPosition({ type: 'anchor', anchor: rect });
           setShowMenu((current) => !current);
         }}
       />
@@ -638,6 +637,7 @@ export const PlanCard = memo(function PlanCard({
         <DeleteConfirmDialog
           itemTitle={item.title}
           descendantCount={descendantCount}
+          trackerType={item.external_key ? item.external_type : null}
           onDeleteMoveToBacklog={async () => {
             await deletePlanItem(item.id);
             setShowDeleteConfirm(false);

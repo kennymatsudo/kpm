@@ -30,6 +30,7 @@ export type { McpServerStatus, SDKControlGetContextUsageResponse, ModelInfo, Acc
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources';
 import { AsyncMessageQueue, type StreamingUserMessage } from './AsyncMessageQueue';
 import { isCommandsChangedMessage, isInitMessage } from '../sdkTypeGuards';
+import { declineHostDialogs } from '../hostDialogs';
 import { getConfig } from '../../config';
 
 /** Init-message context that lets consumers classify slash commands by source. */
@@ -161,6 +162,7 @@ export class StreamingSession {
     this.queryInstance = query({
       prompt: this.createInputGenerator(),
       options: {
+        onUserDialog: declineHostDialogs,
         ...this.config.sdkOptions,
         abortController: this.abortController,
       },

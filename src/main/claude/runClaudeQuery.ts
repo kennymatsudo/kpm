@@ -16,6 +16,7 @@
  */
 
 import { query, type Options as SDKOptions } from '@anthropic-ai/claude-agent-sdk';
+import { declineHostDialogs } from './hostDialogs';
 
 // =============================================================================
 // Types
@@ -141,6 +142,7 @@ export async function runClaudeQuery<TStructured = unknown>(
   const queryGenerator = queryFn({
     prompt: options.prompt,
     options: {
+      onUserDialog: declineHostDialogs,
       ...options.sdkOptions,
       abortController,
     },

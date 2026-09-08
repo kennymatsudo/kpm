@@ -55,6 +55,7 @@ import { parsePlaybook, type BoardProvider, type Playbook } from '../../../share
 import { BOARD_AGENT_WRITE_POLICY, renderPlaybookDirective, resolvePlaybookPlan } from '../../../shared/playbookRuntime';
 import { renderBranchName } from '../../../shared/branchNaming';
 import { getSetting, getDefaultModel } from '../../db/appSettingsAccess';
+import { getAgentEnv } from '../streaming/envUtils';
 import {
   type AgentContextInput,
   type BoardClaudeModel,
@@ -71,10 +72,11 @@ import {
 import {
   getWorktreesDir,
   generateUniqueBranchName,
-  detectDefaultBranch,
   scaffoldWorktree,
   assertSessionWorktreeCheckout,
 } from './worktreeScaffold';
+import { resolveDefaultBranch } from './branchFacts';
+import { deleteLocalBranch, deleteRemoteBranch } from './gitWrites';
 import {
   checkSessionDirty,
   getSessionDiff,
@@ -560,7 +562,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         }
 
         // Use provided base branch or detect the default
-        const baseBranch = options?.baseBranch ?? await detectDefaultBranch(repo.path);
+        const baseBranch = options?.baseBranch ?? await resolveDefaultBranch(repo.path);
 
         // Generate branch name and worktree path
         const template = getSetting(deps.appSettings, 'branchNameTemplate');
@@ -603,6 +605,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           pr_url: null,
           pr_state: null,
           review_state: null,
+          pr_is_draft: false,
           merge_order: null,
         });
 
@@ -710,7 +713,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           ? resolveBoardEffort(developerModel as BoardClaudeModel, options?.effort)
           : options?.effort;
         const sdkSettings = buildBoardSdkSettings();
-        const disallowedTools = ['AskUserQuestion', 'Workflow'];
+        const disallowedTools = ['AskUserQuestion', 'Workflow', 'ProposeGoal'];
 
         const roleSystemPrompt = deps.getPromptContent(firstMainStep?.systemPromptKey ?? 'agents.implementation_system');
 
@@ -727,7 +730,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           disallowedTools,
           settingSources: ['user'],
           settings: sdkSettings,
-          env: { ...process.env, ...capturedEnv, CLAUDE_AGENT_SDK_CLIENT_APP: 'kpm' },
+          env: { ...getAgentEnv(), ...capturedEnv, CLAUDE_AGENT_SDK_CLIENT_APP: 'kpm' },
           thinking: { type: 'adaptive' as const, display: 'summarized' as const },
           agentProgressSummaries: true,
           ...(effectiveEffort && { effort: effectiveEffort }),
@@ -1013,24 +1016,22 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
             }
           }
 
-          // Force-delete local branch (ignores merge status)
-          try {
-            await gitExec(
-              ['branch', '-D', session.branch_name],
-              { cwd: repo.path }
-            );
-          } catch {
-            // Branch may already be deleted
-          }
-
-          // Delete remote tracking branch
-          try {
-            await gitExec(
-              ['push', 'origin', '--delete', session.branch_name],
-              { cwd: repo.path }
-            );
-          } catch {
-            // Remote branch may not exist
+          // Destroying a session the user created is its own authorization. An
+          // already-deleted ref is the expected case and stays quiet; anything
+          // else is reported, because these two commands are unrecoverable.
+          const authorization = { kind: 'boardSession' } as const;
+          for (const removal of [
+            await deleteLocalBranch({ repoPath: repo.path, branch: session.branch_name, authorization }),
+            await deleteRemoteBranch({
+              repoPath: repo.path,
+              remote: 'origin',
+              branch: session.branch_name,
+              authorization,
+            }),
+          ]) {
+            if (!removal.ok && removal.kind !== 'missingRef') {
+              console.warn(`[DevSession] Branch cleanup for "${session.branch_name}": ${removal.reason}`);
+            }
           }
         }
 

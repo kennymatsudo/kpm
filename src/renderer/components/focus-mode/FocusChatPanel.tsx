@@ -5,9 +5,8 @@ import { useProjectDomainStore } from '../../stores';
 import { cancelChatSession, changeChatChoice, getFocusDocumentChatSession, sendChatMessage, subscribeToChatEvents } from '../../services/chatService';
 import { useFocusModeStore } from '../../stores/focusModeStore';
 import { markdownOptions, transformPlanRefs } from '../../utils/markdown';
-import { ChevronRightIcon, CloseIcon, UnlockIcon } from '../icons';
+import { ChevronRightIcon, CloseIcon } from '../icons';
 import { ChatChoiceControls } from '../chat/ChatChoiceControls';
-import { useWriteGrant } from '../chat/useWriteGrant';
 import { PermissionPrompt } from '../permission/PermissionPrompt';
 
 type FocusChatRole = 'user' | 'assistant' | 'status';
@@ -57,7 +56,6 @@ export function FocusChatPanel({
   const [isLoadingSession, setIsLoadingSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [choice, setChoice] = useState<ChatChoiceView | null>(null);
-  const { writesEnabled, revoke } = useWriteGrant(sessionId);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const streamRef = useRef('');
@@ -305,17 +303,6 @@ export function FocusChatPanel({
           <div className="truncate text-xs font-medium text-text-secondary">Focus chat</div>
           <div className="truncate text-[11px] text-text-muted">{docTitle || docPath || 'Document'}</div>
         </div>
-        {writesEnabled && (
-          <button
-            type="button"
-            onClick={revoke}
-            title="Writes are enabled for this conversation. Click to revoke."
-            className="flex items-center gap-1 rounded border border-warning/40 px-2 py-1 text-[11px] font-medium text-warning transition-colors hover:bg-warning/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-          >
-            <UnlockIcon className="h-3 w-3" />
-            <span>Writes enabled</span>
-          </button>
-        )}
         <button
           type="button"
           onClick={onClose}

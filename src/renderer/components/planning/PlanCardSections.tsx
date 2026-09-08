@@ -6,47 +6,6 @@ import { TrackerIcon, trackerLabelFor } from '../tracker/shared/trackerDisplay';
 import { StatusSelector } from '../ui/StatusSelector';
 import { Tooltip } from '../ui/Tooltip';
 import { HighlightedText } from './HighlightedText';
-import type { MenuPosition } from './PlanCardMenu';
-
-export function getPlanCardMenuPositionForPoint(x: number, y: number): MenuPosition {
-  const menuHeight = 350;
-  const spaceBelow = window.innerHeight - y;
-  const spaceAbove = y;
-
-  if (spaceBelow < menuHeight && spaceAbove > spaceBelow) {
-    return {
-      type: 'card',
-      bottom: window.innerHeight - y + 4,
-      right: window.innerWidth - x,
-    };
-  }
-
-  return {
-    type: 'card',
-    top: y + 4,
-    right: window.innerWidth - x,
-  };
-}
-
-export function getPlanCardMenuPositionForRect(rect: DOMRect): MenuPosition {
-  const menuHeight = 350;
-  const spaceBelow = window.innerHeight - rect.bottom;
-  const spaceAbove = rect.top;
-
-  if (spaceBelow < menuHeight && spaceAbove > spaceBelow) {
-    return {
-      type: 'card',
-      bottom: window.innerHeight - rect.top + 4,
-      right: window.innerWidth - rect.right,
-    };
-  }
-
-  return {
-    type: 'card',
-    top: rect.bottom + 4,
-    right: window.innerWidth - rect.right,
-  };
-}
 
 interface PlanCardHeaderProps {
   item: TreeNode;

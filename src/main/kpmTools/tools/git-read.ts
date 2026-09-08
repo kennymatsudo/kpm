@@ -1,20 +1,22 @@
 /**
  * git_read Tool
  *
- * Runs read-only git commands against a connected repository. Chat has no raw
- * git access in Bash; this is the only git path. It invokes git via execFile
+ * Runs read-only git commands against a connected repository. Chat's Bash can
+ * also run git that `classifyGitShellCommand` proves is read-only (permissions.ts
+ * Rule -1); this tool is the structured path, and the only one that works when
+ * the shell sandbox is unavailable — or when the command needs the network or
+ * the user's credentials, which the sandbox denies Bash outright. It invokes git via execFile
  * (no shell — no pipes, redirects, or command substitution) and validates the
  * subcommand + arguments against `classifyGitInvocation` before running, so the
  * call is read-only by construction rather than by parsing a shell string.
  */
 
 import { z } from 'zod';
-import path from 'path';
 import { tool, jsonResult, toolError, toolLog } from './index';
 import type { IRepoRepository } from '../../db/interfaces';
-import { gitExec } from '../../services/repo/gitUtils';
+import { gitExecCaptured } from '../../services/repo/gitUtils';
 import { READ_GIT_SUBCOMMANDS, classifyGitInvocation } from '../../services/repo/gitReadOnly';
-import { resolveEffectiveRepoPath } from '../../../shared/repoPath';
+import { resolveConnectedRepoPath } from './connectedRepo';
 
 interface GitReadToolDeps {
   repos: Pick<IRepoRepository, 'getByProject'>;
@@ -26,7 +28,7 @@ const MAX_BUFFER = 10 * 1024 * 1024;
 const TOOL_DESCRIPTION = `Run a read-only git command in a connected repository.
 
 ## When to use
-Inspecting git state: history (\`log\`), changes (\`diff\`, \`show\`), working-tree status (\`status\`), authorship (\`blame\`), branches/tags, \`merge-base\`, \`rev-parse\`, \`rev-list\`, \`for-each-ref\`, etc. This is the only way to run git in chat — raw \`git\` in Bash is blocked.
+Inspecting git state: history (\`log\`), changes (\`diff\`, \`show\`), working-tree status (\`status\`), authorship (\`blame\`), branches/tags, \`merge-base\`, \`rev-parse\`, \`rev-list\`, \`for-each-ref\`, etc. Prefer this over Bash for git reads: it takes tokenized arguments, so nothing depends on shell quoting.
 
 ## Parameters
 - \`projectId\`: The project UUID.
@@ -35,37 +37,10 @@ Inspecting git state: history (\`log\`), changes (\`diff\`, \`show\`), working-t
 - \`repoPath\`: Absolute path of the connected repo (or a path inside it). Optional when exactly one repo is connected.
 
 ## Notes
-- Read-only: writes (commit, add, push, branch/tag creation, merge, rebase, reset, checkout, stash push, config set, ...) are rejected. \`fetch\` is allowed only in non-destructive forms.
+- Runs outside the shell sandbox, so it is the fallback whenever Bash git is refused: unlike Bash, it reaches the network and your git credentials. A remote ref you do not have yet is one \`fetch\` away — e.g. \`operation: "fetch", args: ["origin", "pull/123/head"]\` puts a pull request's head at \`FETCH_HEAD\`. (To read a PR itself, prefer \`read_pull_request\`.)
+- Read-only: writes (commit, add, push, branch/tag creation, merge, rebase, reset, checkout, stash push, config set, ...) are rejected. \`fetch\` is allowed only in non-destructive forms (no \`src:dst\` refspec, which could move a local branch).
 - The response includes \`exitCode\`, \`stdout\`, and \`stderr\`. A non-zero \`exitCode\` is often normal (e.g. \`grep\` with no matches), so read the output rather than treating it as failure.
 - \`stdout\` is truncated past ${MAX_OUTPUT_CHARS.toLocaleString()} characters; narrow with git flags if you hit that.`;
-
-function isWithinDir(target: string, base: string): boolean {
-  const rel = path.relative(base, target);
-  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
-}
-
-/**
- * Run git and capture output. A non-zero exit is normal for many read commands
- * (grep with no matches = 1, diff --exit-code, merge-base with no ancestor = 1),
- * so the exit code and captured output are returned rather than thrown.
- */
-async function runGit(
-  operation: string,
-  args: string[],
-  cwd: string
-): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  try {
-    const result = await gitExec([operation, ...args], { cwd, maxBuffer: MAX_BUFFER });
-    return { stdout: result.stdout, stderr: result.stderr, exitCode: 0 };
-  } catch (error) {
-    const e = error as { stdout?: string; stderr?: string; code?: unknown; message?: string };
-    return {
-      stdout: e.stdout ?? '',
-      stderr: e.stderr ?? e.message ?? String(error),
-      exitCode: typeof e.code === 'number' ? e.code : 1,
-    };
-  }
-}
 
 export function createGitReadTools(deps: GitReadToolDeps) {
   return [
@@ -87,31 +62,9 @@ export function createGitReadTools(deps: GitReadToolDeps) {
           .describe('Absolute path of a connected repo (or a path inside it). Optional when exactly one repo is connected.'),
       },
       async ({ projectId, operation, args, repoPath }) => {
-        const repos = deps.repos.getByProject(projectId);
-        if (repos.length === 0) {
-          return toolError('No repositories are connected to this project.');
-        }
-
-        const effectivePathOf = (r: { path: string; active_worktree_path?: string | null }) =>
-          path.resolve(resolveEffectiveRepoPath(r));
-
-        let cwd: string;
-        if (repoPath) {
-          const resolved = path.resolve(repoPath);
-          const match = repos.find((r) => isWithinDir(resolved, effectivePathOf(r)));
-          if (!match) {
-            return toolError(
-              `"${repoPath}" is not within a connected repository. Connected: ${repos.map(effectivePathOf).join(', ')}`
-            );
-          }
-          cwd = resolved;
-        } else if (repos.length === 1) {
-          cwd = effectivePathOf(repos[0]);
-        } else {
-          return toolError(
-            `Multiple repositories are connected — pass repoPath. Options: ${repos.map(effectivePathOf).join(', ')}`
-          );
-        }
+        const resolution = resolveConnectedRepoPath(deps.repos.getByProject(projectId), repoPath);
+        if (!resolution.ok) return toolError(resolution.reason);
+        const cwd = resolution.repoPath;
 
         const check = classifyGitInvocation(operation, args);
         if (!check.ok) {
@@ -120,7 +73,10 @@ export function createGitReadTools(deps: GitReadToolDeps) {
 
         toolLog(`[KPM Tools] git_read ${operation} ${args.join(' ')} @ ${cwd}`);
 
-        const { stdout: rawStdout, stderr, exitCode } = await runGit(operation, args, cwd);
+        const { stdout: rawStdout, stderr, exitCode } = await gitExecCaptured(
+          [operation, ...args],
+          { cwd, maxBuffer: MAX_BUFFER }
+        );
 
         const truncated = rawStdout.length > MAX_OUTPUT_CHARS;
         const stdout = truncated

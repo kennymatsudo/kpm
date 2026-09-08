@@ -4,7 +4,6 @@ import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk';
 import type { PermissionAction, PermissionRequest } from '../../../shared/types';
 import { extractPath, getToolPreview } from '../../claude/permissions';
 import { getConfig } from '../../config';
-import type { PermissionService } from './PermissionService';
 import { failure, success, type ServiceResult } from '../result';
 import { emitAppEvent } from '../../../shared/ipc/appEvents';
 import { permissionEvents } from '../../../shared/ipc/permissionEvents';
@@ -13,10 +12,6 @@ interface PendingPermission {
   resolve: (result: PermissionResult) => void;
   timeoutId: NodeJS.Timeout;
   projectId: string;
-  kind: PermissionRequest['kind'];
-  toolName: string;
-  targetPath: string | null;
-  preview: string;
   input: Record<string, unknown>;
 }
 
@@ -28,6 +23,12 @@ interface PromptOptions {
   kind?: PermissionRequest['kind'];
   title?: string;
 }
+
+/**
+ * Scope lives on the request, not the answer: a 'write-access' yes becomes the
+ * project's standing grant (recorded by whoever asked, through
+ * `ProjectWriteGrants.request`), an 'elicitation' yes covers that call only.
+ */
 
 export async function promptUser(
   mainWindow: BrowserWindow | null,
@@ -57,11 +58,19 @@ function emitPrompt(
     const requestId = randomUUID();
     const targetPath = extractPath(toolName, input);
     const preview = getToolPreview(toolName, input);
-    const kind = options.kind ?? 'tool';
+    const kind = options.kind ?? 'write-access';
     const permissionTimeoutMs = getConfig().session.permissionRequestTimeoutMs;
+
+    // Tell the renderer whenever a request stops needing an answer without the
+    // user giving one, so its pending queue doesn't advertise a dead request.
+    const notifySettled = (reason: 'timeout' | 'cancelled') => {
+      if (mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
+      emitAppEvent(mainWindow.webContents, permissionEvents.settled, { requestId, reason });
+    };
 
     const timeoutId = setTimeout(() => {
       pendingPermissions.delete(requestId);
+      notifySettled('timeout');
       resolve({
         behavior: 'deny',
         message: 'Permission request timed out',
@@ -73,6 +82,7 @@ function emitPrompt(
       options.signal.addEventListener('abort', () => {
         clearTimeout(timeoutId);
         pendingPermissions.delete(requestId);
+        notifySettled('cancelled');
         resolve({
           behavior: 'deny',
           message: 'Permission request cancelled',
@@ -81,16 +91,7 @@ function emitPrompt(
       });
     }
 
-    pendingPermissions.set(requestId, {
-      resolve,
-      timeoutId,
-      projectId,
-      kind,
-      toolName,
-      targetPath,
-      preview,
-      input,
-    });
+    pendingPermissions.set(requestId, { resolve, timeoutId, projectId, input });
 
     emitAppEvent(mainWindow.webContents, permissionEvents.request, {
       requestId,
@@ -106,7 +107,6 @@ function emitPrompt(
 }
 
 export function resolvePromptResponse(
-  permissionService: PermissionService,
   response: { requestId: string; projectId: string; action: PermissionAction },
 ): ServiceResult<void> {
   const { requestId, projectId, action } = response;
@@ -119,13 +119,6 @@ export function resolvePromptResponse(
 
   if (projectId !== pending.projectId) {
     return failure('Permission request project does not match');
-  }
-  if (
-    pending.kind === 'write-access'
-    && action !== 'allow'
-    && action !== 'deny'
-  ) {
-    return failure('Write access requests only accept allow or deny');
   }
 
   clearTimeout(pending.timeoutId);
@@ -140,39 +133,8 @@ export function resolvePromptResponse(
     return success(undefined);
   }
 
-  if (action === 'allow-all-remaining') {
-    const allowAllResult = permissionService.allowAllRemaining(projectId);
-    if (!allowAllResult.ok) {
-      return allowAllResult;
-    }
-
-    pending.resolve({
-      behavior: 'allow',
-      updatedInput: pending.input,
-    });
-    return success(undefined);
-  }
-
   // `updatedInput` replaces the tool's arguments, so it has to echo the
   // original rather than an empty object — returning {} strips the call.
-  const result: PermissionResult & { allowAlways?: boolean } = {
-    behavior: 'allow',
-    updatedInput: pending.input,
-  };
-
-  if (action === 'allow-always') {
-    result.allowAlways = true;
-    const persistResult = permissionService.persistAlwaysAllowed(
-      projectId,
-      pending.toolName,
-      pending.targetPath,
-      pending.preview,
-    );
-    if (!persistResult.ok) {
-      return persistResult;
-    }
-  }
-
-  pending.resolve(result);
+  pending.resolve({ behavior: 'allow', updatedInput: pending.input });
   return success(undefined);
 }

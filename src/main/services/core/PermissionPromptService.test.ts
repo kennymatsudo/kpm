@@ -3,7 +3,6 @@ import type * as AppEventsModule from '../../../shared/ipc/appEvents';
 import type { BrowserWindow } from 'electron';
 import type { PermissionRequest } from '../../../shared/types';
 import { promptUser, resolvePromptResponse } from './PermissionPromptService';
-import type { PermissionService } from './PermissionService';
 
 const sent: PermissionRequest[] = [];
 
@@ -19,14 +18,9 @@ vi.mock('../../../shared/ipc/appEvents', async (importOriginal) => {
 
 const mainWindow = { webContents: {} } as unknown as BrowserWindow;
 
-const permissionService = {
-  allowAllRemaining: () => ({ ok: true as const, data: undefined }),
-  persistAlwaysAllowed: () => ({ ok: true as const, data: undefined }),
-} as unknown as PermissionService;
-
 function answerLatest(action: 'allow' | 'deny'): void {
   const latest = sent[sent.length - 1];
-  resolvePromptResponse(permissionService, {
+  resolvePromptResponse({
     requestId: latest.requestId,
     projectId: latest.projectId,
     action,
@@ -38,7 +32,7 @@ beforeEach(() => {
 });
 
 describe('promptUser', () => {
-  it('tags a conversation write request so the renderer can ask the right question', async () => {
+  it('tags a project write request so the renderer can ask the right question', async () => {
     const pending = promptUser(mainWindow, 'project-1', 'Write', { file_path: '/repos/my-app/a.ts' }, {
       chatSessionId: 'chat-1',
       kind: 'write-access',
@@ -51,12 +45,13 @@ describe('promptUser', () => {
     await expect(pending).resolves.toMatchObject({ behavior: 'allow' });
   });
 
-  it('routes an ordinary tool request to its conversation', async () => {
-    const pending = promptUser(mainWindow, 'project-1', 'Bash', { command: 'ls' }, {
+  it('routes an elicitation request to its conversation', async () => {
+    const pending = promptUser(mainWindow, 'project-1', 'mcp_elicitation:acme', { message: 'Pick one' }, {
       chatSessionId: 'chat-2',
+      kind: 'elicitation',
     });
 
-    expect(sent[0]).toMatchObject({ kind: 'tool', chatSessionId: 'chat-2' });
+    expect(sent[0]).toMatchObject({ kind: 'elicitation', chatSessionId: 'chat-2' });
 
     answerLatest('allow');
     await pending;
@@ -75,8 +70,8 @@ describe('promptUser', () => {
     expect(sent).toHaveLength(2);
     expect(sent.map((request) => request.chatSessionId)).toEqual(['chat-1', 'chat-2']);
 
-    resolvePromptResponse(permissionService, { requestId: sent[0].requestId, projectId: 'project-1', action: 'deny' });
-    resolvePromptResponse(permissionService, { requestId: sent[1].requestId, projectId: 'project-1', action: 'deny' });
+    resolvePromptResponse({ requestId: sent[0].requestId, projectId: 'project-1', action: 'deny' });
+    resolvePromptResponse({ requestId: sent[1].requestId, projectId: 'project-1', action: 'deny' });
     await Promise.all([a, b]);
   });
 
@@ -91,21 +86,21 @@ describe('promptUser', () => {
     if (result.behavior === 'allow') expect(result.updatedInput).toEqual(input);
   });
 
-  it('rejects broader permission actions for a conversation write request', async () => {
+  it('refuses an answer that names a different project', async () => {
     const pending = promptUser(mainWindow, 'project-1', 'Write', {}, {
       chatSessionId: 'chat-1',
       kind: 'write-access',
     });
 
-    const response = resolvePromptResponse(permissionService, {
+    const response = resolvePromptResponse({
       requestId: sent[0].requestId,
-      projectId: 'project-1',
-      action: 'allow-always',
+      projectId: 'project-2',
+      action: 'allow',
     });
 
     expect(response).toEqual({
       ok: false,
-      error: 'Write access requests only accept allow or deny',
+      error: 'Permission request project does not match',
     });
 
     answerLatest('deny');

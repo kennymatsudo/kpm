@@ -62,6 +62,7 @@ export type KpmToolCapability =
   | 'project_files.read'
   | 'plan_refs.read'
   | 'repo.read'
+  | 'repo.push'
   | 'integrations.read'
   | 'file_changes.propose'
   | 'spill.read';

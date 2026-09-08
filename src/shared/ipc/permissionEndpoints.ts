@@ -9,9 +9,8 @@
 import { z } from 'zod';
 import { resultOf, type EndpointDefinition } from './endpoints';
 import { uuid } from './sharedSchemas';
-import type { ToolPermission } from '../types';
 
-const permissionAction = z.enum(['allow', 'deny', 'allow-always', 'allow-all-remaining']);
+const permissionAction = z.enum(['allow', 'deny']);
 
 /**
  * Response shape for endpoints registered through `createRegistryIpcHandlers`
@@ -29,25 +28,25 @@ export const permissionEndpoints = {
     params: z.object({ requestId: uuid, projectId: uuid, action: permissionAction }),
     result: resultOf<RegistryResponse>(),
   },
-  list: {
-    channel: 'permission:list',
-    params: z.object({ projectId: uuid }),
-    result: resultOf<RegistryResponse<{ permissions: ToolPermission[] }>>(),
-  },
-  revoke: {
-    channel: 'permission:revoke',
-    params: z.object({ id: uuid, projectId: uuid, cacheKey: z.string().min(1) }),
-    result: resultOf<RegistryResponse>(),
-  },
-  revokeAll: { channel: 'permission:revoke-all', params: z.object({ projectId: uuid }), result: resultOf<RegistryResponse>() },
   getWriteGrant: {
     channel: 'permission:write-grant:get',
-    params: z.object({ chatSessionId: z.string().min(1) }),
+    params: z.object({ projectId: uuid }),
     result: resultOf<RegistryResponse<{ granted: boolean }>>(),
+  },
+  /**
+   * The user turning writes on in settings, rather than in answer to a blocked
+   * write. Without it, consent can only be given once an agent has already
+   * tried and been refused — and an agent that declines preemptively (Codex
+   * reports read-only instead of attempting) leaves no way to say yes.
+   */
+  grantWriteGrant: {
+    channel: 'permission:write-grant:grant',
+    params: z.object({ projectId: uuid }),
+    result: resultOf<RegistryResponse>(),
   },
   revokeWriteGrant: {
     channel: 'permission:write-grant:revoke',
-    params: z.object({ chatSessionId: z.string().min(1) }),
+    params: z.object({ projectId: uuid }),
     result: resultOf<RegistryResponse>(),
   },
 } satisfies Record<string, EndpointDefinition>;

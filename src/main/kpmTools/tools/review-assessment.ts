@@ -17,7 +17,8 @@ import { tool, jsonResult, toolError } from './index';
 import { LabelEnum, StatusCategoryEnum } from './schemas';
 import type { IPlanItemRepository, IPlanRelationRepository, IRepoRepository } from '../../db/interfaces';
 import type { FileExplorerService } from '../../services/files/FileExplorerService';
-import { gitExec, detectBaseBranch } from '../../services/repo/gitUtils';
+import { gitExec } from '../../services/repo/gitUtils';
+import { resolveDefaultBranch } from '../../services/repo/branchFacts';
 
 export interface ReviewAssessmentToolsDeps {
   planItems: IPlanItemRepository;
@@ -52,7 +53,7 @@ async function listBranchesForRepo(
   repoId: string,
   repoPath: string
 ): Promise<RepoBranchBlock> {
-  const baseBranch = await detectBaseBranch(repoPath);
+  const baseBranch = await resolveDefaultBranch(repoPath);
 
   // Format: refname|subject|committerdate-iso-strict|author
   const { stdout } = await gitExec(
@@ -145,7 +146,7 @@ export function createReviewAssessmentTools(deps: ReviewAssessmentToolsDeps) {
           const repo = deps.repos.getById(repoId);
           if (!repo) return toolError(`Repo not found: ${repoId}`);
 
-          const baseBranch = await detectBaseBranch(repo.path);
+          const baseBranch = await resolveDefaultBranch(repo.path);
 
           // Validate branch exists to avoid injecting refs
           try {

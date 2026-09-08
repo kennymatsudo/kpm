@@ -2,13 +2,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import path from 'path';
 import * as fs from 'fs';
 import * as gitUtils from './gitUtils';
+import * as branchFacts from './branchFacts';
 import { scaffoldWorktree } from './worktreeScaffold';
 
 vi.mock('./gitUtils', () => ({
   gitExec: vi.fn(),
-  getCurrentBranch: vi.fn(),
   resolveUpstreamBranch: vi.fn(),
   getMergeBase: vi.fn(),
+}));
+
+vi.mock('./branchFacts', () => ({
+  resolveCurrentBranch: vi.fn(),
 }));
 
 vi.mock('fs', () => ({
@@ -17,7 +21,7 @@ vi.mock('fs', () => ({
 }));
 
 const gitExecMock = vi.mocked(gitUtils.gitExec);
-const getCurrentBranchMock = vi.mocked(gitUtils.getCurrentBranch);
+const resolveCurrentBranchMock = vi.mocked(branchFacts.resolveCurrentBranch);
 const existsSyncMock = vi.mocked(fs.existsSync);
 
 const worktreePath = '/base/wt/mybranch';
@@ -27,7 +31,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   // Parent dir exists; the worktree itself does not yet.
   existsSyncMock.mockImplementation((p) => p === worktreesDir);
-  getCurrentBranchMock.mockResolvedValue('main');
+  resolveCurrentBranchMock.mockResolvedValue('main');
 });
 
 describe('scaffoldWorktree end-of-options hardening', () => {

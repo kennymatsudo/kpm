@@ -280,8 +280,8 @@ export function createActionRunnerService(deps: ActionRunnerDeps) {
       context,
       model: action.model ?? deps.getDefaultClaudeModel(),
       mainWindow: deps.getMainWindow(),
-      // No UI is present to answer permission prompts on a background run.
-      autoApprove: true,
+      // A background run has no UI to ask in, so it can only write if the
+      // user has already granted writes in this project.
       grantedCapabilities: toolCapabilitiesFor(action.capabilities),
       ...mcpConfigs(),
     });

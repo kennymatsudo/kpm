@@ -1,16 +1,15 @@
 /**
  * Permission control for Claude SDK tool usage.
  *
- * Implements fine-grained permission rules:
- * - Auto-allow: All tools in project directory, read tools anywhere (except
- *   credential/secret roots), network reads (WebFetch/WebSearch), MCP tools
- * - Deny: Reads that resolve into a credential root
- * - Consent: Direct writes need the conversation's write grant
- * - Prompt: Any unrecognized tool
- * - Session cache: "Allow Always" decisions persist per session (via clientManager)
+ * - Deny: reads that resolve into a credential/secret root. Not overridable.
+ * - Intercept: project file and context file edits, routed to the approval queue.
+ * - Consent: direct writes need the project's write grant, asked once per
+ *   project and persisted.
+ * - Auto-allow: everything else — reads anywhere, network reads, MCP tools.
  */
 
 import type { CanUseTool, PermissionResult } from '@anthropic-ai/claude-agent-sdk';
+import type { PermissionRequest } from '../../shared/types';
 import { promises as fs } from 'fs';
 import os from 'os';
 import { join, normalize, relative } from 'path';
@@ -19,11 +18,11 @@ import {
   checkRealpathAccess,
   pathCanTraverseDeniedRoot,
 } from '../services/files/pathSecurity';
-import { clientManager } from './clientManager';
+import { shellCommandNeedsWriteGrant } from '../chat/shellWritePolicy';
 import { getConfig } from '../config';
 import {
-  conversationWriteGrants,
-  type ConversationWriteGrants,
+  projectWriteGrants,
+  type ProjectWriteGrants,
 } from '../chat/writeGrants';
 
 /**
@@ -40,16 +39,6 @@ const READ_TOOLS = ['Read', 'Grep', 'Glob'];
 const WRITE_TOOLS = ['Edit', 'MultiEdit', 'Write', 'Bash', 'NotebookEdit'];
 const NETWORK_READ_TOOLS = ['WebFetch', 'WebSearch'];
 
-/**
- * Detect whether a Bash command invokes git. Chat has no raw git access —
- * git runs through the read-only `git_read` MCP tool, which validates the
- * subcommand and arguments with no shell to parse. Any git in Bash is denied
- * and the agent is pointed at git_read (see Rule -1 below).
- */
-function commandInvokesGit(command: string): boolean {
-  return /(^|[\s;&|()])(?:\S+\/)?git(?:\s|$)/.test(command.trim());
-}
-
 /** Function to prompt user for permission */
 export type PromptUserFn = (
   toolName: string,
@@ -57,7 +46,7 @@ export type PromptUserFn = (
   options: {
     signal?: AbortSignal;
     chatSessionId?: string;
-    kind?: 'tool' | 'write-access';
+    kind?: PermissionRequest['kind'];
     title?: string;
   }
 ) => Promise<PermissionResult>;
@@ -80,8 +69,9 @@ export interface PermissionContext {
   projectPath: string;
   projectId: string;
   /**
-   * Identifies the chat session a write grant is scoped to. Absent for
-   * non-chat callers (action runs), which have no session to grant against.
+   * The chat session to surface a prompt in. The write grant itself is
+   * project-scoped, so a run without a session (an action run) still inherits
+   * the project's grant — it just has nowhere to ask if there is none.
   */
   chatSessionId?: string;
   /** Optional callback to intercept project context file edits */
@@ -104,8 +94,6 @@ export interface PermissionContext {
   peekPendingFile?: (relativeFilePath: string) => string | undefined;
   /** External MCP servers disabled in KPM settings. */
   disabledMcpServerNames?: string[];
-  /** When true, skip permission prompts and auto-allow all non-denied tool calls */
-  autoApprove?: boolean;
 }
 
 /**
@@ -196,6 +184,9 @@ function getToolPreview(toolName: string, input: Record<string, unknown>): strin
   if (toolName === 'Bash' && typeof input.command === 'string') {
     return `Run: ${input.command}`;
   }
+  if (toolName === 'git_push' && typeof input.remote === 'string' && typeof input.branch === 'string') {
+    return `git push ${input.remote} ${input.branch}`;
+  }
   return toolName;
 }
 
@@ -231,20 +222,24 @@ function mcpServerNamesMatch(disabledServerName: string, toolServerName: string)
 /**
  * Create permission handler for Claude SDK.
  *
+ * There is one question this handler ever asks the user: may this project
+ * write? Everything else it decides on its own.
+ *
  * Rules:
- * -1. Consent: Raw git in Bash needs the conversation's write grant
+ * -1. Git in Bash: read-only invocations are allowed; anything else needs the
+ *     project's write grant
  * 0. Intercept: Context file (AGENTS.md/CLAUDE.md) edits are captured and sent for user approval
- * 1. Auto-allow: Read tools in project directory
+ * 0.5. Intercept: Project file writes are captured and sent for user approval
+ * 1. Gate: every remaining write tool needs the project's write grant
  * 1.5. Deny: Reads that resolve into a credential/secret root
  * 2. Auto-allow: Read tools anywhere; network reads (WebFetch/WebSearch)
- * 3. Auto-allow: MCP tools (read-only)
- * 4. Check session cache for "Allow Always" decisions
- * 5. Prompt: Any unrecognized tool
+ * 3. Auto-allow: MCP tools, except servers disabled in settings
+ * 4. Auto-allow: anything else
  */
 export function createPermissionHandler(
   context: PermissionContext,
   promptUser: PromptUserFn,
-  writeGrants: ConversationWriteGrants = conversationWriteGrants,
+  writeGrants: ProjectWriteGrants = projectWriteGrants,
 ): CanUseTool {
   return async (toolName, input, options) => {
     // Debug logging for MCP tools
@@ -256,8 +251,8 @@ export function createPermissionHandler(
     }
 
     const gateWrites = async (): Promise<PermissionResult> => {
-      const decision = await writeGrants.request(context.chatSessionId, async () => {
-        permLog(`[Permissions] Requesting write access for chat session ${context.chatSessionId}`);
+      const decision = await writeGrants.request(context.projectId, async () => {
+        permLog(`[Permissions] Requesting write access for project ${context.projectId}`);
         const result = await promptUser(toolName, input, {
           signal: options.signal,
           title: options.title,
@@ -271,7 +266,10 @@ export function createPermissionHandler(
       return { behavior: 'allow', updatedInput: input };
     };
 
-    if (toolName === 'Bash' && typeof input.command === 'string' && commandInvokesGit(input.command)) {
+    if (toolName === 'Bash' && typeof input.command === 'string') {
+      if (!shellCommandNeedsWriteGrant(input.command)) {
+        return { behavior: 'allow', updatedInput: input };
+      }
       return gateWrites();
     }
 
@@ -488,8 +486,9 @@ export function createPermissionHandler(
       return { behavior: 'allow', updatedInput: input };
     }
 
-    // Rule 3.5: External MCP tools (e.g., Slack, GitHub) — prompt user
-    // These are from claude.ai managed servers or user-loaded plugins
+    // Rule 3.5: External MCP tools (claude.ai managed servers, user plugins).
+    // Allowed unless the user turned the server off in settings — the read
+    // deny-list and the write grant already cover what these can reach.
     if (toolName.startsWith('mcp__')) {
       const toolServerName = extractMcpServerName(toolName);
       const disabledServer = toolServerName
@@ -501,60 +500,17 @@ export function createPermissionHandler(
           message: `The ${disabledServer} MCP server is disabled in KPM settings.`,
         };
       }
-
-      const mcpCacheKey = `${toolName}:mcp-external`;
-      if (context.autoApprove || clientManager.hasPermissionCached(context.projectId, mcpCacheKey)) {
-        return { behavior: 'allow', updatedInput: input };
-      }
-      if (clientManager.hasAllowAllRemaining(context.projectId)) {
-        permLog(`[Permissions] Auto-allowing external MCP ${toolName} (Allow All Remaining active)`);
-        return { behavior: 'allow', updatedInput: input };
-      }
-      permLog(`[Permissions] External MCP tool requires approval: ${toolName}`);
-      const result = await promptUser(toolName, input, options);
-      if (result.behavior === 'allow' && 'allowAlways' in result && result.allowAlways) {
-        clientManager.cachePermission(context.projectId, mcpCacheKey);
-      }
-      return result;
-    }
-
-    // Rule 4: Check "Allow Always" cache (stored in clientManager)
-    const cacheKey = `${toolName}:${targetPath || 'no-path'}`;
-    if (clientManager.hasPermissionCached(context.projectId, cacheKey)) {
       return { behavior: 'allow', updatedInput: input };
     }
 
-    // Rule 4.5: Check "Allow All Remaining" flag (batch approval for current response)
-    if (clientManager.hasAllowAllRemaining(context.projectId)) {
-      permLog(`[Permissions] Auto-allowing ${toolName} (Allow All Remaining active)`);
-      return { behavior: 'allow', updatedInput: input };
-    }
-
-    // Default: any tool matching no rule (unrecognized built-ins) prompts the
-    // user rather than being silently allowed — fail closed. autoApprove /
-    // "Allow All Remaining" (Rule 4.5, above) / the session cache still apply.
-    if (context.autoApprove) {
-      permLog(`[Permissions] Auto-allowing ${toolName} (autoApprove active)`);
-      return { behavior: 'allow', updatedInput: input };
-    }
-    permLog(`[Permissions] Unrecognized tool requires approval: ${toolName}`);
-    const result = await promptUser(toolName, input, options);
-    if (result.behavior === 'allow' && 'allowAlways' in result && result.allowAlways) {
-      clientManager.cachePermission(context.projectId, cacheKey);
-    }
-    return result;
+    // Rule 4: anything unrecognized. Writes were gated above and credential
+    // paths denied above, so what reaches here cannot touch either.
+    permLog(`[Permissions] Allowing unrecognized tool: ${toolName}`);
+    return { behavior: 'allow', updatedInput: input };
   };
-}
-
-/**
- * Clear session cache when new session starts.
- * Called from chat:new-session handler.
- */
-export function clearSessionCache(projectId: string): void {
-  clientManager.clearPermissionCache(projectId);
 }
 
 /**
  * Export for testing/debugging.
  */
-export { extractPath, isWithinDirectory, commandInvokesGit, getToolPreview };
+export { extractPath, isWithinDirectory, getToolPreview };

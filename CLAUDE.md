@@ -40,7 +40,7 @@ Each is tied to a principle. Breaking one breaks the cockpit's safety guarantees
 - **Claude proposes, user configures disposal (P8).** Plan-mutating tools emit `PlanAction[]` via the `onPlanActions` callback. KPM either queues them for review or auto-applies them based on the user's global setting. No tool writes to the DB directly.
 - **Plans live in SQLite, not in repos (P4).** Plan data does not live as files inside connected repos. No `.kpm/` folders, no committed plan exports.
 - **Translate at every export boundary (P6).** Jira, Linear, Confluence, and GitHub payloads must pass through `toExternalMarkdown` in `src/main/documents/exportBoundary.ts` — its branded `ExternalMarkdown` return type is what tracker write payloads require, so skipping it is a compile error. `@plan/<uuid>`, `intent`, `acceptance_criteria`, and `source_document_id` are local-only.
-- **Chat reads freely, writes by consent (P7).** The first direct file, shell, or git write requires the user's conversation-wide grant. Once granted, the selected provider uses its native writable mode until the user revokes access from the chat header. KPM-controlled file tools keep credential and secret paths denied. Board agent writes stay scoped to isolated worktrees. The grant and shared decision live in `src/main/chat/writeGrants.ts`.
+- **Chat reads freely, writes by consent (P7).** The first direct file, shell, or git write requires the user's write grant for the project. It is asked once, persisted in `project_write_grants`, and covers every chat in that project plus background action runs; the selected provider then uses its native writable mode until the user turns writes off in Settings, Writes. KPM-controlled file tools keep credential and secret paths denied. Board agent writes stay scoped to isolated worktrees. The grant and shared decision live in `src/main/chat/writeGrants.ts`.
 - **Single user (P1).** No seats, no permissions, no shared state, no conflict-resolution UI.
 - **Sync is on-demand (P10).** No live feeds. Inbound queues for triage; outbound drafts for review.
 - **Board automation state is persisted (P9).** Use `dev_sessions.automation_phase`. Never hold it only in renderer state.
@@ -119,7 +119,7 @@ Common proposals from outside agents that violate KPM's design — push back, do
 - **Storing plans as files inside the repo.** Plans live in SQLite (P4).
 - **Syncing `intent` / `acceptance_criteria` to Jira.** Local-only (P6). Append to the description payload at export time if stakeholders need them.
 - **Writing to the DB from a Claude tool to skip the approval/auto-apply flow.** Emit `PlanAction[]` (P8).
-- **Letting chat write without consent.** Direct writes are allowed only after the user enables them for the conversation (P7). Never bypass `conversationWriteGrants`.
+- **Letting chat write without consent.** Direct writes are allowed only after the user enables them for the project (P7). Never bypass `projectWriteGrants`.
 - **Wrapping plan or chat state in React Context.** Use Zustand selectors.
 - **Editing a deployed migration to fix a schema bug.** Add a new migration.
 

@@ -9,7 +9,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { failure, success, type ServiceResult } from '../result';
 import type { DevSession } from '../../../shared/types';
-import { gitExec, getCurrentBranch, resolveUpstreamBranch, getMergeBase } from './gitUtils';
+import { gitExec, resolveUpstreamBranch, getMergeBase } from './gitUtils';
+import { resolveCurrentBranch } from './branchFacts';
 
 /**
  * Get the worktrees directory for a repo
@@ -54,24 +55,6 @@ export async function generateUniqueBranchName(repoPath: string, baseBranchName:
   return `${baseBranchName}-${Date.now()}`;
 }
 
-/**
- * Detect the default branch (main or master)
- */
-export async function detectDefaultBranch(repoPath: string): Promise<string> {
-  try {
-    // Try to get the remote HEAD reference using safe array arguments
-    const { stdout } = await gitExec(
-      ['symbolic-ref', 'refs/remotes/origin/HEAD'],
-      { cwd: repoPath }
-    );
-    const ref = stdout.trim();
-    return ref.replace('refs/remotes/origin/', '').replace('refs/heads/', '');
-  } catch {
-    // Fallback to 'main' if remote HEAD not found
-    return 'main';
-  }
-}
-
 export type WorktreeScaffoldResult =
   | { ok: true }
   | { ok: false; kind: 'checkedOutInMainRepo' }
@@ -106,7 +89,7 @@ export async function scaffoldWorktree(params: {
   }
 
   // Guard: never shadow the primary checkout's current branch
-  const checkedOut = await getCurrentBranch(repoPath);
+  const checkedOut = await resolveCurrentBranch(repoPath);
   if (checkedOut && checkedOut === branchName) {
     return { ok: false, kind: 'checkedOutInMainRepo' };
   }
@@ -170,7 +153,7 @@ export async function assertSessionWorktreeCheckout(params: {
     );
   }
 
-  const currentBranch = await getCurrentBranch(resolvedWorktreePath);
+  const currentBranch = await resolveCurrentBranch(resolvedWorktreePath);
   if (currentBranch !== session.branch_name) {
     return failure(
       `Refusing task run: ${resolvedWorktreePath} is on branch '${currentBranch ?? 'detached HEAD'}', ` +

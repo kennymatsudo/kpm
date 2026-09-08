@@ -12,11 +12,26 @@ export interface ProviderCapabilities {
   /**
    * Whether the provider can pause a running turn to ask for write
    * consent. False means the write fails first and the user is asked
-   * afterwards, so the model has to retry on the next turn — Codex's SDK is a
-   * one-shot `codex exec` wrapper with no approval channel, so its sandbox
-   * decision is fixed when the thread starts.
+   * afterwards, so the model has to retry on the next turn.
    */
   inTurnWriteApproval: boolean;
+  /**
+   * Whether the provider's shell keeps denying credential and secret paths after
+   * the write grant is given. Claude runs its shell in an OS sandbox with those
+   * roots denied for reads and writes; Codex's sandbox governs write scope only;
+   * pi has no sandbox, and its tool-call gate cannot path-check a shell command
+   * the way it checks a file tool, so after the grant its shell reads what the
+   * user's own shell can. False is a real difference in blast radius, declared
+   * here rather than discovered.
+   */
+  sandboxedShell: boolean;
+  /**
+   * Whether the provider reports work that keeps running after the turn that
+   * started it ends. False means a finished turn really is the end of the
+   * session's work, so the UI can treat `isStreaming` as the whole story.
+   * Codex chat and pi both await their work rather than reporting detached tasks.
+   */
+  backgroundTaskReporting: boolean;
 }
 
 const CLAUDE_EFFORT_LEVELS = ['low', 'medium', 'high', 'max'] as const satisfies readonly ChatEffortLevel[];
@@ -32,17 +47,21 @@ export const PROVIDER_CAPABILITIES = {
     permissionPrompts: true,
     promptSuggestions: true,
     inTurnWriteApproval: true,
+    sandboxedShell: true,
+    backgroundTaskReporting: true,
   },
   codex: {
     sessionSummaries: false,
     liveSlashCommands: false,
-    mcpServerManagement: false,
+    mcpServerManagement: true,
     midSessionModelSwitch: false,
     effortLevels: { levels: [] },
     textDeltas: true,
-    permissionPrompts: false,
+    permissionPrompts: true,
     promptSuggestions: false,
-    inTurnWriteApproval: false,
+    inTurnWriteApproval: true,
+    sandboxedShell: true,
+    backgroundTaskReporting: false,
   },
   pi: {
     sessionSummaries: false,
@@ -54,6 +73,8 @@ export const PROVIDER_CAPABILITIES = {
     permissionPrompts: true,
     promptSuggestions: false,
     inTurnWriteApproval: true,
+    sandboxedShell: false,
+    backgroundTaskReporting: false,
   },
 } as const satisfies Record<ChatProvider, ProviderCapabilities>;
 

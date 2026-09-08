@@ -266,6 +266,44 @@ describe('user message echoes', () => {
   });
 });
 
+describe('background tasks', () => {
+  function backgroundTasksChanged(tasks: { task_id: string; task_type: string; description: string }[]) {
+    return { type: 'system', subtype: 'background_tasks_changed', tasks };
+  }
+
+  it('forwards the whole live set, renamed to KPM field names', () => {
+    expect(
+      interpret(
+        backgroundTasksChanged([
+          { task_id: 'task-1', task_type: 'agent', description: 'Researching auth' },
+          { task_id: 'task-2', task_type: 'bash', description: 'npm test' },
+        ]),
+        makeView(),
+      ),
+    ).toEqual([
+      {
+        kind: 'background-tasks',
+        tasks: [
+          { taskId: 'task-1', taskType: 'agent', description: 'Researching auth' },
+          { taskId: 'task-2', taskType: 'bash', description: 'npm test' },
+        ],
+      },
+    ]);
+  });
+
+  it('forwards the empty set, which is how the last task finishing is reported', () => {
+    expect(interpret(backgroundTasksChanged([]), makeView())).toEqual([
+      { kind: 'background-tasks', tasks: [] },
+    ]);
+  });
+
+  it('is not suppressed mid-interrupt, so a stale set cannot outlive the work', () => {
+    expect(
+      interpret(backgroundTasksChanged([]), makeView({ interruptInProgress: true })),
+    ).toEqual([{ kind: 'background-tasks', tasks: [] }]);
+  });
+});
+
 describe('progress, banners, and refusals', () => {
   it('surfaces a live timer for long-running tools but not fast ones', () => {
     const view = makeView();

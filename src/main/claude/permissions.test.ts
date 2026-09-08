@@ -11,25 +11,13 @@ import {
   createPermissionHandler,
   extractPath,
   isWithinDirectory,
-  commandInvokesGit,
   type PermissionContext,
   type PromptUserFn,
 } from './permissions';
-import { clientManager } from './clientManager';
 import {
-  createConversationWriteGrants,
-  type ConversationWriteGrants,
+  createProjectWriteGrants,
+  type ProjectWriteGrants,
 } from '../chat/writeGrants';
-
-// Mock clientManager
-vi.mock('./clientManager', () => ({
-  clientManager: {
-    hasPermissionCached: vi.fn(),
-    hasAllowAllRemaining: vi.fn(),
-    cachePermission: vi.fn(),
-    clearPermissionCache: vi.fn(),
-  },
-}));
 
 /**
  * Helper to create test options with required fields
@@ -44,10 +32,10 @@ function createTestOptions(): { signal: AbortSignal; toolUseID: string; requestI
 
 // createPermissionHandler's return type (the SDK's CanUseTool) allows a null
 // result to suppress the control response; KPM never uses it, so narrow it here.
-let writeGrants: ConversationWriteGrants = createConversationWriteGrants();
+let writeGrants: ProjectWriteGrants = createProjectWriteGrants();
 
-async function enableWrites(chatSessionId: string): Promise<void> {
-  await writeGrants.request(chatSessionId, () => Promise.resolve(true));
+async function enableWrites(projectId: string): Promise<void> {
+  await writeGrants.request(projectId, () => Promise.resolve(true));
 }
 
 function buildHandler(context: PermissionContext, promptUser: PromptUserFn) {
@@ -107,38 +95,6 @@ describe('permissions', () => {
     });
   });
 
-  describe('commandInvokesGit', () => {
-    // Raw git is blocked wholesale in chat Bash (use the git_read tool instead);
-    // the read-only classification now lives in gitReadOnly.ts.
-    it('detects git invocations across common shell forms', () => {
-      for (const command of [
-        'git status',
-        'git log --oneline',
-        'git commit -m "fix"',
-        'git push origin main',
-        'git -C /repos/my-app status --short',
-        '/usr/bin/git diff',
-        'echo hello; git commit -m "fix"',
-        'cat foo | git apply',
-        '(git log)',
-      ]) {
-        expect(commandInvokesGit(command)).toBe(true);
-      }
-    });
-
-    it('ignores commands that merely contain git as text', () => {
-      for (const command of [
-        'ls -la',
-        'npm install',
-        'echo "git is great"',
-        'rg gitignore',
-        'cat .gitignore',
-      ]) {
-        expect(commandInvokesGit(command)).toBe(false);
-      }
-    });
-  });
-
   describe('createPermissionHandler', () => {
     let context: PermissionContext;
     let mockPromptUser: ReturnType<typeof vi.fn> & PromptUserFn;
@@ -146,9 +102,7 @@ describe('permissions', () => {
 
     beforeEach(() => {
       vi.clearAllMocks();
-      vi.mocked(clientManager.hasPermissionCached).mockReturnValue(false);
-      vi.mocked(clientManager.hasAllowAllRemaining).mockReturnValue(false);
-      writeGrants = createConversationWriteGrants();
+      writeGrants = createProjectWriteGrants();
 
       context = {
         projectPath: '/test/project',
@@ -160,11 +114,11 @@ describe('permissions', () => {
     });
 
     describe('auto-allow rules', () => {
-      it('requires a chat session before Edit when no project interceptor is available', async () => {
+      it('asks for the write grant before Edit when no project interceptor is available', async () => {
         const result = await handler('Edit', { file_path: '/test/project/src/file.ts' }, createTestOptions());
 
-        expect(result.behavior).toBe('deny');
-        expect(mockPromptUser).not.toHaveBeenCalled();
+        expect(result.behavior).toBe('allow'); // mockPromptUser resolves to allow
+        expect(mockPromptUser).toHaveBeenCalledTimes(1);
       });
 
       it('auto-allows Read in project directory', async () => {
@@ -241,7 +195,6 @@ describe('permissions', () => {
       });
 
       it('does not auto-allow Bash even when extracted path is in project', async () => {
-        vi.mocked(clientManager.hasPermissionCached).mockReturnValue(false);
         context = {
           projectPath: '/test/project',
           projectId: 'test-project-id',
@@ -259,49 +212,8 @@ describe('permissions', () => {
       });
     });
 
-    describe('permission cache', () => {
-      it('allows cached permission without prompting', async () => {
-        vi.mocked(clientManager.hasPermissionCached).mockReturnValue(true);
-
-        const result = await handler('SomeNewTool', { value: 'anything' }, createTestOptions());
-
-        expect(result.behavior).toBe('allow');
-        expect(mockPromptUser).not.toHaveBeenCalled();
-        expect(clientManager.hasPermissionCached).toHaveBeenCalledWith('test-project-id', 'SomeNewTool:no-path');
-      });
-
-      it('caches "Allow Always" decisions', async () => {
-        vi.mocked(clientManager.hasPermissionCached).mockReturnValue(false);
-        mockPromptUser = vi.fn().mockResolvedValue({
-          behavior: 'allow',
-          updatedInput: {},
-          allowAlways: true,
-        });
-        handler = buildHandler(context, mockPromptUser);
-
-        await handler('SomeNewTool', { value: 'anything' }, createTestOptions());
-
-        expect(clientManager.cachePermission).toHaveBeenCalledWith('test-project-id', 'SomeNewTool:no-path');
-      });
-
-      it('does not cache single-time allows', async () => {
-        vi.mocked(clientManager.hasPermissionCached).mockReturnValue(false);
-        mockPromptUser = vi.fn().mockResolvedValue({
-          behavior: 'allow',
-          updatedInput: {},
-          // No allowAlways flag
-        });
-        handler = buildHandler(context, mockPromptUser);
-
-        await handler('SomeNewTool', { value: 'anything' }, createTestOptions());
-
-        expect(clientManager.cachePermission).not.toHaveBeenCalled();
-      });
-    });
-
     describe('write tools outside project', () => {
       beforeEach(() => {
-        vi.mocked(clientManager.hasPermissionCached).mockReturnValue(false);
         context = {
           projectPath: '/test/project',
           projectId: 'test-project-id',
@@ -363,7 +275,7 @@ describe('permissions', () => {
       });
 
       it('runs git without asking again once writes are enabled', async () => {
-        await enableWrites('chat-1');
+        await enableWrites('test-project-id');
 
         const result = await handler('Bash', { command: 'git push origin main' }, createTestOptions());
 
@@ -371,13 +283,38 @@ describe('permissions', () => {
         expect(mockPromptUser).not.toHaveBeenCalled();
       });
 
-      it('asks even when a cached or allow-all decision is active', async () => {
-        vi.mocked(clientManager.hasPermissionCached).mockReturnValue(true);
-        vi.mocked(clientManager.hasAllowAllRemaining).mockReturnValue(true);
-
-        await handler('Bash', { command: 'git log --oneline' }, createTestOptions());
+      it('asks before a git command that writes', async () => {
+        await handler('Bash', { command: 'git commit --amend' }, createTestOptions());
 
         expect(mockPromptUser).toHaveBeenCalled();
+      });
+
+      it('runs read-only git without asking at all', async () => {
+        for (const command of [
+          'git status --short',
+          'git log --oneline -20 | head -5',
+          'git diff HEAD~1 --stat',
+          'git -C /repos/shared-lib rev-parse --abbrev-ref HEAD',
+        ]) {
+          const result = await handler('Bash', { command }, createTestOptions());
+
+          expect(result.behavior).toBe('allow');
+        }
+        expect(mockPromptUser).not.toHaveBeenCalled();
+        expect(writeGrants.has('test-project-id')).toBe(false);
+      });
+
+      it('runs read-only git even with no chat session to grant against', async () => {
+        context = {
+          projectPath: '/test/project',
+          projectId: 'test-project-id',
+        };
+        handler = buildHandler(context, mockPromptUser);
+
+        const result = await handler('Bash', { command: 'git status' }, createTestOptions());
+
+        expect(result.behavior).toBe('allow');
+        expect(mockPromptUser).not.toHaveBeenCalled();
       });
 
       it('denies the write when the user declines', async () => {
@@ -387,11 +324,11 @@ describe('permissions', () => {
         const result = await handler('Bash', { command: 'git commit -m "fix"' }, createTestOptions());
 
         expect(result.behavior).toBe('deny');
-        expect(writeGrants.has('chat-1')).toBe(false);
+        expect(writeGrants.has('test-project-id')).toBe(false);
       });
 
       it('uses one grant for git commands in any repository', async () => {
-        await enableWrites('chat-1');
+        await enableWrites('test-project-id');
 
         const result = await handler(
           'Bash',
@@ -403,7 +340,8 @@ describe('permissions', () => {
         expect(mockPromptUser).not.toHaveBeenCalled();
       });
 
-      it('cannot enable writes when there is no chat session to ask in', async () => {
+      it('uses the project grant on a run with no chat session', async () => {
+        await enableWrites('test-project-id');
         context = {
           projectPath: '/test/project',
           projectId: 'test-project-id',
@@ -412,7 +350,7 @@ describe('permissions', () => {
 
         const result = await handler('Bash', { command: 'git commit -m x' }, createTestOptions());
 
-        expect(result.behavior).toBe('deny');
+        expect(result.behavior).toBe('allow');
         expect(mockPromptUser).not.toHaveBeenCalled();
       });
 
@@ -423,25 +361,9 @@ describe('permissions', () => {
     });
 
     describe('unknown tools', () => {
-      it('prompts for unknown tools instead of silently allowing', async () => {
+      it('allows an unknown tool without asking, since it can neither write nor read secrets', async () => {
         const result = await handler('SomeNewTool', { data: 'whatever' }, createTestOptions());
-        expect(mockPromptUser).toHaveBeenCalled();
-        expect(result.behavior).toBe('allow'); // mockPromptUser resolves to allow
-      });
 
-      it('returns a deny decision for an unknown tool the user rejects', async () => {
-        mockPromptUser = vi.fn().mockResolvedValue({ behavior: 'deny', updatedInput: {} });
-        handler = buildHandler(context, mockPromptUser);
-
-        const result = await handler('SomeNewTool', { data: 'whatever' }, createTestOptions());
-        expect(result.behavior).toBe('deny');
-      });
-
-      it('auto-allows unknown tools when autoApprove is set', async () => {
-        context = { projectPath: '/test/project', projectId: 'test-project-id', autoApprove: true };
-        handler = buildHandler(context, mockPromptUser);
-
-        const result = await handler('SomeNewTool', { data: 'whatever' }, createTestOptions());
         expect(result.behavior).toBe('allow');
         expect(mockPromptUser).not.toHaveBeenCalled();
       });
@@ -787,7 +709,7 @@ describe('permissions', () => {
       });
     });
 
-    describe('conversation-wide write consent', () => {
+    describe('project-wide write consent', () => {
       beforeEach(() => {
         context = {
           projectPath: '/test/project',
@@ -795,11 +717,9 @@ describe('permissions', () => {
           chatSessionId: 'chat-1',
         };
         handler = buildHandler(context, mockPromptUser);
-        vi.mocked(clientManager.hasPermissionCached).mockReturnValue(false);
-        vi.mocked(clientManager.hasAllowAllRemaining).mockReturnValue(false);
       });
 
-      it('asks before the first write in a conversation', async () => {
+      it('asks before the first write in a project', async () => {
         const result = await handler('Write', { file_path: '/repos/my-app/docs/file.md', content: 'hello' }, createTestOptions());
 
         expect(mockPromptUser).toHaveBeenCalledTimes(1);
@@ -831,19 +751,19 @@ describe('permissions', () => {
         await handler('Edit', { file_path: '/repos/shared-lib/b.ts' }, createTestOptions());
 
         expect(mockPromptUser).toHaveBeenCalledTimes(1);
-        expect(writeGrants.has('chat-1')).toBe(true);
+        expect(writeGrants.has('test-project-id')).toBe(true);
       });
 
       it('uses the grant for writes in any repository', async () => {
-        await enableWrites('chat-1');
+        await enableWrites('test-project-id');
 
         await handler('Edit', { file_path: '/repos/shared-lib/src/index.ts' }, createTestOptions());
 
         expect(mockPromptUser).not.toHaveBeenCalled();
       });
 
-      it('scopes the grant to one chat session', async () => {
-        await enableWrites('chat-other');
+      it('does not let a grant in another project cover this one', async () => {
+        await enableWrites('other-project-id');
 
         await handler('Edit', { file_path: '/repos/my-app/src/index.ts' }, createTestOptions());
 
@@ -857,7 +777,7 @@ describe('permissions', () => {
         const result = await handler('Edit', { file_path: '/repos/my-app/src/index.ts' }, createTestOptions());
 
         expect(result.behavior).toBe('deny');
-        expect(writeGrants.has('chat-1')).toBe(false);
+        expect(writeGrants.has('test-project-id')).toBe(false);
       });
 
       it('gates Bash when the tool input names no path', async () => {
@@ -882,7 +802,7 @@ describe('permissions', () => {
       });
 
       it('keeps denying credential reads while a grant is active', async () => {
-        await enableWrites('chat-1');
+        await enableWrites('test-project-id');
 
         const result = await handler('Read', { file_path: '~/.ssh/id_rsa' }, createTestOptions());
 
@@ -890,7 +810,7 @@ describe('permissions', () => {
       });
 
       it('keeps denying direct Docker config reads while a grant is active', async () => {
-        await enableWrites('chat-1');
+        await enableWrites('test-project-id');
 
         const result = await handler('Read', { file_path: '~/.docker/config.json' }, createTestOptions());
 
@@ -904,7 +824,7 @@ describe('permissions', () => {
       });
 
       it('keeps denying credential writes while a grant is active', async () => {
-        await enableWrites('chat-1');
+        await enableWrites('test-project-id');
 
         const result = await handler(
           'Write',
@@ -920,16 +840,16 @@ describe('permissions', () => {
         await handler('Write', { file_path: '/some/other/path/file.txt', content: 'hello' }, createTestOptions());
 
         expect(mockPromptUser).toHaveBeenCalledTimes(1);
-        expect(writeGrants.has('chat-1')).toBe(true);
+        expect(writeGrants.has('test-project-id')).toBe(true);
       });
 
       it('prompts again after the grant is revoked', async () => {
-        await enableWrites('chat-1');
+        await enableWrites('test-project-id');
 
         await handler('Write', { file_path: '/repos/my-app/a.md', content: 'x' }, createTestOptions());
         expect(mockPromptUser).not.toHaveBeenCalled();
 
-        writeGrants.revoke('chat-1');
+        writeGrants.revoke('test-project-id');
         await handler('Edit', { file_path: '/repos/shared-lib/b.ts' }, createTestOptions());
 
         expect(mockPromptUser).toHaveBeenCalledTimes(1);

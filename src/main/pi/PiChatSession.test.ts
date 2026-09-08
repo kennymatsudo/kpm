@@ -508,6 +508,18 @@ describe('buildToolCallGate', () => {
     }
   });
 
+  it('does not ask consent for read-only git in bash', async () => {
+    const requestConsent = vi.fn<PiWriteConsentFn>(allow);
+    const gate = buildToolCallGate(withWrites, requestConsent);
+
+    const readResult = await gate({ toolName: 'bash', input: { command: 'git status --short' } });
+    const writeResult = await gate({ toolName: 'bash', input: { command: 'git commit -m x' } });
+
+    expect(readResult).toBeUndefined();
+    expect(writeResult).toBeUndefined();
+    expect(requestConsent).toHaveBeenCalledTimes(1);
+  });
+
   it('does not ask consent for read-only builtins', async () => {
     const requestConsent = vi.fn<PiWriteConsentFn>(allow);
     const gate = buildToolCallGate(withWrites, requestConsent);

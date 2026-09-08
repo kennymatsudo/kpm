@@ -7,9 +7,10 @@ import { buildPiKpmTools, type PiKpmToolDefinition, type PiToolImageContent } fr
 import type { PlanContext } from '../chat/prompts';
 import { buildUserGlobalInstructionsSection, buildPlanReferenceRulesSection } from '../chat/prompts';
 import { buildItemReferenceTable } from '../chat/prompts/planFormatting';
-import { buildResponseModesSection } from '../chat/prompts/modes';
+import { buildPlanModificationsSection } from '../chat/prompts/modes';
 import { resolveRegistryPrompt } from '../chat/prompts/promptRegistry';
 import { resolveEffectiveRepoPath } from '../../shared/repoPath';
+import { shellCommandNeedsWriteGrant } from '../chat/shellWritePolicy';
 import {
   pathCanTraverseDeniedRoot,
   pathResolvesIntoDeniedRoot,
@@ -138,6 +139,16 @@ export function buildToolCallGate(
 
     if (!(WRITE_BUILTIN_TOOLS as readonly string[]).includes(toolName)) return undefined;
 
+    // Reading git state is a read: `git status`/`diff`/`log` run without the
+    // write grant, on the same rule Claude's gate applies.
+    if (
+      toolName === 'bash'
+      && typeof input?.command === 'string'
+      && !shellCommandNeedsWriteGrant(input.command)
+    ) {
+      return undefined;
+    }
+
     if (!requestWriteConsent) {
       return { block: true, reason: `Tool "${toolName}" cannot change files in this chat session.` };
     }
@@ -211,7 +222,7 @@ export function buildPiSystemPrompt(context: PlanContext): string {
   const isFocus = Boolean(context.focusDocument);
   const operatingRules = isFocus
     ? `# Operating Rules
-- This session is focused on one document. Direct file, shell, and git writes need conversation-wide consent; project files change through KPM's proposal tools.
+- This session is focused on one document. Direct file, shell, and git writes need the project's write grant; project files change through KPM's proposal tools.
 - Jira, Linear, Confluence, and GitHub exports must not leak KPM-local fields or @plan internals.
 - Plan data lives in KPM SQLite, not in connected repos.
 - If the user asks to change the plan, use KPM plan tools so changes flow through KPM's proposal and review path.
@@ -220,7 +231,7 @@ export function buildPiSystemPrompt(context: PlanContext): string {
     : [
         resolveRegistryPrompt('system.grounding', context.getPromptContent),
         resolveRegistryPrompt('system.constraints', context.getPromptContent),
-        buildResponseModesSection(hasRepos, context.planItems, context.getPromptContent),
+        buildPlanModificationsSection(),
         resolveRegistryPrompt('system.workspace', context.getPromptContent),
         resolveRegistryPrompt('system.plan_rules', context.getPromptContent),
         resolveRegistryPrompt('system.response_style', context.getPromptContent),
@@ -237,7 +248,6 @@ ${operatingRules}
 # Project
 Name: ${context.project.name}
 ID: \`${context.project.id}\`
-Phase: ${context.project.phase}
 Project folder: \`${context.project.folder_path}\`
 
 Connected repos:

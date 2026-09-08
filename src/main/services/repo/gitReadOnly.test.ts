@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { classifyGitInvocation, READ_GIT_SUBCOMMANDS } from './gitReadOnly';
+import { classifyGitInvocation, classifyGitShellCommand, READ_GIT_SUBCOMMANDS } from './gitReadOnly';
 
 function ok(subcommand: string, args: string[] = []): boolean {
   return classifyGitInvocation(subcommand, args).ok;
@@ -151,5 +151,97 @@ describe('classifyGitInvocation', () => {
     for (const sub of READ_GIT_SUBCOMMANDS) {
       expect(ok(sub, simplestArgs[sub] ?? [])).toBe(true);
     }
+  });
+});
+
+describe('classifyGitShellCommand', () => {
+  function shellOk(command: string): boolean {
+    return classifyGitShellCommand(command).ok;
+  }
+
+  it('accepts the everyday read commands', () => {
+    expect(shellOk('git status')).toBe(true);
+    expect(shellOk('git status --short')).toBe(true);
+    expect(shellOk('git log --oneline -20')).toBe(true);
+    expect(shellOk('git diff HEAD~1 --stat')).toBe(true);
+    expect(shellOk('git show abc123')).toBe(true);
+    expect(shellOk('git rev-parse --abbrev-ref HEAD')).toBe(true);
+    expect(shellOk('/usr/bin/git blame src/file.ts')).toBe(true);
+  });
+
+  it('accepts quoted arguments', () => {
+    expect(shellOk('git log --grep="fix the bug" --oneline')).toBe(true);
+    expect(shellOk("git log --author='Kenny Matsudo'")).toBe(true);
+  });
+
+  it('accepts safe global options', () => {
+    expect(shellOk('git -C /repos/other status')).toBe(true);
+    expect(shellOk('git --no-pager diff')).toBe(true);
+    expect(shellOk('git --git-dir=/repos/other/.git log')).toBe(true);
+    expect(shellOk('git --version')).toBe(true);
+  });
+
+  it('rejects global options that can run a program', () => {
+    expect(shellOk("git -c core.pager='sh -c whoami' log")).toBe(false);
+    expect(shellOk('git --exec-path=/tmp/evil status')).toBe(false);
+  });
+
+  it('rejects write subcommands', () => {
+    expect(shellOk('git commit -m "fix"')).toBe(false);
+    expect(shellOk('git push origin main')).toBe(false);
+    expect(shellOk('git checkout -b feature')).toBe(false);
+    expect(shellOk('git add .')).toBe(false);
+    expect(shellOk('git reset --hard origin/main')).toBe(false);
+  });
+
+  it('accepts && chains where every command is a read', () => {
+    expect(shellOk('git fetch && git status')).toBe(true);
+    expect(shellOk('git log --oneline -5 && git diff --stat')).toBe(true);
+  });
+
+  it('rejects an && chain containing a non-read', () => {
+    expect(shellOk('git status && git commit -m x')).toBe(false);
+    expect(shellOk('git status && rm -rf /tmp/x')).toBe(false);
+    expect(shellOk('ls && git status')).toBe(false);
+  });
+
+  it('accepts pipes into pure filters', () => {
+    expect(shellOk('git log --oneline | head -20')).toBe(true);
+    expect(shellOk('git status --short | wc -l')).toBe(true);
+    expect(shellOk('git log | grep fix | head -5')).toBe(true);
+  });
+
+  it('rejects pipes into anything that can write or execute', () => {
+    expect(shellOk('git log | tee /tmp/log')).toBe(false);
+    expect(shellOk('git log | sh')).toBe(false);
+    expect(shellOk('git log | xargs rm')).toBe(false);
+    expect(shellOk('git diff | git apply')).toBe(false);
+  });
+
+  it('rejects shell syntax it cannot prove read-only', () => {
+    expect(shellOk('git status > /tmp/out')).toBe(false);
+    expect(shellOk('git status 2>&1')).toBe(false);
+    expect(shellOk('git status; rm -rf /tmp/x')).toBe(false);
+    expect(shellOk('git status & rm -rf /tmp/x')).toBe(false);
+    expect(shellOk('git status || git init')).toBe(false);
+    expect(shellOk('(git log)')).toBe(false);
+    expect(shellOk('git log $(whoami)')).toBe(false);
+    expect(shellOk('git log `whoami`')).toBe(false);
+    expect(shellOk('git log --grep=$USER')).toBe(false);
+    expect(shellOk("git log --grep=a\\;b")).toBe(false);
+    expect(shellOk('git status &&')).toBe(false);
+    expect(shellOk('git log "unterminated')).toBe(false);
+  });
+
+  it('rejects a command that is not git at all', () => {
+    expect(shellOk('ls -la')).toBe(false);
+    expect(shellOk('gitlab-cli status')).toBe(false);
+    expect(shellOk('')).toBe(false);
+  });
+
+  it('explains why it rejected', () => {
+    const result = classifyGitShellCommand('git commit -m x');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toContain('commit');
   });
 });

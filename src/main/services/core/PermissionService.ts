@@ -1,65 +1,40 @@
-import { randomUUID } from 'crypto';
-import { clientManager } from '../../claude/clientManager';
-import type { IToolPermissionRepository } from '../../db/interfaces';
-import type { ToolPermission } from '../../../shared/types';
+import type { IProjectWriteGrantRepository } from '../../db/interfaces';
+import { projectWriteGrants, type ProjectWriteGrants } from '../../chat/writeGrants';
 import { wrap, type ServiceResult } from '../result';
 
 export interface PermissionServiceDeps {
-  toolPermissions: IToolPermissionRepository;
+  projectWriteGrantRepository: IProjectWriteGrantRepository;
+  grants?: ProjectWriteGrants;
 }
 
+/**
+ * Owns the project write grant. The in-memory grant is the hot-path read (it
+ * is consulted on every tool call) and the table is what makes it outlive a
+ * restart, so both move together through here.
+ */
 export function createPermissionService(deps: PermissionServiceDeps) {
+  const grants = deps.grants ?? projectWriteGrants;
+
   return {
-    loadPersistedPermissions(projectId: string): ServiceResult<void> {
+    /** Load persisted grants at startup, before any session can run. */
+    hydrate(): ServiceResult<void> {
       return wrap(() => {
-        const permissions = deps.toolPermissions.listByProject(projectId);
-        for (const permission of permissions) {
-          clientManager.cachePermission(projectId, permission.cache_key);
-        }
-        console.log(`[Permissions] Loaded ${permissions.length} persisted permissions for ${projectId}`);
+        grants.hydrate(deps.projectWriteGrantRepository);
+        const granted = deps.projectWriteGrantRepository.listGrantedProjectIds();
+        console.log(`[Permissions] Writes granted in ${granted.length} project(s)`);
       });
     },
 
-    allowAllRemaining(projectId: string): ServiceResult<void> {
-      return wrap(() => {
-        clientManager.setAllowAllRemaining(projectId);
-      });
+    isGranted(projectId: string): ServiceResult<boolean> {
+      return wrap(() => grants.has(projectId));
     },
 
-    persistAlwaysAllowed(
-      projectId: string,
-      toolName: string,
-      targetPath: string | null,
-      preview: string,
-    ): ServiceResult<void> {
-      return wrap(() => {
-        const cacheKey = `${toolName}:${targetPath ?? 'no-path'}`;
-        deps.toolPermissions.upsert({
-          id: randomUUID(),
-          project_id: projectId,
-          cache_key: cacheKey,
-          tool_name: toolName,
-          label: preview,
-        });
-      });
+    grant(projectId: string): ServiceResult<void> {
+      return wrap(() => grants.grant(projectId));
     },
 
-    list(projectId: string): ServiceResult<ToolPermission[]> {
-      return wrap(() => deps.toolPermissions.listByProject(projectId));
-    },
-
-    revoke(id: string, projectId: string, cacheKey: string): ServiceResult<void> {
-      return wrap(() => {
-        deps.toolPermissions.delete(id);
-        clientManager.revokePermission(projectId, cacheKey);
-      });
-    },
-
-    revokeAll(projectId: string): ServiceResult<void> {
-      return wrap(() => {
-        deps.toolPermissions.deleteByProject(projectId);
-        clientManager.clearPermissionCache(projectId);
-      });
+    revoke(projectId: string): ServiceResult<void> {
+      return wrap(() => grants.revoke(projectId));
     },
   };
 }

@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { isPathLike, isWorkspaceLinkHref, parsePathRef, workspaceLinkPath } from './pathRefs';
+import {
+  isPathLike,
+  isWorkspaceLinkHref,
+  parsePathRef,
+  relativeToRoot,
+  workspaceLinkPath,
+} from './pathRefs';
 
 describe('isPathLike', () => {
   it('matches relative paths with extensions', () => {
@@ -12,6 +18,11 @@ describe('isPathLike', () => {
     expect(isPathLike('src/main/foo.ts:42')).toBe(true);
     expect(isPathLike('orchestrator_agent.py:210')).toBe(false); // no slash
     expect(isPathLike('a/orchestrator_agent.py:210')).toBe(true);
+  });
+
+  it('matches absolute paths, with and without a line number', () => {
+    expect(isPathLike('/Users/me/repo/src/foo.ts')).toBe(true);
+    expect(isPathLike('/Users/me/repo/plan.md:1')).toBe(true);
   });
 
   it('rejects URLs', () => {
@@ -54,8 +65,16 @@ describe('isWorkspaceLinkHref', () => {
     expect(isWorkspaceLinkHref('kpm-plan:8f3a')).toBe(false);
   });
 
-  it('rejects absolute, protocol-relative, and fragment-only targets', () => {
-    expect(isWorkspaceLinkHref('/etc/passwd')).toBe(false);
+  it('matches absolute link targets, which agents emit far more often than relative ones', () => {
+    expect(isWorkspaceLinkHref('/Users/me/repo/docs/plan.md')).toBe(true);
+    expect(isWorkspaceLinkHref('/Users/me/repo/docs/plan.md:1')).toBe(true);
+  });
+
+  it('matches link targets carrying a line number', () => {
+    expect(isWorkspaceLinkHref('docs/spec.md:42')).toBe(true);
+  });
+
+  it('rejects protocol-relative and fragment-only targets', () => {
     expect(isWorkspaceLinkHref('//example.com/foo.md')).toBe(false);
     expect(isWorkspaceLinkHref('#heading')).toBe(false);
   });
@@ -67,6 +86,7 @@ describe('isWorkspaceLinkHref', () => {
 
   it('rejects targets without an extension', () => {
     expect(isWorkspaceLinkHref('docs/spec')).toBe(false);
+    expect(isWorkspaceLinkHref('/etc/passwd')).toBe(false);
   });
 });
 
@@ -74,6 +94,34 @@ describe('workspaceLinkPath', () => {
   it('strips the ./ prefix and the fragment', () => {
     expect(workspaceLinkPath('./docs/spec.md#context')).toBe('docs/spec.md');
     expect(workspaceLinkPath('docs/spec.md')).toBe('docs/spec.md');
+  });
+
+  it('strips the line number, which the editor cannot honor', () => {
+    expect(workspaceLinkPath('/Users/me/repo/plan.md:1')).toBe('/Users/me/repo/plan.md');
+    expect(workspaceLinkPath('docs/spec.md:42#context')).toBe('docs/spec.md');
+  });
+});
+
+describe('relativeToRoot', () => {
+  it('re-expresses a path under the root as relative', () => {
+    expect(relativeToRoot('/Users/me/repo/docs/plan.md', '/Users/me/repo')).toBe('docs/plan.md');
+  });
+
+  it('tolerates a trailing slash on the root', () => {
+    expect(relativeToRoot('/Users/me/repo/docs/plan.md', '/Users/me/repo/')).toBe('docs/plan.md');
+  });
+
+  it('returns null for a path outside the root', () => {
+    expect(relativeToRoot('/Users/me/other/plan.md', '/Users/me/repo')).toBeNull();
+    expect(relativeToRoot('/etc/passwd', '/Users/me/repo')).toBeNull();
+  });
+
+  it('does not treat a sibling root sharing a name prefix as containing the path', () => {
+    expect(relativeToRoot('/Users/me/repo-other/plan.md', '/Users/me/repo')).toBeNull();
+  });
+
+  it('returns null for the root itself, which is a directory not a file', () => {
+    expect(relativeToRoot('/Users/me/repo', '/Users/me/repo')).toBeNull();
   });
 });
 

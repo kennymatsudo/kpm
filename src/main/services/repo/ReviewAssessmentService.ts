@@ -31,7 +31,8 @@ import type {
 import { getConfig } from '../../config';
 import { failure, success, type AsyncResult, type ServiceResult } from '../result';
 import type { createGitHubService } from './GitHubService';
-import { getDiff, detectBaseBranch } from './gitUtils';
+import { getDiff } from './gitUtils';
+import { resolveDefaultBranch } from './branchFacts';
 import {
   createReviewAssessmentMcpServer,
   REVIEW_ASSESSMENT_TOOL_NAMES,
@@ -685,7 +686,7 @@ export function createReviewAssessmentService(deps: ReviewAssessmentServiceDeps)
     try {
       if (!repoPath) return null;
 
-      const baseBranch = session.base_branch || await detectBaseBranch(repoPath);
+      const baseBranch = session.base_branch || await resolveDefaultBranch(repoPath);
       return await getDiff(repoPath, baseBranch);
     } catch (e) {
       logError(`Failed to fetch diff: ${e instanceof Error ? e.message : 'unknown'}`);

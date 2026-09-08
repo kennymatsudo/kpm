@@ -20,7 +20,7 @@ const LABELS: Record<ChatChoiceEffort, string> = {
 };
 
 const CLAUDE_EFFORT = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
-const CODEX_EFFORT = ['minimal', 'low', 'medium', 'high', 'xhigh'] as const;
+const CODEX_EFFORT = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
 const PI_EFFORT = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
 
 /** Persisted marker for a new Chat that has no safe pi option to inherit. */
@@ -83,7 +83,7 @@ export function buildChatChoiceCatalog(
       label: model.label,
       available: true,
       effortLevels: efforts(CODEX_EFFORT),
-      defaultEffort: 'medium',
+      defaultEffort: 'high',
     }))),
     providerDescriptor('pi', 'pi', piOptions.map((option) => ({
       id: `${option.provider}/${option.modelId}`,

@@ -6,6 +6,7 @@
  */
 
 import { existsSync } from 'fs';
+import { join } from 'path';
 import { runGeneration } from '../../generation';
 import { randomUUID } from 'crypto';
 import type { IDevSessionRepository, IRepoRepository, IPlanItemRepository } from '../../db/interfaces';
@@ -17,6 +18,7 @@ import type {
   PrReviewThreadComment,
   PrStatus,
 } from '../../../shared/types';
+import type { GhAuthState } from '../../../shared/ghAuth';
 import { success, failure, wrapAsync, type AsyncResult } from '../result';
 import { getConfig } from '../../config';
 import {
@@ -28,22 +30,20 @@ import {
   getPrReviewSnapshot as fetchPrReviewSnapshot,
   probePrReviewState as fetchPrReviewProbe,
   type PrReviewProbe,
-  pushBranch,
   isBranchPushed,
   replyToReviewThread as postReviewThreadReply,
   resolveReviewThread as resolveGhReviewThread,
-  type GhAuthResult,
   type GhReviewThreadState,
   unresolveReviewThread as unresolveGhReviewThread,
 } from './ghUtils';
 import {
   getCommittedDiff,
   getCommitLog,
-  getCurrentBranch,
-  resolveBaseBranch,
-  hasCommitsAhead,
+  countCommitsAhead,
   readPrTemplate,
 } from './gitUtils';
+import { classifyPushTarget, resolveBaseBranch, resolveCurrentBranch } from './branchFacts';
+import { publishBranch } from './gitWrites';
 import { collectLinkedRefKeys } from '../../documents/planRefResolver';
 import { toExternalMarkdown } from '../../documents/exportBoundary';
 
@@ -70,8 +70,6 @@ export interface PrContextResult {
   prTemplate: string | null;
 }
 
-/** Branches that must never be pushed directly. */
-const PROTECTED_BRANCHES = new Set(['main', 'master', 'develop', 'release']);
 const MAX_FEATURE_CONTEXT_DOC_CHARS = 24_000;
 
 export interface BuildAddressReviewContextOptions {
@@ -158,8 +156,11 @@ export function createGitHubService(deps: GitHubServiceDeps) {
     if (!repo) return { error: `Repo not found: ${session.repo_id}` };
 
     // PR operations need the session branch's HEAD, which lives in the worktree.
-    // Fall back to the main repo path only if the worktree no longer exists.
-    const repoPath = existsSync(session.worktree_path) ? session.worktree_path : repo.path;
+    // A leftover directory is not a worktree: gh resolves its repository through
+    // git and otherwise fails before it can query the PR.
+    const repoPath = existsSync(join(session.worktree_path, '.git'))
+      ? session.worktree_path
+      : repo.path;
     return { repoPath, primaryRepoPath: repo.path, session };
   }
 
@@ -271,7 +272,7 @@ ${input.commitLog || 'No commit log provided.'}`;
      * Check if the user is authenticated with GitHub CLI.
      * Resolves session to get a repo path for the cwd.
      */
-    async checkAuth(sessionId: string): AsyncResult<GhAuthResult> {
+    async checkAuth(sessionId: string): AsyncResult<GhAuthState> {
       const resolved = resolveSessionRepo(sessionId);
       if ('error' in resolved) return failure(resolved.error);
       return wrapAsync(
@@ -295,9 +296,11 @@ ${input.commitLog || 'No commit log provided.'}`;
       const { repoPath, session } = resolved;
 
       try {
-        // Safety: refuse to push protected branches
-        if (PROTECTED_BRANCHES.has(session.branch_name)) {
-          return failure(`Refusing to create PR from protected branch "${session.branch_name}". Create a feature branch first.`);
+        // Same push guard the git_push tool applies, so a repo whose default
+        // branch is not one of the protected names can't be published here.
+        const pushTarget = await classifyPushTarget(repoPath, session.branch_name);
+        if (!pushTarget.ok) {
+          return failure(`Refusing to create PR from "${session.branch_name}": ${pushTarget.reason}`);
         }
         if (session.branch_name === session.base_branch) {
           return failure(`Head branch "${session.branch_name}" is the same as base branch. Create a feature branch first.`);
@@ -305,15 +308,27 @@ ${input.commitLog || 'No commit log provided.'}`;
 
         // Check for commits ahead of base
         const baseBranch = await resolveBaseBranch(repoPath, session.base_branch);
-        const commits = await hasCommitsAhead(repoPath, baseBranch);
-        if (!commits) {
+        const ahead = await countCommitsAhead(repoPath, baseBranch);
+        if (ahead === null) {
+          return failure(`Could not compare "${session.branch_name}" against ${baseBranch}. Check that ${baseBranch} exists in this checkout.`);
+        }
+        if (ahead === 0) {
           return failure(`No commits ahead of ${baseBranch}. Commit your changes before creating a PR.`);
         }
 
-        // Push branch if not already pushed
+        // Push branch if not already pushed. Board teardown and PR creation are
+        // the user's own action on a session they started, so no chat grant applies.
         const pushed = await isBranchPushed(repoPath, session.branch_name);
         if (!pushed) {
-          await pushBranch(repoPath, session.branch_name);
+          const published = await publishBranch({
+            repoPath,
+            remote: 'origin',
+            branch: session.branch_name,
+            authorization: { kind: 'boardSession' },
+          });
+          if (!published.ok) {
+            return failure(`Could not push "${session.branch_name}": ${published.reason}`);
+          }
         }
 
         // Resolve @plan/<uuid> tokens in the body to bare external keys (so
@@ -349,8 +364,9 @@ ${input.commitLog || 'No commit log provided.'}`;
           sessionId,
           result.number,
           result.url,
-          draft ? 'OPEN' : 'OPEN',
-          null
+          'OPEN',
+          null,
+          Boolean(draft)
         );
 
         return success(result);
@@ -380,7 +396,8 @@ ${input.commitLog || 'No commit log provided.'}`;
           status.number,
           status.url,
           status.state,
-          status.reviewDecision
+          status.reviewDecision,
+          status.isDraft
         );
 
         return success(status);
@@ -432,7 +449,8 @@ ${input.commitLog || 'No commit log provided.'}`;
           snapshot.prNumber,
           snapshot.prUrl,
           snapshot.state,
-          snapshot.reviewDecision
+          snapshot.reviewDecision,
+          snapshot.isDraft
         );
 
         return success(snapshot);
@@ -517,8 +535,8 @@ ${input.commitLog || 'No commit log provided.'}`;
       try {
         const baseBranch = await resolveBaseBranch(repoPath, session.base_branch);
         const [currentBranch, commits, prTemplate] = await Promise.all([
-          getCurrentBranch(repoPath),
-          hasCommitsAhead(repoPath, baseBranch),
+          resolveCurrentBranch(repoPath),
+          countCommitsAhead(repoPath, baseBranch),
           readSessionPrTemplate(repoPath, primaryRepoPath),
         ]);
 
@@ -550,7 +568,7 @@ ${input.commitLog || 'No commit log provided.'}`;
           body: sections.join('\n\n'),
           branch: currentBranch,
           baseBranch,
-          hasCommits: commits,
+          hasCommits: (commits ?? 0) > 0,
           prTemplate,
         });
       } catch (error) {
@@ -785,7 +803,8 @@ ${effectivePrTemplate}`
           status.number,
           status.url,
           status.state,
-          status.reviewDecision
+          status.reviewDecision,
+          status.isDraft
         );
 
         return success(status);
@@ -838,6 +857,7 @@ ${effectivePrTemplate}`
           pr_url: null,
           pr_state: null,
           review_state: null,
+          pr_is_draft: false,
           merge_order: null,
         });
         sessionId = stub.id;
@@ -866,7 +886,8 @@ ${effectivePrTemplate}`
           status.number,
           status.url,
           status.state,
-          status.reviewDecision
+          status.reviewDecision,
+          status.isDraft
         );
 
         return success(status);

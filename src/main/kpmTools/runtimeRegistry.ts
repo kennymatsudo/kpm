@@ -3,7 +3,9 @@ import fs from 'fs';
 import { CONTEXT_FILE_NAMES, CONTEXT_FILE_PENDING_CACHE_KEY } from '../../shared/contextFile';
 import type { ChatSessionScope, PlanAction } from '../../shared/types';
 import type { IRepositoryContainer } from '../db/interfaces';
+import { projectWriteGrants, type WriteDecision } from '../chat/writeGrants';
 import { resolveScopedPath } from '../services/files/scopedFs';
+import { promptUser } from '../services/core/PermissionPromptService';
 import type { AppServices } from '../services/appServices';
 import { processKpmToolProposalSink } from './proposals';
 import { assertKpmToolInputSchemas } from './toolInputSchema';
@@ -24,6 +26,7 @@ import { createDocumentReadTools } from './tools/document-read';
 import { createDocumentCreateTools, type DocumentUpdatePayload } from './tools/document-update';
 import { createFileDeleteTools, type FileDeleteCallback } from './tools/file-delete';
 import { createFileMoveTools } from './tools/file-move';
+import { createGitPushTools, type GitPushConsentRequest } from './tools/git-push';
 import { createGitReadTools } from './tools/git-read';
 import { createGitHubTools } from './tools/github';
 import { createGroupTools } from './tools/groups';
@@ -39,7 +42,7 @@ import { createStorybookTools } from './tools/storybook';
 export { runWithToolExecutionContext, type KpmToolDefinition, type KpmToolRuntime } from './runtime';
 export { subscribeToKpmToolProposals, type KpmToolProposal, type PlanActionsEvent } from './proposals';
 
-export const KPM_MCP_INSTRUCTIONS = `KPM tools are local project-planning tools. Direct file, shell, and git writes need conversation-wide consent, requested on the first attempt. Plan-mutating tools propose PlanAction[] for KPM review or auto-apply; they must not bypass KPM's approval flow or write plan rows directly. Document, context-file, move, and delete tools emit proposals for KPM to surface to the user. Use @plan/<uuid> only for plan item UUIDs returned by KPM tools. Keep responses concise and utilitarian.`;
+export const KPM_MCP_INSTRUCTIONS = `KPM tools are local project-planning tools. Direct file, shell, and git writes need the project's write grant, requested on the first attempt. Plan-mutating tools propose PlanAction[] for KPM review or auto-apply; they must not bypass KPM's approval flow or write plan rows directly. Document, context-file, move, and delete tools emit proposals for KPM to surface to the user. Use @plan/<uuid> only for plan item UUIDs returned by KPM tools. Keep responses concise and utilitarian.`;
 
 export interface KpmToolRuntimeDeps {
   container: Pick<
@@ -154,6 +157,32 @@ function emitPlanActions(actions: PlanAction[]): void {
   });
 }
 
+/**
+ * Ask for the project's write grant on a KPM tool's behalf, using the same
+ * grant and prompt as the built-in write tools so one answer covers both. A run
+ * with no chat session — a scheduled action — inherits an existing grant but
+ * has nowhere to ask for one it does not have.
+ */
+async function requestGitPushWriteAccess(request: GitPushConsentRequest): Promise<WriteDecision> {
+  const context = getCurrentToolExecutionContext();
+  const chatSessionId = context?.chatSessionId;
+
+  return projectWriteGrants.request(context?.projectId, async () => {
+    const result = await promptUser(
+      getKpmToolRuntimeDeps().getMainWindow(),
+      context?.projectId ?? '',
+      'git_push',
+      { ...request },
+      {
+        chatSessionId,
+        kind: 'write-access',
+        title: `Push ${request.branch} to ${request.remote}?`,
+      },
+    );
+    return result.behavior === 'allow';
+  });
+}
+
 function emitContextFileUpdate(update: ContextFileUpdatePayload): void {
   const context = getCurrentToolExecutionContext();
   const chatSessionId = update.chatSessionId ?? context?.chatSessionId;
@@ -261,6 +290,10 @@ function buildToolGroups(): KpmToolGroup[] {
     group('plan-refs', ALL_CHAT_SCOPES, ['plan_refs.read'], createPlanRefTools({ planItems: planItemRepo, projects: projectRepo })),
     group('spill-read', MAIN_ONLY, ['spill.read'], createSpillReadTools()),
     group('git-read', MAIN_ONLY, ['repo.read'], createGitReadTools({ repos: repoRepo })),
+    group('git-push', MAIN_ONLY, ['repo.push'], createGitPushTools({
+      repos: repoRepo,
+      requestWriteAccess: requestGitPushWriteAccess,
+    })),
   ];
 }
 

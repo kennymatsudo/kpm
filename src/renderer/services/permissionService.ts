@@ -1,5 +1,5 @@
-import type { PermissionAction, PermissionRequest, ToolPermission } from '../../shared/types';
-import type { WriteGrantChanged } from '../../shared/ipc/permissionEvents';
+import type { PermissionAction, PermissionRequest } from '../../shared/types';
+import type { PermissionSettled, WriteGrantChanged } from '../../shared/ipc/permissionEvents';
 
 export function subscribeToWriteGrantChanges(
   callback: (change: WriteGrantChanged) => void
@@ -7,19 +7,29 @@ export function subscribeToWriteGrantChanges(
   return window.api.permission.onWriteGrantChanged(callback);
 }
 
-export async function getConversationWriteGrant(chatSessionId: string): Promise<boolean> {
-  const result = await window.api.permission.getWriteGrant({ chatSessionId });
+export async function getProjectWriteGrant(projectId: string): Promise<boolean> {
+  const result = await window.api.permission.getWriteGrant({ projectId });
   return result.success && result.granted;
 }
 
-export function revokeConversationWriteGrant(chatSessionId: string): Promise<{ success: boolean }> {
-  return window.api.permission.revokeWriteGrant({ chatSessionId });
+export function grantProjectWriteGrant(projectId: string): Promise<{ success: boolean }> {
+  return window.api.permission.grantWriteGrant({ projectId });
+}
+
+export function revokeProjectWriteGrant(projectId: string): Promise<{ success: boolean }> {
+  return window.api.permission.revokeWriteGrant({ projectId });
 }
 
 export function subscribeToPermissionRequests(
   callback: (request: PermissionRequest) => void
 ): () => void {
   return window.api.permission.onRequest(callback);
+}
+
+export function subscribeToPermissionSettled(
+  callback: (settled: PermissionSettled) => void
+): () => void {
+  return window.api.permission.onSettled(callback);
 }
 
 export function respondToPermissionRequest(
@@ -30,18 +40,3 @@ export function respondToPermissionRequest(
   return window.api.permission.respond({ requestId, projectId, action });
 }
 
-export function listToolPermissions(projectId: string): Promise<ToolPermission[]> {
-  return window.api.permissions?.list(projectId) ?? Promise.resolve([]);
-}
-
-export function revokeToolPermission(
-  permissionId: string,
-  projectId: string,
-  cacheKey: string
-): Promise<{ success: boolean }> {
-  return window.api.permissions.revoke({ id: permissionId, projectId, cacheKey });
-}
-
-export function revokeAllToolPermissions(projectId: string): Promise<{ success: boolean }> {
-  return window.api.permissions.revokeAll({ projectId });
-}

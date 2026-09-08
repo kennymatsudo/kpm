@@ -12,6 +12,7 @@ import { getConfig } from '../../config';
 import type { UpdateEventBus } from '../core/UpdateEventBus';
 import { emitAppEvent } from '../../../shared/ipc/appEvents';
 import { repoEvents } from '../../../shared/ipc/repoEvents';
+import { normalizeHeadRef } from './branchFacts';
 
 /**
  * Watcher setup/teardown trace. Silent unless `claude.debug` is on — these fire
@@ -46,21 +47,6 @@ export function createRepoWatcherService(deps: RepoWatcherServiceDeps) {
 
   /** Debounce timers to prevent rapid-fire events */
   const debounceTimers = new Map<string, NodeJS.Timeout>();
-
-  function parseBranchFromHead(headContents: string): string | null {
-    const trimmed = headContents.trim();
-    if (!trimmed) return null;
-
-    if (trimmed.startsWith('ref:')) {
-      const refPath = trimmed.slice(4).trim();
-      if (!refPath) return null;
-      const headsPrefix = 'refs/heads/';
-      return refPath.startsWith(headsPrefix) ? refPath.slice(headsPrefix.length) : refPath;
-    }
-
-    // Detached HEAD - match `git rev-parse --abbrev-ref HEAD` behavior.
-    return 'HEAD';
-  }
 
   function resolveGitDirSync(repoPath: string): string | null {
     const gitPath = path.join(repoPath, '.git');
@@ -102,7 +88,7 @@ export function createRepoWatcherService(deps: RepoWatcherServiceDeps) {
     try {
       const headPath = path.join(gitDir, 'HEAD');
       const headContents = fs.readFileSync(headPath, 'utf-8');
-      return parseBranchFromHead(headContents);
+      return normalizeHeadRef(headContents);
     } catch {
       return null;
     }
@@ -112,7 +98,7 @@ export function createRepoWatcherService(deps: RepoWatcherServiceDeps) {
     try {
       const headPath = path.join(gitDir, 'HEAD');
       const headContents = await fs.promises.readFile(headPath, 'utf-8');
-      return parseBranchFromHead(headContents);
+      return normalizeHeadRef(headContents);
     } catch {
       return null;
     }

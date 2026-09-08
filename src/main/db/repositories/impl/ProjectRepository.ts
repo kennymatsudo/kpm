@@ -11,6 +11,7 @@ import type { Project } from '../../../../shared/types';
 import type { IProjectRepository, ProjectCreateInput } from '../../interfaces/project';
 import { writeInitialProjectContextFilesSync } from '../../../project-context/contextFileCompat';
 import { buildPlaceholderContext } from '../../../../shared/contextFile';
+import { deriveProjectFolderPath, projectsRootPath } from '../../../project-context/projectFolder';
 
 /**
  * File system operations interface for testing
@@ -19,7 +20,6 @@ export interface IFileSystem {
   existsSync(path: string): boolean;
   mkdirSync(path: string, options?: { recursive?: boolean }): void;
   writeFileSync(path: string, content: string, encoding?: BufferEncoding): void;
-  rmSync(path: string, options?: { recursive?: boolean; force?: boolean }): void;
   lstatSync?(path: string): Stats;
   readlinkSync?(path: string): string;
   unlinkSync?(path: string): void;
@@ -99,7 +99,7 @@ export class ProjectRepository implements IProjectRepository {
   create(input: ProjectCreateInput): Project {
     const { name } = input;
     const id = randomUUID();
-    const folderPath = input.folderPath ?? this.deriveLegacyFolderPath(name, id);
+    const folderPath = input.folderPath ?? this.deriveManagedFolderPath(name, id);
 
     this.fs.mkdirSync(folderPath, { recursive: true });
 
@@ -108,14 +108,13 @@ export class ProjectRepository implements IProjectRepository {
     return this.stmts.insert.get(id, name, folderPath) as Project;
   }
 
-  private deriveLegacyFolderPath(name: string, id: string): string {
-    const projectsRoot = this.path.join(this.userDataPath, 'projects');
+  private deriveManagedFolderPath(name: string, id: string): string {
+    const join = (...parts: string[]) => this.path.join(...parts);
+    const projectsRoot = projectsRootPath(this.userDataPath, join);
     if (!this.fs.existsSync(projectsRoot)) {
       this.fs.mkdirSync(projectsRoot, { recursive: true });
     }
-    const shortId = id.split('-')[0];
-    const safeName = name.replace(/[^a-zA-Z0-9-_]/g, '-');
-    return this.path.join(projectsRoot, `${safeName}-${shortId}`);
+    return deriveProjectFolderPath(this.userDataPath, name, id, join);
   }
 
   get(id: string): Project | undefined {
@@ -177,25 +176,13 @@ export class ProjectRepository implements IProjectRepository {
     }
   }
 
+  /**
+   * Drops KPM's record of the project. The project folder on disk is deliberately
+   * left in place: `folder_path` can be a folder the user already owned (the create
+   * modal lets them point at any existing directory), so deleting it would destroy
+   * work KPM never created. Deleting a project de-references, it never removes files.
+   */
   delete(id: string): void {
-    // Get project folder path before deletion
-    const project = this.get(id);
-    const folderPath = project?.folder_path;
-
-    // Delete project folder FIRST to avoid orphaned folders if DB delete succeeds but FS fails
-    // This order ensures we can retry deletion if something fails partway through
-    if (folderPath && this.fs.existsSync(folderPath)) {
-      try {
-        this.fs.rmSync(folderPath, { recursive: true, force: true });
-      } catch (error) {
-        // If filesystem deletion fails, throw to prevent database deletion
-        // This keeps the data consistent - user can retry or manually clean up
-        console.error(`Failed to delete project folder ${folderPath}:`, error);
-        throw new Error(`Failed to delete project folder: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
-      }
-    }
-
-    // Delete database record only after filesystem cleanup succeeds
     this.stmts.delete.run(id);
   }
 }

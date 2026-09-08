@@ -26,17 +26,16 @@ Plan items, projects, attachments, tracker connections, and groups—the domain 
 - `ChatService` / `ChatRuntimeService` — Message-send orchestration (attachment conversion, acceptance persistence), chat reset, project-wide disconnect with permission-cache teardown, focus-document session reconciliation (`ChatService`), and per-session Claude Agent SDK runtime wiring (MCP server, permissions, plan-action callbacks) (`ChatRuntimeService`). Plain session reads (messages, history, usage, active sessions) go straight from `ipc/handlers/chat.ts` to the repositories / `StreamingSessionService`.
 - `ProjectService` — Project CRUD, phase transitions, folder resolution
 - `SettingsService` — App-level settings (Anthropic auth key presence, misc app_settings reads/writes)
-- `PermissionService` — Loads persisted tool permissions into the in-memory client cache on project open
+- `PermissionService` — Owns the project write grant: hydrates the persisted grants at startup, and reads/sets/clears them
 - `PermissionPromptService` — Bridges a pending tool-permission request to the renderer and back (prompt/resolve/timeout)
 - `ClaudeUsageService` — Centralized recording of Claude SDK token/cost usage across every call site (chat, board agents, PR description, commit message, review assessment, custom prompt generation, onboarding) into `claude_usage_events` and the rolled-up `projects.session_*_tokens` columns
-- `ArtifactService` — List/read files written by Claude to a project's `outputs/` folder
 - `TaskPromptTemplateService` — CRUD for reusable task prompt templates
 - `SlashCommandService` — Discovers user slash commands (`~/.claude/commands/**/*.md`) and skills (`~/.claude/skills/*/SKILL.md`) for the chat typeahead before a session exists; once a session is live the SDK's own command list takes over
 - `McpDiscoveryService` — Discovers installed Claude Code plugins with MCP server configs and reads `app_settings` for which servers are enabled for KPM. Does not manage MCP server processes — the SDK does
 - `CustomThemeService` — Import/manage custom editor themes (VS Code `.vsix` or marketplace theme JSON)
 - `AppLifecycleService` — App startup/shutdown coordination
 - `NotificationService` — Maps `UpdateEvent`s to user-visible `AppNotification`s and broadcasts them to renderer windows on `notification:new` (the topbar bell reads them). Dedupes identical events inside a 30s window. Display is the renderer's job; there is no Electron `Notification`, dock badge, or tray. Notifications are not persisted — the list resets on restart. Add a rule to `NOTIFY_RULES` per event kind; the record is keyed over the whole union, so a new kind won't compile until it decides whether it notifies.
-- `UpdateEventBus` — Cross-service update broadcast helper. Producers today: `ReviewPollService` (`pr_changed`), `ActionRunnerService` (`loop_finding`), `RepoWatcherService` (`branch_changed`, suppressed), and `automationPhaseMachine` (`board_agent`). `ticket_changed` and `generic_update` have rules but no producers.
+- `UpdateEventBus` — Cross-service update broadcast helper. Producers today: `ReviewPollService` (`pr_changed`), `ActionRunnerService` (`loop_finding`), `RepoWatcherService` (`branch_changed`, suppressed), and `automationPhaseMachine` (`board_agent`). `ticket_changed` has a rule, a notification presenter, and an action trigger (`On tracker change`) but no producer yet — nothing emits it until a tracker poller exists.
 - `TrackerService` — Tracker credential management, connection/scope/association CRUD, Jira API queries (issue search, labels, components, statuses, custom fields), import preview generation, and sync coordination. Wraps `TrackerClientService` + domain `ImportService`/`SyncService`.
 - `GroupService` — `assignItem`, which delegates to `GroupAssignmentService` for the shared assignment rule (project match, clears manual position). Plain CRUD (`list`, `get`, `create`, `update`, `delete`, `updatePosition`, `updateSize`) goes straight from the IPC handler to `IGroupRepository`.
 - `ContextFileService` — `readProjectContextFile` (shared by three call sites: the `contextFile.read` IPC handler, `ChatRuntimeService`, and `DevSessionService.buildAgentContext` via `appServices.ts` wiring) and `buildContextPrefix(projectId, contextPaths)`, which wraps attached context files in `<context-file>` blocks for prepending to agent prompts. Everything else it once forwarded to `FileWatchService` (list/read/write/delete/import a context file, write the project context file, read an arbitrary document file) now goes straight from `ipc/handlers/files.ts` or `ChatRuntimeService` to `FileWatchService` (`services/files/`) — no pass-through methods.
@@ -47,9 +46,11 @@ Git repositories, worktrees, development sessions, environment capture.
 
 - `RepoService` — Add/remove repos, watch for changes
 - `DevSessionService` — Board/dev session lifecycle (create, start, resume, Work Brief reconciliation, destroy). Composes three sibling modules rather than containing their concerns inline: `devSessionPrompt.ts` owns `buildAgentContext(input: AgentContextInput)` (re-exported from `DevSessionService.ts`; input carries `item`, `project`, `children`, `parent`) which renders the Work Brief execution projection with `## Intent`, structured `## Acceptance Criteria`, and optional `## Context`; context headings are not parsed into shadow fields; `worktreeScaffold.ts` owns `scaffoldWorktree` so the board entrypoint has consistent error semantics (`checkedOutInMainRepo` / `checkedOutElsewhere` / `createFailed`); `devSessionGitInspection.ts` owns diff/log/commit reads on a session's worktree (`getSessionDiff`, `getSessionCommitLog`, `commitSessionChanges`, etc.).
-- `RepoWatcherService` — Watch git branch changes (`fs.watch` on `.git/HEAD`; macOS fires `rename`, not `change`, when git rewrites HEAD — handle both). Events are debounced (100ms); watchers must be cleaned up on project switch and app quit.
+- `RepoWatcherService` — Watch git branch changes (`fs.watch` on `.git/HEAD`; macOS fires `rename`, not `change`, when git rewrites HEAD — handle both). Parses the branch name out of HEAD with `normalizeHeadRef` from `branchFacts.ts` so it reports a detached HEAD the same way `resolveCurrentBranch` does. Events are debounced (100ms); watchers must be cleaned up on project switch and app quit.
 - `EnvironmentService` — Capture environment from direnv/Nix for dev sessions
-- `GitHubService` — PR description generation, PR creation, PR template enforcement, diff/commit log helpers
+- `GitHubService` — PR description generation, PR creation, PR template enforcement, diff/commit log helpers. Its Create-PR push goes through `publishBranch`, so it applies the same guard as the `git_push` tool.
+- `branchFacts.ts` — one resolver per git branch question (see "Branch facts" in [`CONTEXT.md`](../../../CONTEXT.md)). Anything that needs the current branch, the default branch, a base branch, or a push guard reads it here; there is deliberately no second implementation.
+- `gitWrites.ts` — the one entry point for moving a branch ref (`publishBranch`, `deleteRemoteBranch`, `deleteLocalBranch`). Owns push policy, argv, and invocation; every caller passes a `WriteAuthorization` (`projectWriteGrant` or `boardSession`) so consent can't be inherited by accident. Worktree management (`worktreeScaffold.ts`) and session commits (`devSessionGitInspection.ts`) keep their own paths.
 - `ReviewService` — GitHub PR review thread CRUD (fetch threads, post replies, resolve)
 - `ReviewAssessmentService` — SDK-backed multi-turn assessment agent that classifies PR review threads and drafts replies (uses the standalone MCP server in `kpmTools/tools/review-assessment.ts`)
 - `ReviewPollService` — Polls linked PRs (registered with `PollScheduler`), triggers assessments, broadcasts `review-poll:actionable` events that drive the board orange-dot indicator
@@ -109,7 +110,7 @@ Tool call logging and analysis.
 ## Wiring
 
 - **Composition Root:** `appServices.ts` wires all services with dependencies
-- **Service Container:** `container.ts` provides global access via `getServices()`. In tests, use `setServices()` / `resetServices()` to inject mocks.
+- **Service Container:** `container.ts` exposes `initializeServices(container)`, called once at app startup. There is no global getter and no test-injection hook — tests build the services they need directly.
 - **Testing:** Mock repositories via DI. See existing test files for patterns.
 
 ## When to Use Services vs Direct Repository Calls

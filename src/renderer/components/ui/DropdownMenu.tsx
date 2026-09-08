@@ -117,7 +117,9 @@ function DropdownMenuItem({
       }}
     >
       {icon && <span className="w-4 h-4 flex items-center justify-center shrink-0">{icon}</span>}
-      <span className="flex-1 text-left">{children}</span>
+      {/* .dropdown-item is nowrap, so a label longer than a bounded menu would
+          spill past its edge; truncate is inert when the menu can grow. */}
+      <span className="flex-1 text-left truncate">{children}</span>
       {shortcut && (
         <kbd className="text-xxs px-1 py-0.5 rounded bg-surface-3 text-text-muted font-mono">
           {shortcut}

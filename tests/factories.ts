@@ -371,7 +371,6 @@ export function createMockFileSystem(): IFileSystem & {
     existsSync: (path: string) => createdDirs.includes(path) || writtenFiles.has(path) || symlinkedFiles.has(path),
     mkdirSync: (path: string) => { createdDirs.push(path); },
     writeFileSync: (path: string, content: string) => { writtenFiles.set(path, content); },
-    rmSync: (path: string) => { deletedPaths.push(path); },
     unlinkSync: (path: string) => {
       deletedPaths.push(path);
       writtenFiles.delete(path);

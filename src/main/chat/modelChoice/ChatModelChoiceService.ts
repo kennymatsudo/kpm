@@ -93,9 +93,13 @@ function createSnapshot(
   const remembered = Object.fromEntries((['claude', 'codex', 'pi'] as const).map((provider) => {
     const modelId = defaultModels[provider];
     const model = findModel(providers, provider, modelId);
+    // The configured effort is Claude's — Settings only offers it there. Every other
+    // provider starts at its own model's declared default rather than inheriting a
+    // level that was chosen against a different reasoning scale.
+    const desired = provider === 'claude' ? defaults.effort : model?.defaultEffort ?? defaults.effort;
     return [provider, {
       model: modelId,
-      effort: model ? supportedEffort(model, defaults.effort) : defaults.effort,
+      effort: model ? supportedEffort(model, desired) : desired,
     }];
   })) as PersistedChatModelChoice['remembered'];
   return { version: 1, selectedProvider, remembered };

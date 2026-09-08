@@ -18,22 +18,12 @@
  * edits accumulate, matching the `propose_document_edit` tool path.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   createPermissionHandler,
   type PermissionContext,
   type PromptUserFn,
 } from './permissions';
-
-// permissions.ts imports clientManager at module load; stub it.
-vi.mock('./clientManager', () => ({
-  clientManager: {
-    hasPermissionCached: vi.fn(),
-    hasAllowAllRemaining: vi.fn(),
-    cachePermission: vi.fn(),
-    clearPermissionCache: vi.fn(),
-  },
-}));
 
 const PROJECT_PATH = '/tmp/kpm-project';
 const FILE_ABS = `${PROJECT_PATH}/guide.md`;

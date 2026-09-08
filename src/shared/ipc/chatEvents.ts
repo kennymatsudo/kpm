@@ -13,7 +13,7 @@
  */
 
 import { payloadOf, type EventDefinition } from './appEvents';
-import type { Activity, PlanAction, SlashCommandInfo } from '../types';
+import type { Activity, AgentBackgroundTask, PlanAction, SlashCommandInfo } from '../types';
 
 export interface ChunkEventData {
   projectId: string;
@@ -138,6 +138,17 @@ export interface SessionTitleEventData {
   title: string;
 }
 
+/**
+ * The complete set of a session's live background tasks. Replace semantics:
+ * subscribers swap their set for `tasks`, so an empty array means all
+ * background work has finished.
+ */
+export interface BackgroundTasksEventData {
+  projectId: string;
+  chatSessionId?: string;
+  tasks: AgentBackgroundTask[];
+}
+
 export interface ThinkingEventData {
   projectId: string;
   chatSessionId?: string;
@@ -173,6 +184,7 @@ export const chatEvents = {
   error: { channel: 'chat:error', payload: payloadOf<ErrorEventData>() },
   activity: { channel: 'chat:activity', payload: payloadOf<ActivityEventData>() },
   thinking: { channel: 'chat:thinking', payload: payloadOf<ThinkingEventData>() },
+  backgroundTasks: { channel: 'chat:background-tasks', payload: payloadOf<BackgroundTasksEventData>() },
   fileUpdate: { channel: 'chat:file-update', payload: payloadOf<FileUpdateEventData>() },
   fileMove: { channel: 'chat:file-move', payload: payloadOf<FileMoveEventData>() },
   fileDelete: { channel: 'chat:file-delete', payload: payloadOf<FileDeleteEventData>() },

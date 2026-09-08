@@ -28,7 +28,7 @@ export type {
   IAppSettingsRepository,
   ICustomThemeRepository,
   ITaskPromptTemplateRepository,
-  IToolPermissionRepository,
+  IProjectWriteGrantRepository,
   CustomThemeSaveInput,
 } from './settings';
 

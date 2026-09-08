@@ -65,6 +65,17 @@ describe('ChatModelChoiceService', () => {
     h.db.close();
   });
 
+  it('starts Codex at its own model default effort rather than the configured Claude effort', async () => {
+    const h = harness('codex');
+    h.defaults.models.codex = 'gpt-5.6-terra';
+    h.defaults.effort = 'low';
+
+    const opened = await h.service.open({ projectId: 'p1', chatSessionId: 'codex-1', scope: 'main' });
+
+    expect(opened.ok && opened.data.selected).toEqual({ provider: 'codex', model: 'gpt-5.6-terra', effort: 'high' });
+    h.db.close();
+  });
+
   it('remembers each provider model and effort and detects revision conflicts', async () => {
     const h = harness();
     const opened = await h.service.open({ projectId: 'p1', chatSessionId: 'c1', scope: 'main' });
@@ -190,7 +201,7 @@ describe('ChatModelChoiceService', () => {
     expect(opened.ok && opened.data.selected).toEqual({
       provider: 'codex',
       model: 'gpt-5.6-sol',
-      effort: 'medium',
+      effort: 'high',
     });
     expect(opened.ok && opened.data.revision).toBe(1);
     h.db.close();
@@ -204,7 +215,7 @@ describe('ChatModelChoiceService', () => {
       selectedProvider: 'codex',
       remembered: {
         claude: { model: 'sonnet', effort: 'medium' },
-        codex: { model: 'gpt-5.6-sol', effort: 'max' },
+        codex: { model: 'gpt-5.6-sol', effort: 'off' },
         pi: { model: 'cursor/auto', effort: 'medium' },
       },
     }));
@@ -216,7 +227,7 @@ describe('ChatModelChoiceService', () => {
 
     const opened = await h.service.open({ projectId: 'p1', chatSessionId: 'effort-race', scope: 'main' });
 
-    expect(opened.ok && opened.data.selected.effort).toBe('medium');
+    expect(opened.ok && opened.data.selected.effort).toBe('high');
     expect(opened.ok && opened.data.revision).toBe(2);
     h.db.close();
   });
@@ -264,7 +275,7 @@ describe('ChatModelChoiceService', () => {
     const h = harness();
     h.sessions.create('legacy', 'p1', 'codex');
     const first = await h.service.open({ projectId: 'p1', chatSessionId: 'legacy', scope: 'main' });
-    expect(first.ok && first.data.selected).toEqual({ provider: 'codex', model: 'gpt-5.6-sol', effort: 'medium' });
+    expect(first.ok && first.data.selected).toEqual({ provider: 'codex', model: 'gpt-5.6-sol', effort: 'high' });
     expect(h.getDefaults).toHaveBeenCalled();
     expect(h.defaults.provider).toBe('claude');
     const persisted = h.sessions.get('legacy');

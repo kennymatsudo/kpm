@@ -4,8 +4,10 @@
  * Reusable git operations for PR description generation, worktree management,
  * and review assessment. Uses execFile (no shell) to prevent command injection.
  *
- * Note: KPM does NOT perform end-user git operations (pull, push, commit,
- * stage, status, branch sync). Users manage those through their own tooling.
+ * Note: KPM does not manage the user's working tree for them (pull, stage,
+ * branch sync stay theirs). The exceptions are deliberate and gated elsewhere:
+ * board sessions commit inside their worktree, and `git_push` publishes a branch
+ * once the conversation has write access.
  */
 
 import { execFile, spawn } from 'child_process';
@@ -66,6 +68,35 @@ export async function gitExec(
   return execFileAsync('git', args, options);
 }
 
+export interface GitCapturedResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+}
+
+/**
+ * Run git and return its exit code alongside the output instead of throwing.
+ * A non-zero exit is ordinary for many commands — `grep` with no matches,
+ * `diff --exit-code`, `rev-parse @{u}` on a branch with no upstream — so the
+ * caller decides what the code means.
+ */
+export async function gitExecCaptured(
+  args: string[],
+  options: { cwd: string; maxBuffer?: number }
+): Promise<GitCapturedResult> {
+  try {
+    const { stdout, stderr } = await gitExec(args, options);
+    return { stdout, stderr, exitCode: 0 };
+  } catch (error) {
+    const failure = error as { stdout?: string; stderr?: string; code?: unknown; message?: string };
+    return {
+      stdout: failure.stdout ?? '',
+      stderr: failure.stderr ?? failure.message ?? String(error),
+      exitCode: typeof failure.code === 'number' ? failure.code : 1,
+    };
+  }
+}
+
 /**
  * Resolve the merge-base between a base branch and HEAD.
  */
@@ -117,9 +148,11 @@ export async function resolveBaseSha(
 export async function getDiff(
   repoPath: string,
   baseBranch: string,
-  maxChars = 100_000,
-  excludePathspecs: string[] = []
+  // Named rather than positional: two different size limits live here, and a
+  // caller passing a buffer size as the character cap reads as valid.
+  options: { maxChars?: number; maxBuffer?: number; excludePathspecs?: string[] } = {}
 ): Promise<string> {
+  const { maxChars = 100_000, maxBuffer = 10 * 1024 * 1024, excludePathspecs = [] } = options;
   const effectiveBranch = await resolveUpstreamBranch(repoPath, baseBranch);
   const mergeBase = await getMergeBase(repoPath, effectiveBranch);
   // A positive `.` pathspec plus negative `:(exclude)` pathspecs keeps every
@@ -128,7 +161,7 @@ export async function getDiff(
   const pathspecArgs = excludePathspecs.length > 0 ? ['--', '.', ...excludePathspecs] : [];
   const { stdout } = await gitExec(
     ['diff', mergeBase, ...pathspecArgs],
-    { cwd: repoPath, maxBuffer: 10 * 1024 * 1024 }
+    { cwd: repoPath, maxBuffer }
   );
   if (stdout.length > maxChars) {
     return stdout.slice(0, maxChars) + '\n\n... (diff truncated)';
@@ -174,70 +207,6 @@ export async function getCommitLog(
 }
 
 /**
- * Get the current branch name.
- */
-export async function getCurrentBranch(
-  repoPath: string
-): Promise<string | null> {
-  try {
-    const { stdout } = await gitExec(
-      ['rev-parse', '--abbrev-ref', 'HEAD'],
-      { cwd: repoPath }
-    );
-    const branch = stdout.trim();
-    return branch === 'HEAD' ? null : branch;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Detect the default branch (main or master) of a repo.
- */
-export async function detectBaseBranch(
-  repoPath: string
-): Promise<string> {
-  // Check if 'main' exists
-  try {
-    await gitExec(['rev-parse', '--verify', 'main'], { cwd: repoPath });
-    return 'main';
-  } catch {
-    // fall through
-  }
-
-  // Check if 'master' exists
-  try {
-    await gitExec(['rev-parse', '--verify', 'master'], { cwd: repoPath });
-    return 'master';
-  } catch {
-    // fall through
-  }
-
-  // Default to 'main'
-  return 'main';
-}
-
-/**
- * Resolve the effective base branch: verify the declared branch exists in the
- * repo; if it doesn't (e.g. a session created against 'main' in a 'master'
- * repo), fall back to detectBaseBranch.
- */
-export async function resolveBaseBranch(
-  repoPath: string,
-  declared?: string | null
-): Promise<string> {
-  if (declared) {
-    try {
-      await gitExec(['rev-parse', '--verify', declared], { cwd: repoPath });
-      return declared;
-    } catch {
-      // branch doesn't exist in this repo — fall through to detection
-    }
-  }
-  return detectBaseBranch(repoPath);
-}
-
-/**
  * Prefer the remote tracking branch over the local branch name.
  * After rebasing onto origin/master outside of KPM, the local base branch
  * ref (e.g. 'master') can be stale while origin/master points to the actual
@@ -262,22 +231,24 @@ export async function resolveUpstreamBranch(
 }
 
 /**
- * Check if a branch has any commits ahead of a base branch.
+ * How many commits HEAD is ahead of a base branch, or `null` when git could not
+ * answer — an unresolvable base ref is not the same fact as "nothing committed
+ * yet", and telling the user to commit work they already committed is the bug
+ * that collapsing the two produced.
  */
-export async function hasCommitsAhead(
+export async function countCommitsAhead(
   repoPath: string,
   baseBranch: string
-): Promise<boolean> {
-  try {
-    const effectiveBranch = await resolveUpstreamBranch(repoPath, baseBranch);
-    const { stdout } = await gitExec(
-      ['rev-list', '--count', `${effectiveBranch}..HEAD`],
-      { cwd: repoPath }
-    );
-    return parseInt(stdout.trim(), 10) > 0;
-  } catch {
-    return false;
-  }
+): Promise<number | null> {
+  const effectiveBranch = await resolveUpstreamBranch(repoPath, baseBranch);
+  const counted = await gitExecCaptured(
+    ['rev-list', '--count', `${effectiveBranch}..HEAD`],
+    { cwd: repoPath }
+  );
+  if (counted.exitCode !== 0) return null;
+
+  const ahead = parseInt(counted.stdout.trim(), 10);
+  return Number.isNaN(ahead) ? null : ahead;
 }
 
 /**

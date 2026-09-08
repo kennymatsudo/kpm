@@ -57,20 +57,6 @@ class ClaudeClientManager {
   private static instance: ClaudeClientManager;
   private idleCheckInterval?: NodeJS.Timeout;
 
-  /**
-   * Permission cache for "Allow Always" decisions.
-   * Key: projectId -> Set<cacheKey>
-   * Cache keys are formatted as "toolName:targetPath"
-   */
-  private permissionCache = new Map<string, Set<string>>();
-
-  /**
-   * "Allow All Remaining" flags for batch approval.
-   * When set, auto-approves all remaining tools in the current response.
-   * Cleared when response completes.
-   */
-  private allowAllRemainingFlags = new Map<string, boolean>();
-
   /** Idle timeout: 30 minutes */
   private static readonly IDLE_TIMEOUT_MS = 30 * 60 * 1000;
   /** Check for idle sessions every 5 minutes */
@@ -183,85 +169,6 @@ class ClaudeClientManager {
     }
   }
 
-  // ============================================
-  // Permission Cache Management
-  // ============================================
-
-  /**
-   * Check if a permission has been cached for "Allow Always".
-   */
-  hasPermissionCached(projectId: string, cacheKey: string): boolean {
-    return this.permissionCache.get(projectId)?.has(cacheKey) ?? false;
-  }
-
-  /**
-   * Cache a permission decision for "Allow Always".
-   */
-  cachePermission(projectId: string, cacheKey: string): void {
-    if (!this.permissionCache.has(projectId)) {
-      this.permissionCache.set(projectId, new Set());
-    }
-    this.permissionCache.get(projectId)!.add(cacheKey);
-    cmLog(`[ClientManager] Cached permission: ${projectId} -> ${cacheKey}`);
-  }
-
-  /**
-   * Remove a single cached permission key.
-   * Called when user revokes a specific "Allow Always" permission.
-   */
-  revokePermission(projectId: string, cacheKey: string): void {
-    this.permissionCache.get(projectId)?.delete(cacheKey);
-    cmLog(`[ClientManager] Revoked permission: ${projectId} -> ${cacheKey}`);
-  }
-
-  /**
-   * Clear permission cache for a project.
-   * Called when starting a new session.
-   */
-  clearPermissionCache(projectId: string): void {
-    this.permissionCache.delete(projectId);
-    cmLog(`[ClientManager] Cleared permission cache for project ${projectId}`);
-  }
-
-  /**
-   * Clear all permission caches.
-   */
-  clearAllPermissionCaches(): void {
-    this.permissionCache.clear();
-    cmLog(`[ClientManager] Cleared all permission caches`);
-  }
-
-  // ============================================
-  // "Allow All Remaining" Flag Management
-  // ============================================
-
-  /**
-   * Check if "Allow All Remaining" is active for a project.
-   * Used by permission handler to auto-approve remaining tools in current response.
-   */
-  hasAllowAllRemaining(projectId: string): boolean {
-    return this.allowAllRemainingFlags.get(projectId) ?? false;
-  }
-
-  /**
-   * Enable "Allow All Remaining" for a project.
-   * Called when user clicks "Allow All Remaining" button.
-   */
-  setAllowAllRemaining(projectId: string): void {
-    this.allowAllRemainingFlags.set(projectId, true);
-    cmLog(`[ClientManager] Allow All Remaining enabled for project ${projectId}`);
-  }
-
-  /**
-   * Clear "Allow All Remaining" flag for a project.
-   * Called when response completes (sdkMsg.type === 'result').
-   */
-  clearAllowAllRemaining(projectId: string): void {
-    if (this.allowAllRemainingFlags.has(projectId)) {
-      this.allowAllRemainingFlags.delete(projectId);
-      cmLog(`[ClientManager] Allow All Remaining cleared for project ${projectId}`);
-    }
-  }
 }
 
 // Export singleton instance

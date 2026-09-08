@@ -9,9 +9,8 @@
  * that can mutate the repo, working tree, refs, or object store, or run an
  * external program (`--ext-diff`, grep's pager) or write a file (`--output`).
  *
- * Raw `git` in chat Bash is blocked entirely (see permissions.ts); this is the
- * only sanctioned git path in chat, which is why the gate lives at the argument
- * level rather than trying to parse shell strings.
+ * `classifyGitShellCommand` (bottom of this file) reuses the same rules for the
+ * one place a shell string has to be judged: raw `git` in chat Bash.
  */
 
 export type GitReadCheck = { ok: true } | { ok: false; reason: string };
@@ -51,8 +50,6 @@ export const READ_GIT_SUBCOMMANDS = [
   'tag',
   'worktree',
 ] as const;
-
-export type GitReadSubcommand = (typeof READ_GIT_SUBCOMMANDS)[number];
 
 const READ_SUBCOMMAND_SET = new Set<string>(READ_GIT_SUBCOMMANDS);
 
@@ -231,4 +228,184 @@ export function classifyGitInvocation(subcommand: string, args: string[]): GitRe
     default:
       return { ok: true };
   }
+}
+
+/**
+ * Global git options that cannot write a file or run a program. `-c` and
+ * `--config-env` are excluded deliberately: `git -c core.pager='sh -c ...' log`
+ * executes an arbitrary command. `--exec-path` and `--paginate` are excluded for
+ * the same reason.
+ */
+const SAFE_GLOBAL_FLAGS = new Set([
+  '--no-pager',
+  '-P',
+  '--no-optional-locks',
+  '--literal-pathspecs',
+  '--no-replace-objects',
+  '--no-lazy-fetch',
+]);
+
+/** Safe global options that consume the following token as their value. */
+const SAFE_GLOBAL_FLAGS_WITH_VALUE = new Set(['-C', '--git-dir', '--work-tree']);
+
+/** Global options that are themselves the whole read-only operation. */
+const TERMINAL_READ_FLAGS = new Set(['--version', '--help', '-h']);
+
+/**
+ * Commands allowed downstream of a pipe. Every one is a pure filter: none has a
+ * flag that writes a file or runs a program, which is why `tee`, `sed`, `awk`,
+ * `xargs`, and `sort` (`sort -o` writes) are absent.
+ */
+const PIPE_FILTER_COMMANDS = new Set([
+  'cat', 'column', 'cut', 'grep', 'head', 'nl', 'rg', 'tail', 'tr', 'uniq', 'wc',
+]);
+
+/** A pipeline's stages; a chain is the `&&`-separated pipelines of one command. */
+type ShellPipeline = string[][];
+
+/**
+ * Split a shell command into `&&`-separated pipelines of tokens, honoring single
+ * and double quotes. Returns null for anything else — redirection, command
+ * substitution, backgrounding, subshells, escapes, `||` — so unparsed syntax can
+ * never be mistaken for a read.
+ */
+function tokenizeShellCommand(command: string): ShellPipeline[] | null {
+  const unsupported = new Set([';', '<', '>', '$', '`', '\\', '(', ')', '{', '}', '\n']);
+  const chain: ShellPipeline[] = [];
+  let pipeline: ShellPipeline = [];
+  let tokens: string[] = [];
+  let token = '';
+  let inToken = false;
+  let quote: '"' | "'" | null = null;
+
+  const endToken = (): void => {
+    if (!inToken) return;
+    tokens.push(token);
+    token = '';
+    inToken = false;
+  };
+  const endStage = (): boolean => {
+    endToken();
+    if (tokens.length === 0) return false;
+    pipeline.push(tokens);
+    tokens = [];
+    return true;
+  };
+  const endPipeline = (): boolean => {
+    if (!endStage()) return false;
+    chain.push(pipeline);
+    pipeline = [];
+    return true;
+  };
+
+  for (let index = 0; index < command.length; index += 1) {
+    const char = command[index];
+
+    if (quote) {
+      if (char === quote) quote = null;
+      else token += char;
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      inToken = true;
+      continue;
+    }
+    if (char === ' ' || char === '\t') {
+      endToken();
+      continue;
+    }
+    if (char === '&') {
+      if (command[index + 1] !== '&') return null;
+      if (!endPipeline()) return null;
+      index += 1;
+      continue;
+    }
+    if (char === '|') {
+      if (command[index + 1] === '|') return null;
+      if (!endStage()) return null;
+      continue;
+    }
+    if (unsupported.has(char)) return null;
+    token += char;
+    inToken = true;
+  }
+
+  if (quote) return null;
+  if (!endPipeline()) return null;
+  return chain;
+}
+
+function basename(executable: string): string {
+  return executable.split('/').pop() ?? executable;
+}
+
+/** Classify one `git ...` stage: skip safe global options, then check the subcommand. */
+function classifyGitStage(tokens: string[]): GitReadCheck {
+  const [executable, ...rest] = tokens;
+  if (basename(executable) !== 'git') {
+    return { ok: false, reason: `"${executable}" is not git.` };
+  }
+
+  let index = 0;
+  while (index < rest.length && rest[index].startsWith('-')) {
+    const flag = rest[index];
+    if (TERMINAL_READ_FLAGS.has(flag)) return { ok: true };
+    if (SAFE_GLOBAL_FLAGS.has(flag)) {
+      index += 1;
+      continue;
+    }
+    const valueFlag = Array.from(SAFE_GLOBAL_FLAGS_WITH_VALUE).find(
+      (candidate) => flag === candidate || flag.startsWith(`${candidate}=`)
+    );
+    if (valueFlag) {
+      index += flag === valueFlag ? 2 : 1;
+      continue;
+    }
+    return { ok: false, reason: `global option "${flag}" is not a known read-only option.` };
+  }
+
+  const subcommand = rest[index];
+  if (!subcommand) return { ok: false, reason: 'no git subcommand to classify.' };
+  return classifyGitInvocation(subcommand, rest.slice(index + 1));
+}
+
+function classifyFilterStage(tokens: string[]): GitReadCheck {
+  const command = basename(tokens[0]);
+  if (!PIPE_FILTER_COMMANDS.has(command)) {
+    return { ok: false, reason: `"${tokens[0]}" is not a read-only filter.` };
+  }
+  return { ok: true };
+}
+
+/**
+ * Decide whether a whole shell command is nothing but read-only git.
+ *
+ * Bash counts as a write tool, so it normally raises the conversation-wide
+ * write-consent prompt — but reading git state is a read, and asking for write
+ * access to run `git status` is friction with no safety value. A command this
+ * function accepts skips the gate.
+ *
+ * "Accepts" is narrow on purpose: a plain `&&` chain of pipelines, each starting
+ * with a read-only git invocation and continuing only through pure filters, with
+ * no other shell syntax. Anything it cannot prove read-only falls back to the
+ * write gate, so a miss costs a prompt rather than an unreviewed write.
+ */
+export function classifyGitShellCommand(command: string): GitReadCheck {
+  const chain = tokenizeShellCommand(command);
+  if (!chain) {
+    return { ok: false, reason: 'the command uses shell syntax beyond an `&&` chain of git commands.' };
+  }
+
+  for (const pipeline of chain) {
+    const [gitStage, ...filterStages] = pipeline;
+    const gitCheck = classifyGitStage(gitStage);
+    if (!gitCheck.ok) return gitCheck;
+    for (const stage of filterStages) {
+      const filterCheck = classifyFilterStage(stage);
+      if (!filterCheck.ok) return filterCheck;
+    }
+  }
+
+  return { ok: true };
 }

@@ -1,4 +1,4 @@
-import type { Activity, ChatAttachment, ChatChoiceIntent, ChatChoiceView, SessionState, ClaudeModel, ChatProvider, ChatSessionSummary, MessageSegment, ChatEffortLevel, PiProviderOption, SlashCommandInfo, CodexChatModel } from '../../../shared/types';
+import type { Activity, AgentBackgroundTask, ChatAttachment, ChatChoiceIntent, ChatChoiceView, SessionState, ClaudeModel, ChatProvider, ChatSessionSummary, MessageSegment, ChatEffortLevel, PiProviderOption, SlashCommandInfo, CodexChatModel } from '../../../shared/types';
 import type { StoreApi } from 'zustand';
 
 export interface Message {
@@ -35,7 +35,7 @@ export interface Message {
 }
 
 // Re-export types for consumers
-export type { Activity, ClaudeModel, ChatProvider, MessageSegment, AgentEffortLevel, ChatEffortLevel, PiProviderOption, CodexChatModel } from '../../../shared/types';
+export type { Activity, AgentBackgroundTask, ClaudeModel, ChatProvider, MessageSegment, AgentEffortLevel, ChatEffortLevel, PiProviderOption, CodexChatModel } from '../../../shared/types';
 
 /** Per-session state (each concurrent session has its own state) */
 export interface PerSessionState {
@@ -57,6 +57,13 @@ export interface PerSessionState {
   streamStartedAt: number | null;
   /** Timestamp of the last chunk/activity update for current streaming turn */
   lastStreamUpdateAt: number | null;
+  /**
+   * Work still running after the turn that started it ended. Independent of
+   * `isStreaming` — a session with no turn in flight is still busy while this
+   * is non-empty. Replaced wholesale by each provider signal, and emptied on
+   * session (re)connect because the signal is per-CLI-process.
+   */
+  backgroundTasks: AgentBackgroundTask[];
   /** Draft message persisted across view switches */
   draftMessage: string;
   /** Attachments staged for the next send, scoped to this session */
@@ -211,6 +218,8 @@ export interface ChatState {
   setClaudeSessionId: (chatSessionId: string, claudeSessionId: string) => void;
   setSessionTitle: (chatSessionId: string, title: string) => void;
   setMcpStatus: (chatSessionId: string, degraded: boolean, error?: string | null) => void;
+  /** Replaces the session's live background-task set; pass `[]` when none remain. */
+  setBackgroundTasks: (chatSessionId: string, tasks: AgentBackgroundTask[]) => void;
   setLastTurnUsage: (chatSessionId: string, usage: PerSessionState['lastTurnUsage']) => void;
   setChatChoice: (chatSessionId: string, choice: ChatChoiceView) => void;
   openChatChoice: (projectId: string, chatSessionId: string) => Promise<ChatChoiceView | null>;
@@ -240,7 +249,7 @@ export interface ChatState {
   resetProjectState: () => void;
 
   // Session history actions
-  startNewChatSession: (keepCurrentActive?: boolean) => string;
+  startNewChatSession: () => string;
   getChatSessionId: () => string;
   loadSessionHistory: (projectId: string) => Promise<void>;
   loadFromHistory: (projectId: string, chatSessionId: string, shouldContinue?: () => boolean) => Promise<void>;

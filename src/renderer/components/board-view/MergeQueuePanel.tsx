@@ -26,9 +26,9 @@ function prReviewLabel(
 ): { label: string; className: string } | null {
   switch (reviewState) {
     case 'APPROVED':
-      return { label: 'Approved', className: 'text-emerald-500 bg-emerald-500/10' };
+      return { label: 'Approved', className: 'text-success bg-success-muted' };
     case 'CHANGES_REQUESTED':
-      return { label: 'Changes requested', className: 'text-red-400 bg-red-400/10' };
+      return { label: 'Changes requested', className: 'text-danger bg-danger-muted' };
     case 'REVIEW_REQUIRED':
       return { label: 'Needs review', className: 'text-text-muted bg-surface-2' };
     case null:
@@ -153,7 +153,7 @@ export const MergeQueuePanel = memo(function MergeQueuePanel({
                   ${isDropTarget ? 'border-accent bg-accent/5' : 'border-border-subtle bg-surface-0'}
                   hover:border-border-default
                 `}
-                title={`${name}${isBlocked ? ' — blocked by dependency' : ''}`}
+                title={`${session.repo_name ? `${session.repo_name} — ` : ''}${name}${isBlocked ? ' — blocked by dependency' : ''}`}
               >
                 {/* Position badge */}
                 <span className="text-tiny tabular-nums text-text-muted w-4 text-center shrink-0">
@@ -175,13 +175,25 @@ export const MergeQueuePanel = memo(function MergeQueuePanel({
                   <circle cx="11" cy="12" r="1.2" />
                 </svg>
 
-                {/* Session name — clicking opens detail pane */}
-                <button
-                  onClick={() => onSelectSession(session.id)}
-                  className="text-tiny text-text-secondary hover:text-text-primary transition-colors max-w-[140px] truncate"
-                >
-                  {name}
-                </button>
+                {/* Repo + session name — clicking opens detail pane */}
+                <span className="flex min-w-0 items-center gap-1">
+                  {session.repo_name && (
+                    <>
+                      <span className="text-tiny text-text-tertiary truncate max-w-[70px] shrink-0">
+                        {session.repo_name}
+                      </span>
+                      <span aria-hidden="true" className="text-tiny text-text-tertiary shrink-0">
+                        ·
+                      </span>
+                    </>
+                  )}
+                  <button
+                    onClick={() => onSelectSession(session.id)}
+                    className="text-tiny text-text-secondary hover:text-text-primary transition-colors max-w-[140px] truncate"
+                  >
+                    {name}
+                  </button>
+                </span>
 
                 {/* PR link */}
                 {session.pr_number != null && (
@@ -199,7 +211,7 @@ export const MergeQueuePanel = memo(function MergeQueuePanel({
 
                 {/* Status badge */}
                 {isBlocked ? (
-                  <span className="text-tiny px-1.5 py-0.5 rounded font-medium text-amber-500 bg-amber-500/10 shrink-0">
+                  <span className="text-tiny px-1.5 py-0.5 rounded font-medium text-warning bg-warning-muted shrink-0">
                     Blocked
                   </span>
                 ) : reviewBadge ? (

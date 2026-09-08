@@ -1,67 +1,105 @@
 export type WriteDecision = { allowed: true } | { allowed: false; reason: string };
 
-type WriteGrantListener = (chatSessionId: string, granted: boolean) => void;
+type WriteGrantListener = (projectId: string, granted: boolean) => void;
 
-export interface ConversationWriteGrants {
-  request(
-    chatSessionId: string | undefined,
-    requestConsent: () => Promise<boolean>,
-  ): Promise<WriteDecision>;
-  has(chatSessionId: string): boolean;
-  revoke(chatSessionId: string): void;
-  subscribe(listener: WriteGrantListener): () => void;
+/** Persistence for the grant. Injected so the grant survives restarts. */
+export interface WriteGrantStore {
+  listGrantedProjectIds(): string[];
+  grant(projectId: string): void;
+  revoke(projectId: string): void;
 }
 
-const NO_SESSION_REASON =
-  'Writing from chat needs the user to allow writes for the conversation, and this run has no chat session to ask in.';
+export interface ProjectWriteGrants {
+  /**
+   * Resolve the project's write consent, asking once if it has never been
+   * answered. Concurrent callers in the same project share the one prompt.
+   */
+  request(
+    projectId: string | undefined,
+    requestConsent: () => Promise<boolean>,
+  ): Promise<WriteDecision>;
+  has(projectId: string | undefined): boolean;
+  /** Grant without asking — the user turning writes on in settings. */
+  grant(projectId: string): void;
+  revoke(projectId: string): void;
+  subscribe(listener: WriteGrantListener): () => void;
+  /**
+   * Load persisted grants. Called once at startup, before any session can run,
+   * so `has()` stays a synchronous memory read on the tool-call hot path.
+   */
+  hydrate(store: WriteGrantStore): void;
+}
 
-export function createConversationWriteGrants(): ConversationWriteGrants {
-  const grantedChatSessions = new Set<string>();
+const NO_PROJECT_REASON =
+  'Writing needs a project to check the write grant against, and this run has none.';
+
+export function createProjectWriteGrants(): ProjectWriteGrants {
+  const grantedProjects = new Set<string>();
   const pendingRequests = new Map<string, Promise<WriteDecision>>();
   const listeners = new Set<WriteGrantListener>();
+  let store: WriteGrantStore | null = null;
 
-  const publish = (chatSessionId: string, granted: boolean): void => {
-    for (const listener of listeners) listener(chatSessionId, granted);
+  const publish = (projectId: string, granted: boolean): void => {
+    for (const listener of listeners) listener(projectId, granted);
+  };
+
+  const applyGrant = (projectId: string): void => {
+    if (grantedProjects.has(projectId)) return;
+    grantedProjects.add(projectId);
+    store?.grant(projectId);
+    publish(projectId, true);
   };
 
   return {
-    async request(chatSessionId, requestConsent) {
-      if (!chatSessionId) return { allowed: false, reason: NO_SESSION_REASON };
-      if (grantedChatSessions.has(chatSessionId)) return { allowed: true };
+    hydrate(nextStore) {
+      store = nextStore;
+      grantedProjects.clear();
+      for (const projectId of nextStore.listGrantedProjectIds()) {
+        grantedProjects.add(projectId);
+      }
+    },
 
-      const pending = pendingRequests.get(chatSessionId);
+    async request(projectId, requestConsent) {
+      if (!projectId) return { allowed: false, reason: NO_PROJECT_REASON };
+      if (grantedProjects.has(projectId)) return { allowed: true };
+
+      const pending = pendingRequests.get(projectId);
       if (pending) return pending;
 
       const request = (async (): Promise<WriteDecision> => {
         if (!await requestConsent()) {
           return {
             allowed: false,
-            reason: 'The user did not allow writes for this conversation. Do not retry; explain what you would have changed instead.',
+            reason: 'The user did not allow writes in this project. Do not retry; explain what you would have changed instead.',
           };
         }
 
-        grantedChatSessions.add(chatSessionId);
-        publish(chatSessionId, true);
+        applyGrant(projectId);
         return { allowed: true };
       })();
 
-      pendingRequests.set(chatSessionId, request);
+      pendingRequests.set(projectId, request);
       try {
         return await request;
       } finally {
-        if (pendingRequests.get(chatSessionId) === request) {
-          pendingRequests.delete(chatSessionId);
+        if (pendingRequests.get(projectId) === request) {
+          pendingRequests.delete(projectId);
         }
       }
     },
 
-    has(chatSessionId) {
-      return grantedChatSessions.has(chatSessionId);
+    has(projectId) {
+      return !!projectId && grantedProjects.has(projectId);
     },
 
-    revoke(chatSessionId) {
-      if (!grantedChatSessions.delete(chatSessionId)) return;
-      publish(chatSessionId, false);
+    grant(projectId) {
+      applyGrant(projectId);
+    },
+
+    revoke(projectId) {
+      if (!grantedProjects.delete(projectId)) return;
+      store?.revoke(projectId);
+      publish(projectId, false);
     },
 
     subscribe(listener) {
@@ -71,4 +109,4 @@ export function createConversationWriteGrants(): ConversationWriteGrants {
   };
 }
 
-export const conversationWriteGrants = createConversationWriteGrants();
+export const projectWriteGrants = createProjectWriteGrants();

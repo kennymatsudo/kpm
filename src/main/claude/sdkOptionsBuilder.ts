@@ -10,6 +10,7 @@ import type { Options as SDKOptions, OnElicitation } from '@anthropic-ai/claude-
 import type { BrowserWindow } from 'electron';
 import { buildFocusSystemPrompt, buildSystemPrompt, type PlanContext } from '../chat/prompts/index';
 import { createPermissionHandler, type PermissionContext, type ContextFileInterceptFn, type ProjectFileInterceptFn } from './permissions';
+import { createSearchGuardMatcher } from './searchGuardHook';
 import { getFocusKpmServer, getGrantedKpmServer, getKpmServer } from '../kpmTools/createKpmServer';
 import type { KpmToolCapability } from '../kpmTools/runtime';
 import { getConfig } from '../config';
@@ -17,6 +18,7 @@ import { getClaudeSdkSpawnOptions } from './findClaude';
 import { promptUser } from '../services/core/PermissionPromptService';
 import { resolveEffectiveRepoPath } from '../../shared/repoPath';
 import { getDeniedPathRoots, getDockerConfigPathRoots } from '../services/files/pathSecurity';
+import { getAgentEnv } from '../services/streaming/envUtils';
 
 export type ModelType = 'opus' | 'sonnet' | 'haiku';
 
@@ -48,7 +50,6 @@ export interface BuildSdkOptionsParams {
   /** Callback for MCP elicitation requests (auth flows, form input) */
   onElicitation?: OnElicitation;
   /** When true, skip permission prompts and auto-allow all non-denied tool calls */
-  autoApprove?: boolean;
   /**
    * Narrows the KPM tool set to the capabilities this run was granted. Action
    * runs pass their grant; chat and focus sessions omit it and get the full set.
@@ -60,7 +61,7 @@ export interface BuildSdkOptionsParams {
  * Build SDK options for a Claude session.
  */
 export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
-  const { context, model, effort, resumeSessionId, mainWindow, chatSessionId, onContextFileEdit, onProjectFileWrite, peekPendingFile, enabledPluginPaths, enabledUserMcpConfigs, disabledMcpTools, disabledMcpServerNames, onElicitation, autoApprove, grantedCapabilities } = params;
+  const { context, model, effort, resumeSessionId, mainWindow, chatSessionId, onContextFileEdit, onProjectFileWrite, peekPendingFile, enabledPluginPaths, enabledUserMcpConfigs, disabledMcpTools, disabledMcpServerNames, onElicitation, grantedCapabilities } = params;
   // Resume restores conversation history only — the SDK applies whatever
   // systemPrompt we pass now and discards the one persisted in the transcript.
   // So always send the full prompt; slimming it on resume silently drops
@@ -83,7 +84,6 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
     onProjectFileWrite,
     peekPendingFile,
     disabledMcpServerNames,
-    autoApprove,
   };
 
   // Get MCP server
@@ -120,7 +120,9 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
     // only (it does not restrict which tools are available, so it does not hide
     // external MCP tools like Slack); availability is restricted via `tools`,
     // and access is governed by canUseTool. There is no plan/workspace tool
-    // gating — view affects prompt hints only.
+    // gating — view affects prompt hints only. The catch: a bare allowedTools
+    // entry auto-approves before canUseTool is consulted, so the credential
+    // deny for these two is re-applied by the PreToolUse hook below.
     tools: ['default'],
     allowedTools: ['Grep', 'Glob'],
     systemPrompt,
@@ -158,6 +160,11 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
         title: opts.title,
       });
     }),
+    // Restores the credential-root deny for Grep/Glob, which allowedTools
+    // auto-approves past canUseTool. See searchGuardHook.ts.
+    hooks: {
+      PreToolUse: [createSearchGuardMatcher()],
+    },
     // Load user settings so claude.ai managed MCP servers (Whimsical, Glean, etc.) connect.
     // KPM's canUseTool handler takes precedence over any permission grants in settings.json.
     settingSources: ['user'],
@@ -180,10 +187,16 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
     // single-user model: Artifact publishes HTML/MD to an external Anthropic-hosted
     // URL (violates the SQLite-only / export-boundary principles and bypasses KPM's
     // own document system), Projects reads/writes a claude.ai cloud knowledge base,
-    // and ShowOnboardingRolePicker drives a claude.ai onboarding UI KPM never shows.
+    // and ShareOnboardingGuide uploads a guide to an org-shared cloud link. Both
+    // onboarding names are listed: the binary renamed the tool, and disallowing a
+    // name it no longer ships is a harmless no-op, so keep the old one until a
+    // probe confirms no supported binary still uses it.
+    // ProposeGoal sets a session completion condition through an approval dialog
+    // KPM has no renderer for, and its only escape hatch is the CLI's /goal command.
     // Also disable any managed MCP tools the user has turned off.
     disallowedTools: [
       'AskUserQuestion',
+      'ProposeGoal',
       'TaskCreate',
       'TaskGet',
       'TaskList',
@@ -193,6 +206,7 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
       'Artifact',
       'Projects',
       'ShowOnboardingRolePicker',
+      'ShareOnboardingGuide',
       ...(disabledMcpTools ?? []),
     ],
     maxTurns: claudeConfig.maxTurns,
@@ -253,7 +267,7 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
     ...(claudeConfig.debug && claudeConfig.debugFile && { debugFile: claudeConfig.debugFile }),
     // Handle MCP elicitation requests (auth flows, form inputs from managed servers)
     ...(onElicitation && { onElicitation }),
-    env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'kpm' },
+    env: { ...getAgentEnv(), CLAUDE_AGENT_SDK_CLIENT_APP: 'kpm' },
   };
 
   // Add connected repos as accessible directories

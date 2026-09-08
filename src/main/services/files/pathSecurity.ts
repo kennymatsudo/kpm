@@ -53,6 +53,8 @@ export function defaultDeniedRoots(): string[] {
     path.join(home, '.gnupg'),
     path.join(home, '.config', 'gh'),
     path.join(home, '.config', 'git-credential'),
+    // git's `credential.store` helper writes plaintext credentials here by default.
+    path.join(home, '.git-credentials'),
     path.join(home, '.netrc'),
     path.join(home, '.kube'),
     path.join(home, '.docker'),

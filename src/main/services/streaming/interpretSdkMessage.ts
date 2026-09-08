@@ -15,12 +15,13 @@
  */
 
 import { randomUUID } from 'crypto';
-import type { Activity } from '../../../shared/types';
+import type { Activity, AgentBackgroundTask } from '../../../shared/types';
 import { getToolActivity, extractDiffFromToolResult } from '../../claude/activity';
 import {
   isApiRetryMessage,
   isRateLimitEvent,
   isToolProgressMessage,
+  isBackgroundTasksChangedMessage,
   isInformationalMessage,
   isPartialAssistantMessage,
   isCompactBoundaryMessage,
@@ -55,6 +56,8 @@ export type InterpretedChatEvent =
   | { kind: 'chunk'; text: string; segmentId: number; precedingActivities?: Activity[] }
   | { kind: 'activity'; activity: Activity }
   | { kind: 'thinking'; text: string }
+  /** The complete set of live background tasks. Replaces the renderer's set; never merged. */
+  | { kind: 'background-tasks'; tasks: AgentBackgroundTask[] }
   | { kind: 'error'; error: string }
   | { kind: 'follow-up-accepted' }
   | { kind: 'suggestions'; suggestions: string[] }
@@ -336,6 +339,23 @@ export function interpretSdkMessage(
       view.toolUseActivities.set(sdkMsg.tool_use_id, updated);
       events.push({ kind: 'activity', activity: updated });
     }
+  }
+
+  // Background tasks (backgrounded shell commands and subagents) outlive the
+  // turn that started them: the SDK sends `result` while they are still
+  // running. This level signal carries the whole live set on every membership
+  // change, so it is forwarded verbatim and never filtered — including during
+  // interrupt-and-send, where dropping a now-empty payload would leave the
+  // renderer showing work that has already finished.
+  if (isBackgroundTasksChangedMessage(sdkMsg)) {
+    events.push({
+      kind: 'background-tasks',
+      tasks: sdkMsg.tasks.map((task) => ({
+        taskId: task.task_id,
+        taskType: task.task_type,
+        description: task.description,
+      })),
+    });
   }
 
   // Handle informational banners — the SDK emits these for non-error status

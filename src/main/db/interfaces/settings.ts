@@ -1,12 +1,12 @@
 /**
  * Settings Domain Repository Interfaces
  *
- * Interfaces for app settings, task prompt templates, and custom prompts.
+ * Interfaces for app settings, task prompt templates, themes, and the
+ * project write grant.
  */
 
 import type {
   TaskPromptTemplate,
-  ToolPermission,
   CustomTheme,
 } from '../../../shared/types';
 
@@ -72,17 +72,14 @@ export interface ITaskPromptTemplateRepository {
 }
 
 // =============================================================================
-// Custom Prompt Repository
+// Project Write Grant Repository
 // =============================================================================
 
-/** Input type for creating a custom prompt */
-export interface IToolPermissionRepository {
-  /** List all persisted permissions for a project */
-  listByProject(projectId: string): ToolPermission[];
-  /** Upsert a permission (insert or replace by project_id + cache_key) */
-  upsert(permission: Omit<ToolPermission, 'granted_at'>): void;
-  /** Delete a permission by ID */
-  delete(id: string): void;
-  /** Delete all permissions for a project */
-  deleteByProject(projectId: string): void;
+export interface IProjectWriteGrantRepository {
+  /** Every project the user has granted direct writes in. */
+  listGrantedProjectIds(): string[];
+  /** Grant direct writes in a project. Idempotent. */
+  grant(projectId: string): void;
+  /** Withdraw the grant. Idempotent. */
+  revoke(projectId: string): void;
 }

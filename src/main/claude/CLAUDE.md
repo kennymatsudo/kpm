@@ -31,7 +31,8 @@ src/main/kpmTools/createKpmServer.ts (Claude MCP server adapter)
     ├─ plan-refs.ts (extract plan items from a doc; resolve @plan/<uuid> tokens)
     ├─ list-project-files.ts (project file listing)
     ├─ spill-read.ts (read_spill_file: recover SDK tool-result overflow files)
-    └─ git-read.ts (git_read: read-only git against connected repos)
+    ├─ git-read.ts (git_read: read-only git against connected repos)
+    └─ git-push.ts (git_push: publish the checked-out branch)
     ↓
 Shared chat prompts (`../chat/prompts/`)
 ```
@@ -104,7 +105,9 @@ Claude calls modification tool (modify_plan, bulk_modify_plan, etc.)
 
 ### System Prompts (Main Chat)
 
-Files live in `../chat/prompts/` so Claude, Codex, and pi chat adapters can share them without depending on Claude-specific paths. Entry point is `index.ts` with `buildSystemPrompt()`. In main-chat scope the Codex/pi adapters (`buildCodexSystemPrompt`, `buildPiSystemPrompt`) compose the same registry sections and honor overrides via `resolveRegistryPrompt` (`promptRegistry.ts`) plus `buildResponseModesSection` and `buildPlanReferenceRulesSection`, so a prompt override reaches every provider. Their focus-document scope keeps its own hand-rolled operating rules (the focus tool contract deliberately excludes plan tools).
+Files live in `../chat/prompts/` so Claude, Codex, and pi chat adapters can share them without depending on Claude-specific paths. Entry point is `index.ts` with `buildSystemPrompt()`. In main-chat scope the Codex/pi adapters (`buildCodexSystemPrompt`, `buildPiSystemPrompt`) compose the same registry sections and honor overrides via `resolveRegistryPrompt` (`promptRegistry.ts`) plus `buildPlanModificationsSection` and `buildPlanReferenceRulesSection`, so a prompt override reaches every provider. Their focus-document scope keeps its own hand-rolled operating rules (the focus tool contract deliberately excludes plan tools).
+
+Each provider delivers that prompt through its own channel, and the channel matters as much as the content. Claude and pi take it as a real system prompt. Codex has no such field on `ThreadOptions`, so KPM passes it as `developer_instructions` through the client's config overlay (`codexConfigWithKpmMcp`) — every model request re-sends it, so it survives Codex's history compaction and a resumed thread. Do not go back to prepending it to the first message: that lands in history, which is exactly what compaction discards, and a long session then loses the operating rules and tool inventory without any signal.
 
 Key files: `toolDocs.ts` (tool decision tree), `modes.ts` (repo-access + plan-modification guidance), `workspace.ts` (constraints, workspace boundaries, plan rules, response style), `planFormatting.ts` (plan display), `focusedResources.ts` (focused resource handling), `promptRegistry.ts` (system prompt registry), `types.ts` (`PlanContext` / `ContinuationTurn`).
 
@@ -126,7 +129,7 @@ The `currentView` ('plan' | 'workspace') sent with each message is injected as a
 
 ### Prompts
 - Repos added via `--add-dir`, not prompts
-- Permissions are built once per SDK session spawn (not per message), so anything they close over must be read live — the conversation write grant is looked up through `chat/writeGrants.ts` for exactly this reason
+- Permissions are built once per SDK session spawn (not per message), so anything they close over must be read live — the project write grant is looked up through `chat/writeGrants.ts` for exactly this reason, never captured as a boolean
 - Undocumented behavior = Claude guesses (add concrete examples)
 
 ### Plan Modifications
@@ -154,7 +157,8 @@ The `currentView` ('plan' | 'workspace') sent with each message is injected as a
 | `../kpmTools/tools/review-assessment.ts` | Separate read-only MCP server used by `ReviewAssessmentService` (not part of the main-chat `createKpmServer`) |
 | `../kpmTools/tools/plan-refs.ts` | `extract_plan_items_from_doc` — lift `@plan/<uuid>` tokens out of a project file by path |
 | `../kpmTools/tools/spill-read.ts` | `read_spill_file` — read-only recovery of SDK tool-result spill files in `~/.claude/projects/` |
-| `../kpmTools/tools/git-read.ts` | `git_read` — runs read-only git in a connected repo via `execFile` (no shell). Needs no write grant, so it stays the fast path for reading git state; raw `git` in chat Bash goes through the conversation write gate (`permissions.ts` Rule -1). Validation lives in `services/repo/gitReadOnly.ts`. |
+| `../kpmTools/tools/git-read.ts` | `git_read` — runs read-only git in a connected repo via `execFile` (no shell). Needs no write grant. Raw `git` in chat Bash goes through `permissions.ts` Rule -1: `classifyGitShellCommand` allows a command it can prove is read-only git, everything else needs the conversation write grant. Both classifications live in `services/repo/gitReadOnly.ts`. |
+| `../kpmTools/tools/git-push.ts` | `git_push` — pushes the checked-out branch of a connected repo. The sandboxed chat shell can reach neither the credential paths nor the network, so a push must run from the main process, where the user's git credential helper applies. KPM MCP tools are auto-allowed by `canUseTool`, so this tool asks for the conversation write grant itself (`requestGitPushWriteAccess` in `../kpmTools/runtimeRegistry.ts`). The push itself runs through `publishBranch` (`services/repo/gitWrites.ts`), the one entry point for moving a branch ref: no force, no refspec, no protected or default branch, and every caller must state its `WriteAuthorization`. |
 | `contextRefs.ts` | `formatPlanRefSection` — expand plan refs into agent context |
 | `../chat/prompts/` | Shared chat system prompt builders |
 
@@ -166,7 +170,7 @@ Descriptions, intents, and acceptance criteria may contain `@plan/<uuid>` tokens
 
 ## Work Brief and Repository Scope
 
-A Plan Item's Work Brief is the revisioned aggregate of title, context (persisted in `description`), intent, and acceptance criteria. `create_item` retains its flat payload for compatibility. After creation, chat must fetch the complete item and use `revise_work_brief` with `expected_revision`; `update_item` cannot mutate Work Brief fields. `set_repo_targets` replaces the separate Repository Scope and does not change the Work Brief revision or queue tracker sync.
+A Plan Item's Work Brief is the revisioned aggregate of title, description, intent, and acceptance criteria. `create_item` retains its flat payload for compatibility. After creation, chat must fetch the complete item and use `revise_work_brief` with `expected_revision`; `update_item` cannot mutate Work Brief fields. `set_repo_targets` replaces the separate Repository Scope and does not change the Work Brief revision or queue tracker sync.
 
 The aggregate fields flow from the chat iteration doc → plan item → implementation agent:
 
@@ -177,7 +181,7 @@ The aggregate fields flow from the chat iteration doc → plan item → implemen
 | `description` | `string` (markdown) | Rationale, context, rejected alternatives. The story, not the contract. |
 | `source_document_id` | `string` (no FK) | Breadcrumb to the iteration doc this item was extracted from. |
 
-Guidance baked into the `modify_plan` tool prompt: prefer `intent` + `acceptance_criteria` for implementation items; rely on context alone for exploratory/research items where criteria cannot be enumerated yet. `revise_work_brief` is a full replacement, so the model fetches current values first. Intent or Acceptance Criteria headings inside context are ordinary context, never a shadow contract.
+Guidance baked into the `modify_plan` tool prompt: prefer `intent` + `acceptance_criteria` for implementation items; rely on `description` alone for exploratory/research items where criteria cannot be enumerated yet. `revise_work_brief` is a full replacement, so the model fetches current values first. Intent or Acceptance Criteria headings inside `description` are ordinary prose, never a shadow contract.
 
 The fields are normalized by `shared/workBrief.ts`, revised atomically by `PlanItemRepository.compareAndReviseWorkBrief`, and projected to execution by `main/workBrief/projections.ts`. New dev sessions capture the projected prompt in `initial_instructions` and its revision in `dev_sessions.work_brief_revision`. Reused sessions and follow-up turns automatically refresh to the latest approved revision while preserving the existing worktree and supplemental instructions.
 
