@@ -18,7 +18,7 @@ import { z } from 'zod';
 import { resultOf, type EndpointDefinition } from './endpoints';
 import { absolutePath, uuid } from './sharedSchemas';
 import { CHAT_PROVIDERS } from '../types';
-import type { ChatChoiceView, ChatMessage, ChatSessionScope, ChatSessionSummary, PiProviderOption, SessionState, SlashCommandInfo } from '../types';
+import type { Activity, ChatChoiceView, ChatMessage, ChatSessionScope, ChatSessionSummary, PiProviderOption, SessionState, SlashCommandInfo } from '../types';
 
 /**
  * Response shape for endpoints registered through `createRegistryIpcHandlers`
@@ -37,6 +37,10 @@ interface ActiveSessionInfo {
   state: SessionState;
   isProcessing: boolean;
   title?: string | null;
+  /** Assistant text streamed so far in a turn that is still running. */
+  partialResponse?: string;
+  /** Tool activities from that in-flight turn. */
+  partialActivities?: Activity[];
 }
 
 /** Mirrors `FocusDocumentSessionResult` from `main/services/core/ChatService.ts`. */
@@ -44,6 +48,13 @@ interface FocusDocumentSessionResult {
   chatSessionId: string;
   messages: ChatMessage[];
   choice: ChatChoiceView;
+}
+
+interface CodexMcpServerStatus {
+  name: string;
+  status: 'connected' | 'pending' | 'failed';
+  authStatus: 'unknown' | 'unsupported' | 'notLoggedIn' | 'bearerToken' | 'oAuth';
+  error?: string;
 }
 
 const chatProvider = z.enum(CHAT_PROVIDERS, { message: 'Provider must be "claude", "codex", or "pi"' });
@@ -192,6 +203,21 @@ export const chatEndpoints = {
     channel: 'chat:pi-providers',
     params: null,
     result: resultOf<RegistryResponse<{ available: boolean; providers: PiProviderOption[] }>>(),
+  },
+  codexMcpStatus: {
+    channel: 'chat:codex-mcp-status',
+    params: z.object({ projectId: uuid, chatSessionId: uuid }),
+    result: resultOf<RegistryResponse<{ servers: CodexMcpServerStatus[] }>>(),
+  },
+  reloadCodexMcpServers: {
+    channel: 'chat:codex-mcp-reload',
+    params: z.object({ projectId: uuid, chatSessionId: uuid }),
+    result: resultOf<RegistryResponse>(),
+  },
+  loginCodexMcpServer: {
+    channel: 'chat:codex-mcp-login',
+    params: z.object({ projectId: uuid, chatSessionId: uuid, serverName: z.string().min(1).max(300) }),
+    result: resultOf<RegistryResponse>(),
   },
 } satisfies Record<string, EndpointDefinition>;
 

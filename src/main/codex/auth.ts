@@ -1,7 +1,7 @@
 /**
  * Codex authentication detection.
  *
- * KPM uses @openai/codex-sdk directly. The SDK reads credentials from
+ * KPM launches its bundled Codex CLI. The CLI reads credentials from
  * ~/.codex/auth.json, so availability is auth-file based rather than PATH based.
  */
 
@@ -26,7 +26,7 @@ export async function hasCodexAuth(): Promise<boolean> {
 
 /** Get Codex availability status. */
 export async function getCodexStatus(): Promise<CodexStatus> {
-  // The SDK is bundled as a dependency, so "installed" is always true.
+  // The bundled CLI is installed with KPM, so "installed" is always true.
   // The only question is whether the user has authenticated.
   const authenticated = await hasCodexAuth();
   return { installed: true, authenticated };

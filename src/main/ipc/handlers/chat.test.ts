@@ -80,4 +80,29 @@ describe('chat model-choice IPC handlers', () => {
       responding: true,
     });
   });
+
+  it('forwards Codex MCP status, reload, and user-initiated OAuth login to the active session', async () => {
+    process.env.ELECTRON_RENDERER_URL = 'http://localhost:5173';
+    const projectId = '11111111-1111-4111-8111-111111111111';
+    const chatSessionId = '22222222-2222-4222-8222-222222222222';
+    const getCodexMcpServerStatus = vi.fn(async () => success([{
+      name: 'linear', status: 'failed' as const, authStatus: 'notLoggedIn' as const, error: 'Sign in required',
+    }]));
+    const reloadCodexMcpServers = vi.fn(async () => success(undefined));
+    const loginCodexMcpServer = vi.fn(async () => success(undefined));
+
+    registerChatHandlers({
+      streamingSessionService: { getCodexMcpServerStatus, reloadCodexMcpServers, loginCodexMcpServer },
+    } as unknown as ChatHandlerDeps);
+
+    await expect(registeredHandler(chatEndpoints.codexMcpStatus.channel)(trustedEvent(), { projectId, chatSessionId }))
+      .resolves.toEqual({ success: true, servers: [{ name: 'linear', status: 'failed', authStatus: 'notLoggedIn', error: 'Sign in required' }] });
+    await expect(registeredHandler(chatEndpoints.reloadCodexMcpServers.channel)(trustedEvent(), { projectId, chatSessionId }))
+      .resolves.toEqual({ success: true });
+    await expect(registeredHandler(chatEndpoints.loginCodexMcpServer.channel)(trustedEvent(), { projectId, chatSessionId, serverName: 'linear' }))
+      .resolves.toEqual({ success: true });
+
+    expect(reloadCodexMcpServers).toHaveBeenCalledWith(projectId, chatSessionId);
+    expect(loginCodexMcpServer).toHaveBeenCalledWith(projectId, chatSessionId, 'linear');
+  });
 });

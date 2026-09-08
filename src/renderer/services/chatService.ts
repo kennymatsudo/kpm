@@ -20,6 +20,7 @@ import type {
   SessionReadyEventData,
   SessionTitleEventData,
   ThinkingEventData,
+  BackgroundTasksEventData,
   SuggestionsEventData,
   SlashCommandsEventData,
   McpStatusEventData,
@@ -40,6 +41,7 @@ export type {
   SessionReadyEventData,
   SessionTitleEventData,
   ThinkingEventData,
+  BackgroundTasksEventData,
   SuggestionsEventData,
   SlashCommandsEventData,
   McpStatusEventData,
@@ -55,6 +57,18 @@ export function getSlashCommands() {
 
 export function getPiProviders() {
   return window.api.chat.piProviders();
+}
+
+export function getCodexMcpServerStatus(projectId: string, chatSessionId: string) {
+  return window.api.chat.codexMcpStatus({ projectId, chatSessionId });
+}
+
+export function reloadCodexMcpServers(projectId: string, chatSessionId: string) {
+  return window.api.chat.reloadCodexMcpServers({ projectId, chatSessionId });
+}
+
+export function loginCodexMcpServer(projectId: string, chatSessionId: string, serverName: string) {
+  return window.api.chat.loginCodexMcpServer({ projectId, chatSessionId, serverName });
 }
 
 export function getActiveChatSessions(projectId: string) {
@@ -151,6 +165,7 @@ export function subscribeToChatEvents(handlers: {
   onSuggestions?: (data: SuggestionsEventData) => void;
   onSlashCommands?: (data: SlashCommandsEventData) => void;
   onMcpStatus?: (data: McpStatusEventData) => void;
+  onBackgroundTasks?: (data: BackgroundTasksEventData) => void;
   onQueued?: (data: QueuedEventData) => void;
   onQueueCleared?: (data: QueueClearedEventData) => void;
 }): () => void {
@@ -164,6 +179,7 @@ export function subscribeToChatEvents(handlers: {
     handlers.onError ? window.api.chat.onError(handlers.onError) : null,
     handlers.onActivity ? window.api.chat.onActivity(handlers.onActivity) : null,
     handlers.onThinking ? window.api.chat.onThinking(handlers.onThinking) : null,
+    handlers.onBackgroundTasks ? window.api.chat.onBackgroundTasks(handlers.onBackgroundTasks) : null,
     handlers.onSessionConnecting ? window.api.chat.onSessionConnecting(handlers.onSessionConnecting) : null,
     handlers.onSessionReady ? window.api.chat.onSessionReady(handlers.onSessionReady) : null,
     handlers.onSessionTitle ? window.api.chat.onSessionTitle(handlers.onSessionTitle) : null,

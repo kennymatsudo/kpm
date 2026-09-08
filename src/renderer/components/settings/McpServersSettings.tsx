@@ -1,9 +1,14 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { LoadingSpinner } from '../ui/LoadingButton';
 import { useChatStore, useMcpServersStore } from '../../stores';
 import { getProviderCapabilities } from '../../../shared/providerCapabilities';
+import {
+  getCodexMcpServerStatus,
+  loginCodexMcpServer,
+  reloadCodexMcpServers,
+} from '../../services/chatService';
 
-export function McpServersSettings() {
+export function McpServersSettings({ currentProjectId }: { currentProjectId?: string | null }) {
   const provider = useChatStore((state) => state.provider);
   const capabilities = getProviderCapabilities(provider);
   const {
@@ -19,9 +24,13 @@ export function McpServersSettings() {
   } = useMcpServersStore();
 
   useEffect(() => {
-    if (!capabilities.mcpServerManagement) return;
+    if (provider !== 'claude') return;
     void loadServers();
-  }, [capabilities.mcpServerManagement, loadServers]);
+  }, [provider, loadServers]);
+
+  if (provider === 'codex') {
+    return <CodexMcpServersSettings projectId={currentProjectId} />;
+  }
 
   const enabledPlugins = plugins.filter(p => p.enabledInClaudeCode);
 
@@ -139,6 +148,154 @@ export function McpServersSettings() {
         <p className="text-xs text-text-muted">
           External MCP tool calls require approval before they run.
         </p>
+      )}
+    </div>
+  );
+}
+
+interface CodexMcpServer {
+  name: string;
+  status: 'connected' | 'pending' | 'failed';
+  authStatus: 'unknown' | 'unsupported' | 'notLoggedIn' | 'bearerToken' | 'oAuth';
+  error?: string;
+}
+
+function CodexMcpServersSettings({ projectId }: { projectId?: string | null }) {
+  const chatSessionId = useChatStore((state) => state.viewedSessionId);
+  const [servers, setServers] = useState<CodexMcpServer[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [action, setAction] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    if (!projectId || !chatSessionId) {
+      setServers([]);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await getCodexMcpServerStatus(projectId, chatSessionId);
+      if (!result.success) throw new Error(result.error);
+      setServers(result.servers);
+    } catch (cause) {
+      setServers([]);
+      setError(cause instanceof Error ? cause.message : 'Could not read Codex MCP server status.');
+    } finally {
+      setLoading(false);
+    }
+  }, [projectId, chatSessionId]);
+
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  const reload = async () => {
+    if (!projectId || !chatSessionId) return;
+    setAction('reload');
+    setError(null);
+    try {
+      const result = await reloadCodexMcpServers(projectId, chatSessionId);
+      if (!result.success) throw new Error(result.error);
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not reload Codex MCP servers.');
+    } finally {
+      setAction(null);
+    }
+  };
+
+  const signIn = async (serverName: string) => {
+    if (!projectId || !chatSessionId) return;
+    setAction(serverName);
+    setError(null);
+    try {
+      const result = await loginCodexMcpServer(projectId, chatSessionId, serverName);
+      if (!result.success) throw new Error(result.error);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : `Could not start sign-in for ${serverName}.`);
+    } finally {
+      setAction(null);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h3 className="text-base font-semibold text-text-primary">MCP Servers</h3>
+          <p className="text-sm text-text-secondary mt-1">
+            Live status for the configured servers in this Codex chat.
+          </p>
+        </div>
+        <button
+          onClick={() => void reload()}
+          disabled={!projectId || !chatSessionId || action !== null}
+          className="px-2.5 py-1.5 rounded-lg border border-border-subtle text-sm text-text-primary hover:bg-surface-2 disabled:opacity-50"
+        >
+          {action === 'reload' ? 'Reloading…' : 'Reload'}
+        </button>
+      </div>
+
+      {!projectId || !chatSessionId ? (
+        <div className="p-4 rounded-xl bg-surface-2 border border-border-subtle">
+          <p className="text-sm text-text-secondary">Open a Codex chat to inspect and reconnect its configured MCP servers.</p>
+        </div>
+      ) : error ? (
+        <div className="p-3 rounded-xl bg-danger-muted/50 border border-danger/20">
+          <p className="text-sm text-danger">{error}</p>
+        </div>
+      ) : loading ? (
+        <div className="flex items-center gap-2 py-3">
+          <LoadingSpinner className="w-4 h-4 text-text-muted" />
+          <p className="text-text-secondary text-sm">Checking configured servers...</p>
+        </div>
+      ) : servers.length === 0 ? (
+        <div className="p-4 rounded-xl bg-surface-2 border border-border-subtle">
+          <p className="text-sm text-text-secondary">No MCP servers are configured for this Codex chat.</p>
+        </div>
+      ) : (
+        <div className="space-y-1.5">
+          {servers.map((server) => (
+            <CodexServerRow
+              key={server.name}
+              server={server}
+              signingIn={action === server.name}
+              onSignIn={() => void signIn(server.name)}
+            />
+          ))}
+        </div>
+      )}
+
+      <p className="text-xs text-text-muted">
+        Reload reads your existing Codex MCP configuration. Sign-in opens the server’s authorization page only after you choose it.
+      </p>
+    </div>
+  );
+}
+
+function CodexServerRow({ server, signingIn, onSignIn }: {
+  server: CodexMcpServer;
+  signingIn: boolean;
+  onSignIn: () => void;
+}) {
+  const needsSignIn = server.authStatus === 'notLoggedIn';
+  return (
+    <div className="p-2.5 rounded-lg bg-surface-2 border border-border-subtle flex items-center justify-between gap-3">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-text-primary truncate">{server.name}</span>
+          <StatusBadge status={server.status} />
+          {needsSignIn && <StatusBadge status="needs-auth" />}
+        </div>
+        {server.error && <p className="text-xs text-danger mt-1 truncate">{server.error}</p>}
+      </div>
+      {needsSignIn && (
+        <button
+          onClick={onSignIn}
+          disabled={signingIn}
+          className="px-2.5 py-1.5 rounded-lg bg-accent text-on-accent text-sm disabled:opacity-50 shrink-0"
+        >
+          {signingIn ? 'Opening…' : 'Sign in'}
+        </button>
       )}
     </div>
   );

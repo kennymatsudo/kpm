@@ -42,7 +42,7 @@ export abstract class BaseTurnQueueChatSession<TTurn extends object> implements 
 
   abstract start(initialMessage: string | ContentBlockParam[]): Promise<void>;
   abstract send(text: string): void;
-  abstract sendUserContent(content: ContentBlockParam[]): void;
+  abstract sendUserContent(content: ContentBlockParam[]): void | Promise<void>;
   abstract interrupt(): Promise<void>;
 
   /**

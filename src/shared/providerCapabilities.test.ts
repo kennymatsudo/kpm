@@ -21,14 +21,14 @@ describe('provider capabilities', () => {
 
   it('marks the providers whose transport can pause a turn to ask permission', () => {
     // pi's `tool_call` hook may return a promise, so it can block mid-turn.
-    // Codex cannot: `codex exec` closes stdin and refuses approvals outright,
-    // so its write grant only takes effect on the following turn.
+    // Codex chat uses app-server, whose JSON-RPC server requests pause the
+    // active turn until KPM answers the approval.
     expect(getProviderCapabilities('claude').inTurnWriteApproval).toBe(true);
     expect(getProviderCapabilities('pi').inTurnWriteApproval).toBe(true);
-    expect(getProviderCapabilities('codex').inTurnWriteApproval).toBe(false);
+    expect(getProviderCapabilities('codex').inTurnWriteApproval).toBe(true);
 
     expect(getProviderCapabilities('pi').permissionPrompts).toBe(true);
-    expect(getProviderCapabilities('codex').permissionPrompts).toBe(false);
+    expect(getProviderCapabilities('codex').permissionPrompts).toBe(true);
   });
 
   it('preserves Claude-only interactive controls as capabilities', () => {

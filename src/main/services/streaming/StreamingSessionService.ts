@@ -18,7 +18,7 @@ import type { BrowserWindow } from 'electron';
 import type { Options as SDKOptions, OnElicitation } from '@anthropic-ai/claude-agent-sdk';
 import { getSessionInfo } from '@anthropic-ai/claude-agent-sdk';
 import { StreamingSession, type McpServerStatus } from '../../claude/streaming';
-import { CodexChatSession } from '../../codex/CodexChatSession';
+import { CodexChatSession, type CodexMcpServerStatus } from '../../codex/CodexChatSession';
 import { registerCodexMcpSession } from '../../codex/KpmCodexMcpServer';
 import { PiChatSession } from '../../pi/PiChatSession';
 import { buildPiKpmTools } from '../../pi/kpmToolAdapter';
@@ -31,14 +31,13 @@ import {
   type KpmToolProposal,
 } from '../../kpmTools/runtimeRegistry';
 import { buildUserContentBlocks } from '../../claude/attachmentBlocks';
-import { conversationWriteGrants } from '../../chat/writeGrants';
+import { projectWriteGrants } from '../../chat/writeGrants';
 import { buildFocusedSection } from '../../chat/prompts/focusedResources';
 import { type ServiceResult, type AsyncResult, success, failure } from '../result';
 import type { PlanContext } from '../../chat/prompts';
 import type { ChatChoiceEffort, ChatProvider, FocusChatDocument, FocusedResource, PlanItem, Project, Activity, ToolCallLogEntry, ChatAttachment, ChatSessionScope, SlashCommandInfo } from '../../../shared/types';
 import type { ChatModelChoiceService, ResolvedChatChoice } from '../../chat/modelChoice';
 import { getConfig } from '../../config';
-import { clientManager } from '../../claude/clientManager';
 import { isMaxTokensReached, isMaxTurnsReached, getTerminalReason } from '../../claude/sdkTypeGuards';
 import { interpretSdkMessage, type SegmentState } from './interpretSdkMessage';
 import { createFollowUpQueue, type FollowUpQueue } from './followUpQueue';
@@ -75,6 +74,12 @@ export type ModelType = 'opus' | 'sonnet' | 'haiku';
 export type ViewMode = 'plan' | 'workspace' | 'focus';
 
 const KPM_CONTEXT_PLACEHOLDER = '$KPM_CONTEXT';
+
+/** Claude already auto-allows configured MCP tools. Keep Codex browser work
+ * consistent by treating Playwright's interaction requests as pre-approved. */
+export function isAutoApprovedCodexMcpServer(serverName: unknown): boolean {
+  return typeof serverName === 'string' && serverName.toLowerCase() === 'playwright';
+}
 
 function buildViewHintLine(currentView?: ViewMode): string | undefined {
   if (currentView === 'plan') return '[Context: user is viewing the plan]';
@@ -260,6 +265,20 @@ export interface ActiveSessionInfo {
   isProcessing: boolean;
   /** Persisted SDK-derived title (null for legacy rows). */
   title?: string | null;
+  /**
+   * Assistant text streamed so far in the turn that is still in flight, if
+   * any. Only the DB has finished turns, so without this a renderer that
+   * rejoins mid-turn (project switch, reload) would show a gap where the
+   * partial answer should be.
+   */
+  partialResponse?: string;
+  /**
+   * Tool activities emitted during the in-flight turn. Replayed ahead of
+   * `partialResponse` on rejoin. Their original interleaving with the text is
+   * not recorded, so they all land before it — close enough to read, and the
+   * turn's own `chat:done` reconciles from the DB anyway.
+   */
+  partialActivities?: Activity[];
 }
 
 /** Managed session with metadata */
@@ -429,7 +448,6 @@ export interface StreamingSessionServiceDeps {
       onProjectFileWrite?: (projectId: string, filePath: string, content: string) => void;
       peekPendingFile?: (relativeFilePath: string) => string | undefined;
       onElicitation?: OnElicitation;
-      autoApprove?: boolean;
     }
   ) => SDKOptions;
 
@@ -727,9 +745,6 @@ export function finalizeTurnResult(
     }
   }
 
-  // Clear "Allow All Remaining" flag when response completes
-  clientManager.clearAllowAllRemaining(projectId);
-
   // Detect auth error responses before resetting accumulatedResponse
   const finalResponse = managed.accumulatedResponse.trim();
   const isAuthError = /not logged in/i.test(finalResponse) && /\/login/i.test(finalResponse);
@@ -1005,17 +1020,83 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     for (const [key, managed] of sessions) {
       if (key.startsWith(prefix) && managed.chatSessionId && managed.persistHistory) {
         const persisted = deps.chatSessionRepository.get(managed.chatSessionId);
+        const inFlight = managed.state === 'processing';
+        const partialActivities = inFlight ? Array.from(managed.toolUseActivities.values()) : [];
         result.push({
           chatSessionId: managed.chatSessionId,
           scope: persisted?.scope ?? 'main',
           state: managed.state,
-          isProcessing: managed.state === 'processing',
+          isProcessing: inFlight,
           title: persisted?.title ?? null,
+          partialResponse: inFlight && managed.accumulatedResponse ? managed.accumulatedResponse : undefined,
+          partialActivities: partialActivities.length > 0 ? partialActivities : undefined,
         });
       }
     }
 
     return result;
+  }
+
+  function codexSession(projectId: string, chatSessionId: string): ServiceResult<IChatSession> {
+    const managed = sessions.get(buildSessionKey(projectId, chatSessionId));
+    if (!managed) return failure('Open a Codex chat session before managing its MCP servers.');
+    if (managed.provider !== 'codex') return failure('The selected chat session does not use Codex.');
+    if (!managed.session.codexMcpServerStatus || !managed.session.reloadMcpServers || !managed.session.loginMcpServer) {
+      return failure('This Codex chat session does not support MCP management.');
+    }
+    return success(managed.session);
+  }
+
+  async function getCodexMcpServerStatus(projectId: string, chatSessionId: string): AsyncResult<CodexMcpServerStatus[]> {
+    const session = codexSession(projectId, chatSessionId);
+    if (!session.ok) return session;
+    try {
+      return success(await session.data.codexMcpServerStatus!());
+    } catch (error) {
+      return failure(error instanceof Error ? error.message : 'Could not read Codex MCP server status.');
+    }
+  }
+
+  async function reloadCodexMcpServers(projectId: string, chatSessionId: string): AsyncResult<void> {
+    const session = codexSession(projectId, chatSessionId);
+    if (!session.ok) return session;
+    try {
+      await session.data.reloadMcpServers!();
+      return success(undefined);
+    } catch (error) {
+      return failure(error instanceof Error ? error.message : 'Could not reload Codex MCP servers.');
+    }
+  }
+
+  async function loginCodexMcpServer(projectId: string, chatSessionId: string, serverName: string): AsyncResult<void> {
+    const session = codexSession(projectId, chatSessionId);
+    if (!session.ok) return session;
+    try {
+      const servers = await session.data.codexMcpServerStatus!();
+      if (!servers.some((server) => server.name === serverName)) {
+        return failure('That MCP server is not configured for this Codex chat.');
+      }
+      const authorizationUrl = await session.data.loginMcpServer!(serverName);
+      if (!isAllowedExternalUrl(authorizationUrl)) return failure('Codex returned an unsafe OAuth authorization URL.');
+      const { shell } = await import('electron');
+      await shell.openExternal(authorizationUrl);
+      return success(undefined);
+    } catch (error) {
+      return failure(error instanceof Error ? error.message : `Could not start OAuth sign-in for ${serverName}.`);
+    }
+  }
+
+  /**
+   * Chat sessions mid-turn, keyed by project. Feeds the cross-project activity
+   * snapshot, so it counts every project at once rather than taking one id.
+   */
+  function processingCountsByProject(): Map<string, number> {
+    const counts = new Map<string, number>();
+    for (const managed of sessions.values()) {
+      if (managed.state !== 'processing') continue;
+      counts.set(managed.projectId, (counts.get(managed.projectId) ?? 0) + 1);
+    }
+    return counts;
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -1146,7 +1227,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         async () => {
           if (envelope.attachments && envelope.attachments.length > 0) {
             const blocks = await buildUserContentBlocks(envelope.text, envelope.attachments);
-            managed.session.sendUserContent(blocks);
+            await managed.session.sendUserContent(blocks);
           } else {
             managed.session.send(envelope.text);
           }
@@ -1228,7 +1309,6 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         resumeSessionId,
         mainWindow,
         chatSessionId,
-        autoApprove: true,
         // Callback for intercepted context file edits from the permission handler
         onContextFileEdit: (editProjectId: string, newContent: string) => {
           // Record so a subsequent Edit (built-in or propose_context_edit)
@@ -1388,13 +1468,43 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         : undefined;
 
       const requestWriteConsent = (): Promise<{ allowed: true } | { allowed: false; reason: string }> =>
-        conversationWriteGrants.request(chatSessionId, async () => {
+        projectWriteGrants.request(projectId, async () => {
           const result = await promptUser(mainWindow, projectId, 'Write', {}, {
             chatSessionId,
             kind: 'write-access',
           });
           return result.behavior === 'allow';
         });
+
+      const requestCodexExternalApproval = async (toolName: string, input: Record<string, unknown>): Promise<boolean> => {
+        const result = await promptUser(mainWindow, projectId, toolName, input, {
+          chatSessionId,
+          kind: 'elicitation',
+        });
+        return result.behavior === 'allow';
+      };
+
+      const handleCodexMcpElicitation = async (request: Record<string, unknown>) => {
+        if (!mainWindow) return { action: 'decline' as const };
+        if (request.mode === 'url' && typeof request.url === 'string') {
+          if (!isAllowedExternalUrl(request.url)) {
+            console.warn(`[StreamingSessionService] Blocked unsafe MCP elicitation URL: ${request.url}`);
+            return { action: 'decline' as const };
+          }
+          const { shell } = await import('electron');
+          void shell.openExternal(request.url);
+          return { action: 'accept' as const, content: {} };
+        }
+        const serverName = typeof request.serverName === 'string' ? request.serverName : 'unknown';
+        if (isAutoApprovedCodexMcpServer(serverName)) {
+          return { action: 'accept' as const, content: {} };
+        }
+        const allowed = await requestCodexExternalApproval(`mcp_elicitation:${serverName}`, {
+          message: request.message,
+          mode: request.mode,
+        });
+        return allowed ? { action: 'accept' as const, content: {} } : { action: 'decline' as const };
+      };
 
       // Create streaming session — let required: const can't be referenced in its own initializer closures
       // eslint-disable-next-line prefer-const
@@ -1421,7 +1531,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
             chatSessionId,
             resumeThreadId: resumeSessionId,
             model: providerModel,
-            modelReasoningEffort: effort === 'minimal' || effort === 'low' || effort === 'medium' || effort === 'high' || effort === 'xhigh'
+            modelReasoningEffort: effort === 'minimal' || effort === 'low' || effort === 'medium' || effort === 'high' || effort === 'xhigh' || effort === 'max'
               ? effort
               : undefined,
             onMessage: (msg) => onMessage(session, msg),
@@ -1429,7 +1539,9 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
             onReady: onReadyWithoutMcpStatus,
             registerMcpSession: registerCodexKpmMcpSession,
             requestWriteConsent,
-            hasWriteAccess: () => chatSessionId ? conversationWriteGrants.has(chatSessionId) : false,
+            hasWriteAccess: () => projectWriteGrants.has(projectId),
+            requestExternalApproval: requestCodexExternalApproval,
+            onMcpElicitation: handleCodexMcpElicitation,
           })
         : provider === 'pi'
         ? new PiChatSession({
@@ -1921,7 +2033,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     try {
       if (envelope.attachments && envelope.attachments.length > 0) {
         const blocks = await buildUserContentBlocks(envelope.text, envelope.attachments);
-        managed.session.sendUserContent(blocks);
+        await managed.session.sendUserContent(blocks);
       } else {
         managed.session.send(envelope.text);
       }
@@ -2138,6 +2250,13 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         case 'thinking':
           if (managed.firstContentAt === undefined) managed.firstContentAt = Date.now();
           emitAppEvent(mainWindow?.webContents, chatEvents.thinking, { projectId, chatSessionId, text: event.text });
+          break;
+        case 'background-tasks':
+          emitAppEvent(mainWindow?.webContents, chatEvents.backgroundTasks, {
+            projectId,
+            chatSessionId,
+            tasks: event.tasks,
+          });
           break;
         case 'error':
           sendChatError(mainWindow, projectId, chatSessionId, event.error);
@@ -2438,6 +2557,10 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     sendChatMessage,
     getChatSessionState,
     getActiveSessions,
+    getCodexMcpServerStatus,
+    reloadCodexMcpServers,
+    loginCodexMcpServer,
+    processingCountsByProject,
     interruptChatSession: (projectId: string, chatSessionId: string) =>
       interrupt(buildSessionKey(projectId, chatSessionId)),
     cancelQueuedChatMessage: (projectId: string, chatSessionId: string, clientMessageId?: string) =>

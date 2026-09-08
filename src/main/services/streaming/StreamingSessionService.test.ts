@@ -5,6 +5,7 @@ import type { KpmToolProposal, PlanActionsEvent } from '../../kpmTools/runtimeRe
 import {
   buildContinuationHistory,
   createStreamingSessionService,
+  isAutoApprovedCodexMcpServer,
   type StreamingSessionServiceDeps,
 } from './StreamingSessionService';
 import type * as SdkTypeGuardsModule from '../../claude/sdkTypeGuards';
@@ -223,7 +224,6 @@ vi.mock('../../kpmTools/runtimeRegistry', () => ({
 
 vi.mock('../../claude/clientManager', () => ({
   clientManager: {
-    clearAllowAllRemaining: vi.fn(),
   },
 }));
 
@@ -246,6 +246,7 @@ vi.mock('../../claude/sdkTypeGuards', async () => {
     // Pure shape predicates — use the real implementations so emitted messages
     // route correctly without a boolean toggle.
     isToolProgressMessage: actual.isToolProgressMessage,
+    isBackgroundTasksChangedMessage: actual.isBackgroundTasksChangedMessage,
     isInformationalMessage: actual.isInformationalMessage,
     isPartialAssistantMessage: actual.isPartialAssistantMessage,
     isCompactBoundaryMessage: actual.isCompactBoundaryMessage,
@@ -357,6 +358,14 @@ function createDepsWithToolEvents(sendSpy: (channel: string, payload: unknown) =
     },
   };
 }
+
+describe('Codex MCP approvals', () => {
+  it('auto-approves Playwright but not other MCP servers', () => {
+    expect(isAutoApprovedCodexMcpServer('playwright')).toBe(true);
+    expect(isAutoApprovedCodexMcpServer('PLAYWRIGHT')).toBe(true);
+    expect(isAutoApprovedCodexMcpServer('linear')).toBe(false);
+  });
+});
 
 describe('StreamingSessionService lifecycle regression coverage', () => {
   let service: ReturnType<typeof createStreamingSessionService> | null = null;

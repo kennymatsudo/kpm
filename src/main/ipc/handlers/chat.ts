@@ -1,6 +1,5 @@
 import type { ChatService } from '../../services/core/ChatService';
 import type { SlashCommandService } from '../../services/core/SlashCommandService';
-import type { PermissionService } from '../../services/core/PermissionService';
 import type { StreamingSessionService } from '../../services/streaming/StreamingSessionService';
 import type { IChatMessageRepository, IProjectRepository } from '../../db/interfaces';
 import type { ChatModelChoiceService } from '../../chat/modelChoice';
@@ -16,10 +15,10 @@ import { withTimeout } from '../../utils/withTimeout';
 export interface ChatHandlerDeps {
   chatService: ChatService;
   slashCommandService: SlashCommandService;
-  permissionService: Pick<PermissionService, 'loadPersistedPermissions'>;
   streamingSessionService: Pick<
     StreamingSessionService,
     'interruptChatSession' | 'cancelQueuedChatMessage' | 'disconnectChatSession' | 'getActiveSessions' | 'getChatSessionState'
+    | 'getCodexMcpServerStatus' | 'reloadCodexMcpServers' | 'loginCodexMcpServer'
   >;
   projects: IProjectRepository;
   chatMessages: IChatMessageRepository;
@@ -51,7 +50,7 @@ function modelChoiceControlsBusy(
 }
 
 function buildChatHandlers(deps: ChatHandlerDeps): ChatHandlers {
-  const { chatService, slashCommandService, permissionService, streamingSessionService, projects, chatMessages, modelChoice } = deps;
+  const { chatService, slashCommandService, streamingSessionService, projects, chatMessages, modelChoice } = deps;
 
   return {
     getSlashCommands: async () => {
@@ -107,9 +106,9 @@ function buildChatHandlers(deps: ChatHandlerDeps): ChatHandlers {
       if (!result.ok) throw new Error(result.error);
     },
 
-    connectSession: async ({ projectId }) => {
-      const result = permissionService.loadPersistedPermissions(projectId);
-      if (!result.ok) throw new Error(result.error);
+    connectSession: async () => {
+      // Nothing to load: the project's write grant is hydrated once at
+      // startup and outlives every session, so connecting is a no-op.
     },
 
     disconnectSession: async ({ projectId }) => {
@@ -178,6 +177,22 @@ function buildChatHandlers(deps: ChatHandlerDeps): ChatHandlers {
         ? await withTimeout(listPiProviders(), getConfig().session.piCatalogTimeoutMs, [])
         : [];
       return { available, providers };
+    },
+
+    codexMcpStatus: async ({ projectId, chatSessionId }) => {
+      const result = await streamingSessionService.getCodexMcpServerStatus(projectId, chatSessionId);
+      if (!result.ok) throw new Error(result.error);
+      return { servers: result.data };
+    },
+
+    reloadCodexMcpServers: async ({ projectId, chatSessionId }) => {
+      const result = await streamingSessionService.reloadCodexMcpServers(projectId, chatSessionId);
+      if (!result.ok) throw new Error(result.error);
+    },
+
+    loginCodexMcpServer: async ({ projectId, chatSessionId, serverName }) => {
+      const result = await streamingSessionService.loginCodexMcpServer(projectId, chatSessionId, serverName);
+      if (!result.ok) throw new Error(result.error);
     },
   };
 }
