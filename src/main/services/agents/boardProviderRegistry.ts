@@ -22,13 +22,18 @@ function codexBoardModels(): ModelDescriptor[] {
 
 function piBoardModels(options: PiProviderOption[]): ModelDescriptor[] {
   const bySelector = new Map<string, ModelDescriptor>();
+  let defaultSelector: string | undefined;
   for (const option of options) {
     if (option.modelId === PI_UNRESOLVED_MODEL_ID) continue;
     const id = `${option.provider}/${option.modelId}`;
+    if (option.isDefault) defaultSelector = id;
     if (!bySelector.has(id)) bySelector.set(id, { id, name: option.label });
   }
   const models = [...bySelector.values()];
-  if (models[0]) models[0] = { ...models[0], isDefault: true };
+  // Default to the model the user's own pi CLI uses; first-listed only stands
+  // in when pi has no default of its own.
+  const defaultIndex = Math.max(0, models.findIndex((model) => model.id === defaultSelector));
+  if (models[defaultIndex]) models[defaultIndex] = { ...models[defaultIndex], isDefault: true };
   return models;
 }
 

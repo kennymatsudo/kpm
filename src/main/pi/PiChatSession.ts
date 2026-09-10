@@ -21,6 +21,28 @@ const READ_ONLY_BUILTIN_TOOLS = ['read', 'grep', 'find', 'ls'] as const;
 
 const WRITE_BUILTIN_TOOLS = ['write', 'edit', 'bash'] as const;
 
+/**
+ * The `pi-mcp-adapter` gateway, which is how a pi session reaches the user's
+ * MCP servers.
+ *
+ * One name covers every server: the adapter registers a single `mcp` proxy
+ * tool that lists, searches, and invokes each server's tools, so KPM never has
+ * to predict tool names that only exist once a server connects. If the adapter
+ * isn't installed, nothing registers under this name and allowing it is inert.
+ *
+ * Which servers exist, and which are switched off, stays in the user's own
+ * `~/.pi/agent/mcp.json` — the same place their `pi` CLI reads, and where a
+ * server already takes `disabled: true`. Servers keep pi's default `lazy`
+ * lifecycle, so none connect until the model asks for one.
+ *
+ * These calls leave the machine for an external service instead of touching
+ * the repo, so they sit outside the write grant (P7), matching how the user's
+ * MCP servers already behave in Claude chat. The same caveat carries over
+ * too: an MCP server can write to a tracker without passing through KPM's
+ * export boundary (P6).
+ */
+const MCP_GATEWAY_TOOLS = ['mcp'] as const;
+
 export type PiWriteConsentFn = () => Promise<
   { allowed: true } | { allowed: false; reason: string }
 >;
@@ -418,6 +440,7 @@ async function createRealPiSession(options: CreatePiSessionOptions): Promise<PiS
   const allowedToolNames = [
     ...READ_ONLY_BUILTIN_TOOLS,
     ...(options.requestWriteConsent ? WRITE_BUILTIN_TOOLS : []),
+    ...MCP_GATEWAY_TOOLS,
     ...options.toolNames,
   ];
   const gate = buildToolCallGate(
@@ -467,13 +490,44 @@ async function createRealPiSession(options: CreatePiSessionOptions): Promise<PiS
     await session.setModel(resolution.model);
   }
 
+  // Extensions initialize on the `session_start` event, and `bindExtensions`
+  // is the only thing that emits it — pi's own CLI modes call it, and a host
+  // that skips it gets extensions that loaded but never started. Without it
+  // every `mcp` call answers "MCP not initialized", and `pi-cursor-sdk` never
+  // learns the session's cwd or id, so it pools its Cursor agents under one
+  // anonymous scope shared with every other KPM pi session.
+  //
+  // Bound after the model so extensions see the model this session will run.
+  // No UI context is passed, which keeps `ctx.hasUI` false and extensions on
+  // their non-interactive paths — KPM has no renderer for a pi extension's
+  // prompts.
+  await session.bindExtensions({
+    mode: 'print',
+    onError: (error) => {
+      console.warn(`[PiChatSession] pi extension "${error.extensionPath}" failed on ${error.event}: ${error.error}`);
+    },
+  });
+
   return {
     getSessionId: () => session.sessionId,
     subscribe: (listener) => session.subscribe(listener),
     prompt: (text, promptOptions) => session.prompt(text, promptOptions),
     abort: () => session.abort(),
     getSessionStats: () => session.getSessionStats(),
-    dispose: () => session.dispose(),
+    // pi's own hosts emit `session_shutdown` before `dispose()`, and `dispose()`
+    // alone does not: it invalidates the extension context without ever running
+    // the handlers that release extension-owned resources, so a closed chat
+    // would leave its MCP server connections and their subprocesses alive for
+    // the life of the app. Not awaited — closing a chat should not wait on an
+    // MCP server that is slow to stop.
+    dispose: () => {
+      void session.extensionRunner
+        .emit({ type: 'session_shutdown', reason: 'quit' })
+        .catch((error: unknown) => {
+          console.warn(`[PiChatSession] pi extension shutdown failed: ${error instanceof Error ? error.message : String(error)}`);
+        })
+        .finally(() => session.dispose());
+    },
   };
 }
 

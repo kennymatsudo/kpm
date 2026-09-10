@@ -1,24 +1,21 @@
 /**
  * pi.dev provider/model enumeration and safe/unsafe classification.
  *
- * Same ESM-only constraint as `PiChatSession.ts`: `@earendil-works/pi-coding-agent`
- * has no `require` export condition, so it is loaded via dynamic `import()`
- * rather than a static import (a static import would compile to a `require()`
- * call in the electron-vite CJS main bundle and throw ERR_PACKAGE_PATH_NOT_EXPORTED
- * at runtime).
+ * The enumeration itself runs in a child process (`piCatalog.ts`); this module
+ * owns the classification, which must stay in the main process because it is
+ * the decision, not the data.
  *
  * SAFETY-CRITICAL: `safe` gates whether a provider/model may ever be selected
  * for KPM's read-only main chat (P7). See `isPiProviderSafe` below for the
  * exact signal used and its limits.
  */
 
-import { homedir } from 'os';
 import { PI_UNRESOLVED_MODEL_ID, type PiProviderOption } from '../../shared/types';
-import { resolvePiProjectTrust } from './PiChatSession';
+import { readPiCatalog, type PiCatalogSnapshot } from './piCatalog';
 
 export type { PiProviderOption };
 
-function modelContextWindow(model: { contextWindow?: unknown }): number | undefined {
+function modelContextWindow(model: { contextWindow?: number }): number | undefined {
   return typeof model.contextWindow === 'number' && Number.isFinite(model.contextWindow) && model.contextWindow > 0
     ? model.contextWindow
     : undefined;
@@ -140,62 +137,18 @@ export function isPiProviderSafe(provider: string): boolean {
 }
 
 /**
- * Enumerate the pi providers/models the user has configured and authenticated,
- * each classified safe/unsafe for KPM's read-only chat.
+ * Classify an already-read catalog into the options the model pickers show.
  *
- * Loads global/user pi extensions the same way `PiChatSession.ts`'s
- * `createRealPiSession` does (`noExtensions: false`, `resolveProjectTrust`
- * always denying — see `resolvePiProjectTrust`), via `createAgentSessionServices`
- * — the SDK's helper for building a `resourceLoader`/`modelRuntime` without
- * constructing a live `AgentSession`. This runs each loaded extension's own
- * module code (e.g. `pi-cursor-sdk`, already a trusted local install — see
- * `KNOWN_NATIVE_PI_PROVIDERS` above) so it can register its declared models
- * (e.g. `cursor`) into the model registry, but makes no model/completion
- * calls itself. `cwd` is irrelevant to the result: `resolveProjectTrust`
- * always denies project trust, so no `<cwd>/.pi/` resource is ever read
- * regardless of which directory is passed — `homedir()` is used simply
- * because some directory is required.
- *
- * A provider that still has no models after extensions load (e.g. a
+ * A provider that has no models even after extensions load (e.g. a
  * misconfigured credential, or an extension that failed to register any)
  * surfaces as one placeholder entry so the user can see it's configured.
  */
-export async function listPiProviders(): Promise<PiProviderOption[]> {
-  const pi = await import('@earendil-works/pi-coding-agent');
-  const { modelRuntime, diagnostics, resourceLoader } = await pi.createAgentSessionServices({
-    cwd: homedir(),
-    resourceLoaderOptions: {
-      noExtensions: false,
-      noSkills: true,
-      noPromptTemplates: true,
-      noThemes: true,
-      noContextFiles: true,
-    },
-    resourceLoaderReloadOptions: { resolveProjectTrust: resolvePiProjectTrust },
-  });
-  // A pi extension whose load fails (e.g. its deps can't be resolved) never
-  // registers its provider, so that provider silently collapses to the
-  // no-models placeholder below — the failure mode that hid the cursor catalog
-  // when pi was bundled instead of externalized. Extension load errors live on
-  // `getExtensions().errors`, distinct from the services `diagnostics`; surface
-  // both rather than dropping them.
-  const extensionErrors = resourceLoader.getExtensions().errors;
-  if (extensionErrors.length > 0) {
-    console.warn('[listPiProviders] pi extension load errors:', extensionErrors);
-  }
-  if (diagnostics.length > 0) {
-    console.warn('[listPiProviders] pi diagnostics:', diagnostics);
-  }
-
-  const configuredProviders = (await modelRuntime.listCredentials()).map((credential) => credential.providerId);
-  if (configuredProviders.length === 0) return [];
-  const availableModels = await modelRuntime.getAvailable();
-
+export function buildPiProviderOptions(catalog: PiCatalogSnapshot): PiProviderOption[] {
   const options: PiProviderOption[] = [];
-  for (const provider of configuredProviders) {
+  for (const provider of catalog.credentials) {
     const safe = isPiProviderSafe(provider);
-    const displayName = modelRuntime.getProvider(provider)?.name ?? provider;
-    const models = availableModels.filter((model) => model.provider === provider);
+    const displayName = catalog.providerNames[provider] ?? provider;
+    const models = catalog.models.filter((model) => model.provider === provider);
 
     if (models.length === 0) {
       options.push({ provider, modelId: PI_UNRESOLVED_MODEL_ID, label: displayName, safe });
@@ -211,8 +164,34 @@ export async function listPiProviders(): Promise<PiProviderOption[]> {
         label: `${displayName} — ${model.name}`,
         safe,
         ...(contextWindow ? { contextWindow } : {}),
+        ...(`${provider}/${model.id}` === catalog.defaultSelector ? { isDefault: true } : {}),
       });
     }
   }
   return options;
+}
+
+/**
+ * Enumerate the pi providers/models the user has configured and authenticated,
+ * each classified safe/unsafe for KPM's read-only chat.
+ *
+ * The child process loads global/user pi extensions with the same trust
+ * posture as a real chat session, so a provider registered at runtime by an
+ * installed extension (e.g. `cursor`, from `pi-cursor-sdk`) surfaces its real
+ * models here.
+ */
+export async function listPiProviders(): Promise<PiProviderOption[]> {
+  const catalog = await readPiCatalog();
+  // A pi extension whose load fails (e.g. its deps can't be resolved) never
+  // registers its provider, so that provider silently collapses to the
+  // no-models placeholder — the failure mode that hid the cursor catalog when
+  // pi was bundled instead of externalized. pi reports load failures and its
+  // own diagnostics separately; surface both rather than dropping them.
+  if (catalog.extensionErrors.length > 0) {
+    console.warn('[listPiProviders] pi extension load errors:', catalog.extensionErrors);
+  }
+  if (catalog.diagnostics.length > 0) {
+    console.warn('[listPiProviders] pi diagnostics:', catalog.diagnostics);
+  }
+  return buildPiProviderOptions(catalog);
 }

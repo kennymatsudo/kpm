@@ -685,12 +685,13 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 - **Maturity signal:** Mature. Basic settings comprehensive.
 
 ### 62. MCP Server Configuration
-- **What it does:** Users can register custom MCP (Model Context Protocol) servers. System discovers and lists available servers, their resources, and tools. Persisted configuration allows servers to be used in prompts and agent sessions.
+- **What it does:** Users can register custom MCP (Model Context Protocol) servers. System discovers and lists available servers, their resources, and tools. Persisted configuration allows servers to be used in prompts and agent sessions. Each chat provider reaches MCP differently: Claude servers come from `~/.claude.json` and are enabled per-server in KPM Settings; Codex reads its own config and KPM injects the `kpm` server; pi reaches every server in the user's `~/.pi/agent/mcp.json` through the `pi-mcp-adapter` extension's single `mcp` gateway tool, so pi servers are added and disabled in that file rather than in KPM. Board pi agents get no MCP.
 - **Key code locations:**
   - Service: `src/main/services/core/McpDiscoveryService.ts` (discovers server capabilities)
   - Component: `src/renderer/components/settings/McpServersSettings.tsx`
   - Store: `src/renderer/stores/mcpServersStore.ts`
   - IPC handlers: `src/main/ipc/handlers/mcpServers.ts`
+  - pi gateway: `MCP_GATEWAY_TOOLS` and the `bindExtensions` call in `src/main/pi/PiChatSession.ts` (extensions only start on the `session_start` event that `bindExtensions` emits)
   - DB: `app_settings` (MCP server configs stored as key-value)
 - **Entry points / surfaces:**
   - Settings → Connections → MCP Servers

@@ -188,4 +188,14 @@ export default tseslint.config(
       'import-x/no-unresolved': 'off',
     },
   },
+
+  // Plain-ESM sidecars shipped to dist untransformed, so they are outside the
+  // TypeScript project and cannot be type-checked by lint rules.
+  {
+    files: ['src/main/**/*.mjs'],
+    extends: [tseslint.configs.disableTypeChecked],
+    languageOptions: {
+      globals: { ...globals.node },
+    },
+  },
 );

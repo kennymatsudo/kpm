@@ -486,6 +486,16 @@ describe('buildToolCallGate', () => {
     await expect(gate({ toolName: 'modify_plan', input: {} })).resolves.toBeUndefined();
   });
 
+  it('allows the MCP gateway without the write grant, and still blocks other extension tools', async () => {
+    // `mcp` reaches external services rather than the repo, so it is not a
+    // write builtin. Other tools the user's pi extensions register stay out.
+    const gate = buildToolCallGate([...readOnly, 'mcp']);
+
+    await expect(gate({ toolName: 'mcp', input: { search: 'issue' } })).resolves.toBeUndefined();
+    expect((await gate({ toolName: 'cursor_agent', input: {} }))?.block).toBe(true);
+    expect((await gate({ toolName: 'hypa_rewrite', input: {} }))?.block).toBe(true);
+  });
+
   it('blocks an allowlisted write tool when no consent function is wired', async () => {
     const gate = buildToolCallGate(withWrites);
 

@@ -59,7 +59,9 @@ export function McpServersSettings({ currentProjectId }: { currentProjectId?: st
       {!capabilities.mcpServerManagement && (
         <div className="p-4 rounded-xl bg-surface-2 border border-border-subtle">
           <p className="text-sm text-text-secondary">
-            MCP server management is not available for the selected chat provider.
+            {provider === 'pi'
+              ? 'pi chat uses the MCP servers from your pi configuration. Add, remove, or disable them in ~/.pi/agent/mcp.json.'
+              : 'MCP server management is not available for the selected chat provider.'}
           </p>
         </div>
       )}

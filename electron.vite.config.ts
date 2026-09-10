@@ -15,6 +15,28 @@ const packageJson = JSON.parse(
 ) as { version: string }
 const pkgVersion = packageJson.version
 
+// The pi catalog sidecar must reach dist/main untransformed: it is plain ESM
+// run by a child Electron process under ELECTRON_RUN_AS_NODE, so it must not
+// be bundled into the CJS main chunk or compiled to bytecode. Emitting it as
+// an asset keeps it out of both passes while placing it next to the bundle
+// that resolves it via __dirname.
+function copyPiCatalogProcess(): Plugin {
+  const source = resolve(__dirname, 'src/main/pi/piCatalogProcess.mjs')
+  return {
+    name: 'kpm-copy-pi-catalog-process',
+    buildStart() {
+      this.addWatchFile(source)
+    },
+    generateBundle() {
+      this.emitFile({
+        type: 'asset',
+        fileName: 'piCatalogProcess.mjs',
+        source: readFileSync(source, 'utf-8'),
+      })
+    },
+  }
+}
+
 // Load visualizer plugin conditionally for bundle analysis (top-level await, ESM)
 let visualizerPlugin: Plugin | null = null
 if (shouldAnalyze) {
@@ -64,6 +86,7 @@ export default defineConfig({
         }
       }
     },
+    plugins: [copyPiCatalogProcess()],
     resolve: {
       alias: {
         '@shared': resolve(__dirname, 'src/shared')

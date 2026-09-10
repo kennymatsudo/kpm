@@ -73,6 +73,10 @@ function supportedEffort(
     : model.defaultEffort;
 }
 
+function piSelector(option: PiProviderOption): string {
+  return `${option.provider}/${option.modelId}`;
+}
+
 function createSnapshot(
   defaults: ChatModelChoiceDefaults,
   providers: ChatProviderDescriptor[],
@@ -80,11 +84,17 @@ function createSnapshot(
   selectedProvider = defaults.provider,
 ): PersistedChatModelChoice {
   const configuredPiModel = defaults.models.pi;
-  const inheritedPiModel = configuredPiModel ?? piOptions
+  // With no pi model configured in Settings, prefer the one the user's own pi
+  // CLI defaults to, so a new Chat starts where pi would. Falling back to the
+  // first safe option only matters when that default is missing, unsafe, or
+  // gone from the catalog — otherwise the pick would be whichever model pi's
+  // registry happened to list first.
+  const selectablePiModels = piOptions
     .filter((option) => option.safe)
-    .map((option) => `${option.provider}/${option.modelId}`)
-    .find((selector) => findModel(providers, 'pi', selector)?.available)
-    ?? UNSELECTED_PI_MODEL_ID;
+    .filter((option) => findModel(providers, 'pi', piSelector(option))?.available);
+  const preferredPiModel = selectablePiModels.find((option) => option.isDefault) ?? selectablePiModels[0];
+  const inheritedPiModel = configuredPiModel
+    ?? (preferredPiModel ? piSelector(preferredPiModel) : UNSELECTED_PI_MODEL_ID);
   const defaultModels: Record<ChatProvider, string> = {
     claude: defaults.models.claude,
     codex: defaults.models.codex,

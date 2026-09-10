@@ -76,6 +76,42 @@ describe('ChatModelChoiceService', () => {
     h.db.close();
   });
 
+  it('starts a new pi Chat on the model the user\'s own pi CLI defaults to', async () => {
+    const h = harness('pi', [
+      { provider: 'openai-codex', modelId: 'gpt-5.4', label: 'OpenAI Codex — GPT-5.4', safe: true },
+      { provider: 'openai-codex', modelId: 'gpt-5.6-terra', label: 'OpenAI Codex — Terra', safe: true, isDefault: true },
+    ], null);
+
+    const opened = await h.service.open({ projectId: 'p1', chatSessionId: 'pi-1', scope: 'main' });
+
+    expect(opened.ok && opened.data.selected.model).toBe('openai-codex/gpt-5.6-terra');
+    h.db.close();
+  });
+
+  it('falls back to the first safe pi model when pi declares no default', async () => {
+    const h = harness('pi', [
+      { provider: 'unknown-vendor', modelId: 'x', label: 'Unknown — X', safe: false },
+      { provider: 'openai-codex', modelId: 'gpt-5.4', label: 'OpenAI Codex — GPT-5.4', safe: true },
+    ], null);
+
+    const opened = await h.service.open({ projectId: 'p1', chatSessionId: 'pi-2', scope: 'main' });
+
+    expect(opened.ok && opened.data.selected.model).toBe('openai-codex/gpt-5.4');
+    h.db.close();
+  });
+
+  it('keeps an explicit Settings pi model ahead of pi\'s own default', async () => {
+    const h = harness('pi', [
+      { provider: 'openai-codex', modelId: 'gpt-5.4', label: 'OpenAI Codex — GPT-5.4', safe: true },
+      { provider: 'openai-codex', modelId: 'gpt-5.6-terra', label: 'OpenAI Codex — Terra', safe: true, isDefault: true },
+    ], 'openai-codex/gpt-5.4');
+
+    const opened = await h.service.open({ projectId: 'p1', chatSessionId: 'pi-3', scope: 'main' });
+
+    expect(opened.ok && opened.data.selected.model).toBe('openai-codex/gpt-5.4');
+    h.db.close();
+  });
+
   it('remembers each provider model and effort and detects revision conflicts', async () => {
     const h = harness();
     const opened = await h.service.open({ projectId: 'p1', chatSessionId: 'c1', scope: 'main' });

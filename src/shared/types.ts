@@ -131,6 +131,12 @@ export interface PiProviderOption {
    * `main/pi/providers.ts` for the classification mechanism.
    */
   safe: boolean;
+  /**
+   * True for the one model the user's own `pi` CLI defaults to. KPM starts a
+   * new Chat here so pi's provider agrees with pi, instead of falling to
+   * whichever model the registry happened to list first.
+   */
+  isDefault?: boolean;
 }
 
 // =============================================================================
