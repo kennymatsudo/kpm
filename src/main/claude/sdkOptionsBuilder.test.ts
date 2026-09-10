@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { PlanContext } from '../chat/prompts';
+import { getClaudeSdkSpawnOptions } from './findClaude';
 import { buildSdkOptions } from './sdkOptionsBuilder';
 
 vi.mock('../chat/prompts/index', () => ({
@@ -94,5 +95,35 @@ describe('buildSdkOptions', () => {
         files: [{ path: '/protected/credentials', mode: 'deny' }],
       },
     });
+  });
+
+  // The SDK records a bare-string systemPrompt on the conversation's first
+  // request and replays it on every resume. KPM rebuilds the prompt each time
+  // it connects so plan edits and view switches reach the model, so the
+  // recording has to stay off.
+  it('sends the system prompt unrecorded so a resume picks up the rebuilt one', () => {
+    const options = buildSdkOptions({ context, model: 'sonnet', mainWindow: null });
+
+    expect(options.systemPrompt).toEqual({
+      type: 'custom',
+      prompt: 'main prompt',
+      snapshot: false,
+    });
+  });
+
+  // --await-initialize only exists on the binary we bundle; a `claude` found on
+  // PATH may be older and would exit on the unknown option.
+  it('only sends plugins over stdin when the bundled binary is pinned', () => {
+    const withPlugins = () => buildSdkOptions({
+      context,
+      model: 'sonnet',
+      mainWindow: null,
+      enabledPluginPaths: ['/plugins/slack'],
+    });
+
+    expect(withPlugins().pluginDelivery).toBeUndefined();
+
+    vi.mocked(getClaudeSdkSpawnOptions).mockReturnValueOnce({ pathToClaudeCodeExecutable: '/bundled/claude' });
+    expect(withPlugins().pluginDelivery).toBe('initialize');
   });
 });

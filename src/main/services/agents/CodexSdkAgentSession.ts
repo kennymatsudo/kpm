@@ -81,7 +81,13 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
     this.reasoningEffort = config.effort;
     this.structuredFindings = config.expectsFindings ?? config.role === 'review';
     this.readOnly = config.readOnly ?? config.role === 'review';
-    this.codex = new Codex({ codexPathOverride: findCodexBinaryPath() });
+    this.codex = new Codex({
+      codexPathOverride: findCodexBinaryPath(),
+      // Codex 0.152 made `update_plan` opt-in. Without it the CLI stops
+      // emitting `todo_list` items, and the board card's step-progress
+      // ("3/7 steps") silently goes blank for every Codex run.
+      config: { tools: { update_plan: { enabled: true } } },
+    });
   }
 
   start(worktreePath: string, prompt: string): Promise<void> {

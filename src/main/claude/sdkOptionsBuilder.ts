@@ -68,8 +68,16 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
   // RESPONSE_STYLE, constraints, grounding, the tool tree, and plan rules on
   // every post-idle turn. Prompt caching absorbs the cost (a 30-min idle has
   // already expired the cache TTL).
+  //
+  // That behaviour is exactly what `snapshot: false` preserves. Since SDK
+  // 0.3.267 a bare-string systemPrompt defaults to `snapshot: true`, which
+  // records the prompt from the conversation's first request and replays it
+  // verbatim on every later request and resume — so plan edits, a view switch,
+  // a write grant, and any other context this prompt carries would stop
+  // reaching the model until the session compacted.
   const isFocusSession = !!context.focusDocument;
-  const systemPrompt = isFocusSession ? buildFocusSystemPrompt(context) : buildSystemPrompt(context);
+  const systemPromptText = isFocusSession ? buildFocusSystemPrompt(context) : buildSystemPrompt(context);
+  const systemPrompt = { type: 'custom' as const, prompt: systemPromptText, snapshot: false };
   const effectiveRepoPaths = context.repos.map(resolveEffectiveRepoPath);
 
   // Create permission handler. canUseTool gates direct writes, intercepts
@@ -95,6 +103,7 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
 
   // Build options
   const claudeConfig = getConfig().claude;
+  const bundledClaudeSpawnOptions = getClaudeSdkSpawnOptions();
   const deniedPathRoots = getDeniedPathRoots();
   const dockerConfigPathRoots = getDockerConfigPathRoots();
   const dockerConfigPathRootSet = new Set(dockerConfigPathRoots);
@@ -130,7 +139,7 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
     cwd: context.project.folder_path ?? effectiveRepoPaths[0],
     // Pin the bundled native Claude binary so the SDK skips its own PATH lookup.
     // See findClaude.ts for platform-specific resolution details.
-    ...getClaudeSdkSpawnOptions(),
+    ...bundledClaudeSpawnOptions,
     sandbox: {
       enabled: true,
       failIfUnavailable: true,
@@ -176,6 +185,12 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
     // Load user-enabled external MCP plugins (Slack, GitHub, etc.)
     ...(!isFocusSession && enabledPluginPaths && enabledPluginPaths.length > 0 && {
       plugins: enabledPluginPaths.map(p => ({ type: 'local' as const, path: p })),
+      // Send the plugin list over stdin instead of one --plugin-dir flag each,
+      // so a user with many plugins enabled cannot push the command line past
+      // the 32,767-character limit Windows refuses to start a process above.
+      // Only safe on the binary we ship: a `claude` picked up from PATH may
+      // predate 2.1.261 and would exit on the unknown --await-initialize.
+      ...(bundledClaudeSpawnOptions && { pluginDelivery: 'initialize' as const }),
     }),
     // Always disable the built-in option-picker tool; Claude asks clarifying
     // questions in plain text instead.
