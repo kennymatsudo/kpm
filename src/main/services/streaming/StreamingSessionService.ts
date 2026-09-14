@@ -18,7 +18,8 @@ import type { BrowserWindow } from 'electron';
 import type { Options as SDKOptions, OnElicitation } from '@anthropic-ai/claude-agent-sdk';
 import { getSessionInfo } from '@anthropic-ai/claude-agent-sdk';
 import { StreamingSession, type McpServerStatus } from '../../claude/streaming';
-import { CodexChatSession, type CodexMcpServerStatus } from '../../codex/CodexChatSession';
+import { CodexChatSession } from '../../codex/CodexChatSession';
+import type { SessionMcpInspection, SessionMcpServer } from './sessionMcp';
 import { registerCodexMcpSession } from '../../codex/KpmCodexMcpServer';
 import { PiChatSession } from '../../pi/PiChatSession';
 import { buildPiKpmTools } from '../../pi/kpmToolAdapter';
@@ -976,47 +977,46 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     return result;
   }
 
-  function codexSession(projectId: string, chatSessionId: string): ServiceResult<IChatSession> {
+  function sessionMcp(projectId: string, chatSessionId: string): ServiceResult<SessionMcpInspection> {
     const managed = sessions.get(buildSessionKey(projectId, chatSessionId));
-    if (!managed) return failure('Open a Codex chat session before managing its MCP servers.');
-    if (managed.provider !== 'codex') return failure('The selected chat session does not use Codex.');
-    if (!managed.session.codexMcpServerStatus || !managed.session.reloadMcpServers || !managed.session.loginMcpServer) {
-      return failure('This Codex chat session does not support MCP management.');
-    }
-    return success(managed.session);
+    if (!managed) return failure('Open a chat session before managing its MCP servers.');
+    const inspection = managed.session.mcp?.();
+    if (!inspection) return failure('This chat session cannot report its MCP servers.');
+    return success(inspection);
   }
 
-  async function getCodexMcpServerStatus(projectId: string, chatSessionId: string): AsyncResult<CodexMcpServerStatus[]> {
-    const session = codexSession(projectId, chatSessionId);
-    if (!session.ok) return session;
+  async function getSessionMcpServers(projectId: string, chatSessionId: string): AsyncResult<SessionMcpServer[]> {
+    const mcp = sessionMcp(projectId, chatSessionId);
+    if (!mcp.ok) return mcp;
     try {
-      return success(await session.data.codexMcpServerStatus!());
+      return success(await mcp.data.list());
     } catch (error) {
-      return failure(error instanceof Error ? error.message : 'Could not read Codex MCP server status.');
+      return failure(error instanceof Error ? error.message : 'Could not read MCP server status.');
     }
   }
 
-  async function reloadCodexMcpServers(projectId: string, chatSessionId: string): AsyncResult<void> {
-    const session = codexSession(projectId, chatSessionId);
-    if (!session.ok) return session;
+  async function reloadSessionMcpServers(projectId: string, chatSessionId: string): AsyncResult<void> {
+    const mcp = sessionMcp(projectId, chatSessionId);
+    if (!mcp.ok) return mcp;
     try {
-      await session.data.reloadMcpServers!();
+      await mcp.data.reload();
       return success(undefined);
     } catch (error) {
-      return failure(error instanceof Error ? error.message : 'Could not reload Codex MCP servers.');
+      return failure(error instanceof Error ? error.message : 'Could not reload MCP servers.');
     }
   }
 
-  async function loginCodexMcpServer(projectId: string, chatSessionId: string, serverName: string): AsyncResult<void> {
-    const session = codexSession(projectId, chatSessionId);
-    if (!session.ok) return session;
+  async function loginSessionMcpServer(projectId: string, chatSessionId: string, serverName: string): AsyncResult<void> {
+    const mcp = sessionMcp(projectId, chatSessionId);
+    if (!mcp.ok) return mcp;
+    if (!mcp.data.beginLogin) return failure('This chat session has no MCP sign-in flow.');
     try {
-      const servers = await session.data.codexMcpServerStatus!();
+      const servers = await mcp.data.list();
       if (!servers.some((server) => server.name === serverName)) {
-        return failure('That MCP server is not configured for this Codex chat.');
+        return failure('That MCP server is not configured for this chat.');
       }
-      const authorizationUrl = await session.data.loginMcpServer!(serverName);
-      if (!isAllowedExternalUrl(authorizationUrl)) return failure('Codex returned an unsafe OAuth authorization URL.');
+      const authorizationUrl = await mcp.data.beginLogin(serverName);
+      if (!isAllowedExternalUrl(authorizationUrl)) return failure('The provider returned an unsafe OAuth authorization URL.');
       const { shell } = await import('electron');
       await shell.openExternal(authorizationUrl);
       return success(undefined);
@@ -2313,8 +2313,9 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     managed.mcpHealthStatus = 'recovering';
 
     try {
-      const statuses = await managed.session.mcpServerStatus?.() ?? [];
-      const kpmServer = statuses.find(s => s.name === 'kpm');
+      const mcp = managed.session.mcp?.();
+      const statuses = (await mcp?.list()) ?? [];
+      const kpmServer = statuses.find((server) => server.name === 'kpm');
 
       // If kpm server is connected (or not reported at all), mark healthy
       if (!kpmServer || kpmServer.status === 'connected') {
@@ -2334,11 +2335,11 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
       // Server is not connected — attempt reconnection
       console.log(`[StreamingSessionService] KPM MCP server unhealthy (${kpmServer.status}) for ${key}, attempting reconnect`);
-      await managed.session.reconnectMcpServer?.('kpm');
+      await mcp?.reload('kpm');
 
       // Verify reconnection
-      const verifyStatuses = await managed.session.mcpServerStatus?.() ?? [];
-      const verifyKpm = verifyStatuses.find(s => s.name === 'kpm');
+      const verifyStatuses = (await mcp?.list()) ?? [];
+      const verifyKpm = verifyStatuses.find((server) => server.name === 'kpm');
 
       if (verifyKpm?.status === 'connected') {
         console.log(`[StreamingSessionService] KPM MCP server reconnected for ${key}`);
@@ -2488,9 +2489,9 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     sendChatMessage,
     getChatSessionState,
     getActiveSessions,
-    getCodexMcpServerStatus,
-    reloadCodexMcpServers,
-    loginCodexMcpServer,
+    getSessionMcpServers,
+    reloadSessionMcpServers,
+    loginSessionMcpServer,
     processingCountsByProject,
     interruptChatSession: (projectId: string, chatSessionId: string) =>
       interrupt(buildSessionKey(projectId, chatSessionId)),

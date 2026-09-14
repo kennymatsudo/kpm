@@ -3,10 +3,11 @@ import { LoadingSpinner } from '../ui/LoadingButton';
 import { useChatStore, useMcpServersStore } from '../../stores';
 import { getProviderCapabilities } from '../../../shared/providerCapabilities';
 import {
-  getCodexMcpServerStatus,
-  loginCodexMcpServer,
-  reloadCodexMcpServers,
+  getSessionMcpServers,
+  loginSessionMcpServer,
+  reloadSessionMcpServers,
 } from '../../services/chatService';
+import type { SessionMcpServer } from '../../../main/services/streaming/sessionMcp';
 
 export function McpServersSettings({ currentProjectId }: { currentProjectId?: string | null }) {
   const provider = useChatStore((state) => state.provider);
@@ -28,8 +29,10 @@ export function McpServersSettings({ currentProjectId }: { currentProjectId?: st
     void loadServers();
   }, [provider, loadServers]);
 
-  if (provider === 'codex') {
-    return <CodexMcpServersSettings projectId={currentProjectId} />;
+  // A provider KPM does not configure servers for, but whose session can
+  // report the ones it connected to, gets the live view instead.
+  if (!capabilities.mcpServerManagement && capabilities.mcpSessionInspection) {
+    return <SessionMcpServersSettings projectId={currentProjectId} />;
   }
 
   const enabledPlugins = plugins.filter(p => p.enabledInClaudeCode);
@@ -155,16 +158,9 @@ export function McpServersSettings({ currentProjectId }: { currentProjectId?: st
   );
 }
 
-interface CodexMcpServer {
-  name: string;
-  status: 'connected' | 'pending' | 'failed';
-  authStatus: 'unknown' | 'unsupported' | 'notLoggedIn' | 'bearerToken' | 'oAuth';
-  error?: string;
-}
-
-function CodexMcpServersSettings({ projectId }: { projectId?: string | null }) {
+function SessionMcpServersSettings({ projectId }: { projectId?: string | null }) {
   const chatSessionId = useChatStore((state) => state.viewedSessionId);
-  const [servers, setServers] = useState<CodexMcpServer[]>([]);
+  const [servers, setServers] = useState<SessionMcpServer[]>([]);
   const [loading, setLoading] = useState(false);
   const [action, setAction] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -177,12 +173,12 @@ function CodexMcpServersSettings({ projectId }: { projectId?: string | null }) {
     setLoading(true);
     setError(null);
     try {
-      const result = await getCodexMcpServerStatus(projectId, chatSessionId);
+      const result = await getSessionMcpServers(projectId, chatSessionId);
       if (!result.success) throw new Error(result.error);
       setServers(result.servers);
     } catch (cause) {
       setServers([]);
-      setError(cause instanceof Error ? cause.message : 'Could not read Codex MCP server status.');
+      setError(cause instanceof Error ? cause.message : 'Could not read MCP server status.');
     } finally {
       setLoading(false);
     }
@@ -195,11 +191,11 @@ function CodexMcpServersSettings({ projectId }: { projectId?: string | null }) {
     setAction('reload');
     setError(null);
     try {
-      const result = await reloadCodexMcpServers(projectId, chatSessionId);
+      const result = await reloadSessionMcpServers(projectId, chatSessionId);
       if (!result.success) throw new Error(result.error);
       await refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not reload Codex MCP servers.');
+      setError(cause instanceof Error ? cause.message : 'Could not reload MCP servers.');
     } finally {
       setAction(null);
     }
@@ -210,7 +206,7 @@ function CodexMcpServersSettings({ projectId }: { projectId?: string | null }) {
     setAction(serverName);
     setError(null);
     try {
-      const result = await loginCodexMcpServer(projectId, chatSessionId, serverName);
+      const result = await loginSessionMcpServer(projectId, chatSessionId, serverName);
       if (!result.success) throw new Error(result.error);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : `Could not start sign-in for ${serverName}.`);
@@ -225,7 +221,7 @@ function CodexMcpServersSettings({ projectId }: { projectId?: string | null }) {
         <div>
           <h3 className="text-base font-semibold text-text-primary">MCP Servers</h3>
           <p className="text-sm text-text-secondary mt-1">
-            Live status for the configured servers in this Codex chat.
+            Live status for the servers this chat connected to.
           </p>
         </div>
         <button
@@ -239,7 +235,7 @@ function CodexMcpServersSettings({ projectId }: { projectId?: string | null }) {
 
       {!projectId || !chatSessionId ? (
         <div className="p-4 rounded-xl bg-surface-2 border border-border-subtle">
-          <p className="text-sm text-text-secondary">Open a Codex chat to inspect and reconnect its configured MCP servers.</p>
+          <p className="text-sm text-text-secondary">Open a chat to inspect and reconnect its MCP servers.</p>
         </div>
       ) : error ? (
         <div className="p-3 rounded-xl bg-danger-muted/50 border border-danger/20">
@@ -252,12 +248,12 @@ function CodexMcpServersSettings({ projectId }: { projectId?: string | null }) {
         </div>
       ) : servers.length === 0 ? (
         <div className="p-4 rounded-xl bg-surface-2 border border-border-subtle">
-          <p className="text-sm text-text-secondary">No MCP servers are configured for this Codex chat.</p>
+          <p className="text-sm text-text-secondary">No MCP servers are configured for this chat.</p>
         </div>
       ) : (
         <div className="space-y-1.5">
           {servers.map((server) => (
-            <CodexServerRow
+            <SessionServerRow
               key={server.name}
               server={server}
               signingIn={action === server.name}
@@ -268,14 +264,14 @@ function CodexMcpServersSettings({ projectId }: { projectId?: string | null }) {
       )}
 
       <p className="text-xs text-text-muted">
-        Reload reads your existing Codex MCP configuration. Sign-in opens the server’s authorization page only after you choose it.
+        Reload re-reads the provider's own MCP configuration. Sign-in opens the server’s authorization page only after you choose it.
       </p>
     </div>
   );
 }
 
-function CodexServerRow({ server, signingIn, onSignIn }: {
-  server: CodexMcpServer;
+function SessionServerRow({ server, signingIn, onSignIn }: {
+  server: SessionMcpServer;
   signingIn: boolean;
   onSignIn: () => void;
 }) {

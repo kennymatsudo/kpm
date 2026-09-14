@@ -1,6 +1,5 @@
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources';
-import type { McpServerStatus } from '../../claude/streaming';
-import type { CodexMcpServerStatus } from '../../codex/CodexChatSession';
+import type { SessionMcpInspection } from './sessionMcp';
 
 export interface IChatSession {
   start(initialMessage: string | ContentBlockParam[]): Promise<void>;
@@ -12,9 +11,6 @@ export interface IChatSession {
   pendingQueuedCount(): number;
   cancelLastQueued(): object | null;
   setModel?(model: string): Promise<void>;
-  mcpServerStatus?(): Promise<McpServerStatus[]>;
-  reconnectMcpServer?(serverName: string): Promise<void>;
-  codexMcpServerStatus?(): Promise<CodexMcpServerStatus[]>;
-  reloadMcpServers?(): Promise<void>;
-  loginMcpServer?(serverName: string): Promise<string>;
+  /** Absent when the provider cannot report its MCP servers. */
+  mcp?(): SessionMcpInspection;
 }

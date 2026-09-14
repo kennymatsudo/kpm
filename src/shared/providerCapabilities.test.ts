@@ -12,6 +12,7 @@ describe('provider capabilities', () => {
       sessionSummaries: false,
       liveSlashCommands: false,
       mcpServerManagement: false,
+      mcpSessionInspection: false,
       midSessionModelSwitch: false,
       promptSuggestions: false,
       textDeltas: true,

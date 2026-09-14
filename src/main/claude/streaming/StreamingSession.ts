@@ -28,6 +28,7 @@ import {
 } from '@anthropic-ai/claude-agent-sdk';
 export type { McpServerStatus, SDKControlGetContextUsageResponse, ModelInfo, AccountInfo } from '@anthropic-ai/claude-agent-sdk';
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources';
+import type { SessionMcpInspection } from '../../services/streaming/sessionMcp';
 import { AsyncMessageQueue, type StreamingUserMessage } from './AsyncMessageQueue';
 import { isCommandsChangedMessage, isInitMessage } from '../sdkTypeGuards';
 import { declineHostDialogs } from '../hostDialogs';
@@ -394,20 +395,24 @@ export class StreamingSession {
   }
 
   /**
-   * Get current MCP server status.
+   * The SDK reports connection state but no auth state, so every server is
+   * `unsupported` here: Claude has no MCP OAuth flow to begin.
    */
-  async mcpServerStatus(): Promise<McpServerStatus[]> {
-    return (await this.queryInstance?.mcpServerStatus()) ?? [];
-  }
-
-  /**
-   * Reconnect a disconnected MCP server.
-   * Useful for error recovery if an MCP server drops connection.
-   * @param serverName - The name of the MCP server to reconnect
-   * @returns Resolves when reconnection attempt completes
-   */
-  async reconnectMcpServer(serverName: string): Promise<void> {
-    await this.queryInstance?.reconnectMcpServer(serverName);
+  mcp(): SessionMcpInspection {
+    return {
+      list: async () => {
+        const statuses = (await this.queryInstance?.mcpServerStatus()) ?? [];
+        return statuses.map((status) => ({
+          name: status.name,
+          status: status.status,
+          authStatus: 'unsupported' as const,
+          ...(status.status === 'failed' ? { error: 'MCP server failed to connect' } : {}),
+        }));
+      },
+      reload: async (serverName?: string) => {
+        if (serverName) await this.queryInstance?.reconnectMcpServer(serverName);
+      },
+    };
   }
 
   /**

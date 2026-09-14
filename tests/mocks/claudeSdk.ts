@@ -91,5 +91,6 @@ export function createQueryControls() {
     setModel: vi.fn().mockResolvedValue(undefined),
     setPermissionMode: vi.fn().mockResolvedValue(undefined),
     mcpServerStatus: vi.fn().mockResolvedValue([]),
+    reconnectMcpServer: vi.fn().mockResolvedValue(undefined),
   };
 }

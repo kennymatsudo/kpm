@@ -59,16 +59,16 @@ export function getPiProviders() {
   return window.api.chat.piProviders();
 }
 
-export function getCodexMcpServerStatus(projectId: string, chatSessionId: string) {
-  return window.api.chat.codexMcpStatus({ projectId, chatSessionId });
+export function getSessionMcpServers(projectId: string, chatSessionId: string) {
+  return window.api.chat.mcpServers({ projectId, chatSessionId });
 }
 
-export function reloadCodexMcpServers(projectId: string, chatSessionId: string) {
-  return window.api.chat.reloadCodexMcpServers({ projectId, chatSessionId });
+export function reloadSessionMcpServers(projectId: string, chatSessionId: string) {
+  return window.api.chat.reloadMcpServers({ projectId, chatSessionId });
 }
 
-export function loginCodexMcpServer(projectId: string, chatSessionId: string, serverName: string) {
-  return window.api.chat.loginCodexMcpServer({ projectId, chatSessionId, serverName });
+export function loginSessionMcpServer(projectId: string, chatSessionId: string, serverName: string) {
+  return window.api.chat.loginMcpServer({ projectId, chatSessionId, serverName });
 }
 
 export function getActiveChatSessions(projectId: string) {

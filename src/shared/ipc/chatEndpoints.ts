@@ -50,12 +50,7 @@ interface FocusDocumentSessionResult {
   choice: ChatChoiceView;
 }
 
-interface CodexMcpServerStatus {
-  name: string;
-  status: 'connected' | 'pending' | 'failed';
-  authStatus: 'unknown' | 'unsupported' | 'notLoggedIn' | 'bearerToken' | 'oAuth';
-  error?: string;
-}
+import type { SessionMcpServer } from '../../main/services/streaming/sessionMcp';
 
 const chatProvider = z.enum(CHAT_PROVIDERS, { message: 'Provider must be "claude", "codex", or "pi"' });
 
@@ -204,18 +199,18 @@ export const chatEndpoints = {
     params: null,
     result: resultOf<RegistryResponse<{ available: boolean; providers: PiProviderOption[] }>>(),
   },
-  codexMcpStatus: {
-    channel: 'chat:codex-mcp-status',
+  mcpServers: {
+    channel: 'chat:mcp-servers',
     params: z.object({ projectId: uuid, chatSessionId: uuid }),
-    result: resultOf<RegistryResponse<{ servers: CodexMcpServerStatus[] }>>(),
+    result: resultOf<RegistryResponse<{ servers: SessionMcpServer[] }>>(),
   },
-  reloadCodexMcpServers: {
-    channel: 'chat:codex-mcp-reload',
+  reloadMcpServers: {
+    channel: 'chat:mcp-reload',
     params: z.object({ projectId: uuid, chatSessionId: uuid }),
     result: resultOf<RegistryResponse>(),
   },
-  loginCodexMcpServer: {
-    channel: 'chat:codex-mcp-login',
+  loginMcpServer: {
+    channel: 'chat:mcp-login',
     params: z.object({ projectId: uuid, chatSessionId: uuid, serverName: z.string().min(1).max(300) }),
     result: resultOf<RegistryResponse>(),
   },

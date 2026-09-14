@@ -3,7 +3,15 @@ import type { ChatEffortLevel, ChatProvider } from './types';
 export interface ProviderCapabilities {
   sessionSummaries: boolean;
   liveSlashCommands: boolean;
+  /** Whether KPM chooses which MCP servers the provider starts with. */
   mcpServerManagement: boolean;
+  /**
+   * Whether a live session can report the MCP servers it actually connected to
+   * (`IChatSession.mcp`). Independent of `mcpServerManagement`: Codex sessions
+   * report servers KPM does not choose, and pi chat has servers it cannot yet
+   * report.
+   */
+  mcpSessionInspection: boolean;
   midSessionModelSwitch: boolean;
   effortLevels: { levels: readonly ChatEffortLevel[] };
   textDeltas: boolean;
@@ -41,6 +49,7 @@ export const PROVIDER_CAPABILITIES = {
     sessionSummaries: true,
     liveSlashCommands: true,
     mcpServerManagement: true,
+    mcpSessionInspection: true,
     midSessionModelSwitch: true,
     effortLevels: { levels: CLAUDE_EFFORT_LEVELS },
     textDeltas: true,
@@ -53,7 +62,10 @@ export const PROVIDER_CAPABILITIES = {
   codex: {
     sessionSummaries: false,
     liveSlashCommands: false,
-    mcpServerManagement: true,
+    // Codex starts the servers from its own config; KPM reports and reloads
+    // them but never chooses which ones a session gets.
+    mcpServerManagement: false,
+    mcpSessionInspection: true,
     midSessionModelSwitch: false,
     effortLevels: { levels: [] },
     textDeltas: true,
@@ -67,6 +79,7 @@ export const PROVIDER_CAPABILITIES = {
     sessionSummaries: false,
     liveSlashCommands: false,
     mcpServerManagement: false,
+    mcpSessionInspection: false,
     midSessionModelSwitch: false,
     effortLevels: { levels: [] },
     textDeltas: true,

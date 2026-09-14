@@ -79,13 +79,13 @@ describe('CodexChatSession', () => {
     await session.start('connect linear');
     client.emit('mcpServer/startupStatus/updated', { name: 'linear', status: 'failed', error: 'Sign in required' });
 
-    await expect(session.codexMcpServerStatus()).resolves.toEqual([{
+    await expect(session.mcp().list()).resolves.toEqual([{
       name: 'linear',
       status: 'failed',
       authStatus: 'notLoggedIn',
       error: 'Sign in required',
     }]);
-    await expect(session.loginMcpServer('linear')).resolves.toBe('https://linear.app/oauth/authorize');
+    await expect(session.mcp().beginLogin!('linear')).resolves.toBe('https://linear.app/oauth/authorize');
     expect(client.requests).toContainEqual({
       method: 'mcpServer/oauth/login',
       params: { name: 'linear', threadId: 'thread-1' },

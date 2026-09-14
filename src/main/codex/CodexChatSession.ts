@@ -10,20 +10,13 @@ import { BaseTurnQueueChatSession, type SessionEndReason } from '../services/str
 import { resolveEffectiveRepoPath } from '../../shared/repoPath';
 import type { WriteDecision } from '../chat/writeGrants';
 import { shellCommandNeedsWriteGrant } from '../chat/shellWritePolicy';
-import type { McpServerStatus } from '../claude/streaming';
+import type {
+  SessionMcpAuthStatus,
+  SessionMcpInspection,
+  SessionMcpServer,
+} from '../services/streaming/sessionMcp';
 
 type JsonObject = Record<string, unknown>;
-
-export type CodexMcpConnectionStatus = 'connected' | 'pending' | 'failed';
-export type CodexMcpAuthStatus = 'unknown' | 'unsupported' | 'notLoggedIn' | 'bearerToken' | 'oAuth';
-
-/** A configured Codex MCP server as reported by the app-server. */
-export interface CodexMcpServerStatus {
-  name: string;
-  status: CodexMcpConnectionStatus;
-  authStatus: CodexMcpAuthStatus;
-  error?: string;
-}
 
 export interface CodexChatSessionConfig {
   context: PlanContext;
@@ -76,7 +69,7 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
   private activeTurnId: string | null = null;
   private finishTurn: (() => void) | null = null;
   private readonly items = new Map<string, JsonObject>();
-  private readonly mcpStartupStates = new Map<string, Pick<CodexMcpServerStatus, 'status' | 'error'>>();
+  private readonly mcpStartupStates = new Map<string, Pick<SessionMcpServer, 'status' | 'error'>>();
   private tokenUsage: JsonObject = {};
   private readonly attachmentCleanups = new Set<() => Promise<void>>();
 
@@ -104,11 +97,14 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
   async interrupt(): Promise<void> { await this.abortActiveTurn(); }
   getSessionId(): string | null { return this.threadId; }
 
-  async mcpServerStatus(): Promise<McpServerStatus[]> {
-    const statuses = await this.codexMcpServerStatus();
-    return statuses.map(({ name, status, error }) => ({ name, status, error }));
+  mcp(): SessionMcpInspection {
+    return {
+      list: () => this.listMcpServers(),
+      reload: () => this.reloadMcpServers(),
+      beginLogin: (serverName: string) => this.loginMcpServer(serverName),
+    };
   }
-  async codexMcpServerStatus(): Promise<CodexMcpServerStatus[]> {
+  private async listMcpServers(): Promise<SessionMcpServer[]> {
     if (!this.client || !this.threadId) return [];
     const result = await this.client.request('mcpServerStatus/list', { threadId: this.threadId, detail: 'toolsAndAuthOnly' });
     const data = isObject(result) && Array.isArray(result.data) ? result.data : [];
@@ -124,9 +120,8 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
       };
     });
   }
-  async reconnectMcpServer(): Promise<void> { if (this.client) await this.client.request('config/mcpServer/reload'); }
-  async reloadMcpServers(): Promise<void> { await this.reconnectMcpServer(); }
-  async loginMcpServer(name: string): Promise<string> {
+  private async reloadMcpServers(): Promise<void> { if (this.client) await this.client.request('config/mcpServer/reload'); }
+  private async loginMcpServer(name: string): Promise<string> {
     if (!this.client || !this.threadId) throw new Error('Codex chat is not connected');
     const result = await this.client.request('mcpServer/oauth/login', { name, threadId: this.threadId });
     const authorizationUrl = isObject(result) ? text(result.authorizationUrl) : '';
@@ -233,7 +228,7 @@ function firstAnswers(value: unknown): JsonObject {
   return Object.fromEntries(value.filter(isObject).map((question) => { const options = Array.isArray(question.options) ? question.options : []; return [text(question.id), { answers: options.length > 0 && isObject(options[0]) ? [text(options[0].label)] : [] }]; }));
 }
 
-function codexMcpAuthStatus(value: unknown): CodexMcpAuthStatus {
+function codexMcpAuthStatus(value: unknown): SessionMcpAuthStatus {
   return value === 'unsupported' || value === 'notLoggedIn' || value === 'bearerToken' || value === 'oAuth'
     ? value
     : 'unknown';

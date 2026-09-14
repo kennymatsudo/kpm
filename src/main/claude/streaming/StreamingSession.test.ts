@@ -6,7 +6,8 @@
  * resulting public state and callbacks.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { McpServerStatus, SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import {
   createControlledSdkStream,
@@ -178,6 +179,25 @@ describe('StreamingSession', () => {
       externalServer,
     ]);
     expect(config.onMcpError).not.toHaveBeenCalled();
+  });
+
+  it('reports MCP servers in the neutral shape, with no auth state to report', async () => {
+    const handle = makeFakeQuery();
+    const session = new StreamingSession(createConfig());
+    const startPromise = session.start('hello');
+    handle.emit(initMessage());
+    await startPromise;
+
+    const controls = vi.mocked(query).mock.results[0].value as { mcpServerStatus: Mock };
+    controls.mcpServerStatus.mockResolvedValue([
+      { name: 'kpm', status: 'connected' },
+      { name: 'slack', status: 'failed' },
+    ]);
+
+    await expect(session.mcp().list()).resolves.toEqual([
+      { name: 'kpm', status: 'connected', authStatus: 'unsupported' },
+      { name: 'slack', status: 'failed', authStatus: 'unsupported', error: 'MCP server failed to connect' },
+    ]);
   });
 
   it('forwards SDK messages received after init to onMessage', async () => {

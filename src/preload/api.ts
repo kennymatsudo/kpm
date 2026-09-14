@@ -235,9 +235,9 @@ const chat = {
     ),
   getSlashCommands: chatInvoke.getSlashCommands,
   piProviders: chatInvoke.piProviders,
-  codexMcpStatus: chatInvoke.codexMcpStatus,
-  reloadCodexMcpServers: chatInvoke.reloadCodexMcpServers,
-  loginCodexMcpServer: chatInvoke.loginCodexMcpServer,
+  mcpServers: chatInvoke.mcpServers,
+  reloadMcpServers: chatInvoke.reloadMcpServers,
+  loginMcpServer: chatInvoke.loginMcpServer,
   getSessionHistory: (projectId: string, limit?: number): Promise<{ success: boolean; sessions?: ChatSessionSummary[]; error?: string }> =>
     invokeFlat<{ sessions: ChatSessionSummary[] }>(IPC_CHANNELS.chat.getSessionHistory, { projectId, limit }).then((result) =>
       result.success ? { success: true, sessions: result.sessions } : result

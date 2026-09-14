@@ -18,7 +18,7 @@ export interface ChatHandlerDeps {
   streamingSessionService: Pick<
     StreamingSessionService,
     'interruptChatSession' | 'cancelQueuedChatMessage' | 'disconnectChatSession' | 'getActiveSessions' | 'getChatSessionState'
-    | 'getCodexMcpServerStatus' | 'reloadCodexMcpServers' | 'loginCodexMcpServer'
+    | 'getSessionMcpServers' | 'reloadSessionMcpServers' | 'loginSessionMcpServer'
   >;
   projects: IProjectRepository;
   chatMessages: IChatMessageRepository;
@@ -179,19 +179,19 @@ function buildChatHandlers(deps: ChatHandlerDeps): ChatHandlers {
       return { available, providers };
     },
 
-    codexMcpStatus: async ({ projectId, chatSessionId }) => {
-      const result = await streamingSessionService.getCodexMcpServerStatus(projectId, chatSessionId);
+    mcpServers: async ({ projectId, chatSessionId }) => {
+      const result = await streamingSessionService.getSessionMcpServers(projectId, chatSessionId);
       if (!result.ok) throw new Error(result.error);
       return { servers: result.data };
     },
 
-    reloadCodexMcpServers: async ({ projectId, chatSessionId }) => {
-      const result = await streamingSessionService.reloadCodexMcpServers(projectId, chatSessionId);
+    reloadMcpServers: async ({ projectId, chatSessionId }) => {
+      const result = await streamingSessionService.reloadSessionMcpServers(projectId, chatSessionId);
       if (!result.ok) throw new Error(result.error);
     },
 
-    loginCodexMcpServer: async ({ projectId, chatSessionId, serverName }) => {
-      const result = await streamingSessionService.loginCodexMcpServer(projectId, chatSessionId, serverName);
+    loginMcpServer: async ({ projectId, chatSessionId, serverName }) => {
+      const result = await streamingSessionService.loginSessionMcpServer(projectId, chatSessionId, serverName);
       if (!result.ok) throw new Error(result.error);
     },
   };
