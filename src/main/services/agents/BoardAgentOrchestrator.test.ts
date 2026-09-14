@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createBoardAgentOrchestrator, formatFindings } from './BoardAgentOrchestrator';
 import { createAutomationPhaseMachine, type AutomationPhaseRepository } from './automationPhaseMachine';
-import { launchAutoReview, launchPlaybookSubagent } from './autoReview';
+import { launchPlaybookSubagent } from './autoReview';
 import type * as AutoReviewModule from './autoReview';
 import type { DevSession } from '../../../shared/types';
 import { BUILT_IN_PLAYBOOKS } from '../../../shared/playbooks';
@@ -57,9 +57,9 @@ function createSession(overrides: Partial<DevSession> = {}): DevSession {
     agent_type: 'claude',
     review_policy: 'auto',
     automation_phase: 'idle',
-    playbook_id: null,
-    playbook_snapshot: null,
-    current_step_id: null,
+    playbook_id: BUILT_IN_PLAYBOOKS.implementOpposingReview.id,
+    playbook_snapshot: JSON.stringify(BUILT_IN_PLAYBOOKS.implementOpposingReview),
+    current_step_id: 'implement',
     step_pass_counts: null,
     paused_reason: null,
     step_outputs: null,
@@ -88,7 +88,7 @@ describe('BoardAgentOrchestrator', () => {
     const commitSessionChanges = vi.fn().mockResolvedValue({ ok: true, data: undefined });
     const updateItem = vi.fn().mockReturnValue({ ok: true, data: undefined });
     const requestPlanRefresh = vi.fn();
-    vi.mocked(launchAutoReview).mockResolvedValue('session-1-review');
+    vi.mocked(launchPlaybookSubagent).mockResolvedValue('session-1-review');
 
     const callbacks = createBoardAgentOrchestrator({
       agentReviews: {
@@ -123,10 +123,10 @@ describe('BoardAgentOrchestrator', () => {
       summary: { filesChanged: 1, additions: 2, deletions: 0 },
     });
 
-    expect(launchAutoReview).toHaveBeenCalledWith(expect.objectContaining({
+    expect(launchPlaybookSubagent).toHaveBeenCalledWith(expect.objectContaining({
       baseBranch: 'main',
     }));
-    expect(launchAutoReview).not.toHaveBeenCalledWith(expect.objectContaining({
+    expect(launchPlaybookSubagent).not.toHaveBeenCalledWith(expect.objectContaining({
       baseBranch: 'base-sha',
     }));
     expect(session.automation_phase).toBe('reviewing');
@@ -185,13 +185,16 @@ describe('BoardAgentOrchestrator', () => {
     expect(requestCommitHookRepair).toHaveBeenCalledWith(session.id, hookError);
     expect(session.automation_phase).not.toBe('needs_attention');
     expect(flushQueuedReviewTasks).not.toHaveBeenCalled();
-    expect(launchAutoReview).not.toHaveBeenCalled();
+    expect(launchPlaybookSubagent).not.toHaveBeenCalled();
     expect(updateItem).not.toHaveBeenCalled();
     expect(requestPlanRefresh).not.toHaveBeenCalled();
   });
 
-  it('skips opposing review when the session review policy is skip', async () => {
-    const session = createSession({ review_policy: 'skip' });
+  it('moves straight to review on a playbook with no review step', async () => {
+    const session = createSession({
+      playbook_id: BUILT_IN_PLAYBOOKS.implementOnly.id,
+      playbook_snapshot: JSON.stringify(BUILT_IN_PLAYBOOKS.implementOnly),
+    });
     const commitSessionChanges = vi.fn().mockResolvedValue({ ok: true, data: undefined });
     const updateItem = vi.fn().mockReturnValue({ ok: true, data: undefined });
     const requestPlanRefresh = vi.fn();
@@ -230,7 +233,7 @@ describe('BoardAgentOrchestrator', () => {
     });
 
     expect(commitSessionChanges).toHaveBeenCalledWith(session.id, session.name);
-    expect(launchAutoReview).not.toHaveBeenCalled();
+    expect(launchPlaybookSubagent).not.toHaveBeenCalled();
     expect(updateItem).toHaveBeenCalledWith('plan-1', { status_category: 'in_review' });
     expect(session.automation_phase).toBe('ready_for_review');
     expect(requestPlanRefresh).toHaveBeenCalledWith(session.project_id);
@@ -282,11 +285,15 @@ describe('BoardAgentOrchestrator', () => {
     expect(reconcileWorkBrief).toHaveBeenCalledWith(session.id);
     expect(flushQueuedReviewTasks).not.toHaveBeenCalled();
     expect(updateItem).not.toHaveBeenCalled();
-    expect(launchAutoReview).not.toHaveBeenCalled();
+    expect(launchPlaybookSubagent).not.toHaveBeenCalled();
   });
 
   it('flushes queued PR review tasks before moving the session forward', async () => {
-    const session = createSession({ automation_phase: 'addressing_review' });
+    const session = createSession({
+      playbook_id: BUILT_IN_PLAYBOOKS.implementOnly.id,
+      playbook_snapshot: JSON.stringify(BUILT_IN_PLAYBOOKS.implementOnly),
+      pr_number: 42,
+    });
     const commitSessionChanges = vi.fn().mockResolvedValue({ ok: true, data: undefined });
     const updateItem = vi.fn().mockReturnValue({ ok: true, data: undefined });
     const requestPlanRefresh = vi.fn();
@@ -336,7 +343,7 @@ describe('BoardAgentOrchestrator', () => {
     const commitSessionChanges = vi.fn().mockResolvedValue({ ok: true, data: undefined });
     const updateItem = vi.fn().mockReturnValue({ ok: true, data: undefined });
     const requestPlanRefresh = vi.fn();
-    vi.mocked(launchAutoReview).mockResolvedValue('session-1-review');
+    vi.mocked(launchPlaybookSubagent).mockResolvedValue('session-1-review');
 
     const callbacks = createBoardAgentOrchestrator({
       agentReviews: {
@@ -373,7 +380,7 @@ describe('BoardAgentOrchestrator', () => {
 
     expect(commitSessionChanges).toHaveBeenCalledWith(session.id, session.name);
     expect(session.automation_phase).toBe('reviewing');
-    expect(launchAutoReview).toHaveBeenCalledWith(expect.objectContaining({
+    expect(launchPlaybookSubagent).toHaveBeenCalledWith(expect.objectContaining({
       implementationSessionId: session.id,
     }));
     expect(updateItem).not.toHaveBeenCalled();
@@ -419,7 +426,7 @@ describe('BoardAgentOrchestrator', () => {
     });
 
     expect(commitSessionChanges).toHaveBeenCalledWith(session.id, 'Address review findings');
-    expect(launchAutoReview).not.toHaveBeenCalled();
+    expect(launchPlaybookSubagent).not.toHaveBeenCalled();
     expect(updateItem).toHaveBeenCalledWith('plan-1', { status_category: 'in_review' });
     expect(session.automation_phase).toBe('ready_for_review');
     expect(requestPlanRefresh).toHaveBeenCalledWith(session.project_id);
@@ -468,62 +475,14 @@ describe('BoardAgentOrchestrator', () => {
     expect(requestCommitHookRepair).not.toHaveBeenCalled();
     expect(session.automation_phase).toBe('needs_attention');
     expect(flushQueuedReviewTasks).not.toHaveBeenCalled();
-    expect(launchAutoReview).not.toHaveBeenCalled();
+    expect(launchPlaybookSubagent).not.toHaveBeenCalled();
     expect(updateItem).not.toHaveBeenCalled();
     expect(requestPlanRefresh).not.toHaveBeenCalled();
   });
 
-  it('skips the automated review follow-up when the impl session is already busy', async () => {
-    const session = createSession({ automation_phase: 'reviewing' });
-    const sendAgentFollowUp = vi.fn();
-    const isSessionBusy = vi.fn().mockReturnValue(true);
-
-    const callbacks = createBoardAgentOrchestrator({
-      agentReviews: {
-        persistStartedReview: vi.fn(),
-        persistCompletedReview: vi.fn(),
-        persistFailedReview: vi.fn(),
-        getByReviewSessionIds: vi.fn(() => []),
-      },
-      planService: { updateItem: vi.fn() },
-      phaseMachine: createTestPhaseMachine(session),
-      getDevSessionService: () => ({
-        get: vi.fn(() => session),
-        sendAgentFollowUp,
-        updateStatus: vi.fn(),
-        commitSessionChanges: vi.fn(),
-        requestCommitHookRepair: vi.fn(),
-      }),
-      getReviewService: () => ({
-        flushQueuedReviewTasks: vi.fn().mockResolvedValue({ ok: true, data: { taskIds: [], context: '' } }),
-      }),
-      getAgentSessionManager: () => ({
-        getByDevSession: vi.fn(),
-        isSessionBusy,
-      } as never),
-      getPromptContent: vi.fn(),
-      claudeUsageService: { recordUsage: vi.fn() },
-      requestPlanRefresh: vi.fn(),
-    });
-
-    await callbacks.onSessionComplete?.({
-      devSessionId: session.id,
-      role: 'review',
-      summary: { filesChanged: 0, additions: 0, deletions: 0 },
-      findings: [
-        { severity: 'warning', file: 'src/app.ts', line: 1, description: 'Handle null input.', agent: 'codex', source: 'agent' },
-      ],
-    });
-
-    expect(isSessionBusy).toHaveBeenCalledWith(session.id);
-    expect(session.automation_phase).toBe('addressing_review');
-    expect(sendAgentFollowUp).not.toHaveBeenCalled();
-  });
-
-  it('sends the automated review follow-up when the impl session is idle', async () => {
-    const session = createSession({ automation_phase: 'reviewing' });
+  it('sends the review findings to the implementation agent as the addressing step', async () => {
+    const session = createSession({ automation_phase: 'reviewing', current_step_id: 'review' });
     const sendAgentFollowUp = vi.fn().mockResolvedValue({ ok: true, data: { restarted: false } });
-    const isSessionBusy = vi.fn().mockReturnValue(false);
     const getPromptContent = vi.fn((key: string) => key === 'agents.review_assessment'
       ? 'Assess these findings:\n{{findings}}'
       : key);
@@ -543,21 +502,26 @@ describe('BoardAgentOrchestrator', () => {
         updateStatus: vi.fn(),
         commitSessionChanges: vi.fn(),
         requestCommitHookRepair: vi.fn(),
+        savePlaybookOutputs: vi.fn(),
       }),
       getReviewService: () => ({
         flushQueuedReviewTasks: vi.fn().mockResolvedValue({ ok: true, data: { taskIds: [], context: '' } }),
       }),
-      getAgentSessionManager: () => ({
-        getByDevSession: vi.fn(),
-        isSessionBusy,
-      } as never),
+      getAgentSessionManager: () => ({ getByDevSession: vi.fn() } as never),
       getPromptContent,
       claudeUsageService: { recordUsage: vi.fn() },
       requestPlanRefresh: vi.fn(),
+      listBoardProviders: async () => [
+        { id: 'claude', name: 'Claude', available: true, models: [{ id: 'sonnet', name: 'Sonnet', isDefault: true }], capabilities: { nativeSkills: true, reviewSandbox: false } },
+        { id: 'codex', name: 'Codex', available: true, models: [{ id: 'codex', name: 'Codex', isDefault: true }], capabilities: { nativeSkills: false, reviewSandbox: true } },
+      ],
     });
 
     await callbacks.onSessionComplete?.({
-      devSessionId: session.id,
+      devSessionId: toReviewSessionId(session.id),
+      implementationSessionId: session.id,
+      stepId: 'review',
+      runIndex: 0,
       role: 'review',
       summary: { filesChanged: 0, additions: 0, deletions: 0 },
       findings: [
@@ -565,7 +529,7 @@ describe('BoardAgentOrchestrator', () => {
       ],
     });
 
-    expect(isSessionBusy).toHaveBeenCalledWith(session.id);
+    expect(session.current_step_id).toBe('address');
     expect(getPromptContent).toHaveBeenCalledWith('agents.review_assessment');
     expect(sendAgentFollowUp).toHaveBeenCalledWith(session.id, expect.stringContaining('Assess these findings:'));
     expect(sendAgentFollowUp).toHaveBeenCalledWith(session.id, expect.stringContaining('[warning] src/app.ts:1'));
@@ -838,7 +802,7 @@ describe('BoardAgentOrchestrator', () => {
 
     expect(sendAgentFollowUp).not.toHaveBeenCalled();
     expect(launchPlaybookSubagent).not.toHaveBeenCalled();
-    expect(launchAutoReview).not.toHaveBeenCalled();
+    expect(launchPlaybookSubagent).not.toHaveBeenCalled();
     expect(updateItem).toHaveBeenCalledWith('plan-1', { status_category: 'in_review' });
     expect(session.automation_phase).toBe('ready_for_review');
   });

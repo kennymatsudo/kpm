@@ -10,7 +10,7 @@ import type { ClaudeUsageService } from '../core/ClaudeUsageService';
 import type { DevSessionService } from '../repo/DevSessionService';
 import type { ReviewService } from '../repo/ReviewService';
 import type { AgentSessionManager, AgentSessionManagerDeps } from './AgentSessionManager';
-import { launchAutoReview, launchPlaybookSubagent } from './autoReview';
+import { launchPlaybookSubagent } from './autoReview';
 import { createPlaybookRoundStore, type RunGroup } from './playbookRoundStore';
 import { listBoardProviders as detectBoardProviders } from './boardProviderRegistry';
 import type { ServiceResult } from '../result';
@@ -94,12 +94,6 @@ export function formatFindings(findings: ReviewFinding[]): string {
     .join('\n\n');
 }
 
-
-function nextStep(playbook: Playbook, step: PlaybookStep): PlaybookStep | undefined {
-  const index = playbook.steps.findIndex((candidate) => candidate.id === step.id);
-  const nextId = step.next ?? playbook.steps[index + 1]?.id;
-  return nextId ? stepById(playbook, nextId) : undefined;
-}
 
 type CaptureWorkOutcome = 'committed' | 'nothing_to_commit' | 'repair_started' | 'failed';
 
@@ -487,7 +481,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
       });
     },
 
-    onSessionComplete: async ({ devSessionId, implementationSessionId, stepId, runIndex, role, findings, reviewError, finalText }) => {
+    onSessionComplete: async ({ devSessionId, implementationSessionId, stepId, runIndex, role, findings, finalText }) => {
       const devSessionService = deps.getDevSessionService();
       if (!devSessionService) {
         return;
@@ -499,171 +493,45 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
         return;
       }
 
-      if (session.playbook_snapshot) {
-        const playbook = playbookForSession(session);
-        if (role === 'implement') {
-          const capture = await captureWorkOnBranch(devSessionService, deps.phaseMachine, session);
-          if (!isCaptured(capture)) return;
-          const madeProgress = capture === 'committed';
-          if (await reconcileWorkBriefBeforeAdvance(devSessionService, deps.phaseMachine, session)) {
-            return;
-          }
-          // A null cursor is the interpreter's terminal halt point. Free-form
-          // follow-up is allowed there, but it is an ad-hoc turn — never infer
-          // the first step and restart the completed playbook.
-          if (!session.current_step_id) {
-            await finishAtTerminal(session);
-            return;
-          }
-          const completed = resolveCursorStep(playbook, session.current_step_id) ?? playbook.steps[0];
-          if (finalText) {
-            const sessionOutputs = rounds.outputsFor(session);
-            sessionOutputs[completed.id] = [finalText];
-            rounds.persistOutputs(session, sessionOutputs);
-          }
-          await advanceAfterStep(session, playbook, completed, [], madeProgress);
-          return;
-        }
-        const completed = resolveCursorStep(playbook, stepId ?? session.current_step_id ?? 'review');
-        if (!completed) {
-          deps.phaseMachine.transition(session.id, { type: 'automationFailed', reason: 'unknown-completed-step' });
-          return;
-        }
-        await settleSubagentRun({
-          session,
-          playbook,
-          step: completed,
-          runIndex: runIndex ?? 0,
-          findings,
-          finalText,
-          failed: completed.verdict === 'findings' && findings === undefined,
-        });
-        return;
-      }
-
+      const playbook = playbookForSession(session);
       if (role === 'implement') {
-        // Capture the agent's work onto the task's own branch before anything
-        // else, so the isolated branch actually holds the task's commits.
-        const captureOutcome = await captureWorkOnBranch(devSessionService, deps.phaseMachine, session);
-        if (captureOutcome === 'repair_started') {
-          return;
-        }
-        if (captureOutcome === 'failed') {
-          return;
-        }
+        const capture = await captureWorkOnBranch(devSessionService, deps.phaseMachine, session);
+        if (!isCaptured(capture)) return;
+        const madeProgress = capture === 'committed';
         if (await reconcileWorkBriefBeforeAdvance(devSessionService, deps.phaseMachine, session)) {
           return;
         }
-
-        const effectiveAutomationPhase = effectivePhase(session.automation_phase, session.current_step_id);
-        const playbook = playbookForSession(session);
-        const completedStep = effectiveAutomationPhase === 'addressing_review'
-          ? stepById(playbook, 'address') ?? playbook.steps[playbook.steps.length - 1]
-          : stepById(playbook, session.current_step_id ?? 'implement') ?? playbook.steps[0];
-
-        const reviewService = deps.getReviewService();
-        if (reviewService) {
-          const queuedResult = await reviewService.flushQueuedReviewTasks(implSessionId);
-          if (!queuedResult.ok) {
-            console.error(`${LOG_PREFIX} Failed to flush queued PR review tasks for ${implSessionId}:`, queuedResult.error);
-            deps.phaseMachine.transition(implSessionId, { type: 'automationFailed', reason: 'queued-review-flush-failed' });
-            return;
-          }
-          if (queuedResult.data.taskIds.length > 0) {
-            console.log(`${LOG_PREFIX} Sent ${queuedResult.data.taskIds.length} queued PR review task(s) to ${implSessionId}`);
-            return;
-          }
-        }
-
-        if (effectiveAutomationPhase === 'addressing_review') {
-          moveSessionPlanItemToReview(implSessionId);
+        // A null cursor is the interpreter's terminal halt point. Free-form
+        // follow-up is allowed there, but it is an ad-hoc turn — never infer
+        // the first step and restart the completed playbook.
+        if (!session.current_step_id) {
+          await finishAtTerminal(session);
           return;
         }
-
-        const next = nextStep(playbook, completedStep);
-        if (!next) {
-          moveSessionPlanItemToReview(implSessionId);
-          return;
+        const completed = resolveCursorStep(playbook, session.current_step_id) ?? playbook.steps[0];
+        if (finalText) {
+          const sessionOutputs = rounds.outputsFor(session);
+          sessionOutputs[completed.id] = [finalText];
+          rounds.persistOutputs(session, sessionOutputs);
         }
-
-        if (next.session !== 'subagent' || next.verdict !== 'findings') {
-          console.warn(`${LOG_PREFIX} Unsupported next playbook step ${next.id}; moving to review`);
-          moveSessionPlanItemToReview(implSessionId);
-          return;
-        }
-
-        deps.phaseMachine.transition(implSessionId, { type: 'opposingReviewLaunched', stepId: next.id });
-
-        const reviewSessionId = await launchAutoReview({
-          implementationSessionId: implSessionId,
-          implementationAgentType: session.agent_type,
-          worktreePath: session.worktree_path,
-          baseBranch: session.base_branch,
-          taskDescription: session.initial_instructions,
-          projectId: session.project_id,
-          agentSessionManager: deps.getAgentSessionManager(),
-          getPromptContent: deps.getPromptContent,
-          stepId: next.id,
-        });
-
-        if (!reviewSessionId) {
-          moveSessionPlanItemToReview(implSessionId);
-        }
+        await advanceAfterStep(session, playbook, completed, [], madeProgress);
         return;
       }
-
-      if (findings === undefined) {
-        console.warn(
-          `${LOG_PREFIX} Review session ${devSessionId} completed without valid findings: ${reviewError ?? 'unknown error'}`
-        );
-        deps.phaseMachine.transition(implSessionId, { type: 'automationFailed', reason: 'opposing-review-errored' });
+      const completed = resolveCursorStep(playbook, stepId ?? session.current_step_id ?? 'review');
+      if (!completed) {
+        deps.phaseMachine.transition(session.id, { type: 'automationFailed', reason: 'unknown-completed-step' });
         return;
       }
-
-      const reviewFindings = findings ?? [];
-      const playbook = playbookForSession(session);
-      const reviewStep = stepById(playbook, session.current_step_id ?? 'review') ?? stepById(playbook, 'review');
-      if (reviewFindings.length === 0 || !reviewStep?.onFindings) {
-        moveSessionPlanItemToReview(implSessionId);
-        return;
-      }
-
-      const nextPhase = deps.phaseMachine.transition(implSessionId, {
-        type: 'opposingReviewFindingsReady',
-        stepId: reviewStep.id,
+      await settleSubagentRun({
+        session,
+        playbook,
+        step: completed,
+        runIndex: runIndex ?? 0,
+        findings,
+        finalText,
+        failed: completed.verdict === 'findings' && findings === undefined,
       });
-      if (nextPhase !== 'addressing_review') {
-        console.log(`${LOG_PREFIX} Skipping auto review follow-up for ${implSessionId} - session is needs_attention`);
-        return;
-      }
-
-      if (deps.getAgentSessionManager().isSessionBusy(implSessionId)) {
-        console.log(`${LOG_PREFIX} Impl session ${implSessionId} already active, skipping automated review follow-up`);
-        return;
-      }
-
-      const followUpResult = await devSessionService.sendAgentFollowUp(
-        implSessionId,
-        renderPlaybookDirective(
-          stepById(playbook, reviewStep.onFindings.goto) ?? {
-            id: 'address',
-            session: 'main',
-            directive: { kind: 'prompt', promptKey: 'agents.review_assessment' },
-          },
-          {},
-          {
-            nativeSkills: false,
-            taskContext: '',
-            promptContent: deps.getPromptContent,
-            findings: formatFindings(reviewFindings),
-          },
-        ),
-      );
-
-      if (!followUpResult.ok) {
-        console.error(`${LOG_PREFIX} Failed to send auto-review follow-up for ${implSessionId}:`, followUpResult.error);
-        deps.phaseMachine.transition(implSessionId, { type: 'automationFailed', reason: 'follow-up-send-failed' });
-      }
+      return;
     },
 
     onSessionStateChange: async ({ devSessionId, implementationSessionId, stepId, runIndex, role, state }) => {

@@ -4448,6 +4448,75 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    id: 1124,
+    name: '124_backfill_playbook_snapshot',
+    up: (db: BetterSqliteDatabase) => {
+      // Every session created since migration 103 carries an immutable
+      // playbook snapshot, but 103 left older rows NULL, so completion had to
+      // keep a second orchestrator that inferred the playbook from
+      // review_policy and hardcoded its step ids. Backfilling the snapshot
+      // those rows would have had retires that path.
+      //
+      // The two playbooks below are frozen here on purpose: a snapshot records
+      // the playbook a run started under, and these rows ran exactly these
+      // steps.
+      const implementOnly = JSON.stringify({
+        id: 'builtin.implement_only',
+        name: 'Implement (no review)',
+        builtIn: true,
+        steps: [
+          {
+            id: 'implement',
+            session: 'main',
+            agents: [{ useDefault: true }, { provider: 'claude' }],
+            systemPromptKey: 'agents.implementation_system',
+            directive: { kind: 'prompt' },
+          },
+        ],
+      });
+
+      const implementOpposingReview = JSON.stringify({
+        id: 'builtin.implement_opposing_review',
+        name: 'Implement + review',
+        builtIn: true,
+        steps: [
+          {
+            id: 'implement',
+            session: 'main',
+            agents: [{ useDefault: true }, { provider: 'claude' }],
+            systemPromptKey: 'agents.implementation_system',
+            directive: { kind: 'prompt' },
+          },
+          {
+            id: 'review',
+            session: 'subagent',
+            agents: [{ provider: 'codex' }, { provider: 'gemini' }],
+            systemPromptKey: 'agents.review_system',
+            directive: { kind: 'prompt' },
+            verdict: 'findings',
+            onFindings: { goto: 'address', maxPasses: 1, onMaxPasses: 'proceed' },
+          },
+          {
+            id: 'address',
+            session: 'main',
+            directive: { kind: 'prompt', promptKey: 'agents.review_assessment' },
+          },
+        ],
+      });
+
+      db.prepare(`
+        UPDATE dev_sessions
+        SET playbook_snapshot = CASE
+          WHEN playbook_id = 'builtin.implement_only' THEN ?
+          WHEN playbook_id = 'builtin.implement_opposing_review' THEN ?
+          WHEN review_policy = 'skip' THEN ?
+          ELSE ?
+        END
+        WHERE playbook_snapshot IS NULL
+      `).run(implementOnly, implementOpposingReview, implementOnly, implementOpposingReview);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

@@ -676,6 +676,43 @@ describe('actions migrations (115-118)', () => {
     }
   });
 
+  it('backfills a snapshot onto sessions that predate playbook persistence', () => {
+    const db = new BetterSqlite3(':memory:');
+    try {
+      migrateThrough(db, 1123);
+      db.prepare('INSERT INTO projects (id, name, folder_path) VALUES (?, ?, ?)').run(
+        'proj-legacy', 'Legacy', '/tmp/proj-legacy'
+      );
+      db.prepare('INSERT INTO plan_items (id, project_id, title, item_order) VALUES (?, ?, ?, ?)').run(
+        'item-legacy', 'proj-legacy', 'Legacy task', 0
+      );
+      db.prepare('INSERT INTO repos (id, project_id, path) VALUES (?, ?, ?)').run(
+        'repo-legacy', 'proj-legacy', '/tmp/repo'
+      );
+      const insertSession = db.prepare(`
+        INSERT INTO dev_sessions (
+          id, project_id, plan_item_id, repo_id, name, worktree_path, branch_name,
+          base_branch, status, agent_type, review_policy, initial_instructions
+        ) VALUES (?, 'proj-legacy', 'item-legacy', 'repo-legacy', 'Legacy', '/tmp/wt', 'feat/x', 'main', 'inactive', 'claude', ?, 'Do the work')
+      `);
+      insertSession.run('session-skip', 'skip');
+      insertSession.run('session-auto', 'auto');
+
+      apply(db, 1124);
+
+      const rows = db.prepare('SELECT id, playbook_snapshot FROM dev_sessions ORDER BY id').all() as {
+        id: string;
+        playbook_snapshot: string;
+      }[];
+      expect(rows.map((row) => JSON.parse(row.playbook_snapshot).id)).toEqual([
+        'builtin.implement_opposing_review',
+        'builtin.implement_only',
+      ]);
+    } finally {
+      db.close();
+    }
+  });
+
   it('leaves no legacy tables behind on a fresh install', () => {
     const db = new BetterSqlite3(':memory:');
     try {

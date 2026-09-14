@@ -86,13 +86,6 @@ describe('automationPhaseMachine.transition', () => {
     expect(transitionFrom('reviewing', { type: 'opposingReviewLaunchAborted' })).toBe('idle');
   });
 
-  it.each(['idle', 'reviewing', 'ready_for_review', null] satisfies (DevSessionAutomationPhase | null)[])(
-    'opposingReviewFindingsReady moves %s to addressing_review',
-    (phase) => {
-      expect(transitionFrom(phase, { type: 'opposingReviewFindingsReady' })).toBe('addressing_review');
-    },
-  );
-
   it.each(['idle', 'reviewing'] satisfies DevSessionAutomationPhase[])(
     'prReviewThreadsQueued moves %s to addressing_review',
     (phase) => {
@@ -115,9 +108,6 @@ describe('automationPhaseMachine.transition', () => {
     expect(updateAutomationState).toHaveBeenCalledWith('s1', expect.objectContaining({ currentStepId: 'pr-review-followup' }));
   });
 
-  it('opposingReviewFindingsReady does not clobber needs_attention', () => {
-    expect(transitionFrom('needs_attention', { type: 'opposingReviewFindingsReady' })).toBe('needs_attention');
-  });
 
   it('prReviewThreadsQueued does not clobber needs_attention (closes the race the two automated paths had)', () => {
     expect(transitionFrom('needs_attention', { type: 'prReviewThreadsQueued', stepId: 'pr-review-followup' })).toBe('needs_attention');

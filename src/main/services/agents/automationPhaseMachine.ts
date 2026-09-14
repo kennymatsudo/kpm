@@ -16,7 +16,6 @@ import type {
 import { isCommitHookRepairPhase } from '../../../shared/types';
 import { createStatusBroadcaster } from '../repo/rendererBroadcast';
 import { devSessionEvents } from '../../../shared/ipc/devSessionEvents';
-import { parsePassCounts } from '../../../shared/playbookRuntime';
 import { isBoardAgentNotifyPhase, type UpdateEventBus } from '../core/UpdateEventBus';
 
 export type AutomationPhaseEvent =
@@ -32,7 +31,6 @@ export type AutomationPhaseEvent =
   | { type: 'paused'; stepId: string; reason: DevSessionPausedReason; stepPassCounts?: Record<string, number> }
   | { type: 'opposingReviewLaunched'; stepId: string }
   | { type: 'opposingReviewLaunchAborted' }
-  | { type: 'opposingReviewFindingsReady'; stepId?: string }
   | { type: 'prReviewThreadsQueued'; stepId: string }
   | { type: 'movedToReview' }
   | { type: 'agentTerminatedUnexpectedly' }
@@ -70,12 +68,6 @@ export interface AutomationPhaseMachineDeps {
 
 function isTerminationGuardedPhase(phase: DevSessionAutomationPhase | null): boolean {
   return phase === 'reviewing' || phase === 'addressing_review' || phase === 'paused' || isCommitHookRepairPhase(phase);
-}
-
-function incrementPass(raw: string | null | undefined, stepId: string): string {
-  const counts = parsePassCounts(raw);
-  counts[stepId] = (counts[stepId] ?? 0) + 1;
-  return JSON.stringify(counts);
 }
 
 /**
@@ -135,17 +127,6 @@ function nextState(
 
     case 'opposingReviewLaunchAborted':
       return { phase: 'idle', currentStepId: null, pausedReason: null, attentionReason: null };
-
-    case 'opposingReviewFindingsReady': {
-      const stepId = event.stepId ?? session.current_step_id ?? 'review';
-      return {
-        phase: current === 'needs_attention' ? current : 'addressing_review',
-        currentStepId: current === 'needs_attention' ? session.current_step_id : 'address',
-        stepPassCounts: incrementPass(session.step_pass_counts, stepId),
-        pausedReason: null,
-        attentionReason: current === 'needs_attention' ? session.attention_reason ?? null : null,
-      };
-    }
 
     case 'prReviewThreadsQueued':
       return {

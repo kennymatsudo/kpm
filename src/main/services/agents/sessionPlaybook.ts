@@ -1,6 +1,6 @@
 import {
   AD_HOC_REVIEW_STEP,
-  BUILT_IN_PLAYBOOKS,
+  DEFAULT_PLAYBOOK,
   PR_REVIEW_FOLLOWUP_STEP,
   parsePlaybook,
   type Playbook,
@@ -10,6 +10,11 @@ import type { DevSession } from '../../../shared/types';
 
 const LOG_PREFIX = '[sessionPlaybook]';
 
+/**
+ * Every row carries a snapshot: migration 103 added the column and 124
+ * backfilled the older rows, so the default here answers only a snapshot that
+ * fails to parse.
+ */
 export function playbookForSession(session: DevSession): Playbook {
   if (session.playbook_snapshot) {
     try {
@@ -18,10 +23,7 @@ export function playbookForSession(session: DevSession): Playbook {
       console.warn(`${LOG_PREFIX} Invalid playbook snapshot for ${session.id}; using built-in default`, error);
     }
   }
-  // Compatibility boundary only: rows created before migration 103 have no
-  // immutable snapshot. Newly started board sessions are snapshotted and run
-  // through the interpreter; do not expand this fallback to new runs.
-  return session.review_policy === 'skip' ? BUILT_IN_PLAYBOOKS.implementOnly : BUILT_IN_PLAYBOOKS.implementOpposingReview;
+  return DEFAULT_PLAYBOOK;
 }
 
 export function stepById(playbook: Playbook, stepId: string): PlaybookStep | undefined {
