@@ -139,9 +139,18 @@ describe('applyStreamEvent thinking/activity', () => {
 });
 
 describe('applyStreamEvent done: finalization', () => {
-  it('uses the pi provider selector when the backend does not report a resolved model', () => {
+  it("falls back to the Chat's chosen model when the backend does not report a resolved one", () => {
     const session = {
-      ...createInitialPerSessionState(1, 'opus', 'medium', 'pi', 'cursor/auto'),
+      ...createInitialPerSessionState(1),
+      choice: {
+        revision: 1,
+        selected: { provider: 'pi' as const, model: 'cursor/auto', effort: null },
+        remembered: {} as never,
+        providers: [],
+        controlsEnabled: true,
+        responding: false,
+        send: { allowed: true },
+      },
       isStreaming: true,
       streamingSegments: [{ type: 'text' as const, content: 'answer' }],
       streamingContent: 'answer',

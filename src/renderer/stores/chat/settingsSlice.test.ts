@@ -69,7 +69,7 @@ describe('settingsSlice', () => {
       expectedRevision: 1,
       intent: { type: 'choose_model', model: 'opus' },
     });
-    expect(store.getState().sessions.get('chat-a')?.model).toBe('opus');
+    expect(store.getState().sessions.get('chat-a')?.choice?.selected.model).toBe('opus');
     expect(store.getState().model).toBe('sonnet');
   });
 

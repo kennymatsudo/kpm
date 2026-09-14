@@ -21,9 +21,10 @@ function firstUserMessageText(messages: Message[] | undefined): string | null {
 }
 
 /** The provider's own summary, for the providers that write one. */
-function summaryTitle(session: Pick<PerSessionState, 'provider' | 'title'> | undefined): string | null {
-  if (!session?.provider) return null;
-  return getProviderCapabilities(session.provider).sessionSummaries ? session.title : null;
+function summaryTitle(session: Pick<PerSessionState, 'choice' | 'title'> | undefined): string | null {
+  const provider = session?.choice?.selected.provider;
+  if (!provider) return null;
+  return getProviderCapabilities(provider).sessionSummaries ? session.title : null;
 }
 
 /**

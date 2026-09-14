@@ -1,16 +1,9 @@
-import type { ClaudeModel, ChatEffortLevel, ChatProvider, PerSessionState, ChatState, CodexChatModel } from './types';
+import type { PerSessionState, ChatState } from './types';
 import { DEFAULT_CODEX_CHAT_MODEL } from '../../../shared/types';
 import { createIdleStreamingCluster } from './chatStreamReducer';
 
 /** Create initial state for a new session */
-export const createInitialPerSessionState = (
-  sessionNumber: number,
-  model: ClaudeModel = 'sonnet',
-  effort: ChatEffortLevel = 'medium',
-  provider: ChatProvider = 'claude',
-  piProviderModel: string | undefined = undefined,
-  codexModel: CodexChatModel = DEFAULT_CODEX_CHAT_MODEL,
-): PerSessionState => ({
+export const createInitialPerSessionState = (sessionNumber: number): PerSessionState => ({
   messages: [],
   ...createIdleStreamingCluster(),
   // Deliberately outside the streaming cluster: background work outlives the
@@ -23,11 +16,6 @@ export const createInitialPerSessionState = (
   suggestions: [],
   sessionNumber,
   choice: null,
-  model,
-  effort,
-  provider,
-  codexModel,
-  piProviderModel,
   claudeSessionId: null,
   title: null,
   mcpDegraded: false,

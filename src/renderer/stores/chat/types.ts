@@ -86,18 +86,11 @@ export interface PerSessionState {
    * start at `false` so `setViewedSession` can lazy-load them on first focus.
    */
   hydrated: boolean;
-  /** Authoritative persisted provider/model/effort projection. */
-  choice?: ChatChoiceView | null;
-  /** Legacy renderer mirrors retained for unrelated streaming presentation. */
-  model: ClaudeModel;
-  /** Effort level selected for this session. Independent per tab. */
-  effort: ChatEffortLevel;
-  /** Chat backend provider for this session. Independent per tab, mirrors `model`. */
-  provider: ChatProvider;
-  /** Codex model selected for this session. Independent per tab. */
-  codexModel: CodexChatModel;
-  /** pi-only `"<provider>/<modelId>"` selection; meaningful only when `provider` is `'pi'`. */
-  piProviderModel: string | undefined;
+  /**
+   * The Chat's provider, model, and effort. Main owns it; null only until the
+   * choice for a freshly opened session arrives.
+   */
+  choice: ChatChoiceView | null;
   /** Token counts from the most recently completed turn, for context window display. */
   lastTurnUsage: {
     inputTokens: number;

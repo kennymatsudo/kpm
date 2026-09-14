@@ -13,11 +13,9 @@ import { AttachmentChip } from './AttachmentChip';
 import { SlashCommandMenu } from './SlashCommandMenu';
 import { useSlashCommandTypeahead } from './useSlashCommandTypeahead';
 import { CHAT_STYLES } from '../../constants/chatStyles';
-import { CODEX_CHAT_MODELS } from '../../../shared/types';
 import { getProviderCapabilities } from '../../../shared/providerCapabilities';
 import type { ChatAttachment, FocusedResource } from '../../../shared/types';
-import { findPiProviderOption } from '../../stores/chat/piProviderSelection';
-import { resolveSessionDisplayModel } from '../../stores/chat/sessionModel';
+import { sessionContextWindow, sessionModelId, sessionProvider } from '../../stores/chat/chatChoice';
 
 /** Shown once the transcript has something in it to follow up on. */
 const FOLLOW_UP_PLACEHOLDER = 'Reply or ask a follow-up…';
@@ -59,13 +57,9 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource }: Ch
     return {
       viewedSessionId: state.viewedSessionId,
       viewedSessionDraftMessage: session?.draftMessage ?? '',
-      viewedSessionModel: session ? resolveSessionDisplayModel(session) : undefined,
-      viewedSessionProvider: session?.provider ?? state.provider,
-      viewedSessionContextWindow: session?.provider === 'pi'
-        ? findPiProviderOption(state.piProviders, session.piProviderModel)?.contextWindow
-        : session?.provider === 'codex'
-          ? CODEX_CHAT_MODELS.find((option) => option.value === session.codexModel)?.contextWindow
-          : undefined,
+      viewedSessionModel: session?.choice ? sessionModelId(session, '') : undefined,
+      viewedSessionProvider: sessionProvider(session, state.provider),
+      viewedSessionContextWindow: sessionContextWindow(session),
       attachments: session?.pendingAttachments ?? NO_ATTACHMENTS,
       isStreaming: session?.isStreaming ?? false,
       hasMessages: (session?.messages.length ?? 0) > 0,

@@ -65,6 +65,17 @@ describe('ChatModelChoiceService', () => {
     h.db.close();
   });
 
+  it('publishes each model\'s context window so the composer need not read a provider catalog', async () => {
+    const h = harness('codex');
+    const opened = await h.service.open({ projectId: 'p1', chatSessionId: 'codex-1', scope: 'main' });
+
+    const codex = opened.ok
+      ? opened.data.providers.find((provider) => provider.provider === 'codex')
+      : undefined;
+    expect(codex?.models.every((model) => (model.contextWindow ?? 0) > 0)).toBe(true);
+    h.db.close();
+  });
+
   it('starts Codex at its own model default effort rather than the configured Claude effort', async () => {
     const h = harness('codex');
     h.defaults.models.codex = 'gpt-5.6-terra';

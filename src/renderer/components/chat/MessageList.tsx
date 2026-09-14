@@ -28,7 +28,7 @@ import { Tooltip } from '../ui/Tooltip';
 import { AttachmentChip } from './AttachmentChip';
 import { formatModel } from '../../utils/usageFormatters';
 import { buildTurnRenderPlan, type TurnRenderNode } from './turnRenderPlan';
-import { resolveSessionDisplayModel } from '../../stores/chat/sessionModel';
+import { sessionModelId } from '../../stores/chat/chatChoice';
 import { canMergeAssistantTurn } from '../../stores/chat/messageMerge';
 import { prefersReducedMotion } from '../../utils/reducedMotion';
 
@@ -710,7 +710,7 @@ export function MessageList({
       return {
         viewedSession: session,
         viewedSessionId: state.viewedSessionId,
-        model: session ? resolveSessionDisplayModel(session) : undefined,
+        model: session?.choice ? sessionModelId(session, '') : undefined,
       };
     })
   );

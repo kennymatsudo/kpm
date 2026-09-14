@@ -1,5 +1,5 @@
 import type { Activity, Message, MessageSegment, PerSessionState } from './types';
-import { resolveSessionDisplayModel } from './sessionModel';
+import { sessionModelId } from './chatChoice';
 import { mergeAssistantTurns } from './messageMerge';
 
 export type ChatStreamEvent =
@@ -271,7 +271,7 @@ function finalize(session: PerSessionState, options: FinalizeOptions | undefined
   }
 
   const durationMs = session.streamStartedAt != null ? Math.max(0, now - session.streamStartedAt) : undefined;
-  const displayModel = options?.model ?? resolveSessionDisplayModel(session);
+  const displayModel = options?.model ?? sessionModelId(session, '');
 
   // Strip the queued flag (from a promoted or consumed follow-up) BEFORE
   // positioning so the insertion logic sees an accurate `queued` state. For a

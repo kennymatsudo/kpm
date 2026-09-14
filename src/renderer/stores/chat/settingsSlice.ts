@@ -1,7 +1,7 @@
 import type { ChatState, ChatSet, ChatGet } from './types';
 import { setSetting } from '../../services/settingsService';
 import { changeChatChoice as persistChatChoiceChange, getSlashCommands, getPiProviders, openChatChoice as persistChatChoiceOpen } from '../../services/chatService';
-import { CODEX_CHAT_MODELS, type ChatChoiceView } from '../../../shared/types';
+import type { ChatChoiceView } from '../../../shared/types';
 import {
   findPiProviderOption,
   pickDefaultPiProviderOption,
@@ -22,25 +22,6 @@ function clearPiRetry() {
   }
 }
 
-function applyChoiceToSession(session: ReturnType<ChatGet>['sessions'] extends Map<string, infer S> ? S : never, choice: ChatChoiceView) {
-  const selected = choice.selected;
-  const effort = selected.effort === 'low' || selected.effort === 'medium' || selected.effort === 'high' || selected.effort === 'max'
-    ? selected.effort
-    : session.effort;
-  const codexModel = CODEX_CHAT_MODELS.some((model) => model.value === selected.model)
-    ? selected.model as typeof session.codexModel
-    : session.codexModel;
-  return {
-    ...session,
-    choice,
-    provider: selected.provider,
-    model: selected.model === 'opus' ? 'opus' as const : selected.model === 'sonnet' ? 'sonnet' as const : session.model,
-    codexModel,
-    piProviderModel: selected.provider === 'pi' ? selected.model : session.piProviderModel,
-    effort,
-  };
-}
-
 export function createSettingsSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
   | 'setTokens' | 'loadSlashCommands' | 'setSlashCommands' | 'setDefaultModel' | 'setDefaultEffort' | 'setModel' | 'setEffort'
   | 'loadPiProviders' | 'setDefaultProvider' | 'setProvider' | 'setDefaultCodexModel' | 'setCodexModel'
@@ -57,7 +38,7 @@ export function createSettingsSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
     const session = state.sessions.get(chatSessionId);
     if (!session) return;
     const sessions = new Map(state.sessions);
-    sessions.set(chatSessionId, applyChoiceToSession(session, choice));
+    sessions.set(chatSessionId, { ...session, choice });
     set({ sessions, provider: choice.selected.provider });
     void setSetting('chatProvider', choice.selected.provider);
   };

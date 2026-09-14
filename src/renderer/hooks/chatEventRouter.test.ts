@@ -31,18 +31,14 @@ function makeSession(overrides: Partial<PerSessionState> = {}): PerSessionState 
     pendingAttachments: [],
     suggestions: [],
     sessionNumber: 1,
+    choice: null,
     title: null,
     claudeSessionId: null,
     mcpDegraded: false,
     mcpError: null,
     hydrated: true,
-    model: 'sonnet',
-    effort: 'medium',
-    provider: 'claude',
-    piProviderModel: undefined,
     lastTurnUsage: null,
     ...overrides,
-    codexModel: overrides.codexModel ?? 'gpt-5.6-sol',
   };
 }
 

@@ -84,6 +84,7 @@ export function buildChatChoiceCatalog(
       available: true,
       effortLevels: efforts(CODEX_EFFORT),
       defaultEffort: 'high',
+      ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
     }))),
     providerDescriptor('pi', 'pi', piOptions.map((option) => ({
       id: `${option.provider}/${option.modelId}`,
@@ -91,6 +92,7 @@ export function buildChatChoiceCatalog(
       available: true,
       effortLevels: efforts(PI_EFFORT),
       defaultEffort: 'medium',
+      ...(option.contextWindow ? { contextWindow: option.contextWindow } : {}),
     }))),
   ];
 }

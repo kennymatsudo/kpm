@@ -216,6 +216,8 @@ export interface ChatModelDescriptor {
   unavailableReason?: string;
   effortLevels: ChatEffortDescriptor[];
   defaultEffort: ChatChoiceEffort | null;
+  /** Absent for providers that do not publish one. */
+  contextWindow?: number;
 }
 
 export interface ChatProviderDescriptor {
