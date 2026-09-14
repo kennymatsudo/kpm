@@ -621,6 +621,32 @@ describe('devSessionsStore', () => {
     ]);
   });
 
+  it('keeps a running subagent\'s activity when the session list reloads', async () => {
+    const session = createDevSession();
+    const subagentId = 'dev-session-1-playbook-review-0-0';
+    useDevSessionsStore.getState().handleAgentActivity(subagentId, {
+      type: 'message',
+      timestamp: 1,
+      summary: 'Reviewing',
+    });
+    api.devSessions.getByProjectWithPlanItems.mockResolvedValue({ success: true, sessions: [session] });
+
+    await useDevSessionsStore.getState().loadSessions('project-1');
+
+    expect(useDevSessionsStore.getState().activityFeedBySessionId.has(subagentId)).toBe(true);
+  });
+
+  it('drops per-session step costs with their session', async () => {
+    api.usage.getDevSessionStepCosts.mockResolvedValue({ success: true, costs: { implement: 1.25 } });
+    await useDevSessionsStore.getState().loadStepCosts('dev-session-1');
+    expect(useDevSessionsStore.getState().stepCostsBySessionId.has('dev-session-1')).toBe(true);
+    api.devSessions.getByProjectWithPlanItems.mockResolvedValue({ success: true, sessions: [] });
+
+    await useDevSessionsStore.getState().loadSessions('project-1');
+
+    expect(useDevSessionsStore.getState().stepCostsBySessionId.has('dev-session-1')).toBe(false);
+  });
+
   it('drops recorded review runs for a session removed from the loaded project', async () => {
     useDevSessionsStore.getState().recordReviewRun('dev-session-1', {
       sessionId: 'dev-session-1-playbook-review-0-0',

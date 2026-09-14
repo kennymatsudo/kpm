@@ -4,7 +4,7 @@ import type {
   ReviewInboxSnapshot,
 } from '../../../shared/types';
 import { summarizeReviewThreads } from '../../../shared/reviewThreadSummary';
-import type { BackgroundCommitState, DevSessionsSet } from './index';
+import type { DevSessionsSet, DevSessionsState } from './index';
 
 export interface PrCreationContext {
   suggestedTitle: string;
@@ -52,26 +52,6 @@ export function removeFromSet(current: Set<string>, value: string): Set<string> 
   return next;
 }
 
-export function pruneMapByKeys<T>(current: Map<string, T>, validKeys: Set<string>): Map<string, T> {
-  const next = new Map<string, T>();
-  for (const [key, value] of current.entries()) {
-    if (validKeys.has(key)) {
-      next.set(key, value);
-    }
-  }
-  return next;
-}
-
-export function pruneSetByKeys(current: Set<string>, validKeys: Set<string>): Set<string> {
-  const next = new Set<string>();
-  for (const key of current.values()) {
-    if (validKeys.has(key)) {
-      next.add(key);
-    }
-  }
-  return next;
-}
-
 export function setMapValue<T>(current: Map<string, T>, key: string, value: T): Map<string, T> {
   const next = new Map(current);
   next.set(key, value);
@@ -96,61 +76,130 @@ export function buildSessionIndexes(sessions: DevSessionWithPlanItem[]): {
   return { sessionById, sessionsByPlanItemId };
 }
 
-interface SessionCacheState {
-  diffBySessionId: Map<string, string | null>;
-  diffLoadingIds: Set<string>;
-  commitStateBySessionId: Map<string, BackgroundCommitState>;
-  reviewInboxBySessionId: Map<string, ReviewInboxSnapshot>;
-  reviewLoadingIds: Set<string>;
-  reviewErrorBySessionId: Map<string, string | null>;
-  reviewFiltersBySessionId: Map<string, ReviewFilters>;
-  reviewActionableBySessionId: Map<string, ReviewActionableSummary>;
-  reviewAssessmentPendingBySessionId: Map<string, ReviewAssessmentPending>;
-  prContextBySessionId: Map<string, PrCreationContext>;
-  prContextLoadingIds: Set<string>;
+/**
+ * Which session ids may key one per-session collection.
+ *
+ * `impl` collections are written only for the implementation session the user
+ * started. `runtime` collections are also written for the runtimes launched on
+ * its behalf — the review twin and every playbook subagent — whose ids are
+ * derived from the implementation id and cannot be enumerated from the session
+ * list, because they depend on the cursor and attempt count.
+ */
+export type SessionKeying = 'impl' | 'runtime';
+
+type PerSessionKey = {
+  [K in keyof DevSessionsState]: DevSessionsState[K] extends Map<string, unknown> | Set<string>
+    ? K
+    : never;
+}[keyof DevSessionsState];
+
+interface PerSessionCollection {
+  kind: 'map' | 'set';
+  keying: SessionKeying;
 }
 
-export function dropSessionCacheEntries<State extends SessionCacheState>(
-  state: State,
-  sessionId: string
-) {
-  const diffBySessionId = new Map(state.diffBySessionId);
-  diffBySessionId.delete(sessionId);
+/**
+ * Every collection the store keys by session id, declared once. The type is
+ * exhaustive over `DevSessionsState`, so a new per-session map cannot compile
+ * until it says whose ids may key it — which is what stops it being missed by
+ * one disposal path and dropped by another.
+ *
+ * Three collections are deliberately absent: `mergeOrderBySessionId` is
+ * replaced wholesale on every load, and `sessionById` / `sessionsByPlanItemId`
+ * are indexes `buildSessionIndexes` rebuilds from the session list.
+ */
+export const PER_SESSION_STATE = {
+  deletingSessionIds: { kind: 'set', keying: 'impl' },
+  diffBySessionId: { kind: 'map', keying: 'impl' },
+  diffErrorBySessionId: { kind: 'map', keying: 'runtime' },
+  diffLoadingIds: { kind: 'set', keying: 'impl' },
+  commitStateBySessionId: { kind: 'map', keying: 'impl' },
+  reviewInboxBySessionId: { kind: 'map', keying: 'impl' },
+  reviewLoadingIds: { kind: 'set', keying: 'impl' },
+  reviewErrorBySessionId: { kind: 'map', keying: 'impl' },
+  reviewFiltersBySessionId: { kind: 'map', keying: 'impl' },
+  reviewActionableBySessionId: { kind: 'map', keying: 'impl' },
+  reviewAssessmentPendingBySessionId: { kind: 'map', keying: 'impl' },
+  prContextBySessionId: { kind: 'map', keying: 'impl' },
+  prContextLoadingIds: { kind: 'set', keying: 'impl' },
+  agentStateBySessionId: { kind: 'map', keying: 'runtime' },
+  activityFeedBySessionId: { kind: 'map', keying: 'runtime' },
+  latestActivityBySessionId: { kind: 'map', keying: 'runtime' },
+  questionBySessionId: { kind: 'map', keying: 'runtime' },
+  completionBySessionId: { kind: 'map', keying: 'runtime' },
+  reviewFindingsBySessionId: { kind: 'map', keying: 'runtime' },
+  stepCostsBySessionId: { kind: 'map', keying: 'runtime' },
+  reviewRunsByImplementationId: { kind: 'map', keying: 'impl' },
+} as const satisfies Record<
+  Exclude<PerSessionKey, 'mergeOrderBySessionId' | 'sessionById' | 'sessionsByPlanItemId'>,
+  PerSessionCollection
+>;
 
-  const commitStateBySessionId = new Map(state.commitStateBySessionId);
-  commitStateBySessionId.delete(sessionId);
+type DeclaredKey = keyof typeof PER_SESSION_STATE;
 
-  const reviewInboxBySessionId = new Map(state.reviewInboxBySessionId);
-  reviewInboxBySessionId.delete(sessionId);
+/** A runtime id is the implementation id, or derived from it by suffix. */
+function belongsToSession(key: string, sessionId: string): boolean {
+  return key === sessionId || key.startsWith(`${sessionId}-`);
+}
 
-  const reviewErrorBySessionId = new Map(state.reviewErrorBySessionId);
-  reviewErrorBySessionId.delete(sessionId);
+function keepsKey(key: string, keying: SessionKeying, liveSessionIds: Set<string>): boolean {
+  if (keying === 'impl') return liveSessionIds.has(key);
+  if (liveSessionIds.has(key)) return true;
+  for (const sessionId of liveSessionIds) {
+    if (belongsToSession(key, sessionId)) return true;
+  }
+  return false;
+}
 
-  const reviewFiltersBySessionId = new Map(state.reviewFiltersBySessionId);
-  reviewFiltersBySessionId.delete(sessionId);
+function retain(
+  collection: Map<string, unknown> | Set<string>,
+  keep: (key: string) => boolean,
+): Map<string, unknown> | Set<string> {
+  if (collection instanceof Set) {
+    const next = new Set<string>();
+    for (const key of collection) if (keep(key)) next.add(key);
+    return next;
+  }
+  const next = new Map<string, unknown>();
+  for (const [key, value] of collection) if (keep(key)) next.set(key, value);
+  return next;
+}
 
-  const reviewActionableBySessionId = new Map(state.reviewActionableBySessionId);
-  reviewActionableBySessionId.delete(sessionId);
+/**
+ * Drops every per-session entry whose session is no longer loaded. The one
+ * statable invariant afterwards: a key survives only if it is a live session's
+ * id, or derived from one.
+ */
+export function retainPerSessionState(
+  state: DevSessionsState,
+  sessions: DevSessionWithPlanItem[],
+): Partial<DevSessionsState> {
+  const liveSessionIds = new Set(sessions.map((session) => session.id));
+  const next: Record<string, unknown> = {};
+  for (const [key, collection] of Object.entries(PER_SESSION_STATE)) {
+    next[key] = retain(
+      state[key as DeclaredKey],
+      (entryKey) => keepsKey(entryKey, collection.keying, liveSessionIds),
+    );
+  }
+  return next;
+}
 
-  const reviewAssessmentPendingBySessionId = new Map(state.reviewAssessmentPendingBySessionId);
-  reviewAssessmentPendingBySessionId.delete(sessionId);
-
-  const prContextBySessionId = new Map(state.prContextBySessionId);
-  prContextBySessionId.delete(sessionId);
-
-  return {
-    diffBySessionId,
-    diffLoadingIds: removeFromSet(state.diffLoadingIds, sessionId),
-    commitStateBySessionId,
-    reviewInboxBySessionId,
-    reviewLoadingIds: removeFromSet(state.reviewLoadingIds, sessionId),
-    reviewErrorBySessionId,
-    reviewFiltersBySessionId,
-    reviewActionableBySessionId,
-    reviewAssessmentPendingBySessionId,
-    prContextBySessionId,
-    prContextLoadingIds: removeFromSet(state.prContextLoadingIds, sessionId),
-  };
+/** Drops one session's per-session entries, including its derived runtimes. */
+export function dropPerSessionState(
+  state: DevSessionsState,
+  sessionId: string,
+): Partial<DevSessionsState> {
+  const next: Record<string, unknown> = {};
+  for (const [key, collection] of Object.entries(PER_SESSION_STATE)) {
+    next[key] = retain(
+      state[key as DeclaredKey],
+      (entryKey) => collection.keying === 'impl'
+        ? entryKey !== sessionId
+        : !belongsToSession(entryKey, sessionId),
+    );
+  }
+  return next;
 }
 
 interface ReviewState {

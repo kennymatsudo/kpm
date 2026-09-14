@@ -2,10 +2,9 @@ import type { ReviewActionableSummary, ReviewInboxSnapshot } from '../../../shar
 import {
   addToSet,
   buildSessionIndexes,
-  dropSessionCacheEntries,
-  pruneMapByKeys,
-  pruneSetByKeys,
+  dropPerSessionState,
   removeFromSet,
+  retainPerSessionState,
   type PrCreationContext,
   type ReviewFilters,
 } from './helpers';
@@ -25,34 +24,16 @@ import {
 } from '../../services/devSessionService';
 import { toReviewSessionId } from '../../../shared/agent-types';
 
-function removeMapEntries<T>(current: Map<string, T>, keys: string[]): Map<string, T> {
-  const next = new Map(current);
-  for (const key of keys) {
-    next.delete(key);
-  }
-  return next;
-}
-
 function removeSessionFromState(state: DevSessionsState, sessionId: string) {
   const sessions = state.sessions.filter((session) => session.id !== sessionId);
   const allSessions = state.allSessions.filter((session) => session.id !== sessionId);
-  const trackedSessionIds = [sessionId, toReviewSessionId(sessionId)];
 
   return {
     sessions,
     allSessions,
     ...buildSessionIndexes(sessions),
     selectedSessionId: state.selectedSessionId === sessionId ? null : state.selectedSessionId,
-    deletingSessionIds: removeFromSet(state.deletingSessionIds, sessionId),
-    ...dropSessionCacheEntries(state, sessionId),
-    diffErrorBySessionId: removeMapEntries(state.diffErrorBySessionId, trackedSessionIds),
-    agentStateBySessionId: removeMapEntries(state.agentStateBySessionId, trackedSessionIds),
-    activityFeedBySessionId: removeMapEntries(state.activityFeedBySessionId, trackedSessionIds),
-    latestActivityBySessionId: removeMapEntries(state.latestActivityBySessionId, trackedSessionIds),
-    questionBySessionId: removeMapEntries(state.questionBySessionId, trackedSessionIds),
-    completionBySessionId: removeMapEntries(state.completionBySessionId, trackedSessionIds),
-    reviewFindingsBySessionId: removeMapEntries(state.reviewFindingsBySessionId, trackedSessionIds),
-    reviewRunsByImplementationId: removeMapEntries(state.reviewRunsByImplementationId, [sessionId]),
+    ...dropPerSessionState(state, sessionId),
   };
 }
 
@@ -147,19 +128,17 @@ export function createDevSessionsLifecycleSlice(
         } catch {
           // Non-fatal: board still works, merge indicators just won't appear
         }
-        const validReviewSessionIds = new Set(devSessions.map((session) => `${session.id}-review`));
-        const allTrackedIds = new Set<string>([...validSessionIds, ...validReviewSessionIds]);
         const requestedSessionId = get().selectedSessionId;
         const retainedRequestedSessionId =
           requestedSessionId && validSessionIds.has(requestedSessionId)
             ? requestedSessionId
             : null;
 
-        const nextReviewFindings = new Map(
-          Array.from(get().reviewFindingsBySessionId.entries()).filter(([sessionId]) =>
-            validSessionIds.has(sessionId) || validReviewSessionIds.has(sessionId)
-          )
-        );
+        const retained = retainPerSessionState(get(), devSessions);
+
+        // Persisted findings come back with the session list, so they are
+        // re-seeded after the retain rather than pruned by it.
+        const nextReviewFindings = new Map(retained.reviewFindingsBySessionId);
         for (const session of devSessions) {
           if (session.latest_agent_review?.findings) {
             nextReviewFindings.set(session.id, session.latest_agent_review.findings);
@@ -175,31 +154,18 @@ export function createDevSessionsLifecycleSlice(
           ...buildSessionIndexes(devSessions),
           selectedSessionId: retainedRequestedSessionId,
           isLoading: false,
-          diffBySessionId: pruneMapByKeys(get().diffBySessionId, validSessionIds),
-          diffLoadingIds: pruneSetByKeys(get().diffLoadingIds, validSessionIds),
-          commitStateBySessionId: pruneMapByKeys(get().commitStateBySessionId, validSessionIds),
-          reviewInboxBySessionId: pruneMapByKeys(get().reviewInboxBySessionId, validSessionIds),
-          reviewLoadingIds: pruneSetByKeys(get().reviewLoadingIds, validSessionIds),
-          reviewErrorBySessionId: pruneMapByKeys(get().reviewErrorBySessionId, validSessionIds),
-          reviewFiltersBySessionId: pruneMapByKeys(get().reviewFiltersBySessionId, validSessionIds),
-          reviewActionableBySessionId: pruneMapByKeys(get().reviewActionableBySessionId, validSessionIds),
-          reviewAssessmentPendingBySessionId: pruneMapByKeys(get().reviewAssessmentPendingBySessionId, validSessionIds),
-          prContextBySessionId: pruneMapByKeys(get().prContextBySessionId, validSessionIds),
-          prContextLoadingIds: pruneSetByKeys(get().prContextLoadingIds, validSessionIds),
+          ...retained,
           reviewFindingsBySessionId: nextReviewFindings,
           mergeOrderBySessionId,
-          agentStateBySessionId: pruneMapByKeys(get().agentStateBySessionId, allTrackedIds),
-          activityFeedBySessionId: pruneMapByKeys(get().activityFeedBySessionId, allTrackedIds),
-          latestActivityBySessionId: pruneMapByKeys(get().latestActivityBySessionId, allTrackedIds),
-          completionBySessionId: pruneMapByKeys(get().completionBySessionId, allTrackedIds),
-          reviewRunsByImplementationId: pruneMapByKeys(get().reviewRunsByImplementationId, validSessionIds),
         });
 
         // Self-heal agent state: after every load, ask the main process for
         // the current state of each session so a missed state-change event
         // (e.g. across a renderer HMR) doesn't leave the UI stuck on a stale
         // "working" badge.
-        void get().reconcileAgentStates([...allTrackedIds]);
+        void get().reconcileAgentStates(
+          devSessions.flatMap((session) => [session.id, toReviewSessionId(session.id)]),
+        );
       } catch (error) {
         console.error('[DevSessionsStore] Failed to load sessions:', error);
         if (!isCurrentLoadSessionsRequest(requestId) || get().projectId !== projectId) {
@@ -282,9 +248,7 @@ export function createDevSessionsLifecycleSlice(
           await get().loadSessions(projectId);
         }
 
-        set((state) => ({
-          ...dropSessionCacheEntries(state, sessionId),
-        }));
+        set((state) => dropPerSessionState(state, sessionId));
         return { success: true };
       } catch (error) {
         return {
