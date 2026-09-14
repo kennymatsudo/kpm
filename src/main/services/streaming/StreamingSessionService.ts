@@ -207,44 +207,6 @@ function sendTurnDone(
   emitAppEvent(mainWindow?.webContents, chatEvents.done, { projectId, chatSessionId, ...outcome });
 }
 
-/** Guarded sendChatActivity: no-ops while an interrupted turn is being torn down. */
-export function sendChatActivityIfActive(
-  managed: Pick<ManagedSession, 'interruptInProgress'>,
-  mainWindow: BrowserWindow | null,
-  projectId: string,
-  chatSessionId: string | undefined,
-  activity: Activity,
-): void {
-  if (managed.interruptInProgress) return;
-  sendChatActivity(mainWindow, projectId, chatSessionId, activity);
-}
-
-/** Guarded chat:thinking send: no-ops while an interrupted turn is being torn down. */
-export function sendChatThinkingIfActive(
-  managed: Pick<ManagedSession, 'interruptInProgress'>,
-  mainWindow: BrowserWindow | null,
-  projectId: string,
-  chatSessionId: string | undefined,
-  text: string,
-): void {
-  if (managed.interruptInProgress) return;
-  emitAppEvent(mainWindow?.webContents, chatEvents.thinking, { projectId, chatSessionId, text });
-}
-
-/** Guarded chat:chunk send: no-ops while an interrupted turn is being torn down. */
-export function sendChatChunkIfActive(
-  managed: Pick<ManagedSession, 'interruptInProgress'>,
-  mainWindow: BrowserWindow | null,
-  projectId: string,
-  chatSessionId: string | undefined,
-  text: string,
-  segmentId: number,
-  precedingActivities: Activity[] | undefined,
-): void {
-  if (managed.interruptInProgress) return;
-  emitAppEvent(mainWindow?.webContents, chatEvents.chunk, { projectId, chatSessionId, text, segmentId, precedingActivities });
-}
-
 /**
  * Internal envelope wrapping a user-facing message for transport through the
  * service. Carries the typed text alongside any file attachments that should
@@ -317,21 +279,6 @@ interface ManagedSession {
   /** Single owner of "has this turn already ended" plus its timing (start/last-activity) for hang detection. */
   turn: TurnLifecycle;
   suppressLifecycleEventsOnEnd: boolean; // Suppress renderer lifecycle events when session ends
-  /**
-   * Resolver for interrupt-and-send orchestration: fires when the next
-   * 'result' message for the in-flight turn is processed. Used by the
-   * session-restart path (view/model change mid-turn) to wait for the
-   * aborted turn to finalize before sending on a fresh session.
-   */
-  pendingInterruptResolver?: () => void;
-  /**
-   * True while a session-restart-with-message orchestration is in flight
-   * (e.g. view changed mid-turn so we must tear down and re-spawn with new
-   * system prompt). Suppresses late chunk emission from the aborted turn.
-   * NOT set for the normal queue path — queued follow-ups stream on the
-   * same session and don't interrupt anything.
-   */
-  interruptInProgress: boolean;
   /** Client ids for follow-ups sent while a turn is processing, and their acceptance/promotion state. */
   followUps: FollowUpQueue;
   /** Actual model ID returned by the SDK (e.g. "claude-opus-4-8"). Set from the first assistant message each turn. */
@@ -871,14 +818,6 @@ export function finalizeTurnResult(
       });
   }
 
-  // Unblock interrupt-and-send orchestration waiting on this result.
-  // Runs after chat:done so the renderer can finalize its partial bubble
-  // before the follow-up user turn starts streaming.
-  if (managed.pendingInterruptResolver) {
-    const resolve = managed.pendingInterruptResolver;
-    managed.pendingInterruptResolver = undefined;
-    resolve();
-  }
   if (maxTokensReached) {
     sendChatError(mainWindow, projectId, chatSessionId, 'Response reached the output limit. Send another message to continue.');
   }
@@ -1143,13 +1082,6 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     createSession: () => Promise<ServiceResult<{ sessionId: string }>>
   ): AsyncResult<void> {
     let managed = sessions.get(key);
-
-    // Reject concurrent sends only while a session-restart-with-message is
-    // mid-flight (view/model change). The default queue path no longer sets
-    // this flag, so most follow-ups go straight to the queue.
-    if (managed?.interruptInProgress) {
-      return failure('Session is restarting. Please wait a moment before sending again.');
-    }
 
     // Create new session with this message if none exists or error state
     if (!managed || managed.state === 'idle' || managed.state === 'error') {
@@ -1640,7 +1572,6 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         hasStreamedResponseText: false,
         turn: createTurnLifecycle(),
         suppressLifecycleEventsOnEnd: false,
-        interruptInProgress: false,
         followUps: createFollowUpQueue(),
         unsubscribeToolProposals: unsubscribeToolProposals ?? (() => {}),
       });

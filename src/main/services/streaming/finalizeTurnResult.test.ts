@@ -40,7 +40,6 @@ function makeManaged(overrides: Partial<ManagedSessionArg> = {}): ManagedSession
     hasStreamedResponseText: false,
     turn: createTurnLifecycle(),
     suppressLifecycleEventsOnEnd: false,
-    interruptInProgress: false,
     followUps: makeFollowUps(),
     unsubscribeToolProposals: () => {},
     ...overrides,

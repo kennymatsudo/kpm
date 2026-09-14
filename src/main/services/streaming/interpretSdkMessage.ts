@@ -46,8 +46,6 @@ export interface SdkMessageSessionView {
   accumulatedResponse: string;
   /** True once this turn has revealed response text from stream deltas. Complete text blocks then only feed persistence. */
   hasStreamedResponseText: boolean;
-  /** True while an interrupt-and-send orchestration is tearing down the old turn. */
-  interruptInProgress: boolean;
   resolvedModel?: string;
   turnErrorSurfaced?: boolean;
 }
@@ -95,10 +93,9 @@ export function interpretSdkMessage(
   // token-by-token instead of one block per turn step. Only the main turn
   // drives the transcript — subagent deltas (parent_tool_use_id set) are
   // ignored here and surface as activity-card detail from the complete
-  // subagent message instead. Suppressed during interrupt-and-send so late
-  // old-turn tokens can't repopulate the next turn's empty streaming bubble.
+  // subagent message instead.
   if (isPartialAssistantMessage(sdkMsg)) {
-    if (sdkMsg.parent_tool_use_id == null && !view.interruptInProgress) {
+    if (sdkMsg.parent_tool_use_id == null) {
       const event = sdkMsg.event;
       if (event?.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
         const deltaText: string = event.delta.text ?? '';
@@ -161,10 +158,9 @@ export function interpretSdkMessage(
 
     // An assistant message can carry an `error` category when the turn aborts
     // on an API/model failure (`overloaded`, `server_error`, `billing_error`,
-    // …). Without surfacing it the turn just stops silently. Suppressed during
-    // interrupt-and-send so a late old-turn error can't leak into the next turn.
+    // …). Without surfacing it the turn just stops silently.
     // Subagent errors surface via the Task tool_result, so don't double-band them here.
-    if (!isSubagentMessage && typeof sdkMsg.error === 'string' && !view.interruptInProgress) {
+    if (!isSubagentMessage && typeof sdkMsg.error === 'string') {
       const errorText = describeAssistantError(sdkMsg.error);
       if (errorText) {
         view.turnErrorSurfaced = true;
@@ -180,7 +176,7 @@ export function interpretSdkMessage(
       // detail (merge-by-id) so the user sees live progress, then skip — it
       // must not accumulate into the main response or stream as a chunk.
       if (isSubagentMessage) {
-        if (block.type === 'text' && typeof block.text === 'string' && !view.interruptInProgress) {
+        if (block.type === 'text' && typeof block.text === 'string') {
           const parentId = sdkMsg.parent_tool_use_id as string;
           const parent = view.toolUseActivities.get(parentId);
           const line = block.text.split('\n').map((l: string) => l.trim()).find((l: string) => l.length > 0);
@@ -214,12 +210,7 @@ export function interpretSdkMessage(
           if (typeof toolUseId === 'string') {
             view.toolUseActivities.set(toolUseId, activity);
           }
-          // Also send activity for real-time display during streaming —
-          // suppress during interrupt-and-send so late old-turn activities
-          // can't repopulate the next turn's activity indicator.
-          if (!view.interruptInProgress) {
-            events.push({ kind: 'activity', activity });
-          }
+          events.push({ kind: 'activity', activity });
         }
 
         // Tool call logging (additive - does not affect activity flow). File
@@ -236,12 +227,7 @@ export function interpretSdkMessage(
       }
 
       if (block.type === 'thinking' && block.thinking) {
-        // Thinking blocks stream Claude's reasoning - send to renderer for display.
-        // Suppressed during interrupt-and-send: late old-turn thinking would
-        // leak into the next turn's reasoning display.
-        if (!view.interruptInProgress) {
-          events.push({ kind: 'thinking', text: block.thinking });
-        }
+        events.push({ kind: 'thinking', text: block.thinking });
       }
 
       if (block.type === 'text') {
@@ -262,19 +248,12 @@ export function interpretSdkMessage(
           continue;
         }
 
-        // Suppress chunk emission for the aborted turn while an
-        // interrupt-and-send orchestration is in flight. The renderer has
-        // already committed the partial bubble as an interrupted message;
-        // forwarding late tokens would repopulate the next turn's empty
-        // streaming state and produce a phantom assistant bubble.
-        if (!view.interruptInProgress) {
-          events.push({
-            kind: 'chunk',
-            text: block.text,
-            segmentId: segState.currentSegmentId,
-            precedingActivities: segState.pendingActivities.length > 0 ? [...segState.pendingActivities] : undefined,
-          });
-        }
+        events.push({
+          kind: 'chunk',
+          text: block.text,
+          segmentId: segState.currentSegmentId,
+          precedingActivities: segState.pendingActivities.length > 0 ? [...segState.pendingActivities] : undefined,
+        });
 
         // Clear pending activities after attaching to text
         segState.pendingActivities = [];
@@ -296,9 +275,7 @@ export function interpretSdkMessage(
   // Handle tool_use_result on user messages — attach diff stats to the
   // matching activity by tool_use_id and re-emit so the renderer updates
   // the existing card instead of pushing a new one.
-  // Suppress during interrupt-and-send so late old-turn results can't
-  // leak into the next turn's activity stream.
-  if (sdkMsg.type === 'user' && sdkMsg.tool_use_result && !view.interruptInProgress) {
+  if (sdkMsg.type === 'user' && sdkMsg.tool_use_result) {
     const content = sdkMsg.message?.content;
     const blocks = Array.isArray(content) ? content : [];
     for (const block of blocks) {
@@ -327,7 +304,7 @@ export function interpretSdkMessage(
   // wide Grep or a slow Bash) instead of a frozen pulse. Merge-by-id on the
   // renderer means this updates the existing card rather than pushing a new
   // one — same mechanism as the diff-stats re-emit above.
-  if (isToolProgressMessage(sdkMsg) && !view.interruptInProgress) {
+  if (isToolProgressMessage(sdkMsg)) {
     const original = view.toolUseActivities.get(sdkMsg.tool_use_id);
     // Only surface once a tool has run long enough to be worth a timer —
     // fast tools never get a distracting "0s/1s" flash.
@@ -344,9 +321,9 @@ export function interpretSdkMessage(
   // Background tasks (backgrounded shell commands and subagents) outlive the
   // turn that started them: the SDK sends `result` while they are still
   // running. This level signal carries the whole live set on every membership
-  // change, so it is forwarded verbatim and never filtered — including during
-  // interrupt-and-send, where dropping a now-empty payload would leave the
-  // renderer showing work that has already finished.
+  // change, so it is forwarded verbatim and never filtered: dropping a
+  // now-empty payload would leave the renderer showing work that has
+  // already finished.
   if (isBackgroundTasksChangedMessage(sdkMsg)) {
     events.push({
       kind: 'background-tasks',
@@ -361,9 +338,8 @@ export function interpretSdkMessage(
   // Handle informational banners — the SDK emits these for non-error status
   // lines, hook feedback (e.g. a UserPromptSubmit/Stop hook's block reason),
   // and slash-command output. Without surfacing them this feedback is dropped
-  // silently. Suppressed during interrupt-and-send so a late old-turn banner
-  // can't leak into the next turn.
-  if (isInformationalMessage(sdkMsg) && !view.interruptInProgress) {
+  // silently.
+  if (isInformationalMessage(sdkMsg)) {
     const content = (sdkMsg.content ?? '').trim();
     if (content) {
       if (sdkMsg.prevent_continuation) {
@@ -394,9 +370,7 @@ export function interpretSdkMessage(
   //  - no-fallback: the turn ENDS with no assistant text. Without surfacing
   //    it the turn dies silently. Show the explanation and mark the turn
   //    already-explained so the generic terminal-reason banner is suppressed.
-  // Suppressed during interrupt-and-send so a late old-turn refusal can't leak
-  // into the next turn.
-  if (isModelRefusalFallbackMessage(sdkMsg) && !view.interruptInProgress) {
+  if (isModelRefusalFallbackMessage(sdkMsg)) {
     events.push({
       kind: 'activity',
       activity: {
@@ -408,7 +382,7 @@ export function interpretSdkMessage(
     });
   }
 
-  if (isModelRefusalNoFallbackMessage(sdkMsg) && !view.interruptInProgress) {
+  if (isModelRefusalNoFallbackMessage(sdkMsg)) {
     view.turnErrorSurfaced = true;
     events.push({ kind: 'error', error: describeModelRefusalNoFallback(sdkMsg) });
   }

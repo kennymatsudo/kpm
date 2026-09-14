@@ -32,7 +32,6 @@ function makeManaged(): Parameters<typeof markSessionReady>[0] {
     hasStreamedResponseText: false,
     turn: createTurnLifecycle(),
     suppressLifecycleEventsOnEnd: false,
-    interruptInProgress: false,
     followUps: createFollowUpQueue(),
     unsubscribeToolProposals: () => {},
   };

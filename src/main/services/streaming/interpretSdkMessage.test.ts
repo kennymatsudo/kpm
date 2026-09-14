@@ -12,7 +12,6 @@ function makeView(overrides: Partial<SdkMessageSessionView> = {}): SdkMessageSes
     toolUseActivities: new Map<string, Activity>(),
     accumulatedResponse: '',
     hasStreamedResponseText: false,
-    interruptInProgress: false,
     ...overrides,
   };
 }
@@ -55,9 +54,8 @@ describe('partial assistant deltas', () => {
     expect(view.segmentState.pendingActivities).toEqual([]);
   });
 
-  it('ignores subagent deltas and deltas during interrupt-and-send', () => {
+  it('ignores subagent deltas', () => {
     expect(interpret(partialDelta('x', 'parent-1'), makeView())).toEqual([]);
-    expect(interpret(partialDelta('x'), makeView({ interruptInProgress: true }))).toEqual([]);
   });
 });
 
@@ -100,20 +98,6 @@ describe('assistant messages', () => {
     expect(events).toEqual([
       { kind: 'chunk', text: 'answer', segmentId: 0, precedingActivities: undefined },
     ]);
-  });
-
-  it('suppresses the chunk during interrupt-and-send but still accumulates and clears pending activities', () => {
-    const view = makeView({ interruptInProgress: true });
-    view.segmentState.pendingActivities.push({ id: 'a1', type: 'other', label: 'x' });
-
-    const events = interpret(
-      { type: 'assistant', message: { content: [{ type: 'text', text: 'late' }] } },
-      view,
-    );
-
-    expect(view.accumulatedResponse).toBe('late');
-    expect(view.segmentState.pendingActivities).toEqual([]);
-    expect(events).toEqual([]);
   });
 
   it('captures the SDK-resolved model from main-turn messages only', () => {
@@ -168,34 +152,10 @@ describe('assistant messages', () => {
     ]);
   });
 
-  it('still tracks tool_use state during interrupt-and-send but does not emit the activity', () => {
-    const view = makeView({ interruptInProgress: true });
-
-    const events = interpret(
-      {
-        type: 'assistant',
-        message: {
-          content: [{ type: 'tool_use', id: 'tool-1', name: 'Read', input: { file_path: '/tmp/a.ts' } }],
-        },
-      },
-      view,
-    );
-
-    expect(view.toolUseActivities.has('tool-1')).toBe(true);
-    expect(view.segmentState.pendingActivities).toHaveLength(1);
-    expect(events).toEqual([expect.objectContaining({ kind: 'tool-call-log' })]);
-  });
-
-  it('emits thinking blocks unless interrupted', () => {
+  it('emits thinking blocks', () => {
     expect(
       interpret({ type: 'assistant', message: { content: [{ type: 'thinking', thinking: 'hmm' }] } }, makeView()),
     ).toEqual([{ kind: 'thinking', text: 'hmm' }]);
-    expect(
-      interpret(
-        { type: 'assistant', message: { content: [{ type: 'thinking', thinking: 'hmm' }] } },
-        makeView({ interruptInProgress: true }),
-      ),
-    ).toEqual([]);
   });
 
   it('rolls subagent text onto the parent activity card instead of the transcript', () => {
@@ -295,12 +255,6 @@ describe('background tasks', () => {
     expect(interpret(backgroundTasksChanged([]), makeView())).toEqual([
       { kind: 'background-tasks', tasks: [] },
     ]);
-  });
-
-  it('is not suppressed mid-interrupt, so a stale set cannot outlive the work', () => {
-    expect(
-      interpret(backgroundTasksChanged([]), makeView({ interruptInProgress: true })),
-    ).toEqual([{ kind: 'background-tasks', tasks: [] }]);
   });
 });
 
