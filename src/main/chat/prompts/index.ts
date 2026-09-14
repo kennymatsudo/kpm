@@ -12,7 +12,7 @@
 export type { PlanContext } from './types';
 
 import type { PlanContext, ContinuationTurn } from './types';
-import type { TaskPromptTemplate } from '../../../shared/types';
+import type { ChatProvider, ChatSessionScope, TaskPromptTemplate } from '../../../shared/types';
 import { resolveEffectiveRepoPath } from '../../../shared/repoPath';
 import { FULL_HIERARCHY_THRESHOLD, buildItemReferenceTable } from './planFormatting';
 import { buildPlanModificationsSection } from './modes';
@@ -74,6 +74,126 @@ When creating implementation items, use clear verb-first titles, a one-sentence 
  * 4. Tools (decision tree, not exhaustive docs)
  * 5. Reference (plan items, examples)
  */
+/**
+ * The focus-mode rules for a provider whose own tools KPM does not name. Claude
+ * gets `CLAUDE_FOCUS_OPERATING_RULES` instead, because it can be told which of
+ * its built-in tools to use; the parity test forbids naming those to anyone
+ * else.
+ */
+const FOCUS_OPERATING_RULES = `# Operating Rules
+- This session is focused on one document. Direct file, shell, and git writes need the project's write grant; project files change through KPM's proposal tools.
+- Jira, Linear, Confluence, and GitHub exports must not leak KPM-local fields or @plan internals.
+- Plan data lives in KPM SQLite, not in connected repos.
+- If the user asks to change the plan, use KPM plan tools so changes flow through KPM's proposal and review path.
+- For document, project-context, move, or delete requests, use KPM proposal tools rather than editing files directly.
+- Keep replies concise and utilitarian.`;
+
+/** Claude's focus rules name its built-in tools, which is why they are not the shared set. */
+const CLAUDE_FOCUS_OPERATING_RULES = `# Operating Rules
+- Answer from the focused document first.
+- Use KPM project-file tools when you need other project documents.
+- Use Read/Grep/Glob for connected repo validation and cite file paths when you reference code.
+- Direct file, shell, and git writes need the project's write grant, requested on the first attempt. This focused session is for the document — do not change repo files unless the user asks.
+- To change project documents, use \`propose_document_edit\` or \`propose_document_create\`.
+- To change project context files, use \`propose_context_edit\`.
+- All document and context changes from this focused session must go through KPM review before applying.
+- Do not create or modify plan items unless the user explicitly asks.
+- Keep replies concise and utilitarian.`;
+
+const FOCUS_PLAN_REFERENCES = `## Plan References
+Use \`@plan/<uuid>\` when referring to plan items in markdown. Only use UUIDs listed in the current plan above.`;
+
+/**
+ * What one provider adds to the shared composition. `prelude` is the only place
+ * a provider's own tool surface may be described.
+ */
+interface PromptProfile {
+  identity: string;
+  prelude?: string;
+}
+
+const PROMPT_PROFILES: Record<'codex' | 'pi', PromptProfile> = {
+  codex: {
+    identity: "You are Codex running inside KPM's main chat. Help the user understand codebases, plan work, and reason across connected repos.",
+    prelude: `# MCP Tool Selection
+- When the user explicitly names an MCP server, call that server's tool directly. For example, a request for Playwright must use an \`mcp__playwright__*\` tool.
+- Do not substitute a shell check, web search, or another browser tool for an explicitly named MCP server.
+- If that tool call fails, report its exact error. Do not claim that a browser is unavailable unless the named browser tool returned that error.`,
+  },
+  pi: {
+    identity: "You are pi running inside KPM's main chat. Help the user understand codebases, plan work, and reason across connected repos.",
+  },
+};
+
+/**
+ * The system prompt for one chat, composed once for every provider.
+ *
+ * Claude keeps its own templates: it is the only provider whose built-in tool
+ * names KPM may reference, and its main prompt carries sections (tool decision
+ * tree, attachments, task-creation guidance) that would leak those names.
+ * Everything else shares one composition, so a section added for one non-Claude
+ * provider cannot silently skip the other.
+ */
+export function buildChatSystemPrompt(
+  context: PlanContext,
+  audience: { provider: ChatProvider; scope: ChatSessionScope },
+): string {
+  if (audience.provider === 'claude') {
+    return audience.scope === 'focus_document'
+      ? buildFocusSystemPrompt(context)
+      : buildSystemPrompt(context);
+  }
+
+  const profile = PROMPT_PROFILES[audience.provider];
+  const isFocus = audience.scope === 'focus_document';
+  const repos = context.repos.length > 0
+    ? context.repos.map((repo) => `- \`${resolveEffectiveRepoPath(repo)}\``).join('\n')
+    : 'No repos connected.';
+  const planSummary = context.planItems.length > 0 ? buildItemReferenceTable(context.planItems) : 'Empty.';
+  const continuation = context.continuationHistory?.length
+    ? `\n# Prior Conversation\n\n${context.continuationHistory
+        .map((turn) => `${turn.role === 'user' ? 'User' : 'Assistant'}: ${turn.content}`)
+        .join('\n\n')}\n`
+    : '';
+  const focusDocument = context.focusDocument
+    ? `\n# Focused Document\nPath: \`${context.focusDocument.path}\`\nTitle: ${context.focusDocument.title}\n\n<document>\n${context.focusDocument.content}\n</document>\n`
+    : '';
+  const projectContext = context.contextFileContent?.trim()
+    ? `\n# Project Context\n\n${context.contextFileContent.trim()}\n`
+    : '';
+  const userPrefsSection = buildUserGlobalInstructionsSection(context.userGlobalInstructions);
+  const userPrefs = userPrefsSection ? `\n${userPrefsSection}` : '';
+  const operatingRules = isFocus
+    ? FOCUS_OPERATING_RULES
+    : [
+        resolveRegistryPrompt('system.grounding', context.getPromptContent),
+        resolveRegistryPrompt('system.constraints', context.getPromptContent),
+        buildPlanModificationsSection(),
+        resolveRegistryPrompt('system.workspace', context.getPromptContent),
+        resolveRegistryPrompt('system.plan_rules', context.getPromptContent),
+        resolveRegistryPrompt('system.response_style', context.getPromptContent),
+      ].join('\n\n');
+  const planRefs = isFocus ? FOCUS_PLAN_REFERENCES : buildPlanReferenceRulesSection();
+
+  return `${profile.identity}
+${profile.prelude ? `\n${profile.prelude}\n` : ''}
+${operatingRules}
+
+# Project
+Name: ${context.project.name}
+ID: \`${context.project.id}\`
+Project folder: \`${context.project.folder_path}\`
+
+Connected repos:
+${repos}
+${continuation}${focusDocument}${projectContext}${userPrefs}
+# Current Plan
+${context.planItems.length} items.
+${planSummary}
+
+${planRefs}`;
+}
+
 export function buildSystemPrompt(context: PlanContext): string {
   const { project, repos, attachments, planItems, taskPromptTemplate, contextFileContent, userGlobalInstructions, getPromptContent, continuationHistory } = context;
 
@@ -167,14 +287,5 @@ Read/Grep/Glob can also reach any other folder on disk when the user points you 
 
 ${focusedDocumentSection}
 
-${buildUserGlobalInstructionsSection(userGlobalInstructions)}# Operating Rules
-- Answer from the focused document first.
-- Use KPM project-file tools when you need other project documents.
-- Use Read/Grep/Glob for connected repo validation and cite file paths when you reference code.
-- Direct file, shell, and git writes need the project's write grant, requested on the first attempt. This focused session is for the document — do not change repo files unless the user asks.
-- To change project documents, use \`propose_document_edit\` or \`propose_document_create\`.
-- To change project context files, use \`propose_context_edit\`.
-- All document and context changes from this focused session must go through KPM review before applying.
-- Do not create or modify plan items unless the user explicitly asks.
-- Keep replies concise and utilitarian.`;
+${buildUserGlobalInstructionsSection(userGlobalInstructions)}${CLAUDE_FOCUS_OPERATING_RULES}`;
 }

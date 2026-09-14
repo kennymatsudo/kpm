@@ -2,7 +2,6 @@ import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { PlanContext } from './types';
-import { buildPlanReferenceRulesSection } from './index';
 import { buildPlanModificationsSection } from './modes';
 import { PROMPT_REGISTRY_MAP } from './promptRegistry';
 import { GROUNDING, CONSTRAINTS, WORKSPACE_SECTION, PLAN_SYSTEM_RULES, RESPONSE_STYLE } from './workspace';
@@ -18,12 +17,16 @@ vi.mock('../../kpmTools/runtimeRegistry', () => ({
   runWithToolExecutionContext: (_context: unknown, run: () => unknown) => run(),
 }));
 
-import { buildCodexSystemPrompt } from '../../codex/CodexChatSession';
-import { buildPiSystemPrompt } from '../../pi/PiChatSession';
+import { buildChatSystemPrompt, buildPlanReferenceRulesSection } from './index';
 
 const providerPromptBuilders: Record<string, (context: PlanContext) => string> = {
-  Codex: buildCodexSystemPrompt,
-  pi: buildPiSystemPrompt,
+  Codex: (context) => buildChatSystemPrompt(context, { provider: 'codex', scope: 'main' }),
+  pi: (context) => buildChatSystemPrompt(context, { provider: 'pi', scope: 'main' }),
+};
+
+const providerFocusPromptBuilders: Record<string, (context: PlanContext) => string> = {
+  Codex: (context) => buildChatSystemPrompt(context, { provider: 'codex', scope: 'focus_document' }),
+  pi: (context) => buildChatSystemPrompt(context, { provider: 'pi', scope: 'focus_document' }),
 };
 
 const providerFocusBaselineFiles: Record<string, string> = {
@@ -99,8 +102,8 @@ describe.each(Object.keys(providerPromptBuilders))('%s main-scope system prompt'
   });
 });
 
-describe.each(Object.keys(providerPromptBuilders))('%s focus-scope system prompt', (provider) => {
-  const build = providerPromptBuilders[provider];
+describe.each(Object.keys(providerFocusPromptBuilders))('%s focus-scope system prompt', (provider) => {
+  const build = providerFocusPromptBuilders[provider];
 
   it('matches the pre-refactor focus baseline byte-for-byte', () => {
     const baseline = readFixture(providerFocusBaselineFiles[provider]);
@@ -124,4 +127,13 @@ describe.each(Object.keys(providerPromptBuilders))('%s focus-scope system prompt
     expect(prompt).not.toContain('modify_plan');
     expect(prompt).not.toContain('## Plan Structure');
   });
+});
+
+it('gives every provider without its own tool vocabulary the same focus rules', () => {
+  const rules = Object.values(providerFocusPromptBuilders).map((build) => {
+    const prompt = build(focusFixture);
+    return prompt.slice(prompt.indexOf('# Operating Rules'), prompt.indexOf('# Project'));
+  });
+
+  expect(new Set(rules).size).toBe(1);
 });

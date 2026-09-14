@@ -5,10 +5,7 @@ import { BaseTurnQueueChatSession, type SessionEndReason } from '../services/str
 import { getConfig } from '../config';
 import { buildPiKpmTools, type PiKpmToolDefinition, type PiToolImageContent } from './kpmToolAdapter';
 import type { PlanContext } from '../chat/prompts';
-import { buildUserGlobalInstructionsSection, buildPlanReferenceRulesSection } from '../chat/prompts';
-import { buildItemReferenceTable } from '../chat/prompts/planFormatting';
-import { buildPlanModificationsSection } from '../chat/prompts/modes';
-import { resolveRegistryPrompt } from '../chat/prompts/promptRegistry';
+import { buildChatSystemPrompt } from '../chat/prompts';
 import { resolveEffectiveRepoPath } from '../../shared/repoPath';
 import { shellCommandNeedsWriteGrant } from '../chat/shellWritePolicy';
 import {
@@ -217,69 +214,6 @@ export function resolvePiModelSelection<TModel extends { provider: string; id: s
 ): Promise<PiModelSelectionResult<TModel> | undefined> {
   const exact = modelRuntime.getModel(selector.provider, selector.modelId);
   return Promise.resolve(exact ? { model: exact, usedFallback: false } : undefined);
-}
-
-export function buildPiSystemPrompt(context: PlanContext): string {
-  const hasRepos = context.repos.length > 0;
-  const repos = hasRepos
-    ? context.repos.map((repo) => `- \`${resolveEffectiveRepoPath(repo)}\``).join('\n')
-    : 'No repos connected.';
-  const planSummary = context.planItems.length > 0
-    ? buildItemReferenceTable(context.planItems)
-    : 'Empty.';
-  const continuation = context.continuationHistory && context.continuationHistory.length > 0
-    ? `\n# Prior Conversation\n\n${context.continuationHistory
-        .map((turn) => `${turn.role === 'user' ? 'User' : 'Assistant'}: ${turn.content}`)
-        .join('\n\n')}\n`
-    : '';
-  const focusDocument = context.focusDocument
-    ? `\n# Focused Document\nPath: \`${context.focusDocument.path}\`\nTitle: ${context.focusDocument.title}\n\n<document>\n${context.focusDocument.content}\n</document>\n`
-    : '';
-  const projectContext = context.contextFileContent?.trim()
-    ? `\n# Project Context\n\n${context.contextFileContent.trim()}\n`
-    : '';
-  const userPrefsSection = buildUserGlobalInstructionsSection(context.userGlobalInstructions);
-  const userPrefs = userPrefsSection ? `\n${userPrefsSection}` : '';
-
-  const isFocus = Boolean(context.focusDocument);
-  const operatingRules = isFocus
-    ? `# Operating Rules
-- This session is focused on one document. Direct file, shell, and git writes need the project's write grant; project files change through KPM's proposal tools.
-- Jira, Linear, Confluence, and GitHub exports must not leak KPM-local fields or @plan internals.
-- Plan data lives in KPM SQLite, not in connected repos.
-- If the user asks to change the plan, use KPM plan tools so changes flow through KPM's proposal and review path.
-- For document, project-context, move, or delete requests, use KPM proposal tools rather than editing files directly.
-- Keep replies concise and utilitarian.`
-    : [
-        resolveRegistryPrompt('system.grounding', context.getPromptContent),
-        resolveRegistryPrompt('system.constraints', context.getPromptContent),
-        buildPlanModificationsSection(),
-        resolveRegistryPrompt('system.workspace', context.getPromptContent),
-        resolveRegistryPrompt('system.plan_rules', context.getPromptContent),
-        resolveRegistryPrompt('system.response_style', context.getPromptContent),
-      ].join('\n\n');
-  const planRefs = isFocus
-    ? `## Plan References
-Use \`@plan/<uuid>\` when referring to plan items in markdown. Only use UUIDs listed in the current plan above.`
-    : buildPlanReferenceRulesSection();
-
-  return `You are pi running inside KPM's main chat. Help the user understand codebases, plan work, and reason across connected repos.
-
-${operatingRules}
-
-# Project
-Name: ${context.project.name}
-ID: \`${context.project.id}\`
-Project folder: \`${context.project.folder_path}\`
-
-Connected repos:
-${repos}
-${continuation}${focusDocument}${projectContext}${userPrefs}
-# Current Plan
-${context.planItems.length} items.
-${planSummary}
-
-${planRefs}`;
 }
 
 function contentBlocksToPiPrompt(content: ContentBlockParam[]): { text: string; images: PiToolImageContent[] } {
@@ -544,7 +478,7 @@ export class PiChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
   constructor(config: PiChatSessionConfig) {
     super(config.onMessage, config.onSessionEnd);
     this.config = config;
-    this.systemPrompt = buildPiSystemPrompt(config.context);
+    this.systemPrompt = buildChatSystemPrompt(config.context, { provider: 'pi', scope: config.context.focusDocument ? 'focus_document' : 'main' });
     this.createSessionFn = config.createSession ?? createRealPiSession;
   }
 

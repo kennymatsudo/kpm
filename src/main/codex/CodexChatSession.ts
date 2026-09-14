@@ -5,10 +5,7 @@ import { join } from 'path';
 import { CodexAppServerClient, type CodexAppServerClientOptions } from './CodexAppServerClient';
 import { registerCodexMcpSession, type CodexMcpRegistration } from './KpmCodexMcpServer';
 import type { PlanContext } from '../chat/prompts';
-import { buildUserGlobalInstructionsSection, buildPlanReferenceRulesSection } from '../chat/prompts';
-import { buildItemReferenceTable } from '../chat/prompts/planFormatting';
-import { buildPlanModificationsSection } from '../chat/prompts/modes';
-import { resolveRegistryPrompt } from '../chat/prompts/promptRegistry';
+import { buildChatSystemPrompt } from '../chat/prompts';
 import { BaseTurnQueueChatSession, type SessionEndReason } from '../services/streaming/BaseTurnQueueChatSession';
 import { resolveEffectiveRepoPath } from '../../shared/repoPath';
 import type { WriteDecision } from '../chat/writeGrants';
@@ -47,49 +44,6 @@ export interface CodexChatSessionConfig {
 
 interface QueuedTurn { input: JsonObject[]; cleanup?: () => Promise<void>; }
 
-export function buildCodexSystemPrompt(context: PlanContext): string {
-  const repos = context.repos.length > 0 ? context.repos.map((repo) => `- \`${resolveEffectiveRepoPath(repo)}\``).join('\n') : 'No repos connected.';
-  const planSummary = context.planItems.length > 0 ? buildItemReferenceTable(context.planItems) : 'Empty.';
-  const continuation = context.continuationHistory?.length ? `\n# Prior Conversation\n\n${context.continuationHistory.map((turn) => `${turn.role === 'user' ? 'User' : 'Assistant'}: ${turn.content}`).join('\n\n')}\n` : '';
-  const focusDocument = context.focusDocument ? `\n# Focused Document\nPath: \`${context.focusDocument.path}\`\nTitle: ${context.focusDocument.title}\n\n<document>\n${context.focusDocument.content}\n</document>\n` : '';
-  const projectContext = context.contextFileContent?.trim() ? `\n# Project Context\n\n${context.contextFileContent.trim()}\n` : '';
-  const userPrefsSection = buildUserGlobalInstructionsSection(context.userGlobalInstructions);
-  const userPrefs = userPrefsSection ? `\n${userPrefsSection}` : '';
-  const isFocus = Boolean(context.focusDocument);
-  const operatingRules = isFocus ? `# Operating Rules
-- This session is focused on one document. Direct file, shell, and git writes need the project's write grant; project files change through KPM's proposal tools.
-- Jira, Linear, Confluence, and GitHub exports must not leak KPM-local fields or @plan internals.
-- Plan data lives in KPM SQLite, not in connected repos.
-- If the user asks to change the plan, use KPM plan tools so changes flow through KPM's proposal and review path.
-- For document, project-context, move, or delete requests, use KPM proposal tools rather than editing files directly.
-- Keep replies concise and utilitarian.` : [
-    resolveRegistryPrompt('system.grounding', context.getPromptContent), resolveRegistryPrompt('system.constraints', context.getPromptContent), buildPlanModificationsSection(), resolveRegistryPrompt('system.workspace', context.getPromptContent), resolveRegistryPrompt('system.plan_rules', context.getPromptContent), resolveRegistryPrompt('system.response_style', context.getPromptContent),
-  ].join('\n\n');
-  const planRefs = isFocus ? '## Plan References\nUse `@plan/<uuid>` when referring to plan items in markdown. Only use UUIDs listed in the current plan above.' : buildPlanReferenceRulesSection();
-  return `You are Codex running inside KPM's main chat. Help the user understand codebases, plan work, and reason across connected repos.
-
-# MCP Tool Selection
-- When the user explicitly names an MCP server, call that server's tool directly. For example, a request for Playwright must use an \`mcp__playwright__*\` tool.
-- Do not substitute a shell check, web search, or another browser tool for an explicitly named MCP server.
-- If that tool call fails, report its exact error. Do not claim that a browser is unavailable unless the named browser tool returned that error.
-
-${operatingRules}
-
-# Project
-Name: ${context.project.name}
-ID: \`${context.project.id}\`
-Project folder: \`${context.project.folder_path}\`
-
-Connected repos:
-${repos}
-${continuation}${focusDocument}${projectContext}${userPrefs}
-# Current Plan
-${context.planItems.length} items.
-${planSummary}
-
-${planRefs}`;
-}
-
 async function contentToInput(content: string | ContentBlockParam[]): Promise<QueuedTurn> {
   if (typeof content === 'string') return { input: [{ type: 'text', text: content }] };
   const input: JsonObject[] = [];
@@ -126,7 +80,7 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
   private tokenUsage: JsonObject = {};
   private readonly attachmentCleanups = new Set<() => Promise<void>>();
 
-  constructor(config: CodexChatSessionConfig) { super(config.onMessage, config.onSessionEnd); this.config = config; this.systemPrompt = buildCodexSystemPrompt(config.context); this.threadId = config.resumeThreadId ?? null; }
+  constructor(config: CodexChatSessionConfig) { super(config.onMessage, config.onSessionEnd); this.config = config; this.systemPrompt = buildChatSystemPrompt(config.context, { provider: 'codex', scope: config.context.focusDocument ? 'focus_document' : 'main' }); this.threadId = config.resumeThreadId ?? null; }
 
   async start(initialMessage: string | ContentBlockParam[]): Promise<void> {
     if (this.active) throw new Error('Session already started');
