@@ -26,12 +26,9 @@ import type {
 } from '../../db/interfaces';
 import { isLiveAutomationPhase } from '../../../shared/types';
 import type { DevSession, PrReviewSnapshot, ReviewActionableSummary } from '../../../shared/types';
-import { PR_REVIEW_FOLLOWUP_STEP } from '../../../shared/playbooks';
 import { getConfig } from '../../config';
-import { buildAutomationPrompt } from './ReviewService';
 import type { ReviewService } from './ReviewService';
 import type { ReviewAssessmentService } from './ReviewAssessmentService';
-import type { DevSessionService } from './DevSessionService';
 import type { GitHubService } from './GitHubService';
 import type { PlanService } from '../core/PlanService';
 import type { AgentSessionManager } from '../agents/AgentSessionManager';
@@ -54,7 +51,6 @@ export interface ReviewPollServiceDeps {
   reviewSyncState: IReviewSyncStateRepository;
   reviewService: ReviewService;
   reviewAssessmentService: ReviewAssessmentService;
-  devSessionService: DevSessionService;
   gitHubService: GitHubService;
   planService: Pick<PlanService, 'updateItem'>;
   agentSessionManager: AgentSessionManager;
@@ -498,7 +494,6 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
       }
 
       const implementTaskIds = implementTasks.map(t => t.id);
-      const threadIds = implementTasks.map(t => t.thread_id);
 
       const queueResult = deps.reviewService.queueReviewTasks(sessionId, implementTaskIds);
       if (!queueResult.ok) {
@@ -511,47 +506,35 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
         };
       }
 
-      const contextResult = await deps.gitHubService.buildAddressReviewContext(sessionId, { threadIds });
-      if (!contextResult.ok) {
+      const dispatchResult = await deps.reviewService.dispatchQueuedReviewTasks(sessionId, { onlyIfIdle: true });
+      if (!dispatchResult.ok) {
         applyBackoff(sessionId);
-        return {
-          sessionId,
-          action: 'error',
-          newThreadCount: needsReviewTasks.length,
-          implementCount: implementTasks.length,
-          error: contextResult.error,
-        };
-      }
-
-      const prompt = buildAutomationPrompt(contextResult.data);
-      const followUpResult = await deps.devSessionService.sendAgentFollowUp(sessionId, prompt);
-      if (!followUpResult.ok) {
         deps.phaseMachine.transition(sessionId, { type: 'automationFailed', reason: 'follow-up-send-failed' });
         return {
           sessionId,
           action: 'error',
           newThreadCount: needsReviewTasks.length,
           implementCount: implementTasks.length,
-          error: followUpResult.error,
+          error: dispatchResult.error,
         };
       }
 
-      const now = new Date().toISOString();
-      for (const task of implementTasks) {
-        deps.reviewTasks.updateStatus(task.id, 'in_progress', {
-          internal_state: null,
-          last_agent_run_at: now,
-          completed_at: null,
-          error: null,
-        });
+      // Nothing was sent because the implementation run is live or refused a
+      // follow-up. The tasks stay queued and the orchestrator flushes them
+      // when the run finishes, so the poller must not report a fix started.
+      if (!dispatchResult.data.sent) {
+        return {
+          sessionId,
+          action: 'assessed',
+          newThreadCount: needsReviewTasks.length,
+          implementCount: implementTasks.length,
+        };
       }
-
-      deps.phaseMachine.transition(sessionId, { type: 'prReviewThreadsQueued', stepId: PR_REVIEW_FOLLOWUP_STEP.id });
 
       broadcast(reviewEvents.pollFixStarted, {
         sessionId,
-        taskIds: implementTaskIds,
-        threadCount: implementTasks.length,
+        taskIds: dispatchResult.data.taskIds,
+        threadCount: dispatchResult.data.taskIds.length,
       });
 
       errorBackoff.delete(sessionId);

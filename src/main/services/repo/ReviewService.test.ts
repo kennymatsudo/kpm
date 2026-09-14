@@ -305,6 +305,41 @@ describe('ReviewService', () => {
     expect(second.internal_state).toBeNull();
   });
 
+  it('keeps the queue marker when the agent refuses the follow-up', async () => {
+    const task = createTask({
+      status: 'in_progress',
+      internal_state: 'implementation_queued',
+    });
+    const { service, devSessionService } = createServiceHarness([task]);
+    devSessionService.sendAgentFollowUp.mockResolvedValue({
+      ok: true,
+      data: { restarted: false, deferred: true },
+    });
+
+    const result = await service.dispatchQueuedReviewTasks('session-1');
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data).toMatchObject({ sent: false, deferredReason: 'agent_busy', taskIds: [task.id] });
+    expect(task.internal_state).toBe('implementation_queued');
+  });
+
+  it('leaves a live implementation run undisturbed instead of restarting its turn', async () => {
+    const task = createTask({
+      status: 'in_progress',
+      internal_state: 'implementation_queued',
+    });
+    const { service, devSessionService } = createServiceHarness([task], { status: 'active' });
+
+    const result = await service.dispatchQueuedReviewTasks('session-1', { onlyIfIdle: true });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data).toMatchObject({ sent: false, deferredReason: 'session_active' });
+    expect(devSessionService.sendAgentFollowUp).not.toHaveBeenCalled();
+    expect(task.internal_state).toBe('implementation_queued');
+  });
+
   it('marks outdated review tasks done during sync instead of leaving stale attention', async () => {
     const task = createTask({
       status: 'assessed',

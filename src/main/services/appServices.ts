@@ -383,7 +383,6 @@ export function createAppServices(container: IRepositoryContainer) {
     reviewSyncState: container.reviewSyncState,
     reviewService,
     reviewAssessmentService,
-    devSessionService,
     gitHubService,
     planService,
     agentSessionManager,

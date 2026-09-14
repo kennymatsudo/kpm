@@ -229,6 +229,10 @@ function buildHarness(options: {
       }
       return { ok: true, data: undefined };
     }),
+    dispatchQueuedReviewTasks: vi.fn().mockResolvedValue({
+      ok: true,
+      data: { inbox: createInbox(snapshot, tasks), taskIds: ['task-1'], context: 'REVIEW CONTEXT', sent: true },
+    }),
   };
   const reviewAssessmentService = {
     assessThreads: vi.fn().mockResolvedValue({ ok: true, data: [] }),
@@ -249,9 +253,6 @@ function buildHarness(options: {
       },
     }),
     buildAddressReviewContext: vi.fn().mockResolvedValue({ ok: true, data: 'REVIEW CONTEXT' }),
-  };
-  const devSessionService = {
-    sendAgentFollowUp: vi.fn().mockResolvedValue({ ok: true, data: { restarted: false, deferred: false } }),
   };
   const planService = {
     updateItem: vi.fn().mockReturnValue({ ok: true, data: undefined }),
@@ -281,7 +282,6 @@ function buildHarness(options: {
     },
     reviewService,
     reviewAssessmentService,
-    devSessionService,
     phaseMachine,
     gitHubService,
     planService,
@@ -308,7 +308,6 @@ function buildHarness(options: {
     reviewService,
     reviewAssessmentService,
     gitHubService,
-    devSessionService,
     planService,
     phaseMachine,
     broadcastToWindows,
@@ -525,7 +524,7 @@ describe('ReviewPollService', () => {
     expect(harness.reviewAssessmentService.assessThreads).not.toHaveBeenCalled();
   });
 
-  it('clears implementation_queued state after the poller successfully sends a follow-up', async () => {
+  it('hands the queued threads to the review service and reports a fix started', async () => {
     const task = createTask({
       status: 'needs_review',
       internal_state: null,
@@ -561,12 +560,43 @@ describe('ReviewPollService', () => {
     const result = await harness.service.pollSession('session-1');
 
     expect(result.action).toBe('fix_started');
-    expect(harness.devSessionService.sendAgentFollowUp).toHaveBeenCalledWith('session-1', expect.any(String));
-    expect(harness.reviewTasks.updateStatus).toHaveBeenCalledWith('task-1', 'in_progress', expect.objectContaining({
+    expect(harness.reviewService.dispatchQueuedReviewTasks).toHaveBeenCalledWith('session-1', { onlyIfIdle: true });
+  });
+
+  it('leaves the queue for the completion flush when the dispatch defers', async () => {
+    const task = createTask({
+      status: 'needs_review',
       internal_state: null,
+      disposition: null,
       error: null,
-    }));
-    expect(task.internal_state).toBeNull();
+    });
+    const harness = buildHarness({
+      session: createSession({ auto_address_pr_reviews: true }),
+      snapshot: createSnapshot({
+        state: 'OPEN',
+        reviewDecision: 'CHANGES_REQUESTED',
+        threads: [createThread()],
+      }),
+      tasks: [task],
+    });
+    harness.reviewAssessmentService.assessThreads.mockImplementation(() => {
+      task.status = 'assessed';
+      task.disposition = 'implement';
+      task.internal_state = null;
+      return Promise.resolve({ ok: true, data: [] });
+    });
+    harness.reviewService.dispatchQueuedReviewTasks = vi.fn().mockResolvedValue({
+      ok: true,
+      data: { inbox: null, taskIds: ['task-1'], context: '', sent: false, deferredReason: 'agent_busy' },
+    });
+
+    const result = await harness.service.pollSession('session-1');
+
+    expect(result).toMatchObject({ action: 'assessed', implementCount: 1 });
+    expect(harness.broadcastToWindows).not.toHaveBeenCalledWith(
+      'review-poll:fix-started',
+      expect.anything(),
+    );
   });
 
   it('leaves implement findings in the review queue unless the task enables automatic addressing', async () => {
@@ -594,7 +624,7 @@ describe('ReviewPollService', () => {
 
     expect(result).toMatchObject({ action: 'assessed', implementCount: 1 });
     expect(harness.reviewService.queueReviewTasks).not.toHaveBeenCalled();
-    expect(harness.devSessionService.sendAgentFollowUp).not.toHaveBeenCalled();
+    expect(harness.reviewService.dispatchQueuedReviewTasks).not.toHaveBeenCalled();
   });
 
   it('uses linked PR status as a fallback when the review snapshot was unchanged', async () => {

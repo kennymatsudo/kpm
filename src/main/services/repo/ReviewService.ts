@@ -45,6 +45,19 @@ export interface FlushQueuedReviewTasksResult {
   context: string;
 }
 
+/** Why a dispatch left the queue untouched: the run is live, or the agent refused a follow-up. */
+export type DispatchDeferredReason = 'session_active' | 'agent_busy';
+
+export interface DispatchQueuedReviewTasksOptions {
+  /** Leave the queue for the completion flush while the implementation run is live. */
+  onlyIfIdle?: boolean;
+}
+
+export interface DispatchQueuedReviewTasksResult extends TriggerReviewAutomationResult {
+  sent: boolean;
+  deferredReason?: DispatchDeferredReason;
+}
+
 export interface ReplyToThreadResult {
   inbox: ReviewInboxSnapshot;
   replyId: string;
@@ -392,23 +405,61 @@ export function createReviewService(deps: ReviewServiceDeps) {
       ));
   }
 
-  async function sendQueuedReviewTasks(
+  /**
+   * Sends everything sitting in a session's queue as one merged follow-up.
+   *
+   * `onlyIfIdle` is the caller's intent, not a safety knob: the poller and the
+   * user-facing trigger deliberately leave the queue alone while an
+   * implementation run is live, because the orchestrator flushes it at
+   * completion. The flush itself passes `false` — the run it is finishing may
+   * still be marked active when it calls.
+   *
+   * A deferral keeps `implementation_queued` on every task, so the next flush
+   * retries them instead of losing the marker.
+   */
+  async function dispatchQueuedReviewTasks(
     sessionId: string,
-    queuedTasks: ReviewTask[]
-  ): AsyncResult<TriggerReviewAutomationResult> {
+    options: DispatchQueuedReviewTasksOptions = {}
+  ): AsyncResult<DispatchQueuedReviewTasksResult> {
     const sessionResult = getSessionContext(sessionId);
     if (!sessionResult.ok) return sessionResult;
+    const session = sessionResult.data;
+
+    const queuedResult = getQueuedReviewTasks(sessionId);
+    if (!queuedResult.ok) return queuedResult;
+    const queuedTasks = queuedResult.data;
+
+    const taskIds = queuedTasks.map((task) => task.id);
+
     if (queuedTasks.length === 0) {
       const inboxResult = await syncSessionReviewState(sessionId);
       if (!inboxResult.ok) return inboxResult;
-      return success({ inbox: inboxResult.data, taskIds: [], context: '' });
+      return success({ inbox: inboxResult.data, taskIds: [], context: '', sent: false });
+    }
+
+    deps.phaseMachine.transition(sessionId, { type: 'prReviewThreadsQueued', stepId: PR_REVIEW_FOLLOWUP_STEP.id });
+
+    const deferred = async (
+      reason: DispatchDeferredReason
+    ): AsyncResult<DispatchQueuedReviewTasksResult> => {
+      const inboxResult = await syncSessionReviewState(sessionId);
+      if (!inboxResult.ok) return inboxResult;
+      return success({
+        inbox: inboxResult.data,
+        taskIds,
+        context: '',
+        sent: false,
+        deferredReason: reason,
+      });
+    };
+
+    if (options.onlyIfIdle && session.status === 'active') {
+      return deferred('session_active');
     }
 
     const threadIds = queuedTasks.map((task) => task.thread_id);
     const contextResult = await deps.gitHubService.buildAddressReviewContext(sessionId, { threadIds });
     if (!contextResult.ok) return contextResult;
-
-    deps.phaseMachine.transition(sessionId, { type: 'prReviewThreadsQueued', stepId: PR_REVIEW_FOLLOWUP_STEP.id });
 
     const followUpResult = await deps.devSessionService.sendAgentFollowUp(
       sessionId,
@@ -420,13 +471,7 @@ export function createReviewService(deps: ReviewServiceDeps) {
     }
 
     if (followUpResult.data.deferred) {
-      const queuedInbox = await syncSessionReviewState(sessionId);
-      if (!queuedInbox.ok) return queuedInbox;
-      return success({
-        inbox: queuedInbox.data,
-        taskIds: queuedTasks.map((task) => task.id),
-        context: '',
-      });
+      return deferred('agent_busy');
     }
 
     const now = new Date().toISOString();
@@ -444,25 +489,19 @@ export function createReviewService(deps: ReviewServiceDeps) {
 
     return success({
       inbox: refreshedInbox.data,
-      taskIds: queuedTasks.map((task) => task.id),
+      taskIds,
       context: contextResult.data,
+      sent: true,
     });
   }
 
   async function flushQueuedReviewTasks(sessionId: string): AsyncResult<FlushQueuedReviewTasksResult> {
-    const queuedResult = getQueuedReviewTasks(sessionId);
-    if (!queuedResult.ok) return queuedResult;
-    const queuedTasks = queuedResult.data;
-    if (queuedTasks.length === 0) {
-      return success({ taskIds: [], context: '' });
-    }
-
-    const sendResult = await sendQueuedReviewTasks(sessionId, queuedTasks);
-    if (!sendResult.ok) return sendResult;
+    const dispatchResult = await dispatchQueuedReviewTasks(sessionId);
+    if (!dispatchResult.ok) return dispatchResult;
 
     return success({
-      taskIds: sendResult.data.taskIds,
-      context: sendResult.data.context,
+      taskIds: dispatchResult.data.taskIds,
+      context: dispatchResult.data.context,
     });
   }
 
@@ -485,29 +524,16 @@ export function createReviewService(deps: ReviewServiceDeps) {
 
     const queueResult = queueReviewTasks(sessionId, taskIds);
     if (!queueResult.ok) return queueResult;
-    const queuedTasks = queueResult.data;
-    if (queuedTasks.length === 0) {
+    if (queueResult.data.length === 0) {
       return success({ inbox, taskIds: [], context: '' });
     }
 
-    deps.phaseMachine.transition(sessionId, { type: 'prReviewThreadsQueued', stepId: PR_REVIEW_FOLLOWUP_STEP.id });
-
-    if (session.status === 'active') {
-      const queuedInbox = await syncSessionReviewState(sessionId);
-      if (!queuedInbox.ok) return queuedInbox;
-      return success({
-        inbox: queuedInbox.data,
-        taskIds: queuedTasks.map((task) => task.id),
-        context: '',
-      });
-    }
-
-    const sendResult = await sendQueuedReviewTasks(sessionId, queuedTasks);
-    if (!sendResult.ok) {
+    const dispatchResult = await dispatchQueuedReviewTasks(sessionId, { onlyIfIdle: true });
+    if (!dispatchResult.ok) {
       deps.phaseMachine.transition(sessionId, { type: 'automationFailed', reason: 'follow-up-send-failed' });
-      return sendResult;
+      return dispatchResult;
     }
-    return sendResult;
+    return dispatchResult;
   }
 
   async function replyToThread(
@@ -648,6 +674,7 @@ export function createReviewService(deps: ReviewServiceDeps) {
     getReviewInbox,
     assignOwnership,
     queueReviewTasks,
+    dispatchQueuedReviewTasks,
     flushQueuedReviewTasks,
     triggerReviewAutomation,
     replyToThread,
