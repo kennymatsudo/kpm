@@ -13,6 +13,8 @@
  * the same registry so the channel string and payload type can't drift.
  */
 
+import type { NestedChannels } from './endpoints';
+
 /**
  * Phantom carrier for an event's payload type. Never holds a real value —
  * `payloadOf<T>()` always returns `undefined` at runtime — it only exists so
@@ -47,7 +49,9 @@ export type EventPayload<E extends EventDefinition> =
  * constants — the event-side counterpart to `toNestedChannels` in
  * `endpoints.ts`.
  */
-export function toNestedEventChannels<R extends EventRegistry>(registry: R): unknown {
+export function toNestedEventChannels<R extends EventRegistry>(
+  registry: R,
+): NestedChannels<keyof R & string> {
   const root: Record<string, unknown> = {};
   for (const [dottedKey, definition] of Object.entries(registry)) {
     const segments = dottedKey.split('.');
@@ -59,7 +63,7 @@ export function toNestedEventChannels<R extends EventRegistry>(registry: R): unk
     }
     node[segments[segments.length - 1]] = definition.channel;
   }
-  return root;
+  return root as NestedChannels<keyof R & string>;
 }
 
 /**

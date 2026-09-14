@@ -58,12 +58,33 @@ export type EndpointClientPayload<E extends EndpointDefinition> = E['params'] ex
 export type EndpointResult<E extends EndpointDefinition> =
   E['result'] extends ResultMarker<infer TResult> ? TResult : never;
 
+/** Dotted registry keys with no nesting left, e.g. `'listItems'`. */
+type ChannelLeafKey<K extends string> = K extends `${string}.${string}` ? never : K;
+
+/** First segment of every dotted registry key, e.g. `'queue'` from `'queue.get'`. */
+type ChannelBranchKey<K extends string> = K extends `${infer Head}.${string}` ? Head : never;
+
+/** Registry keys below one branch, with the branch segment stripped. */
+type ChannelKeysUnder<K extends string, Head extends string> = K extends `${Head}.${infer Rest}`
+  ? Rest
+  : never;
+
+/**
+ * The nested channel-object shape a flat registry's keys describe: dotted keys
+ * become nested objects, leaves become the channel string.
+ */
+export type NestedChannels<K extends string> = { [Leaf in ChannelLeafKey<K>]: string } & {
+  [Head in ChannelBranchKey<K>]: NestedChannels<ChannelKeysUnder<K, Head>>;
+};
+
 /**
  * Rebuilds `{ a: { b: 'x:a:b' } }`-shaped channel objects from a flat
  * registry, for call sites that still read nested `IPC_CHANNELS.<domain>.*`
  * constants (e.g. the channel-registration completeness test).
  */
-export function toNestedChannels<R extends EndpointRegistry>(registry: R): unknown {
+export function toNestedChannels<R extends EndpointRegistry>(
+  registry: R,
+): NestedChannels<keyof R & string> {
   const root: Record<string, unknown> = {};
   for (const [dottedKey, definition] of Object.entries(registry)) {
     const segments = dottedKey.split('.');
@@ -75,7 +96,7 @@ export function toNestedChannels<R extends EndpointRegistry>(registry: R): unkno
     }
     node[segments[segments.length - 1]] = definition.channel;
   }
-  return root;
+  return root as NestedChannels<keyof R & string>;
 }
 
 /**
