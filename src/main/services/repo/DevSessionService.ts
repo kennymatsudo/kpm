@@ -28,7 +28,6 @@ import {
   type AgentReviewPolicy,
   type RepoEnvironmentMode,
 } from '../../../shared/types';
-import { captureRepoEnvironment } from './EnvironmentService';
 import type {
   IAppSettingsRepository,
   IAgentReviewRepository,
@@ -39,15 +38,17 @@ import type {
   IRepoRepository,
 } from '../../db/interfaces';
 import { computeMergeOrder, type MergeOrderEntry } from './mergeOrder';
-import type { Options as SDKOptions } from '@anthropic-ai/claude-agent-sdk';
-import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
 import { formatPlanRefSection } from '../../claude/contextRefs';
-import { getConfig } from '../../config';
 import { createStatusBroadcaster } from './rendererBroadcast';
 import { devSessionEvents } from '../../../shared/ipc/devSessionEvents';
 import { gitExec, resolveBaseSha } from './gitUtils';
 import { openDirectoryInCodeEditor } from './editorLauncher';
 import type { AgentSessionManager } from '../agents/AgentSessionManager';
+import {
+  boardProviderRefusal,
+  createBoardAgentSession,
+  isBoardRunnableProvider,
+} from '../agents/agentLaunch';
 import { FollowUpNotAllowedError } from '../agents/BaseAgentSession';
 import type { AutomationPhaseMachine } from '../agents/automationPhaseMachine';
 import type { PlaybookService } from '../core/PlaybookService';
@@ -55,19 +56,14 @@ import { parsePlaybook, type BoardProvider, type Playbook } from '../../../share
 import { BOARD_AGENT_WRITE_POLICY, renderPlaybookDirective, resolvePlaybookPlan } from '../../../shared/playbookRuntime';
 import { renderBranchName } from '../../../shared/branchNaming';
 import { getSetting, getDefaultModel } from '../../db/appSettingsAccess';
-import { getAgentEnv } from '../streaming/envUtils';
 import {
   type AgentContextInput,
-  type BoardClaudeModel,
   buildAgentContext,
   buildProjectContextPrefix,
   buildBoardStartInstructions,
   buildWorkBriefReconciliation,
   replaceCurrentWorkBrief,
   buildCommitHookRepairPrompt,
-  buildBoardSdkSettings,
-  buildBoardProviderPrompt,
-  resolveBoardEffort,
 } from './devSessionPrompt';
 import {
   getWorktreesDir,
@@ -451,8 +447,8 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
       const providers = await deps.listBoardProviders();
       const resolvedPlan = resolvePlaybookPlan(playbook, providers, getDefaultModel(deps.appSettings));
       if (!resolvedPlan.main) return failure('No available provider can run the first main playbook step');
-      if (!['claude', 'codex', 'gemini', 'pi'].includes(resolvedPlan.main.provider)) {
-        return failure(`Provider ${resolvedPlan.main.provider} is not enabled for board execution`);
+      if (!isBoardRunnableProvider(resolvedPlan.main.provider)) {
+        return failure(boardProviderRefusal(resolvedPlan.main.provider));
       }
 
       if (isReusableSession) {
@@ -460,7 +456,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         projectId = existing.project_id;
         deps.devSessions.updateReviewPolicy(sessionId, reviewPolicy);
         if (!snapshot) {
-          deps.devSessions.updatePlaybook(sessionId, playbook.id, JSON.stringify(playbook), playbook.steps[0].id, resolvedPlan.main.provider as DevSession['agent_type']);
+          deps.devSessions.updatePlaybook(sessionId, playbook.id, JSON.stringify(playbook), playbook.steps[0].id, resolvedPlan.main.provider);
         }
       } else {
         const createResult = await service.createPendingSession(
@@ -471,7 +467,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
             baseBranch: input.baseBranch,
             reviewPolicy,
             playbook,
-            agentType: resolvedPlan.main.provider as DevSession['agent_type'],
+            agentType: resolvedPlan.main.provider,
           },
         );
         if (!createResult.ok) {
@@ -694,12 +690,6 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           }
         }
 
-        // Capture repo environment (direnv / auto-detect) after worktree is ready
-        const capturedEnv = await captureRepoEnvironment(
-          options?.environmentMode ?? repo.environment_mode ?? 'auto',
-          worktreeCwd,
-        );
-
         // Use the user's prompt override if provided, otherwise the stored instructions
         const prompt = options?.prompt || session.initial_instructions;
 
@@ -708,57 +698,28 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
 
         const sessionPlaybook = playbookFromSnapshot(session);
         const firstMainStep = sessionPlaybook?.steps.find((step) => step.session === 'main');
-        const developerModel = options?.model ?? 'sonnet';
-        const effectiveEffort = session.agent_type === 'claude'
-          ? resolveBoardEffort(developerModel as BoardClaudeModel, options?.effort)
-          : options?.effort;
-        const sdkSettings = buildBoardSdkSettings();
-        const disallowedTools = ['AskUserQuestion', 'Workflow', 'ProposeGoal'];
-
         const roleSystemPrompt = deps.getPromptContent(firstMainStep?.systemPromptKey ?? 'agents.implementation_system');
 
-        // Build SDK options for the dev session
-        // Dev sessions use a minimal config — no KPM MCP server, no plan tools
-        const sdkOptions: SDKOptions = {
-          systemPrompt: roleSystemPrompt,
-          model: developerModel,
-          cwd: worktreeCwd,
-          maxTurns: getConfig().claude.maxTurns,
-          permissionMode: getConfig().claude.defaultPermissionMode,
-          // Board agents are one-shot — never pause for the built-in
-          // option-picker; the agent proceeds on assumptions instead.
-          disallowedTools,
-          settingSources: ['user'],
-          settings: sdkSettings,
-          env: { ...getAgentEnv(), ...capturedEnv, CLAUDE_AGENT_SDK_CLIENT_APP: 'kpm' },
-          thinking: { type: 'adaptive' as const, display: 'summarized' as const },
-          agentProgressSummaries: true,
-          ...(effectiveEffort && { effort: effectiveEffort }),
-          ...getClaudeSdkSpawnOptions(),
-        };
-
-        // Create the agent session via the manager
-        const agentSession = deps.agentSessionManager.create({
-          devSessionId: sessionId,
+        const { session: agentSession, providerPrompt } = await createBoardAgentSession({
+          sessionId,
           projectId: session.project_id,
-          agentType: session.agent_type,
+          provider: session.agent_type,
           role: 'implement',
-          sdkOptions: session.agent_type === 'claude' ? sdkOptions : undefined,
-          model: session.agent_type === 'codex'
-            ? options?.model ?? getConfig().agentSession.codexModel
-            : session.agent_type === 'pi' ? options?.model : undefined,
-          systemPrompt: session.agent_type === 'pi' ? roleSystemPrompt : undefined,
-          effort: session.agent_type === 'pi' || session.agent_type === 'codex' ? effectiveEffort : undefined,
-        });
+          worktreePath: worktreeCwd,
+          systemPrompt: roleSystemPrompt,
+          taskPrompt: prompt,
+          model: options?.model,
+          effort: options?.effort,
+          writes: true,
+          environmentMode: options?.environmentMode ?? repo.environment_mode ?? 'auto',
+        }, deps.agentSessionManager);
 
         // Update DB status to active
         deps.devSessions.updateStatus(sessionId, 'active');
         const updatedSession = deps.devSessions.get(sessionId)!;
         broadcastSessionStatusChange(updatedSession);
 
-        // Start the agent session asynchronously
-        const providerPrompt = buildBoardProviderPrompt(session.agent_type, roleSystemPrompt, prompt);
-        agentSession.start(worktreeCwd, providerPrompt).catch(async (error) => {
+        agentSession.start(worktreeCwd, providerPrompt).catch(async (error: unknown) => {
           console.error(`[DevSessionService] Agent session start failed for ${sessionId}:`, error);
           try {
             await agentSession.stop();

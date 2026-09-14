@@ -11,6 +11,7 @@ import type { AutomationPhaseMachine } from '../../services/agents/automationPha
 import type { PromptOverrideService } from '../../services/core/PromptOverrideService';
 import { getAvailableAgents } from '../../services/agents/agentCatalog';
 import { launchAutoReview } from '../../services/agents/autoReview';
+import { isBoardRunnableProvider } from '../../services/agents/agentLaunch';
 import { playbookForSession, resolveHarnessStep, stepById } from '../../services/agents/sessionPlaybook';
 import { listBoardProviders } from '../../services/agents/boardProviderRegistry';
 import { resolvePlaybookPlan } from '../../../shared/playbookRuntime';
@@ -75,9 +76,7 @@ async function resolveStepReviewer(
   const plan = resolvePlaybookPlan(playbook, await listBoardProviders(), defaultModel);
   const agent = plan.steps.find((entry) => entry.stepId === stepId)?.runs[0];
   if (!agent) return undefined;
-  if (agent.provider !== 'claude' && agent.provider !== 'codex' && agent.provider !== 'gemini' && agent.provider !== 'pi') {
-    return undefined;
-  }
+  if (!isBoardRunnableProvider(agent.provider)) return undefined;
   return { provider: agent.provider, model: agent.model, ...(agent.effort ? { effort: agent.effort } : {}) };
 }
 

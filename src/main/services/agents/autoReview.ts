@@ -12,16 +12,18 @@
  *   pi      → review with claude
  */
 
-import type { Options as SDKOptions } from '@anthropic-ai/claude-agent-sdk';
-import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
 import { getConfig } from '../../config';
 import { getDiff, gitExec } from '../repo/gitUtils';
 import type { AgentType } from '../../../shared/agent-types';
-import type { AgentEffortLevel } from '../../../shared/types';
+import type { AgentEffortLevel, RepoEnvironmentMode } from '../../../shared/types';
+import {
+  boardProviderRefusal,
+  createBoardAgentSession,
+  isBoardRunnableProvider,
+} from './agentLaunch';
 import { toReviewSessionId } from '../../../shared/agent-types';
 import { getReviewOpponent, isAgentAvailable } from './agentCatalog';
 import { hasCodexAuth } from '../../codex/auth';
-import { getAgentEnv } from '../streaming/envUtils';
 import type { AgentSessionManager } from './AgentSessionManager';
 
 const LOG_PREFIX = '[AutoReview]';
@@ -141,76 +143,38 @@ async function startReviewSession(params: {
   agentSessionManager: AgentSessionManager;
   model?: string;
   effort?: AgentEffortLevel;
-  readOnly?: boolean;
+  writes?: boolean;
   expectsFindings?: boolean;
+  environmentMode?: RepoEnvironmentMode;
   implementationSessionId?: string;
   stepId?: string;
   runIndex?: number;
 }): Promise<void> {
-  const {
-    reviewAgentType,
-    reviewSessionId,
-    projectId,
-    worktreePath,
-    reviewPrompt,
-    reviewSystemPrompt,
-    agentSessionManager,
-    model,
-  } = params;
-
-  const prompt = reviewAgentType === 'claude' || reviewAgentType === 'pi'
-    ? reviewPrompt
-    : `${reviewSystemPrompt}\n\n${reviewPrompt}`;
-
-  if (reviewAgentType === 'claude') {
-    const sdkOptions: SDKOptions = {
-      systemPrompt: reviewSystemPrompt,
-      model: model ?? getConfig().generation.fastModel,
-      cwd: worktreePath,
-      maxTurns: getConfig().agentSession.subagentMaxTurns,
-      permissionMode: getConfig().claude.defaultPermissionMode,
-      // One-shot review agent — disable the built-in tools that stop to ask the
-      // user something (option picker, goal approval); it has no one to ask.
-      disallowedTools: ['AskUserQuestion', 'ProposeGoal'],
-      settingSources: ['user'],
-      env: { ...getAgentEnv(), CLAUDE_AGENT_SDK_CLIENT_APP: 'kpm' },
-      thinking: { type: 'adaptive' as const, display: 'summarized' as const },
-      ...getClaudeSdkSpawnOptions(),
-    };
-
-    const session = agentSessionManager.create({
-      devSessionId: reviewSessionId,
-      projectId,
-      agentType: 'claude',
-      role: 'review',
-      sdkOptions,
-      readOnly: params.readOnly,
-      expectsFindings: params.expectsFindings,
-      implementationSessionId: params.implementationSessionId,
-      stepId: params.stepId,
-      runIndex: params.runIndex,
-    });
-
-    await session.start(worktreePath, reviewPrompt);
-    return;
-  }
-
-  const session = agentSessionManager.create({
-    devSessionId: reviewSessionId,
-    projectId,
-    agentType: reviewAgentType,
-    role: 'review',
-    model: reviewAgentType === 'codex' || reviewAgentType === 'pi' ? model : undefined,
-    systemPrompt: reviewAgentType === 'pi' ? reviewSystemPrompt : undefined,
-    effort: reviewAgentType === 'pi' || reviewAgentType === 'codex' ? params.effort : undefined,
-    readOnly: params.readOnly,
+  const { session, providerPrompt } = await createBoardAgentSession({
+    sessionId: params.reviewSessionId,
+    projectId: params.projectId,
+    provider: params.reviewAgentType,
+    role: 'subagent',
+    worktreePath: params.worktreePath,
+    systemPrompt: params.reviewSystemPrompt,
+    taskPrompt: params.reviewPrompt,
+    model: params.model,
+    effort: params.effort,
+    writes: params.writes ?? false,
     expectsFindings: params.expectsFindings,
-    implementationSessionId: params.implementationSessionId,
-    stepId: params.stepId,
-    runIndex: params.runIndex,
-  });
+    environmentMode: params.environmentMode,
+    ...(params.implementationSessionId && params.stepId
+      ? {
+          relationship: {
+            implementationSessionId: params.implementationSessionId,
+            stepId: params.stepId,
+            runIndex: params.runIndex ?? 0,
+          },
+        }
+      : {}),
+  }, params.agentSessionManager);
 
-  await session.start(worktreePath, prompt);
+  await session.start(params.worktreePath, providerPrompt);
 }
 
 async function isReviewAgentAvailable(agentType: AgentType): Promise<boolean> {
@@ -320,7 +284,7 @@ export async function launchAutoReview(params: {
       agentSessionManager,
       model,
       effort,
-      readOnly: true,
+      writes: false,
       expectsFindings: true,
       implementationSessionId,
       stepId,
@@ -341,7 +305,7 @@ export async function launchAutoReview(params: {
           reviewPrompt,
           reviewSystemPrompt,
           agentSessionManager,
-          readOnly: true,
+          writes: false,
           expectsFindings: true,
           implementationSessionId,
           stepId,
@@ -385,8 +349,8 @@ export async function launchPlaybookSubagent(params: {
   agentSessionManager: AgentSessionManager;
 }): Promise<string> {
   const provider = params.agent.provider;
-  if (provider !== 'claude' && provider !== 'codex' && provider !== 'gemini' && provider !== 'pi') {
-    throw new Error(`Provider ${provider} is not enabled for board execution`);
+  if (!isBoardRunnableProvider(provider)) {
+    throw new Error(boardProviderRefusal(provider));
   }
   const diff = await getWorktreeDiff(params.worktreePath, params.baseBranch);
   const contextPayload = [
@@ -415,7 +379,7 @@ export async function launchPlaybookSubagent(params: {
     agentSessionManager: params.agentSessionManager,
     model: params.agent.model,
     effort: params.agent.effort,
-    readOnly: !params.writes,
+    writes: params.writes,
     expectsFindings: params.verdict,
     implementationSessionId: params.implementationSessionId,
     stepId: params.stepId,

@@ -8,17 +8,29 @@ const execFileAsync = promisify(execFile);
 
 type CapturedEnv = Record<string, string>;
 
-async function captureDirenv(cwd: string): Promise<CapturedEnv> {
+export interface CapturedRepoEnvironment {
+  vars: CapturedEnv;
+  /**
+   * Set when direnv was the configured source but produced nothing usable —
+   * on a fresh worktree that is almost always a missing `direnv allow`, which
+   * otherwise looks like a repo whose tests inexplicably fail.
+   */
+  direnvFailure?: string;
+}
+
+async function captureDirenv(cwd: string): Promise<CapturedRepoEnvironment> {
   try {
     const { stdout } = await execFileAsync('direnv', ['export', 'json'], { cwd });
     const trimmed = stdout.trim();
-    if (!trimmed) return {};
+    if (!trimmed) return { vars: {}, direnvFailure: 'direnv exported no variables' };
     const parsed = JSON.parse(trimmed) as Record<string, string | null>;
-    return Object.fromEntries(
-      Object.entries(parsed).filter(([, v]) => v !== null) as [string, string][]
-    );
-  } catch {
-    return {};
+    return {
+      vars: Object.fromEntries(
+        Object.entries(parsed).filter(([, v]) => v !== null) as [string, string][]
+      ),
+    };
+  } catch (error) {
+    return { vars: {}, direnvFailure: error instanceof Error ? error.message : String(error) };
   }
 }
 
@@ -29,14 +41,14 @@ async function captureDirenv(cwd: string): Promise<CapturedEnv> {
 export async function captureRepoEnvironment(
   mode: RepoEnvironmentMode,
   worktreePath: string,
-): Promise<CapturedEnv> {
-  if (mode === 'none') return {};
+): Promise<CapturedRepoEnvironment> {
+  if (mode === 'none') return { vars: {} };
   if (mode === 'direnv') return captureDirenv(worktreePath);
   if (mode === 'auto') {
     return existsSync(path.join(worktreePath, '.envrc'))
       ? captureDirenv(worktreePath)
-      : {};
+      : { vars: {} };
   }
   // nix: not yet implemented
-  return {};
+  return { vars: {} };
 }
