@@ -715,6 +715,9 @@ export function finalizeTurnResult(
     // above and the renderer would never receive
     // chat:session-deactivated / chat:done — leaving isStreaming stuck.
     managed.turn.begin(Date.now());
+    // The promoted turn started when the user queued it, not now — the wait
+    // behind the previous turn is part of what they experienced.
+    managed.turnStartedAt = managed.queuedFollowUpAt ?? managed.turnStartedAt;
     managed.hasStreamedResponseText = false;
     managed.resolvedModel = undefined;
   }
@@ -844,6 +847,7 @@ export function finalizeTurnResult(
   managed.turnErrorSurfaced = false;
 
   managed.firstContentAt = undefined;
+  managed.queuedFollowUpAt = undefined;
   if (!hasQueuedFollowUp) {
     managed.turnStartedAt = undefined;
   }
@@ -1802,7 +1806,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       return failure(`Failed to add follow-up: ${(error as Error).message}`);
     }
 
-    managed.turnStartedAt = Date.now();
+    managed.queuedFollowUpAt = Date.now();
 
     const mainWindow = deps.getMainWindow();
     emitAppEvent(mainWindow?.webContents, chatEvents.queued, {
@@ -1968,8 +1972,13 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     const mainWindow = deps.getMainWindow();
     const key = managed.key;
 
-    // Track latest SDK activity for idle-while-processing detection
-    managed.turn.noteActivity(Date.now());
+    // Two readers, one fact: the turn lifecycle uses it for idle-hang
+    // detection, and the cleanup tick reaps on `lastActivity`. Marking only at
+    // send time left a turn longer than the idle timeout already overdue the
+    // moment it settled, so the next tick disconnected the session.
+    const activityAt = Date.now();
+    managed.turn.noteActivity(activityAt);
+    managed.lastActivity = activityAt;
 
     // Note: Claude SDK session ID is captured in onReady callback and stored in chat_sessions table
 

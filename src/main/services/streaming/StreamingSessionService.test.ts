@@ -8,6 +8,7 @@ import {
   type StreamingSessionServiceDeps,
 } from './StreamingSessionService';
 import type * as SdkTypeGuardsModule from '../../claude/sdkTypeGuards';
+import type { PollContext, PollHandler } from '../core/PollScheduler';
 
 const { mockSessionInstances, mockSessionConfigs, mockSessionCounter, clearPendingDocumentContentCalls } = vi.hoisted(() => ({
   mockSessionConfigs: [] as Record<string, unknown>[],
@@ -354,6 +355,17 @@ function createDepsWithToolEvents(sendSpy: (channel: string, payload: unknown) =
     },
     emitFileDelete: (proposal: { projectId: string; chatSessionId?: string; path: string; isDirectory: boolean }) => {
       for (const callback of proposalSubscribers) callback({ type: 'file-delete', ...proposal });
+    },
+  };
+}
+
+/** Pins Date.now so a test can place a session's events on a chosen timeline. */
+function freezeClock(): { advance: (ms: number) => void } {
+  const clock = { now: Date.now() };
+  vi.spyOn(Date, 'now').mockImplementation(() => clock.now);
+  return {
+    advance: (ms: number) => {
+      clock.now += ms;
     },
   };
 }
@@ -1467,6 +1479,121 @@ it('surfaces max-token truncation after finalizing the partial response', async 
     });
     // Fallback continues the turn — must NOT raise an error banner.
     expect(sentEvents.some((e) => e.channel === 'chat:error')).toBe(false);
+  });
+
+  describe('idle reaping', () => {
+    // mainIdleTimeoutMs is 60s in this file's config mock.
+    const PAST_IDLE_TIMEOUT_MS = 61_000;
+
+    function createServiceWithCleanupTicks() {
+      const cleanupTicks: PollHandler[] = [];
+      const created = createStreamingSessionService({
+        ...createDeps(sendSpy),
+        scheduler: {
+          register: ({ handler }) => {
+            cleanupTicks.push(handler);
+          },
+          start: () => {},
+          unregister: () => {},
+        },
+      });
+      const tickContext: PollContext = {
+        taskId: 'chat-session-cleanup',
+        tickNumber: 1,
+        signal: new AbortController().signal,
+        logger: { info: () => {}, warn: () => {}, error: () => {} },
+      };
+      return { created, runCleanupTick: () => cleanupTicks[0]?.(tickContext) };
+    }
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('keeps a session whose turn ran longer than the idle timeout', async () => {
+      const clock = freezeClock();
+      const { created, runCleanupTick } = createServiceWithCleanupTicks();
+      service = created;
+
+      const sendResult = await service.sendChatMessage('project-1', 'hello', {
+        chatSessionId: 'chat-1',
+        model: 'sonnet',
+      });
+      expect(sendResult.ok).toBe(true);
+
+      clock.advance(PAST_IDLE_TIMEOUT_MS);
+      mockSessionInstances[0].emitMessage({ type: 'result' });
+
+      sentEvents.length = 0;
+      await runCleanupTick();
+
+      expect(sentEvents.some((e) => e.channel === 'chat:session-deactivated')).toBe(false);
+      expect(service.getActiveSessions('project-1')).toHaveLength(1);
+    });
+
+    it('disconnects a session idle since its last turn ended', async () => {
+      const clock = freezeClock();
+      const { created, runCleanupTick } = createServiceWithCleanupTicks();
+      service = created;
+
+      const sendResult = await service.sendChatMessage('project-1', 'hello', {
+        chatSessionId: 'chat-1',
+        model: 'sonnet',
+      });
+      expect(sendResult.ok).toBe(true);
+      mockSessionInstances[0].emitMessage({ type: 'result' });
+
+      clock.advance(PAST_IDLE_TIMEOUT_MS);
+      sentEvents.length = 0;
+      await runCleanupTick();
+
+      expect(sentEvents.some((e) => e.channel === 'chat:session-deactivated')).toBe(true);
+      expect(service.getActiveSessions('project-1')).toHaveLength(0);
+    });
+  });
+
+  describe('turn timings', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('measures a turn from its own start when a follow-up is interjected into it', async () => {
+      const clock = freezeClock();
+      const recordUsage = vi.fn();
+      service = createStreamingSessionService({ ...createDeps(sendSpy), recordUsage });
+
+      const firstSend = await service.sendChatMessage('project-1', 'first prompt', {
+        chatSessionId: 'chat-1',
+        model: 'sonnet',
+      });
+      expect(firstSend.ok).toBe(true);
+      const session = mockSessionInstances[0];
+
+      clock.advance(1_000);
+      session.emitMessage({
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'first token' }] },
+      });
+
+      clock.advance(2_000);
+      const interjected = await service.sendChatMessage('project-1', 'actually, also this', {
+        chatSessionId: 'chat-1',
+        model: 'sonnet',
+        clientMessageId: '66666666-6666-4666-8666-666666666666',
+      });
+      expect(interjected.ok).toBe(true);
+      // The SDK pulled the interjection into the turn already running rather
+      // than holding it for the next one.
+      session.steerPendingIntoCurrentTurn();
+
+      clock.advance(3_000);
+      session.emitMessage({ type: 'result', usage: { input_tokens: 10, output_tokens: 20 } });
+
+      expect(recordUsage).toHaveBeenCalledWith(expect.objectContaining({
+        ttftMs: 1_000,
+        durationMs: 6_000,
+      }));
+    });
   });
 });
 

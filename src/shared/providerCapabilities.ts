@@ -1,4 +1,4 @@
-import type { ChatEffortLevel, ChatProvider } from './types';
+import type { ChatChoiceEffort, ChatProvider } from './types';
 
 export interface ProviderCapabilities {
   sessionSummaries: boolean;
@@ -13,7 +13,7 @@ export interface ProviderCapabilities {
    */
   mcpSessionInspection: boolean;
   midSessionModelSwitch: boolean;
-  effortLevels: { levels: readonly ChatEffortLevel[] };
+  effortLevels: { levels: readonly ChatChoiceEffort[] };
   textDeltas: boolean;
   permissionPrompts: boolean;
   promptSuggestions: boolean;
@@ -42,7 +42,7 @@ export interface ProviderCapabilities {
   backgroundTaskReporting: boolean;
 }
 
-const CLAUDE_EFFORT_LEVELS = ['low', 'medium', 'high', 'max'] as const satisfies readonly ChatEffortLevel[];
+const CLAUDE_EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const satisfies readonly ChatChoiceEffort[];
 
 export const PROVIDER_CAPABILITIES = {
   claude: {

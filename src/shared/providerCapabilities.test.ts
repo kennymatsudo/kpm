@@ -38,7 +38,7 @@ describe('provider capabilities', () => {
     expect(claude.mcpServerManagement).toBe(true);
     expect(claude.permissionPrompts).toBe(true);
     expect(claude.promptSuggestions).toBe(true);
-    expect(claude.effortLevels.levels).toEqual(['low', 'medium', 'high', 'max']);
+    expect(claude.effortLevels.levels).toEqual(['low', 'medium', 'high', 'xhigh', 'max']);
   });
 
   it('is closed over the ChatProvider union at compile time', () => {

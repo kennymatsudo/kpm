@@ -105,7 +105,7 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
     getPlanItems: container.planItems.getByProject.bind(container.planItems),
     buildSdkOptions: (context: PlanContext, options: {
       model: ModelType;
-      effort?: 'low' | 'medium' | 'high' | 'max';
+      effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
       resumeSessionId?: string;
       mainWindow: BrowserWindow | null;
       chatSessionId?: string;

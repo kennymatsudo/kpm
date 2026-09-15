@@ -82,6 +82,13 @@ export interface ManagedSession {
    */
   turnErrorSurfaced?: boolean;
   turnStartedAt?: number;
+  /**
+   * When the follow-up waiting behind the in-flight turn was queued. Kept apart
+   * from `turnStartedAt` because the SDK may steer that message into the
+   * current turn instead of starting a new one, and the current turn's start
+   * must not move under it.
+   */
+  queuedFollowUpAt?: number;
   firstContentAt?: number;
   unsubscribeToolProposals: () => void;
 }
@@ -120,7 +127,7 @@ export type BuildClaudeSdkOptions = (
   context: PlanContext,
   options: {
     model: ModelType;
-    effort?: 'low' | 'medium' | 'high' | 'max';
+    effort?: ClaudeEffort;
     resumeSessionId?: string;
     mainWindow: BrowserWindow | null;
     chatSessionId?: string;
@@ -169,7 +176,7 @@ export const defaultChatSessionFactories: ChatSessionFactories = {
   pi: (config) => new PiChatSession(config),
 };
 
-const CLAUDE_EFFORT_LEVELS = ['low', 'medium', 'high', 'max'] as const;
+const CLAUDE_EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 const CODEX_EFFORT_LEVELS = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
 
 type ClaudeEffort = (typeof CLAUDE_EFFORT_LEVELS)[number];

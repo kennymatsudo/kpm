@@ -186,7 +186,7 @@ describe('buildChatSessionLaunch', () => {
       { effort: 'low', claude: 'low', codex: 'low' },
       { effort: 'medium', claude: 'medium', codex: 'medium' },
       { effort: 'high', claude: 'high', codex: 'high' },
-      { effort: 'xhigh', claude: undefined, codex: 'xhigh' },
+      { effort: 'xhigh', claude: 'xhigh', codex: 'xhigh' },
       { effort: 'max', claude: 'max', codex: 'max' },
     ];
 
