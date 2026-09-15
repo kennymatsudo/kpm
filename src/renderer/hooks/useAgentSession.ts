@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useDevSessionsStore } from '../stores/devSessions';
 import { getAgentActivities, getAgentState } from '../services/agentSessionService';
+import { isAgentActive } from '../../shared/agent-types';
 import type { AgentSessionState } from '../../shared/types';
 import type { AgentActivity, AgentQuestion, AgentCompletionSummary } from '../../shared/agent-types';
 import { createActivityFeed, type ActivityFeed } from '../components/board-view/activityPresentation';
@@ -19,7 +20,6 @@ export interface AgentSessionInfo {
   question: AgentQuestion | null | undefined;
   completionStats: AgentCompletionSummary | undefined;
   isActive: boolean;
-  isTerminal: boolean;
 }
 
 /** Stable identity for sessions with no recorded activities, so selectors don't mint a new feed every render. */
@@ -86,17 +86,13 @@ export function useAgentSession(devSessionId: string | null): AgentSessionInfo {
   }, [devSessionId, hydrateAgentSnapshot]);
 
   return useMemo(() => {
-    const isActive = agentState === 'starting' || agentState === 'working' || agentState === 'waiting_for_input';
-    const isTerminal = agentState === 'complete' || agentState === 'failed' || agentState === 'stopped';
-
     return {
       agentState,
       activityFeed,
       latestActivity,
       question,
       completionStats,
-      isActive,
-      isTerminal,
+      isActive: isAgentActive(agentState),
     };
   }, [agentState, activityFeed, latestActivity, question, completionStats]);
 }

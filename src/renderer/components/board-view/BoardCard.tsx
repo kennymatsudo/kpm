@@ -16,6 +16,7 @@ import { getStats } from '../development/reviewStats';
 import { resolveStatusCategory, STATUS_CATEGORY_CONFIG } from '../../constants/statusConfig';
 import { ACTIVE_SESSION_STATUSES, isLiveAutomationPhase, OPENABLE_SESSION_STATUSES } from '../../../shared/types';
 import type { PlanItem } from '../../../shared/types';
+import { isAgentActive } from '../../../shared/agent-types';
 import { resolveReviewRuntime } from './reviewSession';
 import { openExternalUrl } from '../../services/shellService';
 import { TrackerIcon, trackerLabelFor } from '../tracker/shared/trackerDisplay';
@@ -296,7 +297,7 @@ export const BoardCard = memo(function BoardCard({
   const isSessionStale =
     !!effectiveLatestActivity &&
     effectiveLatestActivity.status !== 'running' &&
-    (effectiveAgentState === 'starting' || effectiveAgentState === 'working' || effectiveAgentState === 'waiting_for_input') &&
+    isAgentActive(effectiveAgentState) &&
     Date.now() - effectiveLatestActivity.timestamp > STALE_ACTIVITY_MS;
   const visualState = getCardVisualState(panelStatus.phase, isSessionStale);
 

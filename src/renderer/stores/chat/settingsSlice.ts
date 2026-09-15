@@ -23,9 +23,9 @@ function clearPiRetry() {
 }
 
 export function createSettingsSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
-  | 'setTokens' | 'loadSlashCommands' | 'setSlashCommands' | 'setDefaultModel' | 'setDefaultEffort' | 'setModel' | 'setEffort'
-  | 'loadPiProviders' | 'setDefaultProvider' | 'setProvider' | 'setDefaultCodexModel' | 'setCodexModel'
-  | 'setDefaultPiProviderModel' | 'setPiProviderModel' | 'acknowledgeUnsafePiProvider'
+  | 'setTokens' | 'loadSlashCommands' | 'setSlashCommands' | 'setDefaultModel' | 'setDefaultEffort'
+  | 'loadPiProviders' | 'setDefaultProvider' | 'setDefaultCodexModel'
+  | 'setDefaultPiProviderModel' | 'acknowledgeUnsafePiProvider'
   | 'setChatChoice' | 'openChatChoice' | 'changeChatChoice'
 > {
   const rememberProvider = (provider: ChatState['provider']) => {
@@ -98,18 +98,6 @@ export function createSettingsSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
       set({ effort });
       void setSetting('chatEffort', effort);
     },
-    setModel: (chatSessionId, model) => {
-      const state = get();
-      const session = state.sessions.get(chatSessionId);
-      if (!session) return;
-      void changeChoice(chatSessionId, { type: 'choose_model', model });
-    },
-    setEffort: (chatSessionId, effort) => {
-      const state = get();
-      const session = state.sessions.get(chatSessionId);
-      if (!session) return;
-      void changeChoice(chatSessionId, { type: 'choose_effort', effort });
-    },
     loadPiProviders: async () => {
       const result = await getPiProviders();
       if (!result.success) return;
@@ -143,31 +131,13 @@ export function createSettingsSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
     setDefaultProvider: (provider) => {
       rememberProvider(provider);
     },
-    setProvider: (chatSessionId, provider) => {
-      const state = get();
-      const session = state.sessions.get(chatSessionId);
-      if (!session) return;
-      void changeChoice(chatSessionId, { type: 'choose_provider', provider });
-    },
     setDefaultCodexModel: (codexModel) => {
       set({ codexModel });
       void setSetting('chatCodexModel', codexModel);
     },
-    setCodexModel: (chatSessionId, codexModel) => {
-      const state = get();
-      const session = state.sessions.get(chatSessionId);
-      if (!session) return;
-      void changeChoice(chatSessionId, { type: 'choose_model', model: codexModel });
-    },
     setDefaultPiProviderModel: (piProviderModel) => {
       set({ piProviderModel });
       void setSetting('chatPiProviderModel', piProviderModel ?? null);
-    },
-    setPiProviderModel: (chatSessionId, piProviderModel) => {
-      const state = get();
-      const session = state.sessions.get(chatSessionId);
-      if (!session) return;
-      if (piProviderModel) void changeChoice(chatSessionId, { type: 'choose_model', model: piProviderModel });
     },
     acknowledgeUnsafePiProvider: async (provider) => {
       const state = get();

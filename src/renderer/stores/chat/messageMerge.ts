@@ -13,6 +13,14 @@ export interface IncomingAssistantTurn {
   segments: MessageSegment[];
   /** Turn-end timestamp, ms since epoch. */
   timestamp: number;
+  /**
+   * How long this turn alone took. It has to be measured by the caller: a
+   * merged message keeps the FIRST turn's `timestamp` forever, so deriving it
+   * here would report every later turn as the total elapsed since the card
+   * opened. Omit it when the turn's start is unknown (reloaded history) —
+   * showing no duration beats inventing one.
+   */
+  durationMs?: number;
   model?: string;
   interrupted?: boolean;
 }
@@ -51,7 +59,7 @@ export function mergeAssistantTurns(previous: Message | undefined, next: Incomin
     ...target,
     segments: [...target.segments, buildCheckpointSegment(target, next.timestamp), ...next.segments],
     model: next.model ?? target.model,
-    durationMs: Math.max(0, next.timestamp - target.timestamp.getTime()),
+    durationMs: next.durationMs,
     ...(next.interrupted ? { interrupted: true } : {}),
   };
 }

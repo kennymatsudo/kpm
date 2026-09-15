@@ -33,6 +33,7 @@ import {
   type DevSessionAutomationPhase,
   type StatusCategory,
 } from '../../../shared/types';
+import { isAgentActive } from '../../../shared/agent-types';
 import type { ReviewWorkFacts } from '../../../shared/reviewThreadSummary';
 import { isAddressingReview, selectReviewLadderRung } from '../development/reviewActions';
 
@@ -180,18 +181,14 @@ function plural(count: number, singular: string, pluralForm?: string): string {
   return count === 1 ? singular : pluralForm ?? `${singular}s`;
 }
 
-function isActive(state: AgentSessionState | undefined): boolean {
-  return state === 'starting' || state === 'working' || state === 'waiting_for_input';
-}
-
 function isAddressing(i: PanelStatusInputs): boolean {
   return i.reviewStats != null
-    ? isAddressingReview(i.reviewStats, i.automationPhase, isActive(i.implAgentState))
+    ? isAddressingReview(i.reviewStats, i.automationPhase, isAgentActive(i.implAgentState))
     : i.automationPhase === 'addressing_review';
 }
 
 function isReviewing(i: PanelStatusInputs): boolean {
-  return isActive(i.reviewAgentState) || i.automationPhase === 'reviewing';
+  return isAgentActive(i.reviewAgentState) || i.automationPhase === 'reviewing';
 }
 
 function hasReviewWork(s: ReviewWorkFacts, assessmentRunning: boolean): boolean {
@@ -386,7 +383,7 @@ export function derivePanelStatus(i: PanelStatusInputs): PanelStatus {
       tone: 'accent',
       busy: true,
       text: 'Fixing commit checks',
-      primary: isActive(i.implAgentState) ? { label: 'Stop', action: 'stop' } : undefined,
+      primary: isAgentActive(i.implAgentState) ? { label: 'Stop', action: 'stop' } : undefined,
     }, progressFor('Fixing commit checks', i));
   }
   if (isAddressing(i)) {

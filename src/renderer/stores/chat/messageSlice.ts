@@ -1,5 +1,5 @@
 import type { ChatState, ChatSet, ChatGet, Message, PerSessionState } from './types';
-import { createInitialPerSessionState, createInitialChatState } from './baseState';
+import { createInitialChatState } from './baseState';
 import { streamingBuffer } from './utils';
 import { applyStreamEvent } from './chatStreamReducer';
 
@@ -8,8 +8,9 @@ export function createMessageSlice(set: ChatSet, _get: ChatGet): Pick<ChatState,
 > {
   return {
     addUserMessage: (chatSessionId, content, attachments, options) => set((state) => {
-      const sessions = new Map(state.sessions);
-      const session = sessions.get(chatSessionId) ?? createInitialPerSessionState(state.nextSessionNumber);
+      const session = state.sessions.get(chatSessionId);
+      if (!session) return state;
+
       const isQueued = options?.queued ?? false;
 
       const newUserMessage: Message = {
@@ -34,12 +35,9 @@ export function createMessageSlice(set: ChatSet, _get: ChatGet): Pick<ChatState,
         ? sessionWithMessage
         : applyStreamEvent(sessionWithMessage, { type: 'user-message' });
 
+      const sessions = new Map(state.sessions);
       sessions.set(chatSessionId, nextSession);
-
-      return {
-        sessions,
-        nextSessionNumber: sessions.has(chatSessionId) ? state.nextSessionNumber : state.nextSessionNumber + 1,
-      };
+      return { sessions };
     }),
 
     clearQueuedFlag: (chatSessionId, clientMessageId) => set((state) => {
@@ -100,19 +98,7 @@ export function createMessageSlice(set: ChatSet, _get: ChatGet): Pick<ChatState,
     setDraftMessage: (chatSessionId, draftMessage) => set((state) => {
       const sessions = new Map(state.sessions);
       const session = sessions.get(chatSessionId);
-      if (!session) {
-        sessions.set(
-          chatSessionId,
-          {
-            ...createInitialPerSessionState(state.nextSessionNumber),
-            draftMessage,
-          }
-        );
-        return {
-          sessions,
-          nextSessionNumber: state.nextSessionNumber + 1,
-        };
-      }
+      if (!session) return state;
 
       sessions.set(chatSessionId, { ...session, draftMessage });
       return { sessions };
@@ -121,19 +107,7 @@ export function createMessageSlice(set: ChatSet, _get: ChatGet): Pick<ChatState,
     setPendingAttachments: (chatSessionId, pendingAttachments) => set((state) => {
       const sessions = new Map(state.sessions);
       const session = sessions.get(chatSessionId);
-      if (!session) {
-        sessions.set(
-          chatSessionId,
-          {
-            ...createInitialPerSessionState(state.nextSessionNumber),
-            pendingAttachments,
-          }
-        );
-        return {
-          sessions,
-          nextSessionNumber: state.nextSessionNumber + 1,
-        };
-      }
+      if (!session) return state;
 
       sessions.set(chatSessionId, { ...session, pendingAttachments });
       return { sessions };

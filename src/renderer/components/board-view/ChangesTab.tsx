@@ -7,6 +7,7 @@
 
 import { memo, useState, useCallback, useEffect, useMemo } from 'react';
 import { useDevSessionsStore } from '../../stores/devSessions';
+import { isAgentActive } from '../../../shared/agent-types';
 import type { BackgroundCommitState } from '../../stores/devSessions';
 import { getAgentCommitLog, getAgentCommitFiles } from '../../services/agentSessionService';
 import { copyToClipboard } from '../../utils/clipboard';
@@ -342,8 +343,7 @@ export const ChangesTab = memo(function ChangesTab({
   const [commits, setCommits] = useState<CommitEntry[]>([]);
   const [isLoadingCommits, setIsLoadingCommits] = useState(false);
 
-  const isAgentActive =
-    agentState === 'starting' || agentState === 'working' || agentState === 'waiting_for_input';
+  const isActive = isAgentActive(agentState);
   const isCommitting = commitState?.status === 'running';
   const commitError = commitState?.status === 'failed' ? commitState.error : null;
 
@@ -377,7 +377,7 @@ export const ChangesTab = memo(function ChangesTab({
   }, [loadCommits]);
 
   useEffect(() => {
-    if (!isAgentActive) {
+    if (!isActive) {
       return;
     }
 
@@ -388,16 +388,16 @@ export const ChangesTab = memo(function ChangesTab({
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [isAgentActive, sessionId, loadDiff]);
+  }, [isActive, sessionId, loadDiff]);
 
   useEffect(() => {
-    if (!agentState || isAgentActive) {
+    if (!agentState || isActive) {
       return;
     }
 
     void loadDiff(sessionId, { force: true });
     void loadCommits();
-  }, [agentState, isAgentActive, sessionId, loadDiff, loadCommits]);
+  }, [agentState, isActive, sessionId, loadDiff, loadCommits]);
 
   useEffect(() => {
     if (refreshToken === 0) {
@@ -513,7 +513,7 @@ export const ChangesTab = memo(function ChangesTab({
             )}
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            {onCommitOpen && !isAgentActive && !commitComposerOpen && (
+            {onCommitOpen && !isActive && !commitComposerOpen && (
               <button
                 onClick={onCommitOpen}
                 disabled={isCommitting}

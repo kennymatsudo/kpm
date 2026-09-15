@@ -40,12 +40,6 @@ describe('settingsSlice', () => {
     expect(store.getState().model).toBe('opus');
   });
 
-  it('does not turn a missing per-Chat selection into a default mutation', () => {
-    const store = createTestStore();
-    store.getState().setModel('missing-session', 'opus');
-    expect(store.getState().model).toBe('sonnet');
-  });
-
   it('persists a per-Chat model without mutating the global default', async () => {
     const api = installMockApi();
     const nextChoice = {

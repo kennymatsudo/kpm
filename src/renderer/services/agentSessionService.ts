@@ -60,9 +60,7 @@ export function respondToAgent(
   return window.api.agentSessions.respond(payload);
 }
 
-export function followUpAgent(
-  payload: { devSessionId: string; text: string },
-): Promise<{ success: boolean; error?: string }> {
+export function followUpAgent(payload: { devSessionId: string; text: string }) {
   return window.api.agentSessions.followUp(payload);
 }
 

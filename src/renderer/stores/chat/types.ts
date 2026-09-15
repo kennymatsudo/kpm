@@ -226,16 +226,11 @@ export interface ChatState {
   setSlashCommands: (commands: SlashCommandInfo[]) => void;
   setDefaultModel: (model: ClaudeModel) => void;
   setDefaultEffort: (effort: ChatEffortLevel) => void;
-  setModel: (chatSessionId: string, model: ClaudeModel) => void;
-  setEffort: (chatSessionId: string, effort: ChatEffortLevel) => void;
   /** Refresh the pi.dev provider/model list (cheap; called at boot and when the provider picker opens) */
   loadPiProviders: () => Promise<void>;
   setDefaultProvider: (provider: ChatProvider) => void;
-  setProvider: (chatSessionId: string, provider: ChatProvider) => void;
   setDefaultCodexModel: (codexModel: CodexChatModel) => void;
-  setCodexModel: (chatSessionId: string, codexModel: CodexChatModel) => void;
   setDefaultPiProviderModel: (piProviderModel: string | undefined) => void;
-  setPiProviderModel: (chatSessionId: string, piProviderModel: string | undefined) => void;
   /** Record that the user has accepted the one-time warning for an unsafe pi provider. Persisted so it's asked once. */
   acknowledgeUnsafePiProvider: (provider: string) => Promise<void>;
   reset: () => void;

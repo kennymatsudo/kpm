@@ -4,7 +4,7 @@
  */
 
 import { memo } from 'react';
-import type { AgentActivity } from '../../../shared/agent-types';
+import { isAgentActive, type AgentActivity } from '../../../shared/agent-types';
 import type { AgentSessionState } from '../../../shared/types';
 
 interface CardActivityLineProps {
@@ -78,9 +78,7 @@ export const CardActivityLine = memo(function CardActivityLine({
   phaseTone = 'neutral',
   phaseBusy = false,
 }: CardActivityLineProps) {
-  const isSessionLive =
-    !isSessionStale &&
-    (agentState === 'starting' || agentState === 'working' || agentState === 'waiting_for_input');
+  const isSessionLive = !isSessionStale && isAgentActive(agentState);
 
   // Failed state
   if (agentState === 'failed') {

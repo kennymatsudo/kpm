@@ -8,6 +8,7 @@
  */
 
 import { memo, useState, useEffect, useRef } from 'react';
+import { isAgentTerminal } from '../../../shared/agent-types';
 import type { DevSessionWithPlanItem, AgentSessionState } from '../../../shared/types';
 import type { BackgroundCommitState } from '../../stores/devSessions';
 import { Tooltip } from '../ui';
@@ -103,7 +104,7 @@ export const DetailPaneHeader = memo(function DetailPaneHeader({
   onCopyWorktree,
   onAddToContext,
 }: DetailPaneHeaderProps) {
-  const isTerminal = agentState === 'complete' || agentState === 'failed' || agentState === 'stopped';
+  const isTerminal = isAgentTerminal(agentState);
   const isCommitting = commitState?.status === 'running';
   const isInactiveSession = session.status === 'inactive';
   const hasPr = session.pr_number != null && !!session.pr_url;

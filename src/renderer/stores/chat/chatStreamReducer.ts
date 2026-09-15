@@ -291,7 +291,13 @@ function finalize(session: PerSessionState, options: FinalizeOptions | undefined
   const mergeTarget = baseMessages[baseMessages.length - 1];
   const mergedMessage = beforeClientMessageId
     ? null
-    : mergeAssistantTurns(mergeTarget, { segments: finalSegments, timestamp: now, model: displayModel, interrupted });
+    : mergeAssistantTurns(mergeTarget, {
+        segments: finalSegments,
+        timestamp: now,
+        model: displayModel,
+        interrupted,
+        ...(durationMs != null ? { durationMs } : {}),
+      });
 
   let nextMessages: Message[];
 

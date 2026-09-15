@@ -1,8 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createInitialPerSessionState } from './baseState';
 import { applyStreamEvent, isStreamStale } from './chatStreamReducer';
 import type { Activity } from '../../../shared/types';
 import type { Message } from './types';
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 function makeActivity(id: string, label: string): Activity {
   return { id, type: 'command', label };
@@ -247,6 +251,39 @@ describe('applyStreamEvent done: finalization', () => {
       expect.objectContaining({ type: 'checkpoint' }),
       { type: 'text', content: 'the research agent finished' },
     ]);
+  });
+
+  it('gives a merged turn its own duration, not the total elapsed since the card opened', () => {
+    vi.useFakeTimers();
+    const firstTurnEnd = new Date('2026-09-15T12:00:00Z').getTime();
+    vi.setSystemTime(firstTurnEnd);
+
+    const session = {
+      ...createInitialPerSessionState(1),
+      isStreaming: true,
+      streamStartedAt: firstTurnEnd - 5000,
+      streamingSegments: [{ type: 'text' as const, content: 'checking in on the background agent' }],
+      streamingContent: 'checking in on the background agent',
+    };
+
+    const afterFirst = applyStreamEvent(session, { type: 'done' });
+    expect(afterFirst.messages[0].durationMs).toBe(5000);
+
+    // A long idle gap between the turns: it belongs to neither turn's duration.
+    const secondTurnEnd = firstTurnEnd + 60_000;
+    vi.setSystemTime(secondTurnEnd);
+    const secondTurnStarted = {
+      ...afterFirst,
+      isStreaming: true,
+      streamStartedAt: secondTurnEnd - 2000,
+      streamingSegments: [{ type: 'text' as const, content: 'the research agent finished' }],
+      streamingContent: 'the research agent finished',
+    };
+
+    const merged = applyStreamEvent(secondTurnStarted, { type: 'done' }).messages[0];
+
+    expect(merged.durationMs).toBe(2000);
+    expect(merged.segments[1]).toEqual(expect.objectContaining({ type: 'checkpoint', durationMs: 5000 }));
   });
 
   it('does not merge into an interrupted message — interruption always forces a new bubble', () => {

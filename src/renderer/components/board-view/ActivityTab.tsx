@@ -1,5 +1,5 @@
 import { memo, useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import type { AgentActivity } from '../../../shared/agent-types';
+import { isAgentActive, type AgentActivity } from '../../../shared/agent-types';
 import type { AgentSessionState } from '../../../shared/types';
 import type { ActivityIconKind, ActivityPresentationEntry, ActivityPresentationGroup } from './activityPresentation';
 
@@ -95,7 +95,7 @@ export const ActivityTab = memo(function ActivityTab({ groups, agentState, sessi
   }, [totalItems]);
 
   if (groups.length === 0) {
-    const isActive = agentState === 'starting' || agentState === 'working' || agentState === 'waiting_for_input';
+    const isActive = isAgentActive(agentState);
     return <div className="flex flex-col items-center justify-center h-32 gap-2 text-text-muted">{isActive ? <><svg className="w-4 h-4 animate-spin text-accent" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" opacity="0.3" /><path d="M14 8a6 6 0 0 0-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg><span className="text-xs">{emptyActiveLabel ?? 'Working'}</span></> : <span className="text-xs">No activity recorded</span>}</div>;
   }
 

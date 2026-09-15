@@ -147,7 +147,14 @@ export const DetailChatInput = memo(forwardRef<DetailChatInputHandle, DetailChat
 
         toast.info(playbookSnapshot && currentStepId
           ? 'Playbook resumed'
-          : agentState === 'waiting_for_input' ? 'Sent response' : 'Sent follow-up');
+          : agentState === 'waiting_for_input'
+            ? 'Sent response'
+            // A restart means the live agent was killed and relaunched: its
+            // in-session context is gone, so say so rather than implying the
+            // follow-up landed in the conversation already running.
+            : 'restarted' in result && result.restarted
+              ? 'Agent restarted with your follow-up'
+              : 'Sent follow-up');
         setText('');
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'Failed to send message to agent');
