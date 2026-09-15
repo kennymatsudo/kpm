@@ -15,7 +15,13 @@ import { queueForTracker } from './OutboundChangePolicy';
 import { removePlanItem } from './PlanItemRemoval';
 import { assignItemToGroup } from './GroupAssignmentService';
 import { getConfig } from '../../config';
-import { findUnresolvedRefIds } from '../../../shared/planActionRefs';
+import {
+  collectRefIds,
+  findUnresolvedRefIds,
+  mintPlaceholderIds,
+  resolveActionRefs,
+  type MintedId,
+} from '../../../shared/planActionRefs';
 import {
   normalizeWorkBriefDraft,
   repositoryScopeFromPlanItem,
@@ -38,10 +44,11 @@ export interface PlanActionExecutorDeps {
 
 interface ExecutorContext {
   projectId: string;
-  idMap: Map<string, string>;
+  createdIds: Record<string, string>;
   skippedActions: { index: number; type: string; reason: string }[];
-  placeholderCounter: number;
   actionIndex: number;
+  /** Id minted for the action currently dispatching, when it creates one. */
+  mintedId: MintedId | null;
   /** Transaction-scoped cache for individual items to avoid repeated fetches */
   itemCache: Map<string, PlanItem>;
   singleProjectRepoId: string | null;
@@ -56,19 +63,15 @@ const defaultLogger: Logger = {
   warn: console.warn,
 };
 
-function resolveId(ctx: ExecutorContext, id: string | null | undefined): string | null {
-  if (!id) return null;
-  if (id.startsWith('$')) {
-    return ctx.idMap.get(id) || null;
-  }
-  return id;
-}
-
-function createId(ctx: ExecutorContext): string {
-  const id = randomUUID();
-  ctx.placeholderCounter++;
-  ctx.idMap.set(`$${ctx.placeholderCounter}`, id);
-  return id;
+/**
+ * Claim the id this batch minted for the creating action now dispatching, and
+ * publish its placeholder so callers can map `$N` to the persisted row.
+ */
+function takeMintedId(ctx: ExecutorContext): string {
+  const minted = ctx.mintedId;
+  if (!minted) throw new Error(`[PlanActionService] No id minted for action ${ctx.actionIndex}`);
+  ctx.createdIds[minted.placeholder] = minted.id;
+  return minted.id;
 }
 
 function skip(ctx: ExecutorContext, type: string, reason: string): void {
@@ -106,8 +109,7 @@ function executeCreateItem(
   ctx: ExecutorContext,
   action: Extract<PlanAction, { type: 'create_item' }>
 ): void {
-  const id = createId(ctx);
-  const parentId = resolveId(ctx, action.parent_id);
+  const id = takeMintedId(ctx);
   const workBrief = normalizeWorkBriefDraft({
     title: action.title,
     description: action.description ?? null,
@@ -125,8 +127,8 @@ function executeCreateItem(
     source_document_id: action.source_document_id ?? null,
     label: action.label || 'story',
     status_category: 'not_started',
-    parent_id: parentId,
-    item_order: ctx.deps.planItems.getNextOrder(ctx.projectId, parentId),
+    parent_id: action.parent_id,
+    item_order: ctx.deps.planItems.getNextOrder(ctx.projectId, action.parent_id),
   });
 
   const proposedAffected = action.affected_repo_ids ?? [];
@@ -159,13 +161,10 @@ function executeAddDependency(
   ctx: ExecutorContext,
   action: Extract<PlanAction, { type: 'add_dependency' }>
 ): void {
-  const fromId = resolveId(ctx, action.from_id) || action.from_id;
-  const toId = resolveId(ctx, action.to_id) || action.to_id;
-
   ctx.deps.planRelations.add({
     project_id: ctx.projectId,
-    from_item_id: fromId,
-    to_item_id: toId,
+    from_item_id: action.from_id,
+    to_item_id: action.to_id,
     relation_type: action.relation_type,
   });
 }
@@ -308,9 +307,6 @@ function executeQueueForTracker(
   ctx: ExecutorContext,
   action: Extract<PlanAction, { type: 'queue_for_tracker' }>
 ): void {
-  // Resolve any placeholder IDs
-  const resolvedIds = action.item_ids.map(id => resolveId(ctx, id) ?? id);
-
   const associations = ctx.deps.tracker.getAssociationsByProject(ctx.projectId);
 
   // Prefetch all queued items for this project once, then look up membership in
@@ -325,7 +321,7 @@ function executeQueueForTracker(
 
   const result = queueForTracker({
     projectId: ctx.projectId,
-    itemIds: resolvedIds,
+    itemIds: action.item_ids,
     queuedBy: 'claude',
     associations,
     alreadyQueuedItemIds,
@@ -355,8 +351,7 @@ function executeCreateGroup(
   ctx: ExecutorContext,
   action: Extract<PlanAction, { type: 'create_group' }>
 ): void {
-  // Use createId() to generate ID and track placeholder for dependent actions
-  const id = createId(ctx);
+  const id = takeMintedId(ctx);
   ctx.deps.groups.create(
     {
       project_id: action.project_id,
@@ -376,39 +371,32 @@ function executeUpdateGroup(
   ctx: ExecutorContext,
   action: Extract<PlanAction, { type: 'update_group' }>
 ): void {
-  // Resolve placeholder ID for group
-  const groupId = resolveId(ctx, action.group_id) ?? action.group_id;
-  const group = ctx.deps.groups.getById(groupId);
+  const group = ctx.deps.groups.getById(action.group_id);
   if (!group) {
-    skip(ctx, 'update_group', `Group not found: ${groupId}`);
+    skip(ctx, 'update_group', `Group not found: ${action.group_id}`);
     return;
   }
-  ctx.deps.groups.update(groupId, action.updates);
+  ctx.deps.groups.update(action.group_id, action.updates);
 }
 
 function executeDeleteGroup(
   ctx: ExecutorContext,
   action: Extract<PlanAction, { type: 'delete_group' }>
 ): void {
-  // Resolve placeholder ID for group
-  const groupId = resolveId(ctx, action.group_id) ?? action.group_id;
-  const group = ctx.deps.groups.getById(groupId);
+  const group = ctx.deps.groups.getById(action.group_id);
   if (!group) {
-    skip(ctx, 'delete_group', `Group not found: ${groupId}`);
+    skip(ctx, 'delete_group', `Group not found: ${action.group_id}`);
     return;
   }
-  // Note: Items in the group will have their group_id set to NULL via ON DELETE SET NULL
-  ctx.deps.groups.delete(groupId);
+  // Items in the group have their group_id set to NULL via ON DELETE SET NULL.
+  ctx.deps.groups.delete(action.group_id);
 }
 
 function executeAssignToGroup(
   ctx: ExecutorContext,
   action: Extract<PlanAction, { type: 'assign_to_group' }>
 ): void {
-  // Resolve placeholder IDs for both item and group
-  const itemId = resolveId(ctx, action.item_id) ?? action.item_id;
-  const groupId = resolveId(ctx, action.group_id);
-  const result = assignItemToGroup(itemId, groupId, {
+  const result = assignItemToGroup(action.item_id, action.group_id, {
     groups: ctx.deps.groups,
     planItems: ctx.deps.planItems,
   });
@@ -416,7 +404,42 @@ function executeAssignToGroup(
     skip(ctx, 'assign_to_group', result.error);
     return;
   }
-  invalidateItem(ctx, itemId);
+  invalidateItem(ctx, action.item_id);
+}
+
+type ReparentAction = Extract<PlanAction, { type: 'reparent' }>;
+interface ReparentUpdate { id: string; parentId: string | null }
+
+/**
+ * The parent move this reparent should make, or null when it must be skipped.
+ */
+function planReparent(ctx: ExecutorContext, action: ReparentAction): ReparentUpdate | null {
+  if (action.new_parent_id === action.item_id) {
+    skip(ctx, 'reparent', 'Cannot set item as its own parent');
+    return null;
+  }
+
+  const item = ctx.itemCache.get(action.item_id);
+  if (item?.external_parent_key && action.new_parent_id === null && item.parent_id) {
+    const currentParent = ctx.itemCache.get(item.parent_id);
+    if (currentParent?.external_key === item.external_parent_key) {
+      skip(ctx, 'reparent', 'Cannot un-nest Jira subtask from its Jira parent');
+      return null;
+    }
+  }
+
+  return { id: action.item_id, parentId: action.new_parent_id };
+}
+
+function executeReparent(
+  ctx: ExecutorContext,
+  action: Extract<PlanAction, { type: 'reparent' }>
+): void {
+  const update = planReparent(ctx, action);
+  if (!update) return;
+
+  ctx.deps.planItems.batchReparent([update]);
+  invalidateItem(ctx, update.id);
 }
 
 // =============================================================================
@@ -430,10 +453,9 @@ type ActionExecutor<T extends PlanAction['type']> = (
 
 /**
  * One entry per PlanAction type, keyed the same way as PLAN_ACTION_REGISTRY
- * (shared/planActionSchema.ts). `reparent` is a no-op here — it's executed
- * in the batched-reparent section above before this table is consulted.
- * The `Record<PlanAction['type'], ...>` key type means a new PlanAction
- * variant without an entry here is a compile error, not a runtime throw.
+ * (shared/planActionSchema.ts). The `Record<PlanAction['type'], ...>` key type
+ * means a new PlanAction variant without an entry here is a compile error,
+ * not a runtime throw.
  */
 const ACTION_EXECUTORS: { [T in PlanAction['type']]: ActionExecutor<T> } = {
   create_item: executeCreateItem,
@@ -452,74 +474,27 @@ const ACTION_EXECUTORS: { [T in PlanAction['type']]: ActionExecutor<T> } = {
   update_group: executeUpdateGroup,
   delete_group: executeDeleteGroup,
   assign_to_group: executeAssignToGroup,
-  reparent: () => {
-    // Already processed in the batched-reparent section before this table runs.
-  },
+  reparent: executeReparent,
 };
 
 // =============================================================================
 // Batch Execution Helpers
 // =============================================================================
 
-type ReparentAction = Extract<PlanAction, { type: 'reparent' }>;
+function referencesMintedId(action: PlanAction, mintedIds: ReadonlySet<string>): boolean {
+  for (const id of collectRefIds([action], 'planItem')) {
+    if (mintedIds.has(id)) return true;
+  }
+  return false;
+}
 
 /**
- * Collect all item IDs that will be accessed during action execution.
- * This allows pre-fetching them in a single query.
+ * Item ids the batch will read, from the ref descriptors. Ids this batch is
+ * about to mint are excluded — no row exists for them yet.
  */
-function collectItemIdsForPrefetch(actions: PlanAction[]): Set<string> {
-  const ids = new Set<string>();
-
-  for (const action of actions) {
-    switch (action.type) {
-      case 'reparent':
-        ids.add(action.item_id);
-        // Also need parent for Jira subtask validation
-        if (action.new_parent_id && !action.new_parent_id.startsWith('$')) {
-          ids.add(action.new_parent_id);
-        }
-        break;
-      case 'reorder':
-      case 'update_item':
-      case 'revise_work_brief':
-      case 'set_repo_targets':
-      case 'delete_item':
-      case 'set_label':
-      case 'set_release':
-      case 'set_position':
-        ids.add(action.item_id);
-        break;
-      case 'queue_for_tracker':
-        for (const id of action.item_ids) {
-          if (!id.startsWith('$')) ids.add(id);
-        }
-        break;
-      case 'assign_to_group':
-        // Skip placeholder IDs (items created in same batch)
-        if (!action.item_id.startsWith('$')) {
-          ids.add(action.item_id);
-        }
-        break;
-      // Group actions don't need item prefetch
-      case 'create_group':
-      case 'update_group':
-      case 'delete_group':
-        break;
-      // These actions are handled separately or don't need prefetch
-      case 'create_item':
-      case 'add_dependency':
-      case 'remove_dependency':
-        break;
-      default: {
-        const _exhaustive: never = action;
-        void _exhaustive;
-        throw new Error(
-          `[PlanActionService] Unhandled action type in collectItemIdsForPrefetch: ${(action as { type: string }).type}`
-        );
-      }
-    }
-  }
-
+function collectItemIdsForPrefetch(actions: PlanAction[], mintedIds: ReadonlySet<string>): Set<string> {
+  const ids = collectRefIds(actions, 'planItem');
+  for (const id of mintedIds) ids.delete(id);
   return ids;
 }
 
@@ -553,39 +528,17 @@ function prefetchItems(ctx: ExecutorContext, ids: Set<string>): void {
 
 /**
  * Validate and filter reparent actions, returning only the valid ones.
- * Returns an array of { action, index, update } for batch execution.
  */
 function validateReparentActions(
   ctx: ExecutorContext,
   actions: { action: ReparentAction; index: number }[]
-): { action: ReparentAction; index: number; update: { id: string; parentId: string | null } }[] {
-  const valid: { action: ReparentAction; index: number; update: { id: string; parentId: string | null } }[] = [];
+): ReparentUpdate[] {
+  const valid: ReparentUpdate[] = [];
 
   for (const { action, index } of actions) {
     ctx.actionIndex = index;
-    const newParentId = resolveId(ctx, action.new_parent_id);
-
-    // Validation: cannot set item as its own parent
-    if (newParentId === action.item_id) {
-      skip(ctx, 'reparent', 'Cannot set item as its own parent');
-      continue;
-    }
-
-    // Validation: prevent un-nesting Jira subtasks from their actual Jira parent
-    const item = ctx.itemCache.get(action.item_id);
-    if (item?.external_parent_key && newParentId === null && item.parent_id) {
-      const currentParent = ctx.itemCache.get(item.parent_id);
-      if (currentParent?.external_key === item.external_parent_key) {
-        skip(ctx, 'reparent', 'Cannot un-nest Jira subtask from its Jira parent');
-        continue;
-      }
-    }
-
-    valid.push({
-      action,
-      index,
-      update: { id: action.item_id, parentId: newParentId },
-    });
+    const update = planReparent(ctx, action);
+    if (update) valid.push(update);
   }
 
   return valid;
@@ -594,17 +547,11 @@ function validateReparentActions(
 /**
  * Execute reparent actions in batch using the optimized batchReparent method.
  */
-function executeBatchReparent(
-  ctx: ExecutorContext,
-  validActions: { update: { id: string; parentId: string | null } }[]
-): void {
-  if (validActions.length === 0) return;
+function executeBatchReparent(ctx: ExecutorContext, updates: ReparentUpdate[]): void {
+  if (updates.length === 0) return;
 
-  const updates = validActions.map(v => v.update);
   ctx.deps.planItems.batchReparent(updates);
-
-  // Invalidate all modified items from cache
-  for (const { update } of validActions) {
+  for (const update of updates) {
     invalidateItem(ctx, update.id);
   }
 }
@@ -625,10 +572,10 @@ export function createPlanActionExecutor(deps: PlanActionExecutorDeps) {
 
   const createContext = (projectId: string, projectRepoIds: Set<string>): ExecutorContext => ({
     projectId,
-    idMap: new Map<string, string>(),
+    createdIds: {},
     skippedActions: [],
-    placeholderCounter: 0,
     actionIndex: 0,
+    mintedId: null,
     itemCache: new Map<string, PlanItem>(),
     singleProjectRepoId: projectRepoIds.size === 1 ? [...projectRepoIds][0] : null,
     deps,
@@ -652,9 +599,13 @@ export function createPlanActionExecutor(deps: PlanActionExecutorDeps) {
 
   /**
    * Execute a batch of plan actions in a single transaction.
-   * Optimizations:
-   * - Pre-fetches all needed items in one query
-   * - Batches reparent operations using prepared statement
+   *
+   * Ids are minted for the batch's creating actions up front, so every `$N` is
+   * rewritten to a real id before any executor runs and no executor has to
+   * know that placeholders exist. Reparents are batched into one prepared
+   * statement, except those pointing at an entity this batch creates — those
+   * must run in order, after the create.
+   *
    * Returns a result with created IDs mapped from placeholders ($1, $2, etc.)
    */
   function execute(projectId: string, actions: PlanAction[]): PlanActionResult {
@@ -679,26 +630,33 @@ export function createPlanActionExecutor(deps: PlanActionExecutorDeps) {
     }
 
     const ctx = createContext(projectId, projectRepoIds);
+    const minted = mintPlaceholderIds(actions, randomUUID);
+    const mintedIds = new Set([...minted.byActionIndex.values()].map((entry) => entry.id));
 
-    // Separate reparent actions for batch optimization
     const reparentActions: { action: ReparentAction; index: number }[] = [];
     const otherActions: { action: PlanAction; index: number }[] = [];
+    const resolvedActions: PlanAction[] = [];
 
-    for (let i = 0; i < actions.length; i++) {
-      const action = actions[i];
-      if (action.type === 'reparent') {
-        reparentActions.push({ action, index: i });
-      } else {
-        otherActions.push({ action, index: i });
+    actions.forEach((action, index) => {
+      const resolution = resolveActionRefs(action, minted.byPlaceholder);
+      if (resolution.status === 'unresolved') {
+        ctx.actionIndex = index;
+        skip(ctx, action.type, resolution.reason);
+        return;
       }
-    }
+      const resolved = resolution.action;
+      resolvedActions.push(resolved);
+      if (resolved.type === 'reparent' && !referencesMintedId(resolved, mintedIds)) {
+        reparentActions.push({ action: resolved, index });
+      } else {
+        otherActions.push({ action: resolved, index });
+      }
+    });
 
     // Pre-fetch all items that will be accessed (outside transaction for read)
-    const itemIds = collectItemIdsForPrefetch(actions);
-    prefetchItems(ctx, itemIds);
+    prefetchItems(ctx, collectItemIdsForPrefetch(resolvedActions, mintedIds));
 
     const transaction = deps.database.transaction(() => {
-      // Execute batch reparent if we have multiple reparent actions
       if (reparentActions.length > 0) {
         const validReparents = validateReparentActions(ctx, reparentActions);
         if (validReparents.length > 0) {
@@ -710,6 +668,7 @@ export function createPlanActionExecutor(deps: PlanActionExecutorDeps) {
       // Execute other actions individually (maintaining original order)
       for (const { action, index } of otherActions) {
         ctx.actionIndex = index;
+        ctx.mintedId = minted.byActionIndex.get(index) ?? null;
         const executor = ACTION_EXECUTORS[action.type] as ActionExecutor<typeof action.type>;
         executor(ctx, action);
       }
@@ -717,10 +676,6 @@ export function createPlanActionExecutor(deps: PlanActionExecutorDeps) {
 
     try {
       transaction();
-      const createdIds: Record<string, string> = {};
-      ctx.idMap.forEach((value, key) => {
-        createdIds[key] = value;
-      });
 
       if (ctx.skippedActions.length > 0) {
         logger.warn(`[PlanActionService] ${ctx.skippedActions.length} action(s) skipped:`, ctx.skippedActions);
@@ -728,7 +683,7 @@ export function createPlanActionExecutor(deps: PlanActionExecutorDeps) {
 
       return {
         success: true,
-        createdIds,
+        createdIds: ctx.createdIds,
         skippedActions: ctx.skippedActions.length > 0 ? ctx.skippedActions : undefined,
       };
     } catch (error) {

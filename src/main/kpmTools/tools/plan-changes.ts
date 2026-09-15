@@ -147,7 +147,7 @@ Group actions (visual containers):
 - update_group: { "type": "update_group", "group_id": "...", "updates": { "name": "New Name" } }
 - delete_group: { "type": "delete_group", "group_id": "..." }
 
-Placeholder references: Use $1, $2 etc. to reference entities created earlier in the same batch. Example: first action creates a group, $1 is that group's ID for subsequent assign_to_group actions.
+Placeholder references: $1, $2 etc. stand for the entities this batch creates, numbered by the order of the create_item/create_group actions. They are valid in every field that takes an item or group ID. A placeholder naming no create in the batch is reported back as a skipped action.
 
 Full create_item example (implementation item):
 {
@@ -175,7 +175,7 @@ Exploratory item example (no criteria yet):
   "parent_id": null
 }
 
-Hierarchy and Groups: follow **Plan Structure** in the system prompt. A placeholder ($1, $2) is a valid \`parent_id\` when the parent is created in the same batch; every other \`parent_id\` must be an ID resolved from a query tool.`,
+Hierarchy and Groups: follow **Plan Structure** in the system prompt. Every ID that is not a placeholder must be resolved from a query tool.`,
       {
         message: z.string().describe('Brief description of the proposed changes'),
         actions: z.array(planActionSchema).describe('The plan actions to propose'),

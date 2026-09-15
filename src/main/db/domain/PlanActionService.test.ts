@@ -40,8 +40,13 @@ function makeItem(overrides: Partial<PlanItem> & { id: string }): PlanItem {
  * better-sqlite3 — so the executor's catch/rollback path is exercised without a
  * real database.
  */
-function createHarness(seed: PlanItem[] = [], connectedRepoIds: string[] = []) {
+function createHarness(
+  seed: PlanItem[] = [],
+  connectedRepoIds: string[] = [],
+  trackerAssociations: { id: string }[] = [],
+) {
   const store = new Map<string, PlanItem>(seed.map((item) => [item.id, item]));
+  const groupStore = new Map<string, { id: string; project_id: string }>();
 
   const add = vi.fn((item: PlanItem) => {
     store.set(item.id, makeItem(item));
@@ -82,6 +87,12 @@ function createHarness(seed: PlanItem[] = [], connectedRepoIds: string[] = []) {
     }
   });
   const relationAdd = vi.fn((relation: unknown) => relation);
+  const groupCreate = vi.fn((group: { project_id: string }, id: string) => {
+    groupStore.set(id, { ...group, id });
+  });
+  const groupUpdate = vi.fn();
+  const groupDelete = vi.fn((id: string) => groupStore.delete(id));
+  const outboundAdd = vi.fn();
   const queueTrackerUpdateIfNeeded = vi.fn();
   const getDescendantIds = vi.fn(() => [] as string[]);
   const deleteWithDescendants = vi.fn();
@@ -119,13 +130,19 @@ function createHarness(seed: PlanItem[] = [], connectedRepoIds: string[] = []) {
     planItems: planItems as unknown as PlanActionExecutorDeps['planItems'],
     planRelations: { add: relationAdd, remove: vi.fn() } as unknown as PlanActionExecutorDeps['planRelations'],
     groups: {
-      create: vi.fn(),
-      getById: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
+      create: groupCreate,
+      getById: (id: string) => groupStore.get(id),
+      update: groupUpdate,
+      delete: groupDelete,
     } as unknown as PlanActionExecutorDeps['groups'],
-    tracker: { getAssociationsByProject: vi.fn(() => []) } as unknown as PlanActionExecutorDeps['tracker'],
-    outboundChanges: { getByProject: vi.fn(() => []), getByAssociation: vi.fn(() => []), addDelete } as unknown as PlanActionExecutorDeps['outboundChanges'],
+    tracker: { getAssociationsByProject: vi.fn(() => trackerAssociations) } as unknown as PlanActionExecutorDeps['tracker'],
+    outboundChanges: {
+      getByProject: vi.fn(() => []),
+      getByAssociation: vi.fn(() => []),
+      add: outboundAdd,
+      updateStatusCategory: vi.fn(),
+      addDelete,
+    } as unknown as PlanActionExecutorDeps['outboundChanges'],
     repos: {
       getByProject: vi.fn(() => connectedRepoIds.map((id) => ({ id, project_id: PROJECT_ID, path: `/tmp/${id}` }))),
     },
@@ -133,12 +150,223 @@ function createHarness(seed: PlanItem[] = [], connectedRepoIds: string[] = []) {
     logger: { log: vi.fn(), warn: vi.fn() },
   };
 
-  return { deps, store, spies: { add, setRepositoryTargets, compareAndReviseWorkBrief, update, del, deleteWithDescendants, updatePosition, batchReparent, relationAdd, addDelete, queueTrackerUpdateIfNeeded } };
+  return {
+    deps,
+    store,
+    spies: {
+      add, setRepositoryTargets, compareAndReviseWorkBrief, update, del, deleteWithDescendants,
+      updatePosition, batchReparent, relationAdd, addDelete, queueTrackerUpdateIfNeeded,
+      groupCreate, groupUpdate, groupDelete, outboundAdd,
+    },
+  };
 }
 
 function run(deps: PlanActionExecutorDeps, actions: PlanAction[]) {
   return createPlanActionExecutor(deps).execute(PROJECT_ID, actions);
 }
+
+type HarnessSpies = ReturnType<typeof createHarness>['spies'];
+
+interface PlaceholderCase {
+  name: string;
+  /** The action that mints `$1`. */
+  creator: PlanAction;
+  seed?: PlanItem[];
+  connectedRepoIds?: string[];
+  trackerAssociations?: { id: string }[];
+  action: (ref: string) => PlanAction;
+  expectResolved: (spies: HarnessSpies, createdId: string) => void;
+}
+
+const CREATE_ITEM: PlanAction = { type: 'create_item', title: 'Parent', parent_id: null };
+const CREATE_GROUP: PlanAction = {
+  type: 'create_group', project_id: PROJECT_ID, name: 'Must Do',
+  position_x: 0, position_y: 0, width: 552, height: 300,
+};
+
+const PLACEHOLDER_CASES: PlaceholderCase[] = [
+  {
+    name: 'create_item.parent_id',
+    creator: CREATE_ITEM,
+    action: (ref) => ({ type: 'create_item', title: 'Child', parent_id: ref }),
+    expectResolved: (spies, createdId) => {
+      expect(spies.add).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Child', parent_id: createdId }),
+      );
+    },
+  },
+  {
+    name: 'reparent.item_id',
+    creator: CREATE_ITEM,
+    action: (ref) => ({ type: 'reparent', item_id: ref, new_parent_id: null }),
+    expectResolved: (spies, createdId) => {
+      expect(spies.batchReparent).toHaveBeenCalledWith([{ id: createdId, parentId: null }]);
+    },
+  },
+  {
+    name: 'set_label.item_id',
+    creator: CREATE_ITEM,
+    action: (ref) => ({ type: 'set_label', item_id: ref, label: 'epic' }),
+    expectResolved: (spies, createdId) => {
+      expect(spies.update).toHaveBeenCalledWith(createdId, { label: 'epic' });
+    },
+  },
+  {
+    name: 'set_release.item_id',
+    creator: CREATE_ITEM,
+    action: (ref) => ({ type: 'set_release', item_id: ref, release_tag: 'v1' }),
+    expectResolved: (spies, createdId) => {
+      expect(spies.update).toHaveBeenCalledWith(createdId, { release_tag: 'v1' });
+    },
+  },
+  {
+    name: 'add_dependency.from_id',
+    creator: CREATE_ITEM,
+    action: (ref) => ({ type: 'add_dependency', from_id: ref, to_id: 'existing-2', relation_type: 'blocks' }),
+    expectResolved: (spies, createdId) => {
+      expect(spies.relationAdd).toHaveBeenCalledWith(
+        expect.objectContaining({ from_item_id: createdId, to_item_id: 'existing-2', relation_type: 'blocks' }),
+      );
+    },
+  },
+  {
+    name: 'reorder.item_id',
+    creator: CREATE_ITEM,
+    action: (ref) => ({ type: 'reorder', item_id: ref, after_item_id: null }),
+    expectResolved: (spies, createdId) => {
+      expect(spies.update).toHaveBeenCalledWith(createdId, { item_order: 0 });
+    },
+  },
+  {
+    name: 'update_item.item_id',
+    creator: CREATE_ITEM,
+    action: (ref) => ({ type: 'update_item', item_id: ref, updates: { status_category: 'in_progress' } }),
+    expectResolved: (spies, createdId) => {
+      expect(spies.update).toHaveBeenCalledWith(createdId, { status_category: 'in_progress' });
+    },
+  },
+  {
+    name: 'revise_work_brief.item_id',
+    creator: CREATE_ITEM,
+    action: (ref) => ({
+      type: 'revise_work_brief', item_id: ref, expected_revision: 1,
+      work_brief: { title: 'Revised', description: null, intent: null, acceptance_criteria: [] },
+    }),
+    expectResolved: (spies, createdId) => {
+      expect(spies.compareAndReviseWorkBrief).toHaveBeenCalledWith(
+        createdId, 1, expect.objectContaining({ title: 'Revised' }),
+      );
+    },
+  },
+  {
+    name: 'set_repo_targets.item_id',
+    creator: CREATE_ITEM,
+    connectedRepoIds: ['repo-a', 'repo-b'],
+    action: (ref) => ({
+      type: 'set_repo_targets', item_id: ref,
+      repository_scope: { primary_repo_id: 'repo-a', affected_repo_ids: [] },
+    }),
+    expectResolved: (spies, createdId) => {
+      expect(spies.setRepositoryTargets).toHaveBeenCalledWith(createdId, 'repo-a', []);
+    },
+  },
+  {
+    name: 'delete_item.item_id',
+    creator: CREATE_ITEM,
+    action: (ref) => ({ type: 'delete_item', item_id: ref }),
+    expectResolved: (spies, createdId) => {
+      expect(spies.del).toHaveBeenCalledWith(createdId);
+    },
+  },
+  {
+    name: 'set_position.item_id',
+    creator: CREATE_ITEM,
+    action: (ref) => ({ type: 'set_position', item_id: ref, x: 12, y: 34 }),
+    expectResolved: (spies, createdId) => {
+      expect(spies.updatePosition).toHaveBeenCalledWith(createdId, 12, 34);
+    },
+  },
+  {
+    name: 'queue_for_tracker.item_ids',
+    creator: CREATE_ITEM,
+    trackerAssociations: [{ id: 'assoc-1' }],
+    action: (ref) => ({ type: 'queue_for_tracker', item_ids: [ref] }),
+    expectResolved: (spies, createdId) => {
+      expect(spies.outboundAdd).toHaveBeenCalledWith(
+        expect.objectContaining({ plan_item_id: createdId, association_id: 'assoc-1' }),
+      );
+    },
+  },
+  {
+    name: 'assign_to_group.item_id',
+    creator: CREATE_ITEM,
+    action: (ref) => ({ type: 'assign_to_group', item_id: ref, group_id: null }),
+    expectResolved: (spies, createdId) => {
+      expect(spies.update).toHaveBeenCalledWith(
+        createdId, { group_id: null, position_x: null, position_y: null },
+      );
+    },
+  },
+  {
+    name: 'assign_to_group.group_id',
+    creator: CREATE_GROUP,
+    seed: [makeItem({ id: 'a' })],
+    action: (ref) => ({ type: 'assign_to_group', item_id: 'a', group_id: ref }),
+    expectResolved: (spies, createdId) => {
+      expect(spies.update).toHaveBeenCalledWith(
+        'a', { group_id: createdId, position_x: null, position_y: null },
+      );
+    },
+  },
+  {
+    name: 'update_group.group_id',
+    creator: CREATE_GROUP,
+    action: (ref) => ({ type: 'update_group', group_id: ref, updates: { name: 'Renamed' } }),
+    expectResolved: (spies, createdId) => {
+      expect(spies.groupUpdate).toHaveBeenCalledWith(createdId, { name: 'Renamed' });
+    },
+  },
+  {
+    name: 'delete_group.group_id',
+    creator: CREATE_GROUP,
+    action: (ref) => ({ type: 'delete_group', group_id: ref }),
+    expectResolved: (spies, createdId) => {
+      expect(spies.groupDelete).toHaveBeenCalledWith(createdId);
+    },
+  },
+];
+
+describe.each(PLACEHOLDER_CASES)('placeholder refs in $name', (testCase) => {
+  const harnessFor = () => createHarness(
+    testCase.seed ?? [],
+    testCase.connectedRepoIds ?? [],
+    testCase.trackerAssociations ?? [],
+  );
+
+  it('resolves to the entity created earlier in the same batch', () => {
+    const { deps, spies } = harnessFor();
+
+    const result = run(deps, [testCase.creator, testCase.action('$1')]);
+
+    expect(result.error).toBeUndefined();
+    expect(result.skippedActions).toBeUndefined();
+    const createdId = result.createdIds?.$1;
+    expect(createdId).toBeTruthy();
+    testCase.expectResolved(spies, createdId!);
+  });
+
+  it('reports a skip when the placeholder names nothing in the batch', () => {
+    const { deps } = harnessFor();
+    const action = testCase.action('$9');
+
+    const result = run(deps, [action]);
+
+    expect(result.success).toBe(true);
+    expect(result.skippedActions).toEqual([
+      { index: 0, type: action.type, reason: expect.stringMatching(/^Unresolved placeholder \$9 in /) },
+    ]);
+  });
+});
 
 describe('createPlanActionExecutor', () => {
   it('creates an item, defaulting the label to "story" when none is given', () => {
@@ -198,22 +426,6 @@ describe('createPlanActionExecutor', () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain('repo-other');
     expect(spies.add).not.toHaveBeenCalled();
-  });
-
-  it('resolves a $-placeholder id from an earlier create in the same batch', () => {
-    const { deps, spies } = createHarness();
-
-    const result = run(deps, [
-      { type: 'create_item', title: 'Parent', parent_id: null },
-      { type: 'add_dependency', from_id: '$1', to_id: 'existing-2', relation_type: 'blocks' },
-    ]);
-
-    expect(result.success).toBe(true);
-    const createdId = result.createdIds?.$1;
-    expect(createdId).toBeTruthy();
-    expect(spies.relationAdd).toHaveBeenCalledWith(
-      expect.objectContaining({ from_item_id: createdId, to_item_id: 'existing-2', relation_type: 'blocks' }),
-    );
   });
 
   it('queues a tracker update when an existing item is updated', () => {
@@ -396,6 +608,17 @@ describe('createPlanActionExecutor', () => {
 
     expect(result.success).toBe(false);
     expect(spies.setRepositoryTargets).not.toHaveBeenCalled();
+  });
+
+  it('reports a skip for a placeholder in a field that never accepts one', () => {
+    const { deps } = createHarness();
+
+    const result = run(deps, [{ type: 'remove_dependency', relation_id: '$1' }]);
+
+    expect(result.success).toBe(true);
+    expect(result.skippedActions).toEqual([
+      { index: 0, type: 'remove_dependency', reason: 'relation_id does not accept a placeholder: $1' },
+    ]);
   });
 
   it('returns a failure (not a throw) when the transaction body throws', () => {
