@@ -13,10 +13,11 @@ import type { AgentSessionManager, AgentSessionManagerDeps } from './AgentSessio
 import { launchPlaybookSubagent } from './autoReview';
 import { createPlaybookRoundStore, type RunGroup } from './playbookRoundStore';
 import { listBoardProviders as detectBoardProviders } from './boardProviderRegistry';
-import type { ServiceResult } from '../result';
+import { failure, type ServiceResult } from '../result';
 import { effectivePhase, type AutomationPhaseMachine } from './automationPhaseMachine';
-import { playbookForSession, resolveCursorStep, stepById } from './sessionPlaybook';
+import { playbookForSession, phaseForPlaybookStep, resolveCursorStep, stepById } from './sessionPlaybook';
 import { createPlaybookStepRunner } from './playbookStepRunner';
+import { runMainStep, type TurnReentry } from './mainStepTurn';
 
 const LOG_PREFIX = '[BoardAgentOrchestrator]';
 const WORKTREE_MODIFIED_NOTICE_KEY = '__harness_worktree_modified';
@@ -31,7 +32,7 @@ type DevSessionAutomationService = Pick<
   | 'requestCommitHookRepair'
 > & Partial<Pick<
   DevSessionService,
-  'savePlaybookOutputs' | 'reconcileWorkBrief' | 'syncWorkBriefSnapshot'
+  'savePlaybookOutputs' | 'reconcileWorkBrief' | 'syncWorkBriefSnapshot' | 'startAgentSession'
 >>;
 type ReviewQueueService = Pick<ReviewService, 'flushQueuedReviewTasks'>;
 
@@ -169,9 +170,22 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
     saveOutputs: (id, value) => { deps.getDevSessionService()?.savePlaybookOutputs?.(id, value); },
   });
 
-  const phaseForPlaybookStep = (step: PlaybookStep) => step.session === 'subagent'
-    ? 'reviewing' as const
-    : 'addressing_review' as const;
+  const mainStepTurnDeps = {
+    getPromptContent: deps.getPromptContent,
+    getSkillBody: deps.getSkillBody,
+    sendAgentFollowUp: (sessionId: string, text: string, options: { restartAs: TurnReentry }) => {
+      const service = deps.getDevSessionService();
+      return service
+        ? service.sendAgentFollowUp(sessionId, text, options)
+        : Promise.resolve(failure('Dev session service is unavailable'));
+    },
+    startAgentSession: (sessionId: string, options: { prompt: string }) => {
+      const service = deps.getDevSessionService();
+      return service?.startAgentSession
+        ? service.startAgentSession(sessionId, options)
+        : Promise.resolve(failure('Dev session service is unavailable'));
+    },
+  };
 
   async function dispatchStep(
     session: DevSession,
@@ -202,26 +216,24 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
 
     if (step.session === 'main') {
       const provider = providers.find((entry) => entry.id === plan.main?.provider);
-      const skill = step.directive.kind === 'skill' && !provider?.capabilities.nativeSkills
-        ? deps.getSkillBody?.(step.directive.name)
-        : null;
-      if (skill && !skill.ok) {
-        deps.phaseMachine.transition(session.id, { type: 'automationFailed', reason: `skill-unavailable:${step.id}` });
+      if (!provider) {
+        deps.phaseMachine.transition(session.id, { type: 'automationFailed', reason: `provider-unavailable:${step.id}` });
         return;
       }
       const hasWorktreeNotice = Boolean(sessionOutputs[WORKTREE_MODIFIED_NOTICE_KEY]?.length);
-      const prompt = renderPlaybookDirective(step, sessionOutputs, {
-        nativeSkills: provider?.capabilities.nativeSkills ?? false,
-        taskContext: '',
-        promptContent: deps.getPromptContent,
-        skillBody: skill?.ok ? skill.data : null,
+      const result = await runMainStep(mainStepTurnDeps, {
+        session,
+        step,
+        provider,
+        outputs: sessionOutputs,
         findings: formatFindings(findings),
         resumeNote,
-        harnessNote: hasWorktreeNotice ? WORKTREE_MODIFIED_NOTE : null,
+        ...(hasWorktreeNotice ? { harnessNote: WORKTREE_MODIFIED_NOTE } : {}),
       });
-      const result = await deps.getDevSessionService()?.sendAgentFollowUp(session.id, prompt || `Continue with playbook step: ${step.id}`);
-      if (!result?.ok) {
+      if (!result.ok) {
         deps.phaseMachine.transition(session.id, { type: 'automationFailed', reason: 'follow-up-send-failed' });
+      } else if (result.data.status === 'blocked') {
+        deps.phaseMachine.transition(session.id, { type: 'automationFailed', reason: result.data.reason });
       } else if (hasWorktreeNotice) {
         delete sessionOutputs[WORKTREE_MODIFIED_NOTICE_KEY];
         rounds.persistOutputs(session, sessionOutputs);

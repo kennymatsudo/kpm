@@ -531,8 +531,18 @@ describe('BoardAgentOrchestrator', () => {
 
     expect(session.current_step_id).toBe('address');
     expect(getPromptContent).toHaveBeenCalledWith('agents.review_assessment');
-    expect(sendAgentFollowUp).toHaveBeenCalledWith(session.id, expect.stringContaining('Assess these findings:'));
-    expect(sendAgentFollowUp).toHaveBeenCalledWith(session.id, expect.stringContaining('[warning] src/app.ts:1'));
+    expect(sendAgentFollowUp).toHaveBeenCalledWith(
+      session.id,
+      expect.stringContaining('Assess these findings:'),
+      // The built-in address step names no role prompt of its own, so the
+      // restart falls back to the playbook's first main step.
+      { restartAs: { systemPromptKey: undefined, phase: 'addressing_review' } },
+    );
+    expect(sendAgentFollowUp).toHaveBeenCalledWith(
+      session.id,
+      expect.stringContaining('[warning] src/app.ts:1'),
+      expect.anything(),
+    );
   });
 
   it('treats a follow-up at a snapshotted terminal cursor as ad-hoc instead of restarting step one', async () => {
@@ -666,7 +676,11 @@ describe('BoardAgentOrchestrator', () => {
       directive: expect.stringContaining('Do not create commits'),
       writes: true,
     }));
-    expect(sendAgentFollowUp).toHaveBeenCalledWith(session.id, expect.stringContaining('Another agent modified the worktree'));
+    expect(sendAgentFollowUp).toHaveBeenCalledWith(
+      session.id,
+      expect.stringContaining('Another agent modified the worktree'),
+      expect.anything(),
+    );
     expect(persistedOutputs.at(-1)).not.toContain('__harness_worktree_modified');
   });
 
@@ -716,8 +730,16 @@ describe('BoardAgentOrchestrator', () => {
       `${session.id}-playbook-critics-0-0`, `${session.id}-playbook-critics-0-1`,
     ]);
     expect(launchPlaybookSubagent).not.toHaveBeenCalled();
-    expect(sendAgentFollowUp).toHaveBeenCalledWith(session.id, expect.stringContaining('first persisted output'));
-    expect(sendAgentFollowUp).toHaveBeenCalledWith(session.id, expect.stringContaining('second persisted output'));
+    expect(sendAgentFollowUp).toHaveBeenCalledWith(
+      session.id,
+      expect.stringContaining('first persisted output'),
+      expect.anything(),
+    );
+    expect(sendAgentFollowUp).toHaveBeenCalledWith(
+      session.id,
+      expect.stringContaining('second persisted output'),
+      expect.anything(),
+    );
     expect(session.step_pass_counts).toBe('{"critics":0}');
   });
 

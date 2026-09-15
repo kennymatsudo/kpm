@@ -117,6 +117,8 @@ Every injected turn goes through `harnessTurn.ts` (`requestHarnessTurn` for a tu
 
 Some turns the harness injects are not declared by any playbook — an ad-hoc review launched from the board, and a PR-review follow-up. Those are declared once as standalone `PlaybookStep` values (`AD_HOC_REVIEW_STEP`, `PR_REVIEW_FOLLOWUP_STEP` in `src/shared/playbooks.ts`) and resolved by `resolveHarnessStep` / `resolveCursorStep`. They are deliberately **not** members of any playbook's `steps` array: `advancePlaybook` completes the run for a step id it cannot find in the playbook, which is what makes an injected turn end at its terminal instead of restarting the playbook from step one. An ad-hoc review on a playbook that already has a findings-producing review step resolves to that step instead, so it routes to that playbook's address step exactly as the automated path does.
 
+A main step's turn goes through `mainStepTurn.ts`, which is also where the choice between continuing the loaded agent and starting a new one lives. Eviction makes the restart routine, so a restarted turn re-enters at its own step: `sendAgentFollowUp`'s `restartAs` carries that step's `systemPromptKey` and live phase into `startAgentSession`, instead of the run reopening at step one's role prompt and `idle` (where a crash never reaches `needs_attention`). A step that declares no `systemPromptKey` of its own still falls back to the playbook's first main step.
+
 ### Implementation completion
 
 When the implementation session completes:
@@ -165,6 +167,8 @@ The board workflow still uses opposing-agent review, but it is largely internal:
 | `gemini` | `claude` |
 | `pi` | `claude` |
 
+`launchAutoReview` substitutes providers (an unavailable or unauthenticated opponent falls back to Claude) while `launchPlaybookSubagent` refuses one and fails the step — deliberately: the opposing reviewer is a harness heuristic whose only promise is that someone independent reads the diff, whereas a playbook step names the reviewer the user configured, and a playbook expresses its own fallbacks through its candidate chain.
+
 Review results are persisted in `agent_review_runs` / `agent_review_findings`, keyed to the implementation session (not only the `-review` session id). Used for restart-safe audit and stale review detection; not the primary board interaction model.
 
 ### Review diff
@@ -197,6 +201,7 @@ If a session was destroyed rather than stopped, the old worktree is gone and KPM
 | `src/main/services/agents/AgentSessionManager.ts` | session registry, event wiring, review persistence, 30 min TTL eviction |
 | `src/main/services/agents/PiSdkAgentSession.ts` | Pi SDK board adapter, model selection, worktree tools, usage, and activity mapping |
 | `src/main/services/agents/autoReview.ts` | one-shot opposing review launch; accepts `baseBranch` and the `stepId` its completion resolves back to |
+| `src/main/services/agents/mainStepTurn.ts` | one turn of a main playbook step: directive, that step's role prompt, and follow-up vs restart at the same cursor and phase |
 | `src/main/services/agents/harnessTurn.ts` | injected turns the playbook never declared: cursor discipline, deferral, and the one failure reason they land on |
 | `src/main/services/agents/sessionPlaybook.ts` | session snapshot → `Playbook`, and persisted cursor → step (`resolveCursorStep`, `resolveHarnessStep`) |
 | `src/main/services/agents/reviewOutputContract.ts` | `REVIEW_FINDINGS_SCHEMA`, `parseReviewFindings`, `deriveReviewOutcome` — the shared review-output contract every adapter's `getResult()` parses through |

@@ -22,6 +22,7 @@ import { failure, success, type AsyncResult, type ServiceResult } from '../resul
 import {
   isCommitHookRepairPhase,
   type DevSession,
+  type DevSessionAutomationPhase,
   type DevSessionStatus,
   type DevSessionWithPlanItem,
   type AgentEffortLevel,
@@ -52,9 +53,10 @@ import {
 import { FollowUpNotAllowedError } from '../agents/BaseAgentSession';
 import type { AutomationPhaseMachine } from '../agents/automationPhaseMachine';
 import { requestHarnessTurn } from '../agents/harnessTurn';
+import { runMainStep, type TurnReentry } from '../agents/mainStepTurn';
 import type { PlaybookService } from '../core/PlaybookService';
 import { parsePlaybook, type BoardProvider, type Playbook } from '../../../shared/playbooks';
-import { BOARD_AGENT_WRITE_POLICY, renderPlaybookDirective, resolvePlaybookPlan } from '../../../shared/playbookRuntime';
+import { BOARD_AGENT_WRITE_POLICY, resolvePlaybookPlan } from '../../../shared/playbookRuntime';
 import { renderBranchName } from '../../../shared/branchNaming';
 import { getSetting, getDefaultModel } from '../../db/appSettingsAccess';
 import {
@@ -130,6 +132,17 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
       phaseMachine: deps.phaseMachine,
       sendAgentFollowUp: (id: string, text: string, options: { restartIfBusy: false }) =>
         service.sendAgentFollowUp(id, text, options),
+    };
+  }
+
+  function mainStepTurnDeps() {
+    return {
+      getPromptContent: deps.getPromptContent,
+      getSkillBody: deps.getSkillBody,
+      sendAgentFollowUp: (id: string, text: string, options: { restartAs: TurnReentry }) =>
+        service.sendAgentFollowUp(id, text, options),
+      startAgentSession: (id: string, options: { prompt: string }) =>
+        service.startAgentSession(id, options),
     };
   }
 
@@ -506,28 +519,25 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
       const augmentedPrompt = service.buildPlanRefSection(projectId, baseAugmented) + baseAugmented;
       const firstStep = playbook.steps.find((step) => step.session === 'main') ?? playbook.steps[0];
       const provider = providers.find((entry) => entry.id === resolvedPlan.main!.provider)!;
-      const skillBody = firstStep.directive.kind === 'skill' && !provider.capabilities.nativeSkills
-        ? deps.getSkillBody(firstStep.directive.name)
-        : null;
-      if (skillBody && !skillBody.ok) return failure(skillBody.error);
-      const stepPrompt = renderPlaybookDirective(firstStep, {}, {
-        nativeSkills: provider.capabilities.nativeSkills,
-        taskContext: augmentedPrompt,
-        promptContent: deps.getPromptContent,
-        skillBody: skillBody?.ok ? skillBody.data : null,
-        harnessNote: BOARD_AGENT_WRITE_POLICY,
+      const session = persisted ?? deps.devSessions.get(sessionId)!;
+      const turnResult = await runMainStep(mainStepTurnDeps(), {
+        session,
+        step: firstStep,
+        provider,
+        launch: {
+          taskContext: augmentedPrompt,
+          model: resolvedPlan.main.model,
+          effort: resolvedPlan.main.effort ?? input.effort,
+          environmentMode: input.environmentMode,
+        },
       });
+      if (!turnResult.ok) return failure(turnResult.error);
+      if (turnResult.data.status === 'blocked') return failure(turnResult.data.message);
 
-      const startResult = await service.startAgentSession(sessionId, {
-        prompt: stepPrompt,
-        effort: resolvedPlan.main.effort ?? input.effort,
-        environmentMode: input.environmentMode,
-        model: resolvedPlan.main.model,
-      });
-      if (startResult.ok && reusableWorkBriefUpdate) {
+      if (reusableWorkBriefUpdate) {
         persistWorkBriefUpdate(sessionId, reusableWorkBriefUpdate);
       }
-      return startResult;
+      return success({ session: deps.devSessions.get(sessionId) ?? session });
     },
 
     /**
@@ -636,6 +646,10 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         effort?: AgentEffortLevel;
         environmentMode?: RepoEnvironmentMode;
         model?: string;
+        /** Role prompt for the step this turn runs, instead of the playbook's first main step. */
+        systemPromptKey?: string;
+        /** Phase to re-enter at; omitted when the start begins a run rather than resuming one. */
+        resumePhase?: DevSessionAutomationPhase;
       },
     ): AsyncResult<{ session: DevSession }> {
       try {
@@ -704,11 +718,16 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         const prompt = options?.prompt || session.initial_instructions;
 
         deps.agentReviews.markLatestCompletedStale(sessionId);
-        deps.phaseMachine.transition(sessionId, { type: 'sessionStarted' });
+        deps.phaseMachine.transition(sessionId, {
+          type: 'sessionStarted',
+          ...(options?.resumePhase ? { phase: options.resumePhase } : {}),
+        });
 
         const sessionPlaybook = playbookFromSnapshot(session);
         const firstMainStep = sessionPlaybook?.steps.find((step) => step.session === 'main');
-        const roleSystemPrompt = deps.getPromptContent(firstMainStep?.systemPromptKey ?? 'agents.implementation_system');
+        const roleSystemPrompt = deps.getPromptContent(
+          options?.systemPromptKey ?? firstMainStep?.systemPromptKey ?? 'agents.implementation_system',
+        );
 
         const { session: agentSession, providerPrompt } = await createBoardAgentSession({
           sessionId,
@@ -754,7 +773,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
     async sendAgentFollowUp(
       sessionId: string,
       text: string,
-      options?: { restartIfBusy?: boolean },
+      options?: { restartIfBusy?: boolean; restartAs?: TurnReentry },
     ): AsyncResult<{ restarted: boolean; deferred?: boolean }> {
       try {
         if (!deps.agentSessionManager) {
@@ -812,7 +831,11 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           followUpText,
         ].join('\n');
 
-        const startResult = await service.startAgentSession(sessionId, { prompt: restartPrompt });
+        const startResult = await service.startAgentSession(sessionId, {
+          prompt: restartPrompt,
+          systemPromptKey: options?.restartAs?.systemPromptKey,
+          resumePhase: options?.restartAs?.phase,
+        });
         if (!startResult.ok) {
           return failure(startResult.error);
         }

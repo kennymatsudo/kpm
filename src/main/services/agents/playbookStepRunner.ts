@@ -5,7 +5,7 @@ import type { DevSession } from '../../../shared/types';
 import type { PlanService } from '../core/PlanService';
 import type { ReviewService } from '../repo/ReviewService';
 import type { AutomationPhaseMachine } from './automationPhaseMachine';
-import { stepById } from './sessionPlaybook';
+import { phaseForPlaybookStep, stepById } from './sessionPlaybook';
 
 interface DevSessionLookup {
   get(id: string): DevSession | undefined;
@@ -36,10 +36,6 @@ interface PlaybookStepRunnerDeps {
  * Keeping those decisions together makes restart ordering testable at one seam.
  */
 export function createPlaybookStepRunner(deps: PlaybookStepRunnerDeps) {
-  const phaseForStep = (step: PlaybookStep) => step.session === 'subagent'
-    ? 'reviewing' as const
-    : 'addressing_review' as const;
-
   function movePlanItemToReview(sessionId: string): void {
     const sessions = deps.getDevSessionService();
     const session = sessions?.get(sessionId);
@@ -101,7 +97,7 @@ export function createPlaybookStepRunner(deps: PlaybookStepRunnerDeps) {
       type: 'stepCompleted',
       stepId: step.id,
       nextStepId: advance.stepId,
-      nextPhase: next ? phaseForStep(next) : undefined,
+      nextPhase: next ? phaseForPlaybookStep(next) : undefined,
       stepPassCounts: advance.passCounts,
     });
     if (!next) {

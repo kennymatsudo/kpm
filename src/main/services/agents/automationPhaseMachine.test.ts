@@ -105,6 +105,12 @@ describe('automationPhaseMachine.transition', () => {
     });
   });
 
+  it('sessionStarted re-enters a named phase instead of dropping the run to idle', () => {
+    expect(transitionFrom('addressing_review', { type: 'sessionStarted' })).toBe('idle');
+    expect(transitionFrom('addressing_review', { type: 'sessionStarted', phase: 'addressing_review' }))
+      .toBe('addressing_review');
+  });
+
   it.each(['idle', 'reviewing'] satisfies DevSessionAutomationPhase[])(
     'prReviewThreadsQueued moves %s to addressing_review',
     (phase) => {

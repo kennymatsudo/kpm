@@ -6,7 +6,7 @@ import {
   type Playbook,
   type PlaybookStep,
 } from '../../../shared/playbooks';
-import type { DevSession } from '../../../shared/types';
+import type { DevSession, DevSessionAutomationPhase } from '../../../shared/types';
 
 const LOG_PREFIX = '[sessionPlaybook]';
 
@@ -24,6 +24,14 @@ export function playbookForSession(session: DevSession): Playbook {
     }
   }
   return DEFAULT_PLAYBOOK;
+}
+
+/**
+ * The live phase a step runs under. A main step occupies the implementation
+ * agent; a subagent step runs beside it.
+ */
+export function phaseForPlaybookStep(step: PlaybookStep): DevSessionAutomationPhase {
+  return step.session === 'subagent' ? 'reviewing' : 'addressing_review';
 }
 
 export function stepById(playbook: Playbook, stepId: string): PlaybookStep | undefined {

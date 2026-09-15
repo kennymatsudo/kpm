@@ -181,6 +181,40 @@ describe('DevSessionService.sendAgentFollowUp', () => {
     }));
   });
 
+  it('restarts into the playbook step the caller named, not the first main step', async () => {
+    const followUp = vi.fn().mockRejectedValue(new Error('No SDK session to resume — session may have been cleaned up'));
+    const session = {
+      id: 'session-1',
+      status: 'inactive',
+      automation_phase: 'addressing_review',
+      current_step_id: 'address',
+      initial_instructions: 'Original task',
+    };
+    const startAgentSession = vi.fn().mockResolvedValue({ ok: true, data: { session } });
+
+    const service = createDevSessionService({
+      agentReviews: { markLatestCompletedStale: vi.fn() },
+      agentSessionManager: {
+        getByDevSession: vi.fn(() => ({ followUp })),
+      },
+      devSessions: {
+        get: vi.fn(() => session),
+        updateStatus: vi.fn(),
+      },
+    } as never);
+
+    (service as unknown as { startAgentSession: typeof startAgentSession }).startAgentSession = startAgentSession;
+
+    await service.sendAgentFollowUp('session-1', 'address the findings', {
+      restartAs: { systemPromptKey: 'agents.review_assessment_role', phase: 'addressing_review' },
+    });
+
+    expect(startAgentSession).toHaveBeenCalledWith('session-1', expect.objectContaining({
+      systemPromptKey: 'agents.review_assessment_role',
+      resumePhase: 'addressing_review',
+    }));
+  });
+
   it('prepends and persists a changed Work Brief before a follow-up turn', async () => {
     const session = {
       id: 'session-1',
