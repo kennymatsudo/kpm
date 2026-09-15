@@ -154,7 +154,7 @@ function createHarness(
     deps,
     store,
     spies: {
-      add, setRepositoryTargets, compareAndReviseWorkBrief, update, del, deleteWithDescendants,
+      add, setRepositoryTargets, compareAndReviseWorkBrief, update, del, deleteWithDescendants, getDescendantIds,
       updatePosition, batchReparent, relationAdd, addDelete, queueTrackerUpdateIfNeeded,
       groupCreate, groupUpdate, groupDelete, outboundAdd,
     },
@@ -500,6 +500,23 @@ describe('createPlanActionExecutor', () => {
     expect(result.skippedActions).toEqual([
       { index: 0, type: 'delete_item', reason: 'Item not found: ghost' },
     ]);
+  });
+
+  it('orphans descendants by default and removes the subtree when the action asks to cascade', () => {
+    const parent = makeItem({ id: 'parent' });
+    const child = makeItem({ id: 'child', parent_id: 'parent' });
+
+    const orphaning = createHarness([parent, child]);
+    orphaning.spies.getDescendantIds.mockReturnValue(['child']);
+    expect(run(orphaning.deps, [{ type: 'delete_item', item_id: 'parent' }]).success).toBe(true);
+    expect(orphaning.spies.del).toHaveBeenCalledWith('parent');
+    expect(orphaning.spies.deleteWithDescendants).not.toHaveBeenCalled();
+
+    const cascading = createHarness([parent, child]);
+    cascading.spies.getDescendantIds.mockReturnValue(['child']);
+    expect(run(cascading.deps, [{ type: 'delete_item', item_id: 'parent', cascade: true }]).success).toBe(true);
+    expect(cascading.spies.deleteWithDescendants).toHaveBeenCalledWith('parent');
+    expect(cascading.spies.del).not.toHaveBeenCalled();
   });
 
   it('stages a tracker deletion when Claude deletes a linked item', () => {

@@ -55,13 +55,16 @@ export function useBulkActions({
 
   // Delete selected items and all their descendants
   const handleBulkDeleteAll = useCallback(() => {
-    const allIds = new Set([...selectedItemIds, ...descendantIds]);
-    const deleteActions: PlanAction[] = Array.from(allIds).map(id => ({
+    // One cascading delete per selected item. Listing the descendants as
+    // their own actions would delete them twice over: the cascade takes them
+    // first, and the follow-up action then reports the item as already gone.
+    const deleteActions: PlanAction[] = Array.from(selectedItemIds).map(id => ({
       type: 'delete_item' as const,
       item_id: id,
+      cascade: true,
     }));
     return runBulkDelete(deleteActions);
-  }, [selectedItemIds, descendantIds, runBulkDelete]);
+  }, [selectedItemIds, runBulkDelete]);
 
   return {
     showBulkDeleteDialog,

@@ -136,6 +136,8 @@ export const PLAN_ACTION_REGISTRY = {
   delete_item: action(z.object({
     type: z.literal('delete_item'),
     item_id: z.string(),
+    /** Absent means orphan the descendants, matching the canvas delete dialog's default button. */
+    cascade: z.boolean().optional(),
   }), { refs: [itemRef('item_id')] }),
   set_position: action(z.object({
     type: z.literal('set_position'),
@@ -187,3 +189,32 @@ const planActionVariants = Object.values(PLAN_ACTION_REGISTRY).map((entry) => en
 export const planActionSchema = z.discriminatedUnion('type', planActionVariants);
 
 export type PlanAction = z.infer<typeof planActionSchema>;
+
+function collectRepoTargetIds(action: PlanAction): string[] {
+  const repoIds = action.type === 'create_item'
+    ? [action.primary_repo_id, ...(action.affected_repo_ids ?? [])]
+    : action.type === 'set_repo_targets'
+      ? [action.repository_scope.primary_repo_id, ...action.repository_scope.affected_repo_ids]
+      : [];
+  return repoIds.filter((repoId): repoId is string => Boolean(repoId));
+}
+
+/**
+ * Targeted repo ids the project isn't connected to, deduplicated.
+ *
+ * Repo ids are references like the entity ids in `refs`, but they point at
+ * rows outside the batch, so placeholder resolution has nothing to say about
+ * them. Both the propose-time gate in the `modify_plan` tool and the
+ * apply-time gate in `PlanActionService` ask here, because an action one
+ * accepts and the other rejects aborts a whole batch after the turn ended.
+ */
+export function findUnconnectedRepoTargetIds(
+  actions: PlanAction[],
+  connectedRepoIds: ReadonlySet<string>,
+): string[] {
+  const targeted = new Set<string>();
+  for (const action of actions) {
+    for (const repoId of collectRepoTargetIds(action)) targeted.add(repoId);
+  }
+  return [...targeted].filter((repoId) => !connectedRepoIds.has(repoId));
+}

@@ -596,7 +596,7 @@ describe('plan item tools', () => {
       expect(result.skippedJiraSubtasks).toBe(1);
     });
 
-    it('delete emits delete_item actions for selected ids and reports descendant total', async () => {
+    it('delete emits cascading delete_item actions for selected ids and reports descendant total', async () => {
       insertItem(db, { id: 'parent' });
       insertItem(db, { id: 'child', parentId: 'parent' });
       insertItem(db, { id: 'grandchild', parentId: 'child' });
@@ -610,7 +610,7 @@ describe('plan item tools', () => {
       );
 
       const actions = onPlanActions.mock.calls[0][0] as PlanAction[];
-      expect(actions).toEqual([{ type: 'delete_item', item_id: 'parent' }]);
+      expect(actions).toEqual([{ type: 'delete_item', item_id: 'parent', cascade: true }]);
       expect(result.totalAffected).toBe(3);
     });
 

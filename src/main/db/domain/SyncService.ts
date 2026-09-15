@@ -101,6 +101,7 @@ export function createSyncService(deps: SyncServiceDeps) {
         // New item - label not set, we use external_issue_type directly
         preview.new_items.push({
           external_key: issue.key,
+          external_id: issue.id,
           title: issue.title,
           description: issue.description,
           tracker_state,
@@ -252,6 +253,7 @@ export function createSyncService(deps: SyncServiceDeps) {
           title: item.title,
           description: item.description,
           external_key: item.external_key,
+          external_id: item.external_id,
           external_type: preview.tracker_type,
           external_issue_type: item.external_issue_type,
           external_status: item.external_status,

@@ -200,6 +200,43 @@ describe('KpmToolRuntime', () => {
     expect(onPlanActions).not.toHaveBeenCalled();
   });
 
+  it('rejects a set_repo_targets naming a repo the project is not connected to', async () => {
+    const onPlanActions = vi.fn();
+    const connectedRepoId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const runtime = new KpmToolRuntime(() => [
+      makeToolGroup({
+        tools: createPlanChangeTools(
+          onPlanActions,
+          { getByProject: () => [{ id: connectedRepoId, project_id: 'project-1', path: '/tmp/repo' }] },
+          { getByProject: () => [] },
+        ),
+      }),
+    ]);
+
+    const result = await runtime.executeTool({
+      name: 'modify_plan',
+      args: {
+        message: 'Retarget an item',
+        actions: [{
+          type: 'set_repo_targets',
+          item_id: 'df2a7f51-4c7d-4e15-9d84-f88e0b816c1e',
+          repository_scope: {
+            primary_repo_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+            affected_repo_ids: [],
+          },
+        }],
+      },
+      projectId: 'project-1',
+      chatSessionId: 'chat-1',
+      scope: 'main',
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('Expected repo target validation to fail');
+    expect(result.message).toContain('not connected');
+    expect(onPlanActions).not.toHaveBeenCalled();
+  });
+
   it('rejects @plan refs to plan items that do not exist in the project', async () => {
     const onPlanActions = vi.fn();
     const existingItemId = 'df2a7f51-4c7d-4e15-9d84-f88e0b816c1e';

@@ -23,6 +23,9 @@ export function DeleteItemDetail({ action, planItems }: DeleteItemDetailProps) {
 
   // Find all descendants
   const descendants = findDescendants(action.item_id, planItems);
+  const cascades = action.cascade === true;
+  const childCount = descendants.length;
+  const plural = childCount !== 1 ? 's' : '';
 
   return (
     <div className="space-y-4">
@@ -58,7 +61,9 @@ export function DeleteItemDetail({ action, planItems }: DeleteItemDetailProps) {
             </svg>
             <div>
               <p className="text-xs font-medium text-warning">
-                This will also delete {descendants.length} child item{descendants.length !== 1 ? 's' : ''}
+                {cascades
+                  ? `This will also delete ${childCount} child item${plural}`
+                  : `${childCount} child item${plural} will stay on the canvas as root item${plural}`}
               </p>
               <ul className="mt-2 space-y-1">
                 {descendants.slice(0, 5).map((child) => (
@@ -81,7 +86,9 @@ export function DeleteItemDetail({ action, planItems }: DeleteItemDetailProps) {
       {/* Danger zone notice */}
       <div className="p-3 rounded-lg bg-danger/5 border border-danger/15">
         <p className="text-xs text-danger/80">
-          This action cannot be undone. The item and all its children will be permanently removed.
+          {cascades
+            ? 'This action cannot be undone. The item and all its children will be permanently removed.'
+            : 'This action cannot be undone. The item will be permanently removed.'}
         </p>
       </div>
     </div>

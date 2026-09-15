@@ -9,7 +9,7 @@
  */
 
 import { z } from 'zod';
-import { planActionSchema } from '../../../shared/planActionSchema';
+import { findUnconnectedRepoTargetIds, planActionSchema } from '../../../shared/planActionSchema';
 import { findUnresolvedRefIds } from '../../../shared/planActionRefs';
 import type { PlanAction } from '../../../shared/types';
 import type { IRepoRepository } from '../../db/interfaces';
@@ -30,31 +30,24 @@ function normalizeRepoTargets(
   const connectedRepoIds = new Set(connectedRepos.map((repo) => repo.id));
   const soleRepoId = connectedRepos.length === 1 ? connectedRepos[0].id : null;
 
-  const normalized: PlanAction[] = [];
-  for (const action of actions) {
-    if (action.type !== 'create_item') {
-      normalized.push(action);
-      continue;
-    }
+  const normalized: PlanAction[] = actions.map((action) => {
+    if (action.type !== 'create_item') return action;
 
     const primaryRepoId = action.primary_repo_id ?? soleRepoId;
-    const affectedRepoIds = [...new Set(action.affected_repo_ids ?? [])]
-      .filter((repoId) => repoId !== primaryRepoId);
-    const proposedRepoIds = [primaryRepoId, ...affectedRepoIds]
-      .filter((repoId): repoId is string => Boolean(repoId));
-    const invalidRepoIds = proposedRepoIds.filter((repoId) => !connectedRepoIds.has(repoId));
-    if (invalidRepoIds.length > 0) {
-      return {
-        actions,
-        error: `Repo target is not connected to this project: ${[...new Set(invalidRepoIds)].join(', ')}`,
-      };
-    }
-
-    normalized.push({
+    return {
       ...action,
       primary_repo_id: primaryRepoId,
-      affected_repo_ids: affectedRepoIds,
-    });
+      affected_repo_ids: [...new Set(action.affected_repo_ids ?? [])]
+        .filter((repoId) => repoId !== primaryRepoId),
+    };
+  });
+
+  const invalidRepoIds = findUnconnectedRepoTargetIds(normalized, connectedRepoIds);
+  if (invalidRepoIds.length > 0) {
+    return {
+      actions,
+      error: `Repo target is not connected to this project: ${invalidRepoIds.join(', ')}`,
+    };
   }
 
   return { actions: normalized };
@@ -137,7 +130,8 @@ Item actions:
   - Replaces the complete Repository Scope. Use only connected repo IDs from Project Context.
 - update_item: { "type": "update_item", "item_id": "...", "updates": { "status_category": "done" } }
   - update_item is only for non-brief metadata such as status_category, label, release_tag, and source_document_id.
-- delete_item: { "type": "delete_item", "item_id": "..." }
+- delete_item: { "type": "delete_item", "item_id": "...", "cascade": false }
+  - cascade true deletes the whole subtree; false (the default) deletes only this item and leaves its children as root items.
 - reparent: { "type": "reparent", "item_id": "...", "new_parent_id": "..." }
 - add_dependency: { "type": "add_dependency", "from_id": "...", "to_id": "..." }
 

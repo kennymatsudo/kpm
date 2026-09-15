@@ -7,7 +7,12 @@ import type { Database, Statement } from 'better-sqlite3';
 import { randomUUID } from 'crypto';
 import type { PlanItem } from '../../../../shared/types';
 import { isSubtaskIssueType } from '../../../../shared/types';
-import type { IExternalPlanItemRepository, IPlanItemRepository } from '../../interfaces';
+import type {
+  ExternalIssueFields,
+  IExternalPlanItemRepository,
+  ImportedIssueFields,
+  IPlanItemRepository,
+} from '../../interfaces';
 
 /**
  * Safely parse JSON code_refs. Returns null on parse failure.
@@ -31,9 +36,77 @@ function rowToPlanItem(row: Record<string, unknown>): PlanItem {
   } as PlanItem;
 }
 
+/** One issue plus the two values the repository decides per row. */
+type ExternalItemInsert = ExternalIssueFields & { id: string; item_order: number };
+
+type ExternalItemColumn = { column: string; unlinksTo?: string } & (
+  | { bind: (item: ExternalItemInsert) => unknown }
+  /** Written by SQL rather than a bind, so the value never round-trips through JS. */
+  | { insertSql: string }
+);
+
+/**
+ * Every column an externally-sourced plan item is created with, in bind order,
+ * and what `unlinkFromExternal` resets it to.
+ *
+ * Declared once because a single insert existed here twice with two
+ * independently maintained positional bind lists, and a third hand-written
+ * list undid a subset of it. Deliberately separate from `PLAN_ITEM_FIELDS`
+ * (`shared/planItemFields.ts`): tracker-sync columns are a different ownership
+ * domain and are meant to fail independently of the plan item's own fields.
+ */
+const EXTERNAL_ITEM_COLUMNS: readonly ExternalItemColumn[] = [
+  { column: 'id', bind: (item) => item.id },
+  { column: 'project_id', bind: (item) => item.project_id },
+  // Imported flat; `linkSubtasksToParentIssues` rebuilds the hierarchy after.
+  { column: 'parent_id', bind: () => null },
+  { column: 'title', bind: (item) => item.title },
+  { column: 'description', bind: (item) => item.description },
+  { column: 'label', bind: (item) => item.label ?? null },
+  { column: 'item_order', bind: (item) => item.item_order },
+  // Synced items go straight to the canvas (the backlog UI was removed).
+  { column: 'status', bind: () => 'planned' },
+  { column: 'status_category', bind: (item) => item.status_category },
+  { column: 'external_key', bind: (item) => item.external_key, unlinksTo: 'NULL' },
+  { column: 'external_id', bind: (item) => item.external_id ?? null, unlinksTo: 'NULL' },
+  { column: 'external_type', bind: (item) => item.external_type, unlinksTo: 'NULL' },
+  { column: 'external_issue_type', bind: (item) => item.external_issue_type, unlinksTo: 'NULL' },
+  { column: 'external_status', bind: (item) => item.external_status, unlinksTo: 'NULL' },
+  { column: 'external_url', bind: (item) => item.external_url ?? null, unlinksTo: 'NULL' },
+  { column: 'external_parent_key', bind: (item) => item.external_parent_key, unlinksTo: 'NULL' },
+  { column: 'external_epic_key', bind: (item) => item.external_epic_key, unlinksTo: 'NULL' },
+  { column: 'external_assignee_id', bind: (item) => item.external_assignee_id ?? null, unlinksTo: 'NULL' },
+  { column: 'external_assignee_name', bind: (item) => item.external_assignee_name ?? null, unlinksTo: 'NULL' },
+  { column: 'external_assignee_avatar_url', bind: (item) => item.external_assignee_avatar_url ?? null, unlinksTo: 'NULL' },
+  { column: 'external_creator_id', bind: (item) => item.external_creator_id ?? null, unlinksTo: 'NULL' },
+  { column: 'external_creator_name', bind: (item) => item.external_creator_name ?? null, unlinksTo: 'NULL' },
+  { column: 'external_creator_avatar_url', bind: (item) => item.external_creator_avatar_url ?? null, unlinksTo: 'NULL' },
+  { column: 'sync_source', bind: (item) => item.external_type, unlinksTo: `'local'` },
+  { column: 'last_synced_at', insertSql: 'CURRENT_TIMESTAMP', unlinksTo: 'NULL' },
+  { column: 'association_id', bind: (item) => item.association_id, unlinksTo: 'NULL' },
+];
+
+const INSERT_EXTERNAL_ITEM_SQL = `
+  INSERT INTO plan_items (${EXTERNAL_ITEM_COLUMNS.map((c) => c.column).join(', ')})
+  VALUES (${EXTERNAL_ITEM_COLUMNS.map((c) => ('insertSql' in c ? c.insertSql : '?')).join(', ')})
+`;
+
+const UNLINK_EXTERNAL_ITEM_SQL = `
+  UPDATE plan_items SET ${[
+    ...EXTERNAL_ITEM_COLUMNS.filter((c) => c.unlinksTo).map((c) => `${c.column} = ${c.unlinksTo}`),
+    'updated_at = CURRENT_TIMESTAMP',
+  ].join(', ')}
+  WHERE id = ?
+`;
+
+function bindExternalItem(item: ExternalItemInsert): unknown[] {
+  return EXTERNAL_ITEM_COLUMNS.flatMap((c) => ('bind' in c ? [c.bind(item)] : []));
+}
+
 interface PreparedStatements {
   getLinkedItems: Statement;
   createFromExternal: Statement;
+  insertExternalItem: Statement;
   unlinkFromExternal: Statement;
   updateParentWithStatus: Statement;
 }
@@ -51,40 +124,9 @@ export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
         WHERE project_id = ? AND external_type = ? AND external_key IS NOT NULL
         ORDER BY item_order
       `),
-      createFromExternal: db.prepare(`
-        INSERT INTO plan_items (
-          id, project_id, parent_id, title, description, label, item_order,
-          status, status_category, external_key, external_id, external_type, external_issue_type, external_status,
-          external_url, external_parent_key, external_epic_key,
-          external_assignee_id, external_assignee_name, external_assignee_avatar_url,
-          external_creator_id, external_creator_name, external_creator_avatar_url,
-          sync_source, last_synced_at, association_id
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
-        RETURNING *
-      `),
-      unlinkFromExternal: db.prepare(`
-        UPDATE plan_items SET
-          external_key = NULL,
-          external_id = NULL,
-          external_type = NULL,
-          external_issue_type = NULL,
-          external_status = NULL,
-          external_url = NULL,
-          external_parent_key = NULL,
-          external_epic_key = NULL,
-          external_assignee_id = NULL,
-          external_assignee_name = NULL,
-          external_assignee_avatar_url = NULL,
-          external_creator_id = NULL,
-          external_creator_name = NULL,
-          external_creator_avatar_url = NULL,
-          sync_source = 'local',
-          last_synced_at = NULL,
-          association_id = NULL,
-          updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `),
+      createFromExternal: db.prepare(`${INSERT_EXTERNAL_ITEM_SQL} RETURNING *`),
+      insertExternalItem: db.prepare(INSERT_EXTERNAL_ITEM_SQL),
+      unlinkFromExternal: db.prepare(UNLINK_EXTERNAL_ITEM_SQL),
       updateParentWithStatus: db.prepare(`
         UPDATE plan_items SET parent_id = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
       `),
@@ -96,59 +138,12 @@ export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
     return rows.map(rowToPlanItem);
   }
 
-  createFromExternal(input: {
-    project_id: string;
-    association_id: string;
-    title: string;
-    description: string | null;
-    label: string | null;
-    external_key: string;
-    external_id?: string;
-    external_type: string;
-    external_issue_type: string;
-    external_status: string;
-    status_category: string;
-    external_url?: string;
-    external_parent_key: string | null;
-    external_epic_key: string | null;
-    external_assignee_id?: string | null;
-    external_assignee_name?: string | null;
-    external_assignee_avatar_url?: string | null;
-    external_creator_id?: string | null;
-    external_creator_name?: string | null;
-    external_creator_avatar_url?: string | null;
-  }): PlanItem {
-    const id = randomUUID();
-    const itemOrder = this.planItemRepository.getNextOrder(input.project_id, null);
-
-    // Use RETURNING to get the inserted row in one query
-    const row = this.stmts.createFromExternal.get(
-      id,
-      input.project_id,
-      null, // parent_id
-      input.title,
-      input.description,
-      input.label,
-      itemOrder,
-      'planned', // Synced items go directly to canvas (backlog UI removed)
-      input.status_category,
-      input.external_key,
-      input.external_id ?? null,
-      input.external_type,
-      input.external_issue_type,
-      input.external_status,
-      input.external_url ?? null,
-      input.external_parent_key,
-      input.external_epic_key,
-      input.external_assignee_id ?? null,
-      input.external_assignee_name ?? null,
-      input.external_assignee_avatar_url ?? null,
-      input.external_creator_id ?? null,
-      input.external_creator_name ?? null,
-      input.external_creator_avatar_url ?? null,
-      input.external_type, // sync_source
-      input.association_id
-    ) as Record<string, unknown>;
+  createFromExternal(input: ExternalIssueFields): PlanItem {
+    const row = this.stmts.createFromExternal.get(...bindExternalItem({
+      ...input,
+      id: randomUUID(),
+      item_order: this.planItemRepository.getNextOrder(input.project_id, null),
+    })) as Record<string, unknown>;
 
     return rowToPlanItem(row);
   }
@@ -157,43 +152,10 @@ export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
     this.stmts.unlinkFromExternal.run(id);
   }
 
-  importExternalIssues(items: {
-    project_id: string;
-    external_key: string;
-    external_id: string;
-    external_type: string;
-    external_status: string;
-    status_category: string;
-    external_url: string;
-    external_parent_key: string | null;
-    external_epic_key: string | null;
-    external_issue_type: string;
-    external_assignee_id?: string | null;
-    external_assignee_name?: string | null;
-    external_assignee_avatar_url?: string | null;
-    external_creator_id?: string | null;
-    external_creator_name?: string | null;
-    external_creator_avatar_url?: string | null;
-    title: string;
-    description: string | null;
-    label: string | null;
-    association_id: string;
-  }[]): PlanItem[] {
+  importExternalIssues(items: ImportedIssueFields[]): PlanItem[] {
     if (items.length === 0) return [];
 
     const createdIds: string[] = [];
-
-    const insertStmt = this.db.prepare(`
-      INSERT INTO plan_items (
-        id, project_id, parent_id, title, description, label, item_order,
-        status, status_category, external_key, external_id, external_type, external_issue_type, external_status,
-        external_url, external_parent_key, external_epic_key,
-        external_assignee_id, external_assignee_name, external_assignee_avatar_url,
-        external_creator_id, external_creator_name, external_creator_avatar_url,
-        sync_source, last_synced_at, association_id
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
-    `);
 
     const transaction = this.db.transaction(() => {
       // Group by project to calculate item_order correctly
@@ -223,32 +185,8 @@ export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
           }
 
           const id = randomUUID();
-          insertStmt.run(
-            id,
-            item.project_id,
-            null, // parent_id - items are imported flat to backlog
-            item.title,
-            item.description,
-            item.label,
-            itemOrder++,
-            'planned', // Synced items go directly to canvas (backlog UI removed)
-            item.status_category,
-            item.external_key,
-            item.external_id ?? null,
-            item.external_type,
-            item.external_issue_type,
-            item.external_status,
-            item.external_url ?? null,
-            item.external_parent_key,
-            item.external_epic_key,
-            item.external_assignee_id ?? null,
-            item.external_assignee_name ?? null,
-            item.external_assignee_avatar_url ?? null,
-            item.external_creator_id ?? null,
-            item.external_creator_name ?? null,
-            item.external_creator_avatar_url ?? null,
-            item.external_type, // sync_source = tracker type
-            item.association_id
+          this.stmts.insertExternalItem.run(
+            ...bindExternalItem({ ...item, id, item_order: itemOrder++ })
           );
           createdIds.push(id);
           existingForProject.add(item.external_key); // Track newly created to avoid dupes within batch

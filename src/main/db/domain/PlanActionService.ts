@@ -22,6 +22,7 @@ import {
   resolveActionRefs,
   type MintedId,
 } from '../../../shared/planActionRefs';
+import { findUnconnectedRepoTargetIds } from '../../../shared/planActionSchema';
 import {
   normalizeWorkBriefDraft,
   repositoryScopeFromPlanItem,
@@ -283,7 +284,7 @@ function executeDeleteItem(
   ctx: ExecutorContext,
   action: Extract<PlanAction, { type: 'delete_item' }>
 ): void {
-  const result = removePlanItem(action.item_id, { queuedBy: 'claude', cascade: false }, {
+  const result = removePlanItem(action.item_id, { queuedBy: 'claude', cascade: action.cascade ?? false }, {
     database: ctx.deps.database,
     planItems: ctx.deps.planItems,
     outboundChanges: ctx.deps.outboundChanges,
@@ -583,18 +584,9 @@ export function createPlanActionExecutor(deps: PlanActionExecutorDeps) {
   });
 
   function validateRepoTargets(actions: PlanAction[], projectRepoIds: Set<string>): string | null {
-    for (const action of actions) {
-      if (action.type !== 'create_item' && action.type !== 'set_repo_targets') continue;
-      const repoIds = action.type === 'create_item'
-        ? [action.primary_repo_id, ...(action.affected_repo_ids ?? [])]
-        : [action.repository_scope.primary_repo_id, ...action.repository_scope.affected_repo_ids];
-      const presentRepoIds = repoIds.filter((repoId): repoId is string => Boolean(repoId));
-      const invalid = [...new Set(presentRepoIds)].filter((repoId) => !projectRepoIds.has(repoId));
-      if (invalid.length > 0) {
-        return `Plan action references repo(s) not connected to this project: ${invalid.join(', ')}`;
-      }
-    }
-    return null;
+    const invalid = findUnconnectedRepoTargetIds(actions, projectRepoIds);
+    if (invalid.length === 0) return null;
+    return `Plan action references repo(s) not connected to this project: ${invalid.join(', ')}`;
   }
 
   /**

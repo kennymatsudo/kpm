@@ -458,6 +458,7 @@ export interface SyncPreview {
 
 export interface SyncNewItem {
   external_key: string;
+  external_id: string;
   title: string;
   description: string | null;
   tracker_state: TrackerAgreementState;

@@ -9,7 +9,13 @@
 export type { IProjectRepository, IRepoRepository, IAttachmentRepository } from './project';
 
 // Plan domain
-export type { IPlanItemRepository, IPlanRelationRepository, IExternalPlanItemRepository } from './plan';
+export type {
+  IPlanItemRepository,
+  IPlanRelationRepository,
+  IExternalPlanItemRepository,
+  ExternalIssueFields,
+  ImportedIssueFields,
+} from './plan';
 
 // Group domain
 export type { IGroupRepository, GroupUpdates } from './group';

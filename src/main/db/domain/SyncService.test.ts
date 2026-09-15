@@ -111,9 +111,10 @@ describe('SyncService', () => {
     );
 
     expect(preview.new_items[0]?.status_category).toBe('in_progress');
+    expect(preview.new_items[0]?.external_id).toBe(issue.id);
   });
 
-  it('passes new item status_category into createFromExternal', () => {
+  it('passes new item status_category and external id into createFromExternal', () => {
     const createFromExternal = vi.fn(() => ({ id: 'created-1' } as PlanItem));
     const service = createService({ externalPlanItems: { createFromExternal } });
     const result = { success: true, created: 0, updated: 0, deleted: 0, errors: [] };
@@ -126,6 +127,7 @@ describe('SyncService', () => {
         external_project_key: 'ENG',
         new_items: [{
           external_key: 'ENG-1',
+          external_id: 'issue-eng-1',
           title: 'New done issue',
           description: null,
           tracker_state: { title: 'New done issue', description: null, updatedAt: '2026-01-01T00:00:00.000Z' },
@@ -147,6 +149,7 @@ describe('SyncService', () => {
 
     expect(createFromExternal).toHaveBeenCalledWith(expect.objectContaining({
       status_category: 'done',
+      external_id: 'issue-eng-1',
     }));
   });
 

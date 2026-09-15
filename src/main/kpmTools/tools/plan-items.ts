@@ -725,6 +725,7 @@ Action types:
               const actions: PlanAction[] = ids.map((id) => ({
                 type: 'delete_item' as const,
                 item_id: id,
+                cascade: true,
               }));
               toolLog(`[KPM Tools] bulk_modify_plan emitting ${actions.length} delete actions for approval (${allIds.size} total with descendants)`);
               onPlanActions(actions);

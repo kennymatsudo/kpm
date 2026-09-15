@@ -249,6 +249,7 @@ export function createSyncSnapshot(
 export function createSyncNewItem(options: Partial<SyncNewItem> = {}): SyncNewItem {
   return {
     external_key: options.external_key ?? 'TEST-123',
+    external_id: options.external_id ?? 'issue-123',
     title: options.title ?? 'New Issue from Jira',
     description: options.description ?? null,
     tracker_state: options.tracker_state ?? {
