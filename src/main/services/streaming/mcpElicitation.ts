@@ -2,14 +2,9 @@
  * The one decision for an MCP elicitation: open a URL, auto-accept, ask the
  * user, or decline.
  *
- * Claude and Codex each carried a copy and the copies drifted — only Codex
- * consulted its auto-approve list, and only Claude passed the turn's abort
- * signal through to the prompt. Both re-implemented the scheme check that
- * stops a compromised MCP server handing back a `file://` URL, so pi would
- * have been a third chance to forget it.
- *
- * Ordering is the guarantee: the scheme check runs before anything can
- * auto-accept, so no allowlist can wave through a URL we would not open.
+ * The scheme check stops a compromised MCP server handing back a `file://`
+ * URL. Ordering is the guarantee: it runs before anything can auto-accept, so
+ * no allowlist can wave through a URL we would not open.
  */
 
 import { isAllowedExternalUrl } from '../../security/externalUrl';
