@@ -30,9 +30,17 @@ interface SyncReviewState {
 
   // Actions
   startReview: (projectId: string, associationId: string) => Promise<void>;
-  setDecision: (itemId: string, decision: SyncReviewItem['decision']) => void;
-  setDecisions: (itemIds: string[], decision: SyncReviewItem['decision']) => void;
-  /** Deletes are keyed by queue entry id (no plan item) and never touched by setDecisions. */
+  /**
+   * Approve or un-approve one item. Approving is parent-transitive: an unsynced
+   * ancestor has to go out in the same batch or its child lands in the tracker
+   * as an orphan. Un-approving is deliberately not transitive -- an approved
+   * child keeps its decision, and the export re-includes the parent it needs.
+   * An item with validation errors can never be approved.
+   */
+  toggleItemApproval: (itemId: string) => void;
+  /** Approve every valid item, or return them all to pending once they all are. */
+  toggleAllValid: () => void;
+  /** Deletes are keyed by queue entry id (no plan item) and have no hierarchy. */
   setDeleteDecision: (queueEntryId: string, decision: SyncReviewDeleteItem['decision']) => void;
   executeApproved: (projectId: string, associationId: string) => Promise<ExportResult | null>;
   removeFromReview: (itemId: string) => Promise<void>;
@@ -42,14 +50,26 @@ interface SyncReviewState {
   resetProjectState: () => void;
 }
 
-export const useSyncReviewStore = create<SyncReviewState>((set, get) => ({
+const initialState = {
   reviewData: null,
   items: [],
   deleteItems: [],
-  phase: 'idle',
+  phase: 'idle' as ReviewPhase,
   currentIndex: 0,
   exportResult: null,
   error: null,
+};
+
+function indexByPlanItem(items: SyncReviewItem[]): Map<string, SyncReviewItem> {
+  return new Map(items.map((item) => [item.planItem.id, item]));
+}
+
+function isApprovable(item: SyncReviewItem): boolean {
+  return item.validationErrors.length === 0;
+}
+
+export const useSyncReviewStore = create<SyncReviewState>((set, get) => ({
+  ...initialState,
 
   startReview: async (projectId, associationId) => {
     set({ phase: 'loading', error: null, exportResult: null });
@@ -72,21 +92,53 @@ export const useSyncReviewStore = create<SyncReviewState>((set, get) => ({
     }
   },
 
-  setDecision: (itemId, decision) => {
-    set((state) => ({
-      items: state.items.map((item) =>
-        item.planItem.id === itemId ? { ...item, decision } : item
-      ),
-    }));
+  toggleItemApproval: (itemId) => {
+    set((state) => {
+      const byPlanItem = indexByPlanItem(state.items);
+      const item = byPlanItem.get(itemId);
+      if (!item || !isApprovable(item)) return {};
+
+      if (item.decision === 'approved') {
+        return {
+          items: state.items.map((candidate) =>
+            candidate.planItem.id === itemId ? { ...candidate, decision: 'pending' as const } : candidate
+          ),
+        };
+      }
+
+      const approving = new Set<string>([itemId]);
+      const walked = new Set<string>();
+      let parentId = item.planItem.parent_id;
+      while (parentId && !walked.has(parentId)) {
+        walked.add(parentId);
+        const parent = byPlanItem.get(parentId);
+        if (!parent) break;
+        if (!parent.planItem.external_key && isApprovable(parent)) {
+          approving.add(parent.planItem.id);
+        }
+        parentId = parent.planItem.parent_id;
+      }
+
+      return {
+        items: state.items.map((candidate) =>
+          approving.has(candidate.planItem.id) ? { ...candidate, decision: 'approved' as const } : candidate
+        ),
+      };
+    });
   },
 
-  setDecisions: (itemIds, decision) => {
-    const selectedIds = new Set(itemIds);
-    set((state) => ({
-      items: state.items.map((item) =>
-        selectedIds.has(item.planItem.id) ? { ...item, decision } : item
-      ),
-    }));
+  toggleAllValid: () => {
+    set((state) => {
+      const approvable = state.items.filter(isApprovable);
+      if (approvable.length === 0) return {};
+
+      const decision = approvable.every((item) => item.decision === 'approved')
+        ? ('pending' as const)
+        : ('approved' as const);
+      return {
+        items: state.items.map((item) => (isApprovable(item) ? { ...item, decision } : item)),
+      };
+    });
   },
 
   setDeleteDecision: (queueEntryId, decision) => {
@@ -180,26 +232,6 @@ export const useSyncReviewStore = create<SyncReviewState>((set, get) => ({
     return Promise.resolve();
   },
 
-  reset: () => {
-    set({
-      reviewData: null,
-      items: [],
-      deleteItems: [],
-      phase: 'idle',
-      currentIndex: 0,
-      exportResult: null,
-      error: null,
-    });
-  },
-  resetProjectState: () => {
-    set({
-      reviewData: null,
-      items: [],
-      deleteItems: [],
-      phase: 'idle',
-      currentIndex: 0,
-      exportResult: null,
-      error: null,
-    });
-  },
+  reset: () => set(initialState),
+  resetProjectState: () => get().reset(),
 }));

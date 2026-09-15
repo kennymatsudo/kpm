@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PlanItem, OutboundItemChange, SyncReviewItem } from '../../../../shared/types';
 import {
-  buildItemMap,
   buildItemTree,
   selectCheckedItems,
   selectValidItems,
@@ -89,23 +88,6 @@ function makeReviewItem(overrides: Partial<SyncReviewItem> = {}): SyncReviewItem
     ...overrides,
   };
 }
-
-describe('buildItemMap', () => {
-  it('maps each item by its plan item id', () => {
-    const a = makeReviewItem({ planItem: makePlanItem({ id: 'a' }) });
-    const b = makeReviewItem({ planItem: makePlanItem({ id: 'b' }) });
-
-    const map = buildItemMap([a, b]);
-
-    expect(map.size).toBe(2);
-    expect(map.get('a')).toBe(a);
-    expect(map.get('b')).toBe(b);
-  });
-
-  it('returns an empty map for an empty list', () => {
-    expect(buildItemMap([]).size).toBe(0);
-  });
-});
 
 describe('selectValidItems', () => {
   it('keeps only items with no validation errors', () => {

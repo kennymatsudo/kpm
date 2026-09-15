@@ -19,7 +19,7 @@ import {
 } from '../../ui/Select';
 import { useAssociationData, useCustomFieldManagement, useSyncItemSelection } from './hooks';
 import { TrackerIcon, trackerDeletionWarning, trackerLabelFor } from '../shared/trackerDisplay';
-import { buildItemMap, buildItemTree, selectCheckedItems, selectValidItems } from './syncReviewSelectors';
+import { buildItemTree, selectCheckedItems, selectValidItems } from './syncReviewSelectors';
 
 interface Props {
   projectId: string;
@@ -57,8 +57,8 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
     exportResult,
     error,
     startReview,
-    setDecision,
-    setDecisions,
+    toggleItemApproval,
+    toggleAllValid,
     setDeleteDecision,
     executeApproved,
     removeFromReview,
@@ -120,37 +120,8 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
 
   const allValidChecked = validItems.length > 0 && validItems.every(i => i.decision === 'approved');
 
-  // Build parent lookup for hierarchy display and auto-approval
-  const itemMap = useMemo(() => buildItemMap(items), [items]);
-
   // Build tree structure for sidebar display
   const itemTree = useMemo(() => buildItemTree(items), [items]);
-
-  const handleToggleItem = (itemId: string) => {
-    const item = items.find(i => i.planItem.id === itemId);
-    if (!item || item.validationErrors.length > 0) return;
-
-    const newDecision = item.decision === 'approved' ? 'pending' : 'approved';
-    setDecision(itemId, newDecision);
-
-    // When approving a subtask, auto-approve its unsynced parent chain
-    if (newDecision === 'approved') {
-      let parentId = item.planItem.parent_id;
-      while (parentId) {
-        const parent = itemMap.get(parentId);
-        if (!parent) break;
-        if (!parent.planItem.external_key && parent.decision !== 'approved' && parent.validationErrors.length === 0) {
-          setDecision(parentId, 'approved');
-        }
-        parentId = parent.planItem.parent_id;
-      }
-    }
-  };
-
-  const handleToggleAll = () => {
-    const newDecision = allValidChecked ? 'pending' : 'approved';
-    setDecisions(validItems.map(item => item.planItem.id), newDecision);
-  };
 
   const handleRemove = async (itemId: string) => {
     await removeFromReview(itemId);
@@ -365,7 +336,7 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
           <div className="px-3 py-3 border-b border-border-subtle">
             <div className="flex items-center gap-2">
               <button
-                onClick={handleToggleAll}
+                onClick={toggleAllValid}
                 disabled={validItems.length === 0}
                 className="group flex items-center gap-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -406,7 +377,7 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
                     setActivePane('item');
                     setSelectedItemId(id);
                   }}
-                  onToggle={handleToggleItem}
+                  onToggle={toggleItemApproval}
                   trackerLabel={trackerLabel}
                 />
               ))}

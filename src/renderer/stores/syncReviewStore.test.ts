@@ -6,7 +6,16 @@ import { useSyncReviewStore } from './tracker/useSyncReviewStore';
 import type { TrackerExportCompletedEvent } from './storeEvents';
 import type { SyncReviewItem, SyncReviewDeleteItem } from '../../shared/types';
 
-function createReviewItem(planItemId: string, queueEntryId: string): SyncReviewItem {
+function createReviewItem(
+  planItemId: string,
+  queueEntryId: string,
+  overrides: {
+    parentId?: string | null;
+    externalKey?: string | null;
+    validationErrors?: string[];
+    decision?: SyncReviewItem['decision'];
+  } = {}
+): SyncReviewItem {
   return {
     queueEntry: {
       id: queueEntryId,
@@ -29,7 +38,7 @@ function createReviewItem(planItemId: string, queueEntryId: string): SyncReviewI
     planItem: {
       id: planItemId,
       project_id: 'project-1',
-      parent_id: null,
+      parent_id: overrides.parentId ?? null,
       title: 'Plan item',
       description: null,
       label: null,
@@ -57,19 +66,34 @@ function createReviewItem(planItemId: string, queueEntryId: string): SyncReviewI
       created_at: '2024-01-01T00:00:00.000Z',
       updated_at: '2024-01-01T00:00:00.000Z',
       completed_at: null,
-      external_key: null,
+      external_key: overrides.externalKey ?? null,
       external_type: null,
     },
     resolvedType: { id: 'epic', name: 'Epic' },
     resolvedParent: null,
     resolvedDescription: null,
-    validationErrors: [],
+    validationErrors: overrides.validationErrors ?? [],
     jiraCurrent: null,
     diffs: null,
     statusTransition: null,
-    decision: 'pending',
+    decision: overrides.decision ?? 'pending',
     hasConflict: false,
   };
+}
+
+/** grandparent -> parent -> child, none of them synced yet. */
+function createUnsyncedChain(): SyncReviewItem[] {
+  return [
+    createReviewItem('grandparent', 'queue-gp'),
+    createReviewItem('parent', 'queue-p', { parentId: 'grandparent' }),
+    createReviewItem('child', 'queue-c', { parentId: 'parent' }),
+  ];
+}
+
+function decisionsById(): Record<string, SyncReviewItem['decision']> {
+  return Object.fromEntries(
+    useSyncReviewStore.getState().items.map((item) => [item.planItem.id, item.decision])
+  );
 }
 
 function createDeleteReviewItem(queueEntryId: string): SyncReviewDeleteItem {
@@ -203,6 +227,127 @@ describe('useSyncReviewStore', () => {
       associationId: 'assoc-1',
       approvedItemIds: [],
       approvedDeleteIds: ['queue-del-1'],
+    });
+  });
+
+  it('approves the whole unsynced ancestor chain when a deep child is approved', () => {
+    useSyncReviewStore.setState({ items: createUnsyncedChain(), phase: 'reviewing' });
+
+    useSyncReviewStore.getState().toggleItemApproval('child');
+
+    expect(decisionsById()).toEqual({
+      grandparent: 'approved',
+      parent: 'approved',
+      child: 'approved',
+    });
+  });
+
+  it('leaves an already-synced ancestor pending while still approving the unsynced one above it', () => {
+    useSyncReviewStore.setState({
+      items: [
+        createReviewItem('grandparent', 'queue-gp'),
+        createReviewItem('parent', 'queue-p', { parentId: 'grandparent', externalKey: 'ENG-7' }),
+        createReviewItem('child', 'queue-c', { parentId: 'parent' }),
+      ],
+      phase: 'reviewing',
+    });
+
+    useSyncReviewStore.getState().toggleItemApproval('child');
+
+    expect(decisionsById()).toEqual({
+      grandparent: 'approved',
+      parent: 'pending',
+      child: 'approved',
+    });
+  });
+
+  it('never approves an item with validation errors, as the item or as an ancestor', () => {
+    useSyncReviewStore.setState({
+      items: [
+        createReviewItem('grandparent', 'queue-gp'),
+        createReviewItem('parent', 'queue-p', { parentId: 'grandparent', validationErrors: ['Sub-task type requires a parent item'] }),
+        createReviewItem('child', 'queue-c', { parentId: 'parent' }),
+        createReviewItem('broken', 'queue-b', { validationErrors: ['Could not resolve issue type'] }),
+      ],
+      phase: 'reviewing',
+    });
+
+    useSyncReviewStore.getState().toggleItemApproval('child');
+    useSyncReviewStore.getState().toggleItemApproval('broken');
+
+    expect(decisionsById()).toEqual({
+      grandparent: 'approved',
+      parent: 'pending',
+      child: 'approved',
+      broken: 'pending',
+    });
+  });
+
+  it('leaves an already-approved ancestor alone when another child is approved', () => {
+    useSyncReviewStore.setState({
+      items: [
+        ...createUnsyncedChain(),
+        createReviewItem('sibling', 'queue-s', { parentId: 'parent' }),
+      ],
+      phase: 'reviewing',
+    });
+
+    useSyncReviewStore.getState().toggleItemApproval('child');
+    useSyncReviewStore.getState().toggleItemApproval('sibling');
+
+    expect(decisionsById()).toEqual({
+      grandparent: 'approved',
+      parent: 'approved',
+      child: 'approved',
+      sibling: 'approved',
+    });
+  });
+
+  it('un-approves only the item itself, leaving the parents its child still needs', () => {
+    useSyncReviewStore.setState({ items: createUnsyncedChain(), phase: 'reviewing' });
+
+    useSyncReviewStore.getState().toggleItemApproval('child');
+    useSyncReviewStore.getState().toggleItemApproval('child');
+
+    expect(decisionsById()).toEqual({
+      grandparent: 'approved',
+      parent: 'approved',
+      child: 'pending',
+    });
+  });
+
+  it('ignores a toggle for an item that is not under review', () => {
+    const items = createUnsyncedChain();
+    useSyncReviewStore.setState({ items, phase: 'reviewing' });
+
+    useSyncReviewStore.getState().toggleItemApproval('not-in-list');
+
+    expect(useSyncReviewStore.getState().items).toBe(items);
+  });
+
+  it('approves every valid item and returns them all to pending on a second pass', () => {
+    useSyncReviewStore.setState({
+      items: [
+        ...createUnsyncedChain(),
+        createReviewItem('broken', 'queue-b', { validationErrors: ['Could not resolve issue type'] }),
+      ],
+      phase: 'reviewing',
+    });
+
+    useSyncReviewStore.getState().toggleAllValid();
+    expect(decisionsById()).toEqual({
+      grandparent: 'approved',
+      parent: 'approved',
+      child: 'approved',
+      broken: 'pending',
+    });
+
+    useSyncReviewStore.getState().toggleAllValid();
+    expect(decisionsById()).toEqual({
+      grandparent: 'pending',
+      parent: 'pending',
+      child: 'pending',
+      broken: 'pending',
     });
   });
 

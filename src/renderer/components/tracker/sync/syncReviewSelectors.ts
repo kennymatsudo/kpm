@@ -6,12 +6,6 @@ export interface SyncReviewItemTree {
   childrenOf: Map<string | null, SyncReviewItem[]>;
 }
 
-export function buildItemMap(items: SyncReviewItem[]): Map<string, SyncReviewItem> {
-  const map = new Map<string, SyncReviewItem>();
-  for (const item of items) map.set(item.planItem.id, item);
-  return map;
-}
-
 export function selectValidItems(items: SyncReviewItem[]): SyncReviewItem[] {
   return items.filter((item) => item.validationErrors.length === 0);
 }
