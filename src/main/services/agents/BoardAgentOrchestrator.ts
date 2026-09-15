@@ -1,7 +1,7 @@
 import type { ReviewAxis, ReviewFinding } from '../../../shared/agent-types';
 import { toImplSessionId } from '../../../shared/agent-types';
 import type { BoardProvider, Playbook, PlaybookStep } from '../../../shared/playbooks';
-import { BOARD_AGENT_WRITE_POLICY, advancePlaybook, parsePassCounts, renderPlaybookDirective, resolvePlaybookPlan } from '../../../shared/playbookRuntime';
+import { BOARD_AGENT_WRITE_POLICY, parsePassCounts, renderPlaybookDirective, resolvePlaybookPlan } from '../../../shared/playbookRuntime';
 import { isCommitHookRepairPhase, type DevSession } from '../../../shared/types';
 import type { DefaultModel } from '../../../shared/modelDefault';
 import type { IAgentReviewRepository } from '../../db/interfaces/review';
@@ -16,6 +16,7 @@ import { listBoardProviders as detectBoardProviders } from './boardProviderRegis
 import type { ServiceResult } from '../result';
 import { effectivePhase, type AutomationPhaseMachine } from './automationPhaseMachine';
 import { playbookForSession, resolveCursorStep, stepById } from './sessionPlaybook';
+import { createPlaybookStepRunner } from './playbookStepRunner';
 
 const LOG_PREFIX = '[BoardAgentOrchestrator]';
 const WORKTREE_MODIFIED_NOTICE_KEY = '__harness_worktree_modified';
@@ -172,41 +173,6 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
     ? 'reviewing' as const
     : 'addressing_review' as const;
 
-  function moveSessionPlanItemToReview(sessionId: string): void {
-    const devSessionService = deps.getDevSessionService();
-    if (!devSessionService) {
-      return;
-    }
-
-    const session = devSessionService.get(sessionId);
-    if (!session?.plan_item_id) {
-      return;
-    }
-
-    const result = deps.planService.updateItem(session.plan_item_id, { status_category: 'in_review' });
-    if (!result.ok) {
-      console.error(`${LOG_PREFIX} Failed to move ${sessionId} to in_review:`, result.error);
-      deps.phaseMachine.transition(sessionId, { type: 'automationFailed', reason: 'move-to-review-failed' });
-      return;
-    }
-
-    deps.phaseMachine.transition(sessionId, { type: 'movedToReview' });
-    deps.requestPlanRefresh(session.project_id);
-  }
-
-  async function finishAtTerminal(session: DevSession): Promise<void> {
-    const reviewService = deps.getReviewService();
-    if (reviewService && session.pr_number != null) {
-      const queued = await reviewService.flushQueuedReviewTasks(session.id);
-      if (!queued.ok) {
-        deps.phaseMachine.transition(session.id, { type: 'automationFailed', reason: 'queued-review-flush-failed' });
-        return;
-      }
-      if (queued.data.taskIds.length > 0) return;
-    }
-    moveSessionPlanItemToReview(session.id);
-  }
-
   async function dispatchStep(
     session: DevSession,
     playbook: Playbook,
@@ -319,43 +285,14 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
     }
   }
 
-  async function advanceAfterStep(
-    session: DevSession,
-    playbook: Playbook,
-    step: PlaybookStep,
-    findings: ReviewFinding[],
-    madeProgress = true,
-  ): Promise<void> {
-    const advance = advancePlaybook(
-      playbook,
-      step.id,
-      { hasFindings: findings.length > 0, madeProgress },
-      parsePassCounts(session.step_pass_counts),
-    );
-    if (advance.kind === 'complete') {
-      deps.phaseMachine.transition(session.id, { type: 'stepCompleted', stepId: step.id, nextStepId: null, stepPassCounts: advance.passCounts });
-      await finishAtTerminal(session);
-      return;
-    }
-    if (advance.kind === 'pause') {
-      deps.phaseMachine.transition(session.id, { type: 'paused', stepId: advance.stepId, reason: advance.reason, stepPassCounts: advance.passCounts });
-      return;
-    }
-    const next = stepById(playbook, advance.stepId);
-    deps.phaseMachine.transition(session.id, {
-      type: 'stepCompleted',
-      stepId: step.id,
-      nextStepId: advance.stepId,
-      nextPhase: next ? phaseForPlaybookStep(next) : undefined,
-      stepPassCounts: advance.passCounts,
-    });
-    if (!next) {
-      deps.phaseMachine.transition(session.id, { type: 'automationFailed', reason: 'missing-next-step' });
-      return;
-    }
-    const refreshedSession = deps.getDevSessionService()?.get(session.id) ?? session;
-    await dispatchStep(refreshedSession, playbook, next, findings);
-  }
+  const stepRunner = createPlaybookStepRunner({
+    phaseMachine: deps.phaseMachine,
+    planService: deps.planService,
+    getDevSessionService: deps.getDevSessionService,
+    getReviewService: deps.getReviewService,
+    requestPlanRefresh: deps.requestPlanRefresh,
+    dispatch: dispatchStep,
+  });
 
   async function finalizeSubagentGroup(
     session: DevSession,
@@ -382,7 +319,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
       sessionOutputs[WORKTREE_MODIFIED_NOTICE_KEY] = [step.id];
       rounds.persistOutputs(session, sessionOutputs);
     }
-    await advanceAfterStep(session, playbook, step, group.findings);
+    await stepRunner.settle({ session, playbook, step, findings: group.findings });
   }
 
   async function settleSubagentRun(params: {
@@ -426,7 +363,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
       // offer the same tiebreak: proceed to review, or push one more pass.
       const findingsPause = session.paused_reason === 'max_passes' || session.paused_reason === 'stalled';
       if (options.action === 'proceed' && findingsPause) {
-        await advanceAfterStep(session, playbook, step, []);
+        await stepRunner.settle({ session, playbook, step, findings: [] });
         return true;
       }
       if (options.action === 'one_more_pass' && findingsPause && step.onFindings) {
@@ -505,7 +442,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
         // follow-up is allowed there, but it is an ad-hoc turn — never infer
         // the first step and restart the completed playbook.
         if (!session.current_step_id) {
-          await finishAtTerminal(session);
+          await stepRunner.finish(session);
           return;
         }
         const completed = resolveCursorStep(playbook, session.current_step_id) ?? playbook.steps[0];
@@ -514,7 +451,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
           sessionOutputs[completed.id] = [finalText];
           rounds.persistOutputs(session, sessionOutputs);
         }
-        await advanceAfterStep(session, playbook, completed, [], madeProgress);
+        await stepRunner.settle({ session, playbook, step: completed, findings: [], madeProgress });
         return;
       }
       const completed = resolveCursorStep(playbook, stepId ?? session.current_step_id ?? 'review');
