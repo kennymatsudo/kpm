@@ -86,7 +86,6 @@ export interface IOutboundChangeRepository {
   addDelete(entry: { kpm_project_id: string; association_id: string; external_key: string; external_id: string | null; tracker_type: string; queued_by: 'user' | 'claude' }): OutboundChange;
   update(id: string, updates: Partial<Pick<OutboundChange, 'target_issue_type_id' | 'target_issue_type_name' | 'target_parent_key' | 'target_status_category' | 'custom_field_overrides' | 'error_message'>>): void;
   updateStatusCategory(id: string, statusCategory: string | null): void;
-  updateResolvedType(id: string, typeId: string, typeName: string, parentKey: string | null): void;
   setError(id: string, errorMessage: string): void;
   remove(id: string): void;
   removeByProject(projectId: string): void;

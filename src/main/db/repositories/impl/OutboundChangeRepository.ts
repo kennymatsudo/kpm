@@ -52,7 +52,6 @@ interface PreparedStatements {
   remove: Statement;
   clearProject: Statement;
   updateStatusCategory: Statement;
-  updateResolvedType: Statement;
   setError: Statement;
 }
 
@@ -185,11 +184,6 @@ export class OutboundChangeRepository implements IOutboundChangeRepository {
       remove: db.prepare('DELETE FROM outbound_changes WHERE id = ?'),
       clearProject: db.prepare('DELETE FROM outbound_changes WHERE kpm_project_id = ?'),
       updateStatusCategory: db.prepare(`UPDATE outbound_changes SET target_status_category = ? WHERE id = ?`),
-      updateResolvedType: db.prepare(`
-        UPDATE outbound_changes
-        SET target_issue_type_id = ?, target_issue_type_name = ?, target_parent_key = ?
-        WHERE id = ?
-      `),
       setError: db.prepare(`UPDATE outbound_changes SET error_message = ? WHERE id = ?`),
     };
   }
@@ -357,10 +351,6 @@ export class OutboundChangeRepository implements IOutboundChangeRepository {
 
   updateStatusCategory(id: string, statusCategory: string | null): void {
     this.stmts.updateStatusCategory.run(statusCategory, id);
-  }
-
-  updateResolvedType(id: string, typeId: string, typeName: string, parentKey: string | null): void {
-    this.stmts.updateResolvedType.run(typeId, typeName, parentKey, id);
   }
 
   setError(id: string, errorMessage: string): void {

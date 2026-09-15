@@ -1,185 +1,21 @@
-import type { Database } from 'better-sqlite3';
-import type {
-  IPlanItemRepository,
-  IOutboundChangeRepository,
-  ISyncRepository,
-  ITrackerRepository,
-  ITypeMappingRepository,
-} from '../interfaces';
-import { createTypeMappingService } from './TypeMappingService';
 import { resolveOperation } from './OutboundChangePolicy';
-import { diffWords } from 'diff';
 import { getConfig } from '../../config';
-import type {
-  OutboundItemChange,
-  PlanItem,
-  PlanItemSyncUpdates,
-  ExportPreview,
-  ExportPreviewItem,
-  ExportResult,
-  TrackerIssueType,
-  SyncReviewData,
-  SyncReviewItem,
-  FieldDiff,
-  DiffHunk,
-  TrackerTransition,
-  StatusTransitionInfo,
-  CustomFieldValues,
-  TrackerType,
-  StatusCategory,
-  StatusMapping,
-  TrackerAssociationWithScope,
-} from '../../../shared/types';
-import { isOutboundDeletion, isOutboundItemChange } from '../../../shared/types';
-import { describeDeletions, drainDeletions } from './TrackerDeletionDrain';
-import type { JiraClient, TrackerClient } from '../../tracker-clients';
-import {
-  findTransitionWithMapping,
-  generateTransitionWarning,
-  isTransitionNeededWithMapping,
-  inferCategoryWithMapping,
-} from '../../trackers/statusTransitions';
-import { createStatusReconciler } from '../../trackers/StatusReconciler';
-import type { ExternalDestination, ExternalMarkdown } from '../../documents/exportBoundary';
-import { normalizeMarkdown } from '../../documents';
-import { workBriefFromPlanItem } from '../../../shared/workBrief';
-import { projectWorkBriefToTracker, projectWorkBriefToTrackerUpdate } from '../../workBrief/projections';
-import { hasRemoteFieldDrifted } from './trackerReconciliation';
-import { externalPeopleFields } from './externalPeopleFields';
-import { suggestStatusMapping } from '../../../shared/statusMappingSuggest';
+import type { CustomFieldValues, ExportPreview, ExportResult, SyncReviewData } from '../../../shared/types';
+import { inferCategoryWithMapping } from '../../trackers/statusTransitions';
+import { executePlan, previewOf, resolveExportPlan, reviewOf, type ExportPlanDeps } from './ExportPlan';
 
-interface TrackerClientServiceLike {
-  /** Polymorphic factory — preferred for any code path that handles both trackers. */
-  getClient(type: TrackerType): Promise<TrackerClient>;
-  /** Back-compat for Jira-only call sites that haven't been migrated yet. */
-  getJiraClient(): Promise<JiraClient>;
-}
-
-export interface ExportServiceDeps {
-  database: Database;
-  outboundChanges: IOutboundChangeRepository;
-  planItems: IPlanItemRepository;
-  tracker: ITrackerRepository;
-  sync: ISyncRepository;
-  typeMappings: ITypeMappingRepository;
-  trackerClientService: TrackerClientServiceLike;
-  /**
-   * Whether newly created tracker issues should be assigned to the user. Read
-   * per export rather than captured, so a settings change takes effect without
-   * a restart.
-   */
-  shouldAssignExportsToMe: () => boolean;
-}
+export type ExportServiceDeps = ExportPlanDeps;
 
 /**
- * Merge per-item custom field overrides with association-level defaults.
- * Overrides take precedence over defaults.
- */
-function mergeCustomFieldValues(
-  overrides: CustomFieldValues | null,
-  defaults: CustomFieldValues | null
-): CustomFieldValues | null {
-  if (!defaults && !overrides) return null;
-  return {
-    ...(defaults ?? {}),
-    ...(overrides ?? {}),
-  };
-}
-
-function trackerLabelFor(type: TrackerType): string {
-  return type === 'linear' ? 'Linear' : 'Jira';
-}
-
-function refDestinationForTracker(type: TrackerType): ExternalDestination {
-  return type === 'jira' ? 'jira' : 'linear';
-}
-
-function resolveExportDescription(
-  planItem: PlanItem,
-  planItems: readonly PlanItem[],
-  trackerType: TrackerType
-): ExternalMarkdown | null {
-  return projectWorkBriefToTracker(
-    workBriefFromPlanItem(planItem),
-    planItems,
-    refDestinationForTracker(trackerType),
-  ).description;
-}
-
-const STATUS_CATEGORY_LABELS: Record<StatusCategory, string> = {
-  not_started: 'Not Started',
-  in_progress: 'In Progress',
-  in_review: 'In Review',
-  done: 'Done',
-  blocked: 'Blocked',
-  canceled: 'Canceled',
-};
-
-/**
- * The initial status *name* a new issue should be created in, resolved from the
- * association's status mapping. Returns undefined for a default (not-started)
- * create with no mapping; throws when a non-default target has no mapping so the
- * export fails before any external issue is created. Clients that can create in
- * a chosen state (Linear) apply this; others (Jira) reach it via a transition.
- */
-function resolveInitialStatusName(
-  statusMapping: StatusMapping | null | undefined,
-  targetCategory: StatusCategory | null
-): string | undefined {
-  if (!targetCategory) return undefined;
-  const mappedName = statusMapping?.[targetCategory];
-  if (!mappedName) {
-    if (targetCategory === 'not_started') return undefined;
-    throw new Error(`No status mapping configured for "${STATUS_CATEGORY_LABELS[targetCategory]}"`);
-  }
-  return mappedName;
-}
-
-async function bootstrapStatusMappingForQueuedTargets(
-  association: TrackerAssociationWithScope,
-  queueEntries: readonly Pick<OutboundItemChange, 'target_status_category'>[],
-  client: TrackerClient,
-  updateStatusMapping: ITrackerRepository['updateStatusMapping']
-): Promise<TrackerAssociationWithScope> {
-  if (
-    association.status_mapping ||
-    !queueEntries.some((entry) => entry.target_status_category)
-  ) {
-    return association;
-  }
-
-  try {
-    const statuses = await client.getProjectStatuses(association.project_key);
-    const { mapping: suggested } = suggestStatusMapping(statuses);
-    if (Object.keys(suggested).length > 0) {
-      updateStatusMapping(association.id, suggested);
-      return { ...association, status_mapping: suggested };
-    }
-  } catch (e) {
-    console.warn(`[ExportService] Failed to bootstrap status mapping for ${association.id}:`, e);
-  }
-
-  return association;
-}
-
-/**
- * Service for exporting KPM plan items to Jira.
- * Manages the sync queue and executes the export.
+ * Owns the outbound queue for a project — what is staged, with which targets —
+ * and hands each export surface the same resolved `ExportPlan`.
  */
 export function createExportService(deps: ExportServiceDeps) {
-  const getDatabase = () => deps.database;
   const OutboundChangeRepository = deps.outboundChanges;
   const PlanItemRepository = deps.planItems;
   const TrackerRepository = deps.tracker;
-  const SyncRepository = deps.sync;
-  const TypeMappingService = createTypeMappingService({
-    typeMappings: deps.typeMappings,
-    tracker: deps.tracker,
-    trackerClientService: deps.trackerClientService,
-  });
-  const TrackerClientService = deps.trackerClientService;
 
-  const service = {
+  return {
   /**
    * Add items to the sync queue.
    * Determines operation type (create vs update) based on external_key.
@@ -195,20 +31,16 @@ export function createExportService(deps: ExportServiceDeps) {
     const queued: string[] = [];
     const skipped: { id: string; reason: string }[] = [];
 
-    // Get associations for the project
     const associations = TrackerRepository.getAssociationsByProject(kpmProjectId);
     if (associations.length === 0) {
-      // Skip all items if no association
       for (const id of itemIds) {
         skipped.push({ id, reason: 'No tracker association configured for project' });
       }
       return { queued, skipped };
     }
 
-    // Resolve association
     let association;
     if (associationId) {
-      // Use specified association
       association = associations.find(a => a.id === associationId);
       if (!association) {
         for (const id of itemIds) {
@@ -217,34 +49,29 @@ export function createExportService(deps: ExportServiceDeps) {
         return { queued, skipped };
       }
     } else if (associations.length === 1) {
-      // Single association - use it
       association = associations[0];
     } else {
-      // Multiple associations - require explicit selection
       for (const id of itemIds) {
         skipped.push({ id, reason: 'Multiple tracker associations exist - please specify which one to use' });
       }
       return { queued, skipped };
     }
 
-    // Build item cache and collect all items to queue (including unsynced parents)
     const allItems = PlanItemRepository.getByProject(kpmProjectId);
     const itemMap = new Map(allItems.map(item => [item.id, item]));
 
-    // Collect all items to queue, walking up parent chains to include unsynced parents
+    // Walk up parent chains so an unsynced parent is queued alongside its child.
     const itemsToQueue = new Set<string>(itemIds);
     const processedParents = new Set<string>();
 
     for (const itemId of itemIds) {
       let currentId: string | null = itemMap.get(itemId)?.parent_id ?? null;
 
-      // Walk up the parent chain
       while (currentId && !processedParents.has(currentId)) {
         processedParents.add(currentId);
         const parent = itemMap.get(currentId);
 
         if (parent) {
-          // Only auto-queue parents that don't already have an external_key (not synced)
           if (!parent.external_key) {
             itemsToQueue.add(currentId);
           }
@@ -262,23 +89,21 @@ export function createExportService(deps: ExportServiceDeps) {
         continue;
       }
 
-      const operation = resolveOperation(item);
-
       const existing = OutboundChangeRepository.getByPlanItem(itemId);
       if (existing) {
-        // Only report as skipped if it was in the original itemIds (not auto-added parent)
+        // An auto-added parent is not something the user asked for, so it is
+        // not reported back as skipped.
         if (itemIds.includes(itemId)) {
           skipped.push({ id: itemId, reason: 'Already queued' });
         }
         continue;
       }
 
-      // Try to add to queue
       const entry = OutboundChangeRepository.add({
         kpm_project_id: kpmProjectId,
         plan_item_id: itemId,
         association_id: association.id,
-        operation,
+        operation: resolveOperation(item),
         queued_by: queuedBy,
         target_issue_type_id: null,
         target_issue_type_name: null,
@@ -311,7 +136,7 @@ export function createExportService(deps: ExportServiceDeps) {
 
   /**
    * Update queue entry status category.
-   * If the new status matches what's synced to Jira, removes from queue instead.
+   * If the new status matches what's synced to the tracker, removes from queue instead.
    * @returns { removed: true } if removed, { removed: false } if updated
    */
   updateQueueStatus(
@@ -328,14 +153,12 @@ export function createExportService(deps: ExportServiceDeps) {
           association?.status_mapping ?? null
         );
         if (syncedCategory === statusCategory) {
-          // Status matches what's in Jira - remove from queue
           if (getConfig().claude.debug) console.log(`[ExportService] Removing ${planItem.external_key} from queue - status reverted to synced value (${statusCategory})`);
           OutboundChangeRepository.remove(queueEntryId);
           return { removed: true };
         }
       }
     }
-    // Otherwise, update the target status category
     OutboundChangeRepository.updateStatusCategory(queueEntryId, statusCategory);
     return { removed: false };
   },
@@ -353,935 +176,24 @@ export function createExportService(deps: ExportServiceDeps) {
     OutboundChangeRepository.update(queueEntryId, { custom_field_overrides: cleaned });
   },
 
-  /**
-   * Generate export preview with validation.
-   * Resolves issue types, validates parent relationships, and identifies issues.
-   */
-  async generateExportPreview(
-    kpmProjectId: string,
-    associationId: string
-  ): Promise<ExportPreview> {
-    const items: ExportPreviewItem[] = [];
-    const warnings: string[] = [];
-    let canProceed = true;
-
-    // Get association context
-    const association = TrackerRepository.getAssociationById(associationId);
-    if (!association) {
-      return {
-        items: [],
-        deleteItems: [],
-        warnings: ['Association not found'],
-        canProceed: false,
-      };
-    }
-    const trackerLabel = trackerLabelFor(association.tracker_type);
-
-    // Create/update entries need a live plan item; deletions are detached and
-    // stay whole through the drain, independent of anything resolved below.
-    const allQueueEntries = OutboundChangeRepository.getByAssociation(associationId);
-    const deleteItems = allQueueEntries.filter(isOutboundDeletion).map(queueEntry => ({ queueEntry }));
-    const queueEntries = allQueueEntries.filter(isOutboundItemChange);
-
-    if (queueEntries.length === 0 && deleteItems.length === 0) {
-      return {
-        items: [],
-        deleteItems: [],
-        warnings: ['No items in queue'],
-        canProceed: false,
-      };
-    }
-
-    // Issue types are a Jira concept; Linear returns a synthetic "Issue" entry.
-    // Only needed when there are live create/update entries to resolve types for.
-    let availableTypes: TrackerIssueType[] = [];
-    if (queueEntries.length > 0) {
-      try {
-        const client = await TrackerClientService.getClient(association.tracker_type);
-        availableTypes = await client.getIssueTypes(association.project_key);
-      } catch (e) {
-        // A deletion needs no issue type, so it survives this failure and stays
-        // reviewable — dropping it here left the row queued with nothing on screen.
-        return {
-          items: [],
-          deleteItems,
-          warnings: [`Failed to fetch issue types from ${trackerLabel}: ${e instanceof Error ? e.message : 'Unknown error'}`],
-          canProceed: deleteItems.length > 0,
-        };
-      }
-    }
-
-    // Build map of all plan items for depth calculation
-    const allItems = PlanItemRepository.getByProject(kpmProjectId);
-    const itemMap = new Map<string, PlanItem>();
-    for (const item of allItems) {
-      itemMap.set(item.id, item);
-    }
-
-    // Create lazy depth calculator (only computes depth when requested)
-    const getDepth = createDepthCalculator(itemMap);
-
-    // Set of items being created (for parent resolution)
-    const creatingItemIds = new Set(
-      queueEntries.filter(e => e.operation === 'create').map(e => e.plan_item_id)
-    );
-
-    // Collect queue updates for batch transaction
-    const queueUpdates: { id: string; typeId: string; typeName: string; parentKey: string | null }[] = [];
-
-    // Process each queued item
-    for (const entry of queueEntries) {
-      const planItem = itemMap.get(entry.plan_item_id);
-      if (!planItem) {
-        items.push({
-          queueEntry: entry,
-          planItem: { id: entry.plan_item_id } as PlanItem, // Minimal placeholder
-          resolvedType: null,
-          resolvedParent: null,
-          resolvedDescription: null,
-          validationErrors: ['Plan item not found'],
-        });
-        canProceed = false;
-        continue;
-      }
-
-      const validationErrors: string[] = [];
-      const depth = getDepth(planItem.id);
-
-      // Determine if item has a syncable parent (for subtask resolution)
-      // Check this BEFORE resolving type so we can use it as a hint
-      let hasSyncableParent = false;
-      let resolvedParent: string | null = null;
-
-      if (entry.operation === 'create' && planItem.parent_id) {
-        const parent = itemMap.get(planItem.parent_id);
-        if (parent) {
-          if (parent.external_key) {
-            resolvedParent = parent.external_key;
-            hasSyncableParent = true;
-          } else if (creatingItemIds.has(parent.id)) {
-            resolvedParent = `(pending: ${parent.title})`;
-            hasSyncableParent = true;
-          }
-        }
-      }
-
-      // Resolve issue type - pass hasSyncableParent to prefer subtask type when nested
-      // Also pass hasEpicKey to shift depth mapping (root = Story instead of Epic)
-      const resolvedType = TypeMappingService.resolveIssueType(
-        planItem,
-        kpmProjectId,
-        association.scope_id,
-        depth,
-        availableTypes,
-        hasSyncableParent,
-        !!association.epic_key
-      );
-
-      if (!resolvedType) {
-        validationErrors.push(`Could not resolve ${trackerLabel} issue type`);
-        canProceed = false;
-      }
-
-      const isSubtaskType = resolvedType?.name.toLowerCase().includes('sub-task');
-
-      // Sub-tasks in Jira require a parent - validate this
-      if (isSubtaskType) {
-        if (!planItem.parent_id) {
-          validationErrors.push('Sub-task type requires a parent item');
-          canProceed = false;
-        } else if (!resolvedParent) {
-          validationErrors.push(`Parent item must be queued or already synced to ${trackerLabel}`);
-          canProceed = false;
-        }
-      }
-
-      // Collect queue entry update for batch processing
-      if (resolvedType && entry.operation === 'create') {
-        queueUpdates.push({
-          id: entry.id,
-          typeId: resolvedType.id,
-          typeName: resolvedType.name,
-          parentKey: resolvedParent?.startsWith('(pending') ? null : resolvedParent,
-        });
-      }
-
-      items.push({
-        queueEntry: { ...entry, target_issue_type_id: resolvedType?.id ?? null, target_issue_type_name: resolvedType?.name ?? null },
-        planItem,
-        resolvedType,
-        resolvedParent,
-        resolvedDescription: resolveExportDescription(planItem, allItems, association.tracker_type),
-        validationErrors,
-      });
-    }
-
-    // Batch update queue entries in a single transaction
-    if (queueUpdates.length > 0) {
-      const db = getDatabase();
-      db.transaction(() => {
-        for (const update of queueUpdates) {
-          OutboundChangeRepository.updateResolvedType(update.id, update.typeId, update.typeName, update.parentKey);
-        }
-      })();
-    }
-
-    // Add warnings for items using depth fallback
-    const itemsWithoutLabel = items.filter(i => !i.planItem.label && i.resolvedType);
-    if (itemsWithoutLabel.length > 0) {
-      warnings.push(`${itemsWithoutLabel.length} item(s) using depth-based type fallback (no label set)`);
-    }
-
-    return { items, deleteItems, warnings, canProceed };
+  async generateExportPreview(kpmProjectId: string, associationId: string): Promise<ExportPreview> {
+    return previewOf(await resolveExportPlan(kpmProjectId, associationId, deps));
   },
 
-  /**
-   * Generate sync review data with Jira comparisons for task-by-task review.
-   * Fetches current Jira state for update operations and computes character-level diffs.
-   * Optimized: Parallel Jira API calls for better performance.
-   */
-  async generateSyncReview(
-    kpmProjectId: string,
-    associationId: string
-  ): Promise<SyncReviewData> {
-    // First get the base export preview
-    const preview = await service.generateExportPreview(kpmProjectId, associationId);
-
-    if (!preview.canProceed && preview.items.length === 0 && preview.deleteItems.length === 0) {
-      return {
-        items: [],
-        deleteItems: [],
-        warnings: preview.warnings,
-        canProceed: false,
-      };
-    }
-
-    // Get association for status mapping
-    const association = TrackerRepository.getAssociationById(associationId);
-    let statusMapping = association?.status_mapping ?? null;
-
-    // Get tracker client for fetching current state.
-    let client: TrackerClient | null = null;
-    if (association) {
-      try {
-        client = await TrackerClientService.getClient(association.tracker_type);
-      } catch {
-        // Continue without client - diffs won't be available for updates
-      }
-    }
-
-    // Auto-bootstrap the status mapping on first export. Without this, the
-    // user opens the Mappings panel and sees suggestions with AUTO badges that
-    // look configured but were never persisted — closing the panel drops them
-    // and the export silently skips the state transition. Treating the
-    // suggestion as the default the user can edit later matches what the UI
-    // already implies and gets the common case (Linear states named "Done",
-    // "Backlog", "In Progress" etc.) working with zero clicks.
-    if (
-      !statusMapping &&
-      association &&
-      client &&
-      preview.items.some(item => item.queueEntry.target_status_category)
-    ) {
-      try {
-        const statuses = await client.getProjectStatuses(association.project_key);
-        const { mapping: suggested } = suggestStatusMapping(statuses);
-        if (Object.keys(suggested).length > 0) {
-          TrackerRepository.updateStatusMapping(association.id, suggested);
-          statusMapping = suggested;
-        }
-      } catch (e) {
-        // Suggestion is best-effort. If fetching statuses fails, fall through
-        // to the existing "no mapping" warning so the user can configure
-        // manually.
-        console.warn(`[ExportService] Failed to bootstrap status mapping for ${associationId}:`, e);
-      }
-    }
-
-    // Identify items that need tracker fetches (updates with external_key)
-    const itemsNeedingFetch = client
-      ? preview.items.filter(
-          item => item.queueEntry.operation === 'update' && item.planItem.external_key
-        )
-      : [];
-
-    // Snapshots record what the tracker held at the last sync. We use them to
-    // tell a real external edit apart from the tracker re-rendering markdown:
-    // a bumped `updated` timestamp alone is not a conflict if the stored content
-    // still matches the snapshot.
-    const snapshotMap = SyncRepository.getSnapshotsByItemIds(
-      itemsNeedingFetch.map(item => item.planItem.id)
-    );
-
-    // Parallel fetch all tracker issues
-    const jiraFetchResults = await Promise.allSettled(
-      itemsNeedingFetch.map(item => client!.fetchIssue(item.planItem.external_key!))
-    );
-
-    // Build a map of external_key -> tracker issue data (matches JiraCurrentValues type)
-    const jiraDataMap = new Map<string, {
-      summary: string;
-      description: string | null;
-      status: string;
-      statusType?: string | null;
-      updated: string;
-    }>();
-    itemsNeedingFetch.forEach((item, index) => {
-      const result = jiraFetchResults[index];
-      if (result.status === 'fulfilled') {
-        const jiraIssue = result.value;
-        jiraDataMap.set(item.planItem.external_key!, {
-          summary: jiraIssue.title,
-          description: jiraIssue.description,
-          status: jiraIssue.status,
-          statusType: jiraIssue.statusType ?? null,
-          updated: jiraIssue.updatedAt,
-        });
-      }
-    });
-
-    // Identify items that need transitions (have jira data + target status)
-    const itemsNeedingTransitions = client
-      ? preview.items.filter(item => {
-          const jiraData = jiraDataMap.get(item.planItem.external_key ?? '');
-          return (
-            item.queueEntry.target_status_category &&
-            item.planItem.external_key &&
-            jiraData &&
-            isTransitionNeededWithMapping(
-              jiraData.status,
-              item.queueEntry.target_status_category,
-              statusMapping,
-              { trackerType: association?.tracker_type, stateType: jiraData.statusType ?? null }
-            )
-          );
-        })
-      : [];
-
-    // Parallel fetch all transitions
-    const transitionResults = await Promise.allSettled(
-      itemsNeedingTransitions.map(item => client!.getTransitions(item.planItem.external_key!))
-    );
-
-    // Build a map of external_key -> transitions
-    const transitionsMap = new Map<string, Awaited<ReturnType<JiraClient['getTransitions']>>>();
-    itemsNeedingTransitions.forEach((item, index) => {
-      const result = transitionResults[index];
-      if (result.status === 'fulfilled') {
-        transitionsMap.set(item.planItem.external_key!, result.value);
-      }
-    });
-
-    // Build review items using the pre-fetched data
-    const reviewItems: SyncReviewItem[] = preview.items.map(item => {
-      const jiraCurrent = jiraDataMap.get(item.planItem.external_key ?? '') ?? null;
-      let diffs = null;
-      let hasConflict = false;
-
-      if (jiraCurrent) {
-        // Compute diffs. Descriptions compare on the normalized form so the
-        // tracker's bullet/whitespace canonicalization (e.g. Linear rewriting
-        // `*` to `-`) does not render as a change the user never made.
-        const summaryDiff = computeFieldDiff(jiraCurrent.summary, item.planItem.title);
-        const descriptionDiff = computeFieldDiff(
-          normalizeMarkdown(jiraCurrent.description) ?? '',
-          normalizeMarkdown(item.resolvedDescription) ?? ''
-        );
-
-        diffs = {
-          summary: summaryDiff.hasChanges ? summaryDiff : null,
-          description: descriptionDiff.hasChanges ? descriptionDiff : null,
-        };
-
-        // Flag a conflict only when the tracker was edited after our last sync
-        // AND its current content actually drifted from the snapshot we stored
-        // at that sync. The timestamp alone trips on cosmetic re-rendering; the
-        // content check is what keeps a `*`→`-` rewrite from looking like an
-        // external edit. With no snapshot (e.g. first export of an imported
-        // item) we fall back to the timestamp signal.
-        if (item.planItem.last_synced_at && jiraCurrent.updated) {
-          const lastSynced = new Date(item.planItem.last_synced_at).getTime();
-          const jiraUpdated = new Date(jiraCurrent.updated).getTime();
-          const updatedAfterSync = jiraUpdated > lastSynced;
-
-          const snapshot = snapshotMap.get(item.planItem.id);
-          if (snapshot) {
-            const descriptionDrifted = hasRemoteFieldDrifted({
-              remote: jiraCurrent.description,
-              snapshot: snapshot.snapshot_description,
-              normalize: normalizeMarkdown,
-            });
-            const titleDrifted = hasRemoteFieldDrifted({
-              remote: jiraCurrent.summary,
-              snapshot: snapshot.snapshot_title,
-            });
-            hasConflict = updatedAfterSync && (descriptionDrifted || titleDrifted);
-          } else {
-            hasConflict = updatedAfterSync;
-          }
-        }
-      }
-
-      // Check for status transition
-      let statusTransition: StatusTransitionInfo | null = null;
-      const targetStatusCategory = item.queueEntry.target_status_category;
-
-      if (
-        targetStatusCategory &&
-        jiraCurrent &&
-        isTransitionNeededWithMapping(
-          jiraCurrent.status,
-          targetStatusCategory,
-          statusMapping,
-          { trackerType: association?.tracker_type, stateType: jiraCurrent.statusType ?? null }
-        )
-      ) {
-        const transitions = transitionsMap.get(item.planItem.external_key ?? '');
-        if (transitions) {
-          const bestTransition = findTransitionWithMapping(targetStatusCategory, transitions, statusMapping);
-          statusTransition = {
-            currentStatus: jiraCurrent.status,
-            targetCategory: targetStatusCategory,
-            availableTransition: bestTransition,
-            warning: bestTransition
-              ? null
-              : generateTransitionWarning(jiraCurrent.status, targetStatusCategory, transitions, statusMapping),
-          };
-        } else {
-          statusTransition = {
-            currentStatus: jiraCurrent.status,
-            targetCategory: targetStatusCategory,
-            availableTransition: null,
-            warning: 'Failed to fetch available transitions',
-          };
-        }
-      }
-
-      // A queued status transition that can't resolve to a tracker state is a
-      // hard failure: silently exporting would push title/description but drop
-      // the state change — exactly the partial-update we saw burn users.
-      const validationErrors = statusTransition?.warning
-        ? [...item.validationErrors, statusTransition.warning]
-        : item.validationErrors;
-
-      return {
-        ...item,
-        validationErrors,
-        jiraCurrent,
-        diffs,
-        statusTransition,
-        decision: 'pending' as const,
-        hasConflict,
-      };
-    });
-
-    const reviewDeleteItems = await describeDeletions(
-      preview.deleteItems.map(d => d.queueEntry),
-      client
-    );
-
-    return {
-      items: reviewItems,
-      deleteItems: reviewDeleteItems,
-      warnings: preview.warnings,
-      canProceed: preview.canProceed,
-    };
+  async generateSyncReview(kpmProjectId: string, associationId: string): Promise<SyncReviewData> {
+    return reviewOf(await resolveExportPlan(kpmProjectId, associationId, deps), deps);
   },
 
-  /**
-   * Execute export for only approved items.
-   * Takes item IDs that were approved in the review flow.
-   * Optimized: Creates run sequentially (parent→child), updates run in parallel.
-   */
   async executeApprovedExport(
     kpmProjectId: string,
     associationId: string,
     approvedItemIds: string[],
     approvedDeleteIds: string[] = []
   ): Promise<ExportResult> {
-    const result: ExportResult = {
-      success: true,
-      created: [],
-      updated: [],
-      deleted: [],
-      errors: [],
-      deleteErrors: [],
-      warnings: [],
-    };
-
-    if (approvedItemIds.length === 0 && approvedDeleteIds.length === 0) {
-      return result;
-    }
-
-    // Get association
-    let association = TrackerRepository.getAssociationById(associationId);
-    if (!association) {
-      return { success: false, created: [], updated: [], deleted: [], deleteErrors: [], warnings: [], errors: [{ plan_item_id: '', error: 'Association not found' }] };
-    }
-
-    // Get tracker client for this association's tracker type.
-    let client: TrackerClient;
-    try {
-      client = await TrackerClientService.getClient(association.tracker_type);
-    } catch (e) {
-      return { success: false, created: [], updated: [], deleted: [], deleteErrors: [], warnings: [], errors: [{ plan_item_id: '', error: `Failed to get ${association.tracker_type} client: ${e instanceof Error ? e.message : 'Unknown'}` }] };
-    }
-
-    // Get queued items - filter to approved ones, but force-include unsynced
-    // parents so subtasks don't get orphaned under the epic fallback.
-    const rawQueueEntries = OutboundChangeRepository.getByAssociation(associationId);
-    const allQueueEntries = rawQueueEntries.filter(isOutboundItemChange);
-    const deletions = rawQueueEntries.filter(isOutboundDeletion);
-    association = await bootstrapStatusMappingForQueuedTargets(
-      association,
-      allQueueEntries,
-      client,
-      TrackerRepository.updateStatusMapping.bind(TrackerRepository)
-    );
-    const allItems = PlanItemRepository.getByProject(kpmProjectId);
-    const itemMap = new Map<string, PlanItem>();
-    for (const item of allItems) {
-      itemMap.set(item.id, item);
-    }
-
-    const approvedSet = new Set(approvedItemIds);
-
-    // Walk parent chains of approved creates to ensure unsynced parents are included
-    const queuedItemIds = new Set(allQueueEntries.map(e => e.plan_item_id));
-    const processedParents = new Set<string>();
-    for (const itemId of approvedItemIds) {
-      let currentId: string | null = itemMap.get(itemId)?.parent_id ?? null;
-      while (currentId && !processedParents.has(currentId)) {
-        processedParents.add(currentId);
-        const parent = itemMap.get(currentId);
-        if (parent) {
-          // Force-include unsynced parents that are in the queue
-          if (!parent.external_key && queuedItemIds.has(currentId)) {
-            approvedSet.add(currentId);
-          }
-          currentId = parent.parent_id;
-        } else {
-          break;
-        }
-      }
-    }
-
-    const queueEntries = allQueueEntries.filter(e => approvedSet.has(e.plan_item_id));
-
-    if (queueEntries.length === 0 && !deletions.some(d => approvedDeleteIds.includes(d.id))) {
-      return result;
-    }
-
-    // Separate creates (need sequential for parent resolution) from updates (can parallelize)
-    const createEntries = queueEntries.filter(e => e.operation === 'create');
-    const updateEntries = queueEntries.filter(e => e.operation === 'update');
-
-    // Sort creates by depth (parents first) - use lazy calculator
-    const getDepth = createDepthCalculator(itemMap);
-    const sortedCreateEntries = [...createEntries].sort((a, b) => {
-      const depthA = getDepth(a.plan_item_id);
-      const depthB = getDepth(b.plan_item_id);
-      return depthA - depthB;
-    });
-
-    // Map to track newly created external keys for parent resolution
-    const createdKeys = new Map<string, string>();
-    // Keep the initial projection for each created item. A reference to a
-    // sibling created later in this batch has no tracker key during the first
-    // create call, so it is exported as plain title text. Once every create
-    // has returned its tracker linkage, we can update only those descriptions
-    // whose projection gained a real tracker reference.
-    const createdDescriptions = new Map<string, ExternalMarkdown | null>();
-
-    // The transition-and-verify flow is identical across trackers; the reconciler
-    // owns it so neither this method nor the adapters branch on tracker type.
-    const reconciler = createStatusReconciler(client, association.status_mapping);
-
-    // Process creates sequentially (parent must exist before child)
-    for (const entry of sortedCreateEntries) {
-      const planItem = itemMap.get(entry.plan_item_id);
-      if (!planItem) {
-        result.errors.push({ plan_item_id: entry.plan_item_id, error: 'Plan item not found' });
-        OutboundChangeRepository.setError(entry.id, 'Plan item not found');
-        continue;
-      }
-
-      try {
-        let parentKey: string | undefined;
-        if (planItem.parent_id) {
-          const parent = itemMap.get(planItem.parent_id);
-          if (parent?.external_key) {
-            parentKey = parent.external_key;
-          } else if (createdKeys.has(planItem.parent_id)) {
-            parentKey = createdKeys.get(planItem.parent_id);
-          }
-        }
-
-        // If no parent resolved from KPM hierarchy, use association's epic_key
-        if (!parentKey && association.epic_key) {
-          parentKey = association.epic_key;
-        }
-
-        // Format custom fields via the client-native helper (Jira wraps option
-        // IDs, Linear returns {} since it has no equivalent concept).
-        const rawCustomFields = mergeCustomFieldValues(
-          entry.custom_field_overrides,
-          association.custom_field_values
-        );
-        const customFields = rawCustomFields && Object.keys(rawCustomFields).length > 0
-          ? client.formatCustomFieldsForApi(rawCustomFields)
-          : undefined;
-
-        // Sync boundary: only title/description cross to the external tracker.
-        // Spec fields (`intent`, `acceptance_criteria`, `source_document_id`) are
-        // intentionally local-only — they live in KPM as the developer's source of truth
-        // and must not leak to Jira/Linear without an explicit product decision.
-        // If you add new spec-like fields, default them to local-only and require sign-off
-        // before adding to this payload. See `src/main/claude/CLAUDE.md` (Sync boundary).
-        //
-        // Labels: `planItem.label` is intentionally not forwarded. Jira would accept the
-        // raw string, but Linear requires label UUIDs (not names) — wiring would need a
-        // per-team name→ID resolver. Treat labels as KPM-local until that resolver exists.
-        // Sync boundary: rewrite @plan/<uuid> tokens to native syntax for the
-        // tracker so the description never lands as literal `@plan/<uuid>` text
-        // in Jira/Linear. Linked items become tracker-key links; unlinked
-        // items degrade to the title.
-        const trackerBrief = projectWorkBriefToTracker(
-          workBriefFromPlanItem(planItem),
-          [...itemMap.values()],
-          refDestinationForTracker(association.tracker_type),
-        );
-        createdDescriptions.set(planItem.id, trackerBrief.description);
-        const created = await client.createIssue({
-          projectKey: association.project_key,
-          issueTypeId: entry.target_issue_type_id!,
-          summary: trackerBrief.title,
-          description: trackerBrief.description ?? undefined,
-          parentKey,
-          customFields,
-          issueFilter: association.issue_filter,
-          initialStatusName: resolveInitialStatusName(
-            association.status_mapping,
-            entry.target_status_category
-          ),
-          assignToSelf: deps.shouldAssignExportsToMe(),
-        });
-        if (created.assigneeSkippedReason) {
-          result.warnings.push(
-            `${created.key} was created unassigned: ${created.assigneeSkippedReason}`
-          );
-        }
-
-        // Fetch the created issue so we record the tracker-assigned status.
-        // Prevents sync from showing spurious status updates on the next pass.
-        let createdIssue = await client.fetchIssue(created.key);
-        if (entry.target_status_category) {
-          const transition = await reconciler.planTransition(
-            created.key,
-            createdIssue,
-            entry.target_status_category
-          );
-          if (transition) {
-            createdIssue = await reconciler.applyTransition(
-              created.key,
-              transition,
-              entry.target_status_category
-            );
-          } else {
-            reconciler.verifyCategory(createdIssue, entry.target_status_category);
-          }
-        }
-
-        const trackerStatus = createdIssue.status;
-        const inferredCategory = reconciler.categoryOf(createdIssue);
-
-        const syncUpdate: PlanItemSyncUpdates = {
-          external_key: created.key,
-          external_id: created.id,
-          external_type: association.tracker_type,
-          external_status: trackerStatus,
-          external_url: created.url,
-          ...externalPeopleFields(createdIssue),
-          association_id: associationId,
-          sync_source: 'local',
-          last_synced_at: new Date().toISOString(),
-          status_category: inferredCategory,
-        };
-        if (getConfig().claude.debug) console.log('[ExportService] Updating plan item with external_key:', { planItemId: planItem.id, external_key: created.key, external_url: syncUpdate.external_url });
-        PlanItemRepository.update(planItem.id, syncUpdate);
-        itemMap.set(planItem.id, { ...planItem, ...syncUpdate });
-
-        // Create sync snapshot using the actual Jira data (after ADF roundtrip)
-        // This ensures subsequent syncs don't show false changes due to markdown conversion
-        SyncRepository.upsertSnapshot({
-          plan_item_id: planItem.id,
-          snapshot_title: createdIssue.title,
-          snapshot_description: createdIssue.description,
-          snapshot_label: planItem.label, // Label is not synced from Jira
-          snapshot_release_tag: planItem.release_tag, // Not synced from Jira
-          external_updated_at: createdIssue.updatedAt,
-        });
-
-        createdKeys.set(planItem.id, created.key);
-        result.created.push({ plan_item_id: planItem.id, jira_key: created.key });
-        OutboundChangeRepository.remove(entry.id);
-      } catch (e) {
-        const errorMsg = e instanceof Error ? e.message : 'Unknown error';
-        result.errors.push({ plan_item_id: planItem.id, error: errorMsg });
-        OutboundChangeRepository.setError(entry.id, errorMsg);
-        result.success = false;
-      }
-    }
-
-    // The create response is KPM's local acknowledgement of the new tracker
-    // item, not an inbound sync. Re-project the just-created descriptions now
-    // that all successful creates have external keys, then make one narrow
-    // outbound update for descriptions that gained a linked reference.
-    const currentItems = [...itemMap.values()];
-    const referenceUpdates = [...createdDescriptions.entries()].flatMap(([planItemId, initialDescription]) => {
-      const planItem = itemMap.get(planItemId);
-      if (!planItem?.external_key) return [];
-
-      const description = projectWorkBriefToTracker(
-        workBriefFromPlanItem(planItem),
-        currentItems,
-        refDestinationForTracker(association.tracker_type),
-      ).description;
-      return normalizeMarkdown(description) === normalizeMarkdown(initialDescription)
-        ? []
-        : [{ planItem, description }];
-    });
-
-    const referenceUpdateResults = await Promise.all(referenceUpdates.map(async ({ planItem, description }) => {
-      try {
-        await client.updateIssue(planItem.external_key!, { description });
-        const updatedIssue = await client.fetchIssue(planItem.external_key!);
-        return { success: true as const, planItem, updatedIssue };
-      } catch (e) {
-        return {
-          success: false as const,
-          planItem,
-          error: e instanceof Error ? e.message : 'Unknown error',
-        };
-      }
-    }));
-
-    const now = new Date().toISOString();
-    for (const referenceUpdate of referenceUpdateResults) {
-      if (!referenceUpdate.success) {
-        result.errors.push({ plan_item_id: referenceUpdate.planItem.id, error: referenceUpdate.error });
-        result.success = false;
-        continue;
-      }
-
-      PlanItemRepository.update(referenceUpdate.planItem.id, { last_synced_at: now });
-      SyncRepository.upsertSnapshot({
-        plan_item_id: referenceUpdate.planItem.id,
-        snapshot_title: referenceUpdate.updatedIssue.title,
-        snapshot_description: referenceUpdate.updatedIssue.description,
-        snapshot_label: referenceUpdate.planItem.label,
-        snapshot_release_tag: referenceUpdate.planItem.release_tag,
-        external_updated_at: referenceUpdate.updatedIssue.updatedAt,
-      });
-    }
-
-    // Process updates in parallel (they are independent)
-    const updatePromises = updateEntries.map(async (entry) => {
-      const planItem = itemMap.get(entry.plan_item_id);
-      if (!planItem) {
-        return { success: false, entry, planItem: null, error: 'Plan item not found' };
-      }
-
-      try {
-        // Update fields - pass title and description directly.
-        const overrideFields = entry.custom_field_overrides && Object.keys(entry.custom_field_overrides).length > 0
-          ? client.formatCustomFieldsForApi(entry.custom_field_overrides)
-          : undefined;
-
-        let transitionToApply: TrackerTransition | null = null;
-        let newExternalStatus: string | null = null;
-
-        // Preflight status transitions before mutating title/description. If the
-        // queued status can't resolve to a tracker transition, fail the entry
-        // without creating a partial external update.
-        const targetStatusCategory = entry.target_status_category;
-        if (targetStatusCategory) {
-          const currentIssue = await client.fetchIssue(planItem.external_key!);
-          transitionToApply = await reconciler.planTransition(
-            planItem.external_key!,
-            currentIssue,
-            targetStatusCategory
-          );
-          if (!transitionToApply) {
-            newExternalStatus = currentIssue.status;
-          }
-        }
-
-        // Sync boundary: same rule as createIssue above — spec fields are local-only.
-        // Do not add `intent`, `acceptance_criteria`, or `source_document_id` to this payload.
-        // Plan refs in the description are resolved to native syntax for the tracker.
-        const trackerBriefUpdate = projectWorkBriefToTrackerUpdate(
-          workBriefFromPlanItem(planItem),
-          currentItems,
-          refDestinationForTracker(association.tracker_type),
-        );
-        await client.updateIssue(planItem.external_key!, {
-          ...trackerBriefUpdate,
-          customFields: overrideFields,
-        });
-
-        // Fetch the updated issue to get actual Jira data (after ADF roundtrip)
-        let updatedIssue = await client.fetchIssue(planItem.external_key!);
-
-        // Execute status transition if queued
-        if (transitionToApply && targetStatusCategory) {
-          try {
-            updatedIssue = await reconciler.applyTransition(
-              planItem.external_key!,
-              transitionToApply,
-              targetStatusCategory
-            );
-            newExternalStatus = updatedIssue.status;
-          } catch (transitionError) {
-            console.error(`Failed to transition ${planItem.external_key}:`, transitionError);
-            throw transitionError;
-          }
-        }
-
-        return { success: true, entry, planItem, newExternalStatus, updatedIssue };
-      } catch (e) {
-        const errorMsg = e instanceof Error ? e.message : 'Unknown error';
-        return { success: false, entry, planItem, error: errorMsg, updatedIssue: null };
-      }
-    });
-
-    const updateResults = await Promise.all(updatePromises);
-
-    // Batch all database updates in a single transaction for performance
-    const db = getDatabase();
-    db.transaction(() => {
-      const now = new Date().toISOString();
-
-      for (const updateResult of updateResults) {
-        const errorMessage = updateResult.error ?? 'Unknown error';
-
-        if (!updateResult.planItem) {
-          result.errors.push({ plan_item_id: updateResult.entry.plan_item_id, error: errorMessage });
-          OutboundChangeRepository.setError(updateResult.entry.id, errorMessage);
-          continue;
-        }
-
-        if (updateResult.success) {
-          const updateSyncFields: PlanItemSyncUpdates = {
-            last_synced_at: now,
-          };
-          if (updateResult.newExternalStatus) {
-            updateSyncFields.external_status = updateResult.newExternalStatus;
-          }
-          if (updateResult.updatedIssue) {
-            Object.assign(updateSyncFields, externalPeopleFields(updateResult.updatedIssue));
-          }
-          PlanItemRepository.update(updateResult.planItem.id, updateSyncFields);
-
-          // Create sync snapshot using the actual Jira data (after ADF roundtrip)
-          // This ensures subsequent syncs don't show false changes due to markdown conversion
-          if (updateResult.updatedIssue) {
-            SyncRepository.upsertSnapshot({
-              plan_item_id: updateResult.planItem.id,
-              snapshot_title: updateResult.updatedIssue.title,
-              snapshot_description: updateResult.updatedIssue.description,
-              snapshot_label: updateResult.planItem.label, // Label is not synced from Jira
-              snapshot_release_tag: updateResult.planItem.release_tag, // Not synced from Jira
-              external_updated_at: updateResult.updatedIssue.updatedAt,
-            });
-          }
-
-          result.updated.push({
-            plan_item_id: updateResult.planItem.id,
-            jira_key: updateResult.planItem.external_key ?? '',
-          });
-          OutboundChangeRepository.remove(updateResult.entry.id);
-        } else {
-          result.errors.push({ plan_item_id: updateResult.planItem.id, error: errorMessage });
-          OutboundChangeRepository.setError(updateResult.entry.id, errorMessage);
-          result.success = false;
-        }
-      }
-
-    })();
-
-    const drained = await drainDeletions(deletions, approvedDeleteIds, client, {
-      outboundChanges: OutboundChangeRepository,
-    });
-    result.deleted.push(...drained.deleted);
-    result.deleteErrors.push(...drained.errors);
-    if (drained.errors.length > 0) result.success = false;
-
-    if (result.created.length > 0 || result.updated.length > 0 || result.deleted.length > 0) {
-      TrackerRepository.updateAssociationLastSynced(associationId);
-    }
-
-    return result;
+    const plan = await resolveExportPlan(kpmProjectId, associationId, deps);
+    return executePlan(plan, { itemIds: approvedItemIds, deleteIds: approvedDeleteIds }, deps);
   },
 };
-
-  return service;
 }
 
 export type ExportService = ReturnType<typeof createExportService>;
-
-/**
- * Create a lazy depth calculator that memoizes results.
- * Only calculates depth for requested items (and their ancestors as a side effect).
- * Much more efficient for large projects with small queues.
- */
-function createDepthCalculator(itemMap: Map<string, PlanItem>): (itemId: string) => number {
-  const cache = new Map<string, number>();
-
-  return function getDepth(itemId: string): number {
-    // Check cache first
-    const cached = cache.get(itemId);
-    if (cached !== undefined) {
-      return cached;
-    }
-
-    const item = itemMap.get(itemId);
-    if (!item) {
-      cache.set(itemId, 0);
-      return 0;
-    }
-
-    // Calculate depth by walking up the tree
-    let depth = 0;
-    let current = item;
-    const visited = new Set<string>();
-
-    while (current.parent_id && !visited.has(current.id)) {
-      visited.add(current.id);
-      const parent = itemMap.get(current.parent_id);
-      if (!parent) break;
-      depth++;
-      current = parent;
-    }
-
-    cache.set(itemId, depth);
-    return depth;
-  };
-}
-
-/**
- * Compute character-level diff between two strings.
- */
-function computeFieldDiff(oldValue: string, newValue: string): FieldDiff {
-  if (oldValue === newValue) {
-    return { hunks: [], hasChanges: false };
-  }
-
-  const changes = diffWords(oldValue, newValue);
-  const hunks: DiffHunk[] = changes.map(change => ({
-    type: change.added ? 'insert' : change.removed ? 'delete' : 'equal',
-    value: change.value,
-  }));
-
-  return { hunks, hasChanges: true };
-}

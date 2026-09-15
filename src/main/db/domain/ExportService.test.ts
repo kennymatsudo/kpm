@@ -148,7 +148,7 @@ function createLinearUpdateClient(fetchIssueResults: ExternalIssue[]): TrackerCl
     getRecentIssues: vi.fn(async () => []),
     fetchChildrenByParents: vi.fn(async () => []),
     formatCustomFieldsForApi: vi.fn((values) => values),
-    getIssueTypes: vi.fn(),
+    getIssueTypes: vi.fn(async () => [{ id: 'linear-issue', name: 'Issue', subtask: false }]),
     createIssue: vi.fn(),
     updateIssue: vi.fn(),
     deleteIssue: vi.fn(),
@@ -206,8 +206,8 @@ function queueSingleCreate(
     plan_item_id: 'plan-1',
     association_id: association.id,
     operation: 'create',
-    target_issue_type_id: 'linear-issue',
-    target_issue_type_name: 'Issue',
+    target_issue_type_id: null,
+    target_issue_type_name: null,
     target_parent_key: null,
     target_status_category: null,
     custom_field_overrides: null,
@@ -275,8 +275,8 @@ describe('ExportService', () => {
       plan_item_id: 'plan-1',
       association_id: association.id,
       operation: 'create',
-      target_issue_type_id: 'linear-issue',
-      target_issue_type_name: 'Issue',
+      target_issue_type_id: null,
+      target_issue_type_name: null,
       target_parent_key: null,
       target_status_category: 'done',
       custom_field_overrides: null,
@@ -294,6 +294,21 @@ describe('ExportService', () => {
     }));
     expect(ctx.repos.planItems.get('plan-1')?.status_category).toBe('done');
     expect(ctx.repos.tracker.getAssociationById(association.id)?.status_mapping?.done).toBe('Done');
+  });
+
+  it('refuses an approved item whose issue type cannot be resolved instead of pushing it', async () => {
+    const ctx = createTestRepositoryContext();
+    const { project, association } = queueSingleCreate(ctx, 'Unresolvable Type Project');
+    const client = createLinearClient();
+    client.getIssueTypes = vi.fn(async () => []);
+    const service = createService(ctx, client);
+
+    const result = await service.executeApprovedExport(project.id, association.id, ['plan-1']);
+
+    expect(client.createIssue).not.toHaveBeenCalled();
+    expect(result.success).toBe(false);
+    expect(result.errors[0]?.error).toContain('Could not resolve');
+    expect(ctx.repos.outboundChanges.getByPlanItem('plan-1')?.error_message).toContain('Could not resolve');
   });
 
   it('asks the client to self-assign new issues when the setting is on', async () => {
@@ -439,8 +454,8 @@ describe('ExportService', () => {
       plan_item_id: 'plan-1',
       association_id: association.id,
       operation: 'create',
-      target_issue_type_id: 'linear-issue',
-      target_issue_type_name: 'Issue',
+      target_issue_type_id: null,
+      target_issue_type_name: null,
       target_parent_key: null,
       target_status_category: 'not_started',
       custom_field_overrides: null,
@@ -500,8 +515,8 @@ describe('ExportService', () => {
         plan_item_id: planItemId,
         association_id: association.id,
         operation: 'create',
-        target_issue_type_id: 'linear-issue',
-        target_issue_type_name: 'Issue',
+        target_issue_type_id: null,
+        target_issue_type_name: null,
         target_parent_key: null,
         target_status_category: 'not_started',
         custom_field_overrides: null,
@@ -571,8 +586,8 @@ describe('ExportService', () => {
       plan_item_id: 'plan-1',
       association_id: association.id,
       operation: 'create',
-      target_issue_type_id: 'story',
-      target_issue_type_name: 'Story',
+      target_issue_type_id: null,
+      target_issue_type_name: null,
       target_parent_key: null,
       target_status_category: 'done',
       custom_field_overrides: null,
@@ -846,10 +861,10 @@ describe('ExportService', () => {
 
       const preview = await service.generateExportPreview(project.id, association.id);
 
-      expect(preview.items).toEqual([]);
       expect(preview.warnings[0]).toContain('Failed to fetch issue types');
+      expect(preview.items[0]?.validationErrors[0]).toContain('Failed to fetch issue types');
+      expect(preview.items[0]?.resolvedType).toBeNull();
       expect(preview.deleteItems.map(d => d.queueEntry.id)).toEqual([deleteRow.id]);
-      expect(preview.canProceed).toBe(true);
     });
   });
 
