@@ -7,7 +7,7 @@
 import type { Database, Statement } from 'better-sqlite3';
 import { randomUUID } from 'crypto';
 import type { SyncSnapshot } from '../../../../shared/types';
-import type { ISyncRepository } from '../../interfaces';
+import type { ISyncRepository, SyncSnapshotWrite } from '../../interfaces';
 
 interface DbSyncSnapshot {
   id: string;
@@ -49,13 +49,11 @@ export class SyncRepository implements ISyncRepository {
       getSnapshot: db.prepare('SELECT * FROM sync_snapshots WHERE plan_item_id = ?'),
       // Use ON CONFLICT for upsert - single query instead of check + insert/update
       upsert: db.prepare(`
-        INSERT INTO sync_snapshots (id, plan_item_id, snapshot_title, snapshot_description, snapshot_label, snapshot_release_tag, external_updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO sync_snapshots (id, plan_item_id, snapshot_title, snapshot_description, external_updated_at)
+        VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(plan_item_id) DO UPDATE SET
           snapshot_title = excluded.snapshot_title,
           snapshot_description = excluded.snapshot_description,
-          snapshot_label = excluded.snapshot_label,
-          snapshot_release_tag = excluded.snapshot_release_tag,
           external_updated_at = excluded.external_updated_at,
           snapshot_at = CURRENT_TIMESTAMP
       `),
@@ -82,35 +80,15 @@ export class SyncRepository implements ISyncRepository {
     return result;
   }
 
-  upsertSnapshot(snapshot: Omit<SyncSnapshot, 'id' | 'snapshot_at'>): void {
+  upsertSnapshot(snapshot: SyncSnapshotWrite): void {
     // Use ON CONFLICT for upsert - single query instead of check + insert/update
     this.stmts.upsert.run(
       randomUUID(),
       snapshot.plan_item_id,
       snapshot.snapshot_title,
       snapshot.snapshot_description,
-      snapshot.snapshot_label,
-      snapshot.snapshot_release_tag,
       snapshot.external_updated_at
     );
-  }
-
-  bulkUpsertSnapshots(snapshots: Omit<SyncSnapshot, 'id' | 'snapshot_at'>[]): void {
-    const transaction = this.db.transaction(() => {
-      for (const snapshot of snapshots) {
-        // Reuse the cached upsert statement
-        this.stmts.upsert.run(
-          randomUUID(),
-          snapshot.plan_item_id,
-          snapshot.snapshot_title,
-          snapshot.snapshot_description,
-          snapshot.snapshot_label,
-          snapshot.snapshot_release_tag,
-          snapshot.external_updated_at
-        );
-      }
-    });
-    transaction();
   }
 
   bulkDeleteSnapshots(planItemIds: string[]): void {

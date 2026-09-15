@@ -251,6 +251,11 @@ export function createSyncNewItem(options: Partial<SyncNewItem> = {}): SyncNewIt
     external_key: options.external_key ?? 'TEST-123',
     title: options.title ?? 'New Issue from Jira',
     description: options.description ?? null,
+    tracker_state: options.tracker_state ?? {
+      title: options.title ?? 'New Issue from Jira',
+      description: options.description ?? null,
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    },
     label: options.label ?? null,
     external_issue_type: options.external_issue_type ?? 'Story',
     external_status: options.external_status ?? 'To Do',
@@ -268,6 +273,11 @@ export function createSyncUpdatedItem(
     plan_item_id: options.plan_item_id,
     external_key: options.external_key ?? 'TEST-123',
     title: options.title ?? 'Updated Item',
+    tracker_state: options.tracker_state ?? {
+      title: options.title ?? 'Updated Item',
+      description: null,
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    },
     changes: options.changes ?? [],
   };
 }
@@ -279,6 +289,11 @@ export function createSyncConflict(
     plan_item_id: options.plan_item_id,
     external_key: options.external_key ?? 'TEST-123',
     title: options.title ?? 'Conflicting Item',
+    tracker_state: options.tracker_state ?? {
+      title: options.title ?? 'Conflicting Item',
+      description: null,
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    },
     fields: options.fields ?? [],
   };
 }

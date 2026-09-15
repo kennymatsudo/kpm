@@ -43,6 +43,7 @@ import { normalizeMarkdown } from '../../documents';
 import { workBriefFromPlanItem } from '../../../shared/workBrief';
 import { projectWorkBriefToTracker, projectWorkBriefToTrackerUpdate } from '../../workBrief/projections';
 import { hasRemoteFieldDrifted } from './trackerReconciliation';
+import { recordTrackerAgreement } from './trackerAgreement';
 import { externalPeopleFields } from './externalPeopleFields';
 import { suggestStatusMapping } from '../../../shared/statusMappingSuggest';
 
@@ -859,23 +860,11 @@ export async function executePlan(
         ...externalPeopleFields(createdIssue),
         association_id: plan.associationId,
         sync_source: 'local',
-        last_synced_at: new Date().toISOString(),
         status_category: reconciler.categoryOf(createdIssue),
       };
       if (getConfig().claude.debug) console.log('[ExportPlan] Updating plan item with external_key:', { planItemId: planItem.id, external_key: created.key, external_url: syncUpdate.external_url });
-      deps.planItems.update(planItem.id, syncUpdate);
+      recordTrackerAgreement(planItem.id, createdIssue, { extra: syncUpdate }, deps);
       itemMap.set(planItem.id, { ...planItem, ...syncUpdate });
-
-      // Snapshot the tracker's own rendering (after any ADF roundtrip) so the
-      // next sync doesn't read markdown canonicalization as an external edit.
-      deps.sync.upsertSnapshot({
-        plan_item_id: planItem.id,
-        snapshot_title: createdIssue.title,
-        snapshot_description: createdIssue.description,
-        snapshot_label: planItem.label,
-        snapshot_release_tag: planItem.release_tag,
-        external_updated_at: createdIssue.updatedAt,
-      });
 
       createdKeys.set(planItem.id, created.key);
       result.created.push({ plan_item_id: planItem.id, jira_key: created.key });
@@ -917,7 +906,6 @@ export async function executePlan(
     }
   }));
 
-  const referenceUpdatedAt = new Date().toISOString();
   for (const referenceUpdate of referenceUpdateResults) {
     if (!referenceUpdate.success) {
       result.errors.push({ plan_item_id: referenceUpdate.planItem.id, error: referenceUpdate.error });
@@ -925,15 +913,7 @@ export async function executePlan(
       continue;
     }
 
-    deps.planItems.update(referenceUpdate.planItem.id, { last_synced_at: referenceUpdatedAt });
-    deps.sync.upsertSnapshot({
-      plan_item_id: referenceUpdate.planItem.id,
-      snapshot_title: referenceUpdate.updatedIssue.title,
-      snapshot_description: referenceUpdate.updatedIssue.description,
-      snapshot_label: referenceUpdate.planItem.label,
-      snapshot_release_tag: referenceUpdate.planItem.release_tag,
-      external_updated_at: referenceUpdate.updatedIssue.updatedAt,
-    });
+    recordTrackerAgreement(referenceUpdate.planItem.id, referenceUpdate.updatedIssue, {}, deps);
   }
 
   const updatePromises = updateEntries.map(async (entry) => {
@@ -1003,8 +983,6 @@ export async function executePlan(
   const updateResults = await Promise.all(updatePromises);
 
   deps.database.transaction(() => {
-    const now = new Date().toISOString();
-
     for (const updateResult of updateResults) {
       const entry = updateResult.entry;
 
@@ -1015,23 +993,11 @@ export async function executePlan(
         continue;
       }
 
-      const updateSyncFields: PlanItemSyncUpdates = {
-        last_synced_at: now,
-        ...externalPeopleFields(updateResult.updatedIssue),
-      };
+      const extra: PlanItemSyncUpdates = externalPeopleFields(updateResult.updatedIssue);
       if (updateResult.newExternalStatus) {
-        updateSyncFields.external_status = updateResult.newExternalStatus;
+        extra.external_status = updateResult.newExternalStatus;
       }
-      deps.planItems.update(entry.planItem.id, updateSyncFields);
-
-      deps.sync.upsertSnapshot({
-        plan_item_id: entry.planItem.id,
-        snapshot_title: updateResult.updatedIssue.title,
-        snapshot_description: updateResult.updatedIssue.description,
-        snapshot_label: entry.planItem.label,
-        snapshot_release_tag: entry.planItem.release_tag,
-        external_updated_at: updateResult.updatedIssue.updatedAt,
-      });
+      recordTrackerAgreement(entry.planItem.id, updateResult.updatedIssue, { extra }, deps);
 
       result.updated.push({
         plan_item_id: entry.planItem.id,

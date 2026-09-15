@@ -63,11 +63,23 @@ export interface ITrackerRepository {
 // Sync Repository
 // =============================================================================
 
+/**
+ * The writable half of a sync snapshot. Narrower than `SyncSnapshot` on
+ * purpose: the label and release-tag columns are legacy, and leaving them out
+ * of the write is what keeps a local value from being recorded as the
+ * tracker's.
+ */
+export interface SyncSnapshotWrite {
+  plan_item_id: string;
+  snapshot_title: string | null;
+  snapshot_description: string | null;
+  external_updated_at: string | null;
+}
+
 export interface ISyncRepository {
   getSnapshot(planItemId: string): SyncSnapshot | undefined;
   getSnapshotsByItemIds(planItemIds: string[]): Map<string, SyncSnapshot>;
-  upsertSnapshot(snapshot: Omit<SyncSnapshot, 'id' | 'snapshot_at'>): void;
-  bulkUpsertSnapshots(snapshots: Omit<SyncSnapshot, 'id' | 'snapshot_at'>[]): void;
+  upsertSnapshot(snapshot: SyncSnapshotWrite): void;
   bulkDeleteSnapshots(planItemIds: string[]): void;
 }
 

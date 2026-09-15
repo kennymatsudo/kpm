@@ -10,6 +10,7 @@ import { fetchIssuesWithSubtasks } from '../../trackers';
 import { inferCategoryWithMapping } from '../../trackers/statusTransitions';
 import { normalizeMarkdown } from '../../documents';
 import { classifyFieldChange } from './trackerReconciliation';
+import { recordTrackerAgreement } from './trackerAgreement';
 import { externalPeopleFields } from './externalPeopleFields';
 import type {
   PlanItem,
@@ -18,6 +19,7 @@ import type {
   SyncConflict,
   SyncResult,
   SyncSnapshot,
+  TrackerAgreementState,
   ConflictResolution,
   DeletedItemAction,
   StatusMapping,
@@ -89,6 +91,11 @@ export function createSyncService(deps: SyncServiceDeps) {
       seenKeys.add(issue.key);
 
       const existing = existingByKey.get(issue.key);
+      const tracker_state: TrackerAgreementState = {
+        title: issue.title,
+        description: issue.description,
+        updatedAt: issue.updatedAt,
+      };
 
       if (!existing) {
         // New item - label not set, we use external_issue_type directly
@@ -96,6 +103,7 @@ export function createSyncService(deps: SyncServiceDeps) {
           external_key: issue.key,
           title: issue.title,
           description: issue.description,
+          tracker_state,
           label: null,
           external_issue_type: issue.issueType,
           external_status: issue.status,
@@ -120,6 +128,7 @@ export function createSyncService(deps: SyncServiceDeps) {
             plan_item_id: existing.id,
             external_key: issue.key,
             title: existing.title,
+            tracker_state,
             fields: analysis.conflicts,
           });
           preview.stats.conflicts++;
@@ -128,6 +137,7 @@ export function createSyncService(deps: SyncServiceDeps) {
             plan_item_id: existing.id,
             external_key: issue.key,
             title: existing.title,
+            tracker_state,
             changes: analysis.updates,
           });
           preview.stats.updated++;
@@ -228,15 +238,12 @@ export function createSyncService(deps: SyncServiceDeps) {
 
   /**
    * Create new plan items from external tracker.
-   * Returns snapshots to be upserted.
    */
   applyNewItems(
     projectId: string,
     preview: SyncPreview,
     result: SyncResult
-  ): Omit<SyncSnapshot, 'id' | 'snapshot_at'>[] {
-    const snapshotsToUpsert: Omit<SyncSnapshot, 'id' | 'snapshot_at'>[] = [];
-
+  ): void {
     for (const item of preview.new_items) {
       try {
         const created = ExternalPlanItemRepository.createFromExternal({
@@ -260,39 +267,19 @@ export function createSyncService(deps: SyncServiceDeps) {
           external_creator_avatar_url: item.external_creator_avatar_url,
         });
 
-        snapshotsToUpsert.push({
-          plan_item_id: created.id,
-          snapshot_title: item.title,
-          snapshot_description: item.description,
-          snapshot_label: null, // Label is no longer synced
-          snapshot_release_tag: null,
-          external_updated_at: new Date().toISOString(),
-        });
+        recordTrackerAgreement(created.id, item.tracker_state, {}, deps);
 
         result.created++;
       } catch (e) {
         result.errors.push({ external_key: item.external_key, error: String(e) });
       }
     }
-
-    return snapshotsToUpsert;
   },
 
   /**
    * Apply auto-resolved updates (tracker changed, KPM didn't).
-   * Returns snapshots to be upserted.
-   * @param itemCache - Pre-fetched items map to avoid N+1 queries
-   * @param _statusMapping - Explicit status mapping for this association
    */
-  applyUpdates(
-    preview: SyncPreview,
-    result: SyncResult,
-    itemCache: Map<string, PlanItem>,
-    _statusMapping: StatusMapping | null
-  ): Omit<SyncSnapshot, 'id' | 'snapshot_at'>[] {
-    const snapshotsToUpsert: Omit<SyncSnapshot, 'id' | 'snapshot_at'>[] = [];
-    const now = new Date().toISOString();
-
+  applyUpdates(preview: SyncPreview, result: SyncResult): void {
     for (const item of preview.updated_items) {
       try {
         const updates: {
@@ -329,57 +316,35 @@ export function createSyncService(deps: SyncServiceDeps) {
         }
 
         ExternalPlanItemRepository.updateFromExternal(item.plan_item_id, updates);
-
-        // Use pre-fetched item and apply updates locally for snapshot
-        const cached = itemCache.get(item.plan_item_id);
-        if (cached) {
-          // Build snapshot from cached item with updates applied
-          snapshotsToUpsert.push({
-            plan_item_id: item.plan_item_id,
-            snapshot_title: updates.title ?? cached.title,
-            snapshot_description: updates.description !== undefined ? updates.description : cached.description,
-            snapshot_label: updates.label !== undefined ? updates.label : cached.label,
-            snapshot_release_tag: updates.release_tag !== undefined ? updates.release_tag : cached.release_tag,
-            external_updated_at: now,
-          });
-        }
+        recordTrackerAgreement(item.plan_item_id, item.tracker_state, {}, deps);
 
         result.updated++;
       } catch (e) {
         result.errors.push({ external_key: item.external_key, error: String(e) });
       }
     }
-
-    return snapshotsToUpsert;
   },
 
   /**
-   * Apply user conflict resolutions.
-   * Returns snapshots to be upserted.
-   * @param itemCache - Pre-fetched items map to avoid N+1 queries
+   * Apply user conflict resolutions. Either way the tracker's current values
+   * become the new snapshot: keeping the local edit means it reads as a local
+   * change on the next pass, not as tracker drift to be pulled back in.
    */
   applyConflictResolutions(
     preview: SyncPreview,
     resolutions: Map<string, ConflictResolution>,
-    result: SyncResult,
-    itemCache: Map<string, PlanItem>
-  ): Omit<SyncSnapshot, 'id' | 'snapshot_at'>[] {
-    const snapshotsToUpsert: Omit<SyncSnapshot, 'id' | 'snapshot_at'>[] = [];
-    const now = new Date().toISOString();
-
+    result: SyncResult
+  ): void {
     for (const conflict of preview.conflicts) {
       const resolution = resolutions.get(conflict.plan_item_id);
-      const cached = itemCache.get(conflict.plan_item_id);
-
-      let updates: {
-        title?: string;
-        description?: string | null;
-        label?: string | null;
-        release_tag?: string | null;
-      } | null = null;
 
       if (resolution === 'use_theirs') {
-        updates = {};
+        const updates: {
+          title?: string;
+          description?: string | null;
+          label?: string | null;
+          release_tag?: string | null;
+        } = {};
         for (const field of conflict.fields) {
           if (field.field === 'title') updates.title = field.tracker_value ?? undefined;
           else if (field.field === 'description') updates.description = field.tracker_value;
@@ -392,21 +357,8 @@ export function createSyncService(deps: SyncServiceDeps) {
       }
       // 'keep_mine' - no database change to item
 
-      // Update snapshot to reset conflict detection using cached item
-      if (cached) {
-        // If we applied updates, use those values; otherwise use cached values
-        snapshotsToUpsert.push({
-          plan_item_id: conflict.plan_item_id,
-          snapshot_title: updates?.title ?? cached.title,
-          snapshot_description: updates?.description !== undefined ? updates.description : cached.description,
-          snapshot_label: updates?.label !== undefined ? updates.label : cached.label,
-          snapshot_release_tag: updates?.release_tag !== undefined ? updates.release_tag : cached.release_tag,
-          external_updated_at: now,
-        });
-      }
+      recordTrackerAgreement(conflict.plan_item_id, conflict.tracker_state, {}, deps);
     }
-
-    return snapshotsToUpsert;
   },
 
   /**
@@ -447,8 +399,6 @@ export function createSyncService(deps: SyncServiceDeps) {
 
   /**
    * Apply sync changes within a transaction.
-   * Coordinates all sync operations and manages snapshots.
-   * Optimized: Pre-fetches items to avoid N+1 queries during snapshot generation.
    */
   applySyncChanges(
     projectId: string,
@@ -467,46 +417,15 @@ export function createSyncService(deps: SyncServiceDeps) {
 
     const database = getDatabase();
 
-    // Load association to get status mapping
-    const association = TrackerRepository.getAssociationById(preview.link_id);
-    const statusMapping = association?.status_mapping ?? null;
-
     try {
       database.transaction(() => {
-        // Pre-fetch all items that will need snapshots (avoid N+1 queries)
-        // Collect IDs from updated items and conflicts
-        const itemIdsForSnapshots = new Set<string>();
-        for (const item of preview.updated_items) {
-          itemIdsForSnapshots.add(item.plan_item_id);
-        }
-        for (const conflict of preview.conflicts) {
-          itemIdsForSnapshots.add(conflict.plan_item_id);
-        }
-
-        // Bulk fetch all items once
-        const itemCache = new Map<string, PlanItem>();
-        if (itemIdsForSnapshots.size > 0) {
-          const allProjectItems = PlanItemRepository.getByProject(projectId);
-          for (const item of allProjectItems) {
-            if (itemIdsForSnapshots.has(item.id)) {
-              itemCache.set(item.id, item);
-            }
-          }
-        }
-
-        // Apply all operations
-        const snapshots1 = service.applyNewItems(projectId, preview, result);
+        service.applyNewItems(projectId, preview, result);
         ExternalPlanItemRepository.linkSubtasksToParentIssues(projectId, preview.tracker_type);
 
-        const snapshots2 = service.applyUpdates(preview, result, itemCache, statusMapping);
-        const snapshots3 = service.applyConflictResolutions(preview, resolutions, result, itemCache);
+        service.applyUpdates(preview, result);
+        service.applyConflictResolutions(preview, resolutions, result);
         const snapshotsToDelete = service.handleDeletedItems(preview, deletedAction, deletedDecisions, result);
 
-        // Bulk update snapshots
-        const allSnapshots = [...snapshots1, ...snapshots2, ...snapshots3];
-        if (allSnapshots.length > 0) {
-          SyncRepository.bulkUpsertSnapshots(allSnapshots);
-        }
         if (snapshotsToDelete.length > 0) {
           SyncRepository.bulkDeleteSnapshots(snapshotsToDelete);
         }

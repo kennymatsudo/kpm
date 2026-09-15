@@ -53,11 +53,13 @@ function createClient(issue: ExternalIssue): TrackerClient {
 function createService(overrides: {
   externalPlanItems?: Partial<Parameters<typeof createSyncService>[0]['externalPlanItems']>;
   tracker?: Partial<Parameters<typeof createSyncService>[0]['tracker']>;
+  sync?: Partial<Parameters<typeof createSyncService>[0]['sync']>;
 } = {}) {
   return createSyncService({
     database: {} as never,
     planItems: {
       getByProject: vi.fn(() => []),
+      update: vi.fn(),
       delete: vi.fn(),
     } as never,
     externalPlanItems: {
@@ -70,8 +72,9 @@ function createService(overrides: {
     } as never,
     sync: {
       getSnapshotsByItemIds: vi.fn(() => new Map()),
-      bulkUpsertSnapshots: vi.fn(),
+      upsertSnapshot: vi.fn(),
       bulkDeleteSnapshots: vi.fn(),
+      ...overrides.sync,
     } as never,
     tracker: {
       getAssociationById: vi.fn(() => ({
@@ -125,6 +128,7 @@ describe('SyncService', () => {
           external_key: 'ENG-1',
           title: 'New done issue',
           description: null,
+          tracker_state: { title: 'New done issue', description: null, updatedAt: '2026-01-01T00:00:00.000Z' },
           label: null,
           external_issue_type: 'Issue',
           external_status: 'Done',
@@ -146,16 +150,42 @@ describe('SyncService', () => {
     }));
   });
 
+  it('snapshots the tracker values when a conflict is resolved by keeping the local edit', () => {
+    const upsertSnapshot = vi.fn();
+    const service = createService({ sync: { upsertSnapshot } });
+    const result = { success: true, created: 0, updated: 0, deleted: 0, errors: [] };
+
+    service.applyConflictResolutions(
+      {
+        tracker_type: 'linear',
+        link_id: 'assoc-1',
+        external_project_key: 'ENG',
+        new_items: [],
+        updated_items: [],
+        conflicts: [{
+          plan_item_id: 'plan-1',
+          external_key: 'ENG-1',
+          title: 'My title',
+          tracker_state: { title: 'Their title', description: 'Their body', updatedAt: '2026-01-02T00:00:00.000Z' },
+          fields: [{ field: 'title', your_value: 'My title', tracker_value: 'Their title' }],
+        }],
+        deleted_in_tracker: [],
+        stats: { total: 1, new: 0, updated: 0, conflicts: 1, deleted: 0, unchanged: 0 },
+      },
+      new Map([['plan-1', 'keep_mine' as const]]),
+      result
+    );
+
+    expect(upsertSnapshot).toHaveBeenCalledWith(expect.objectContaining({
+      snapshot_title: 'Their title',
+      snapshot_description: 'Their body',
+      external_updated_at: '2026-01-02T00:00:00.000Z',
+    }));
+  });
+
   it('does not re-infer status_category from a Linear status name without state type during apply', () => {
     const updateFromExternal = vi.fn();
     const service = createService({ externalPlanItems: { updateFromExternal } });
-    const cached = {
-      id: 'plan-1',
-      title: 'Existing',
-      description: null,
-      label: null,
-      release_tag: null,
-    } as PlanItem;
     const result = { success: true, created: 0, updated: 0, deleted: 0, errors: [] };
 
     service.applyUpdates(
@@ -168,6 +198,7 @@ describe('SyncService', () => {
           plan_item_id: 'plan-1',
           external_key: 'ENG-1',
           title: 'Existing',
+          tracker_state: { title: 'Existing', description: null, updatedAt: '2026-01-01T00:00:00.000Z' },
           changes: [{
             field: 'external_status',
             old_value: 'Old custom state',
@@ -178,9 +209,7 @@ describe('SyncService', () => {
         deleted_in_tracker: [],
         stats: { total: 1, new: 0, updated: 1, conflicts: 0, deleted: 0, unchanged: 0 },
       },
-      result,
-      new Map([['plan-1', cached]]),
-      null
+      result
     );
 
     expect(updateFromExternal).toHaveBeenCalledWith('plan-1', {

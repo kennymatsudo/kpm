@@ -256,7 +256,9 @@ export function createAppServices(container: IRepositoryContainer) {
     tracker: container.tracker,
     clientService: TrackerClientService,
     importService: createImportService({
+      database,
       tracker: container.tracker,
+      planItems: container.planItems,
       externalPlanItems: container.externalPlanItems,
       sync: container.sync,
     }),

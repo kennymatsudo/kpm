@@ -417,6 +417,16 @@ export interface ImportResult {
 // Sync Types (Phase 2)
 // =============================================================================
 
+/**
+ * What a tracker held for one issue at the moment KPM last agreed with it.
+ * Every sync snapshot is made of exactly this, never of local values.
+ */
+export interface TrackerAgreementState {
+  title: string;
+  description: string | null;
+  updatedAt: string;
+}
+
 export interface SyncSnapshot {
   id: string;
   plan_item_id: string;
@@ -450,6 +460,7 @@ export interface SyncNewItem {
   external_key: string;
   title: string;
   description: string | null;
+  tracker_state: TrackerAgreementState;
   label?: string | null;                // Optional - we use external_issue_type directly
   external_issue_type: string;          // Original issue type: 'Story', 'Sub-task', etc.
   external_status: string;
@@ -469,6 +480,7 @@ export interface SyncUpdatedItem {
   plan_item_id: string;
   external_key: string;
   title: string;
+  tracker_state: TrackerAgreementState;
   changes: {
     field: 'title' | 'description' | 'label' | 'release_tag' | 'external_status' | 'status_category' | 'external_assignee_id' | 'external_assignee_name' | 'external_assignee_avatar_url' | 'external_creator_id' | 'external_creator_name' | 'external_creator_avatar_url';
     old_value: string | null;
@@ -480,6 +492,7 @@ export interface SyncConflict {
   plan_item_id: string;
   external_key: string;
   title: string;
+  tracker_state: TrackerAgreementState;
   fields: {
     field: 'title' | 'description' | 'label' | 'release_tag';
     your_value: string | null;

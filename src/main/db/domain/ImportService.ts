@@ -1,4 +1,11 @@
-import type { IExternalPlanItemRepository, ISyncRepository, ITrackerRepository } from '../interfaces';
+import type { Database } from 'better-sqlite3';
+import type {
+  IExternalPlanItemRepository,
+  IPlanItemRepository,
+  ISyncRepository,
+  ITrackerRepository,
+} from '../interfaces';
+import { recordTrackerAgreement } from './trackerAgreement';
 import type { TrackerClient, ExternalIssue } from '../../trackers';
 import { fetchIssuesWithSubtasks, inferCategoryWithMapping } from '../../trackers';
 import type {
@@ -10,7 +17,9 @@ import type {
 import { externalPeopleFields } from './externalPeopleFields';
 
 export interface ImportServiceDeps {
+  database: Database;
   tracker: ITrackerRepository;
+  planItems: IPlanItemRepository;
   externalPlanItems: IExternalPlanItemRepository;
   sync: ISyncRepository;
 }
@@ -18,7 +27,6 @@ export interface ImportServiceDeps {
 export function createImportService(deps: ImportServiceDeps) {
   const TrackerRepository = deps.tracker;
   const ExternalPlanItemRepository = deps.externalPlanItems;
-  const SyncRepository = deps.sync;
 
   return {
     /**
@@ -147,21 +155,13 @@ export function createImportService(deps: ImportServiceDeps) {
 
         ExternalPlanItemRepository.linkSubtasksToParentIssues(projectId, client.type);
 
-        if (createdItems.length > 0) {
-          const issueByKey = new Map(issues.map(i => [i.key, i]));
-          const snapshots = createdItems.map(item => {
+        const issueByKey = new Map(issues.map(i => [i.key, i]));
+        deps.database.transaction(() => {
+          for (const item of createdItems) {
             const issue = issueByKey.get(item.external_key!);
-            return {
-              plan_item_id: item.id,
-              snapshot_title: item.title,
-              snapshot_description: item.description,
-              snapshot_label: item.label,
-              snapshot_release_tag: item.release_tag,
-              external_updated_at: issue?.updatedAt ?? new Date().toISOString(),
-            };
-          });
-          SyncRepository.bulkUpsertSnapshots(snapshots);
-        }
+            if (issue) recordTrackerAgreement(item.id, issue, {}, deps);
+          }
+        })();
 
         TrackerRepository.updateAssociationLastSynced(associationId);
       } catch (error) {
