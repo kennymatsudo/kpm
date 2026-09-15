@@ -6,4 +6,4 @@
  */
 
 export { AsyncMessageQueue, type StreamingUserMessage } from './AsyncMessageQueue';
-export { StreamingSession, type StreamingSessionConfig, type McpServerStatus } from './StreamingSession';
+export { StreamingSession, type StreamingSessionConfig, type McpServerStatus, type SlashCommandContext } from './StreamingSession';

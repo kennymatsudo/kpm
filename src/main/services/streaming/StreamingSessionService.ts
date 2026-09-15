@@ -15,15 +15,19 @@
  */
 
 import type { BrowserWindow } from 'electron';
-import type { Options as SDKOptions, OnElicitation } from '@anthropic-ai/claude-agent-sdk';
 import { getSessionInfo } from '@anthropic-ai/claude-agent-sdk';
-import { StreamingSession, type McpServerStatus } from '../../claude/streaming';
-import { CodexChatSession } from '../../codex/CodexChatSession';
+import type { McpServerStatus } from '../../claude/streaming';
 import type { SessionMcpInspection, SessionMcpServer } from './sessionMcp';
-import { registerCodexMcpSession } from '../../codex/KpmCodexMcpServer';
-import { PiChatSession } from '../../pi/PiChatSession';
-import { buildPiKpmTools } from '../../pi/kpmToolAdapter';
 import type { IChatSession } from './IChatSession';
+import {
+  buildChatSessionLaunch,
+  type BuildClaudeSdkOptions,
+  type ChatSessionHost,
+  type ManagedSession,
+  type SessionState,
+} from './chatSessionLaunch';
+import { decideMcpElicitation, isAutoApprovedCodexMcpServer } from './mcpElicitation';
+import type { ModelType } from '../../claude/sdkOptionsBuilder';
 import {
   runWithToolExecutionContext,
   clearPendingDocumentContent,
@@ -40,13 +44,10 @@ import type { ChatChoiceEffort, ChatProvider, FocusChatDocument, FocusedResource
 import type { ChatModelChoiceService, ResolvedChatChoice } from '../../chat/modelChoice';
 import { getConfig } from '../../config';
 import { isMaxTokensReached, isMaxTurnsReached, getTerminalReason } from '../../claude/sdkTypeGuards';
-import { interpretSdkMessage, type SegmentState } from './interpretSdkMessage';
-import { createFollowUpQueue, type FollowUpQueue } from './followUpQueue';
-import { createTurnLifecycle, type TurnLifecycle } from './turnLifecycle';
+import { interpretSdkMessage } from './interpretSdkMessage';
 import { extractFilePaths } from '../toollog/extractFilePaths';
 import { DEFAULT_CONTEXT_FILENAME, CONTEXT_FILE_PENDING_CACHE_KEY } from '../../../shared/contextFile';
 import { promptUser } from '../core/PermissionPromptService';
-import { decideMcpElicitation, isAutoApprovedCodexMcpServer } from './mcpElicitation';
 import { isAllowedExternalUrl } from '../../security/externalUrl';
 import { selectVisibleSlashCommands } from '../core/SlashCommandService';
 import type { PollScheduler, PollTickResult } from '../core/PollScheduler';
@@ -69,9 +70,8 @@ function ssLog(...args: unknown[]): void {
 // Types
 // =============================================================================
 
-export type SessionState = 'idle' | 'connecting' | 'ready' | 'processing' | 'error' | 'closing';
-export type SessionType = 'chat';
-export type ModelType = 'opus' | 'sonnet' | 'haiku';
+export type { SessionState };
+export type { ModelType };
 /** UI view mode - injected as a per-message `[Context: …]` hint; the system prompt itself is view-independent. */
 export type ViewMode = 'plan' | 'workspace' | 'focus';
 
@@ -239,57 +239,6 @@ export interface ActiveSessionInfo {
   partialActivities?: Activity[];
 }
 
-/** Managed session with metadata */
-interface ManagedSession {
-  key: string;
-  type: SessionType;
-  projectId: string;
-  session: IChatSession;
-  state: SessionState;
-  provider: ChatProvider;
-  model: ModelType;
-  /** pi-only `"<provider>/<modelId>"` selector used by this native session. */
-  providerModel?: string;
-  effort?: ChatChoiceEffort | null;
-  lastActivity: number;
-  sessionId?: string; // SDK session ID for resume
-  mcpHealthStatus: 'healthy' | 'degraded' | 'recovering'; // KPM MCP server health
-  mcpRecoveryAttempts: number; // Consecutive failed reconnect attempts
-  /** Raw first user message before focused-resource context injection. */
-  titleSeed?: string;
-  segmentState: SegmentState; // Track message segments for splitting bubbles
-  /**
-   * Maps SDK tool_use id → the Activity we emitted for it.
-   * Used to attach diff stats from the matching tool_use_result back to the
-   * original activity (so the renderer updates the existing card instead of
-   * pushing a duplicate).
-   */
-  toolUseActivities: Map<string, Activity>;
-  chatSessionId?: string; // For persisting main chat messages
-  /** Focus-reader sessions are ephemeral and excluded from normal chat history. */
-  persistHistory: boolean;
-  /** Document proposals from focus chat always surface for review. */
-  forceApprovalReview: boolean;
-  accumulatedResponse: string; // Accumulate assistant response for persistence
-  hasStreamedResponseText: boolean; // True after this turn emitted text deltas, so complete blocks shouldn't re-render
-  /** Single owner of "has this turn already ended" plus its timing (start/last-activity) for hang detection. */
-  turn: TurnLifecycle;
-  suppressLifecycleEventsOnEnd: boolean; // Suppress renderer lifecycle events when session ends
-  /** Client ids for follow-ups sent while a turn is processing, and their acceptance/promotion state. */
-  followUps: FollowUpQueue;
-  /** Actual model ID returned by the SDK (e.g. "claude-opus-4-8"). Set from the first assistant message each turn. */
-  resolvedModel?: string;
-  /**
-   * True once a specific error banner has been surfaced for the in-flight turn
-   * (from an assistant-message `error` field). Suppresses the generic
-   * terminal-reason banner in the result handler so a single failure (e.g.
-   * `overloaded`) doesn't double-up. Reset at each turn boundary.
-   */
-  turnErrorSurfaced?: boolean;
-  turnStartedAt?: number;
-  firstContentAt?: number;
-  unsubscribeToolProposals: () => void;
-}
 
 // =============================================================================
 // Configuration (accessed via getConfig().session)
@@ -379,20 +328,7 @@ export interface StreamingSessionServiceDeps {
   getPlanItems: (projectId: string) => PlanItem[];
 
   /** Build SDK options from context */
-  buildSdkOptions: (
-    context: PlanContext,
-    options: {
-      model: ModelType;
-      effort?: 'low' | 'medium' | 'high' | 'max';
-      resumeSessionId?: string;
-      mainWindow: BrowserWindow | null;
-      chatSessionId?: string;
-      onContextFileEdit?: (projectId: string, newContent: string) => void;
-      onProjectFileWrite?: (projectId: string, filePath: string, content: string) => void;
-      peekPendingFile?: (relativeFilePath: string) => string | undefined;
-      onElicitation?: OnElicitation;
-    }
-  ) => SDKOptions;
+  buildSdkOptions: BuildClaudeSdkOptions;
 
   /** Subscribe to every first-party KPM proposal emitted by MCP tools. */
   subscribeToKpmToolProposals: (callback: (proposal: KpmToolProposal) => void) => () => void;
@@ -1188,28 +1124,240 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     context: PlanContext;
     persistHistory: boolean;
     forceApprovalReview: boolean;
-    onMessage: (session: IChatSession, msg: unknown) => void;
+    onMessage: (managed: ManagedSession, msg: unknown) => void;
+  }
+
+  /**
+   * Fan first-party KPM tool proposals out to the renderer approval channels.
+   * Subscribed before the session exists so a launch failure still has
+   * something to unsubscribe.
+   */
+  function subscribeToToolProposals(
+    config: SessionCreationConfig,
+    mainWindow: BrowserWindow | null,
+  ): () => void {
+    const { key, projectId, chatSessionId, forceApprovalReview } = config;
+    return deps.subscribeToKpmToolProposals((proposal) => {
+      const matchesSession = proposal.chatSessionId
+        ? proposal.chatSessionId === chatSessionId
+        : ['connecting', 'processing'].includes(sessions.get(key)?.state ?? '');
+
+      if (proposal.projectId !== projectId || !matchesSession) return;
+
+      if (proposal.type === 'plan-actions') {
+        emitAppEvent(mainWindow?.webContents, chatEvents.planActions, {
+          projectId: proposal.projectId,
+          chatSessionId: proposal.chatSessionId,
+          actions: proposal.actions,
+        });
+        return;
+      }
+
+      if (proposal.type === 'project-context-update') {
+        // The tool already read the file to validate old_string; reuse what
+        // it captured rather than reading disk a second time.
+        emitAppEvent(mainWindow?.webContents, chatEvents.fileUpdate, {
+          projectId,
+          chatSessionId,
+          filePath: proposal.filename ?? DEFAULT_CONTEXT_FILENAME,
+          content: proposal.newContent,
+          oldContent: proposal.oldContent,
+          forceReview: sessions.get(key)?.forceApprovalReview ?? forceApprovalReview,
+        });
+        return;
+      }
+
+      if (proposal.type === 'document-update') {
+        // The tool already has the pre-edit content (or null for create);
+        // forward it instead of re-reading disk.
+        emitAppEvent(mainWindow?.webContents, chatEvents.fileUpdate, {
+          projectId,
+          chatSessionId,
+          filePath: proposal.filePath,
+          content: proposal.content,
+          oldContent: proposal.oldContent,
+          forceReview: sessions.get(key)?.forceApprovalReview ?? forceApprovalReview,
+        });
+        return;
+      }
+
+      if (proposal.type === 'file-move') {
+        emitAppEvent(mainWindow?.webContents, chatEvents.fileMove, {
+          projectId,
+          chatSessionId,
+          sourcePath: proposal.sourcePath,
+          targetPath: proposal.targetPath,
+        });
+        return;
+      }
+
+      if (proposal.type === 'file-delete') {
+        emitAppEvent(mainWindow?.webContents, chatEvents.fileDelete, {
+          projectId,
+          chatSessionId,
+          path: proposal.path,
+          isDirectory: proposal.isDirectory,
+        });
+        return;
+      }
+
+      const _exhaustive: never = proposal;
+      void _exhaustive;
+    });
+  }
+
+  /**
+   * Everything the provider session reports back to, or asks of, the service,
+   * bound to one launch. A stale callback — one from a session a reconnect has
+   * already replaced — is filtered out here rather than inside each handler.
+   */
+  function buildChatSessionHost(
+    config: SessionCreationConfig,
+    mainWindow: BrowserWindow | null,
+    launched: { session?: IChatSession },
+  ): ChatSessionHost {
+    const { key, projectId, chatSessionId, provider, persistHistory, forceApprovalReview, onMessage } = config;
+
+    /**
+     * The registry entry this launch owns, or nothing once a reconnect has
+     * replaced it. Provider callbacks keep firing after the service has moved
+     * on, so every one of them is filtered through here before it runs.
+     */
+    const liveSession = (callback: string): ManagedSession | undefined => {
+      const managed = sessions.get(key);
+      if (managed && managed.session === launched.session) return managed;
+      ssLog(`[StreamingSessionService] Ignoring stale ${callback} for ${key}`);
+      return undefined;
+    };
+
+    return {
+      onMessage: (msg) => {
+        const managed = liveSession('onMessage');
+        if (managed) onMessage(managed, msg);
+      },
+      onSessionEnd: (reason, error) => {
+        const managed = liveSession(`onSessionEnd (${reason})`);
+        if (managed) handleSessionEnd(key, managed, reason, error);
+      },
+      onReady: (sessionId, mcpStatus) => {
+        const managed = liveSession('onReady');
+        if (!managed) return;
+        // The initial user message is already in flight during start(), so
+        // the session stays 'processing' until that first turn results.
+        markSessionReady(managed, {
+          sessionId,
+          provider,
+          chatSessionId,
+          persistHistory,
+          mcpStatus,
+          projectId,
+          mainWindow,
+          chatSessionRepository: deps.chatSessionRepository,
+          onMcpStatusReady: deps.onMcpStatusReady,
+        });
+      },
+      onMcpError: (failedServers) => {
+        const managed = liveSession('onMcpError');
+        if (!managed) return;
+        managed.state = 'error';
+        emitAppEvent(mainWindow?.webContents, chatEvents.sessionError, {
+          projectId,
+          chatSessionId,
+          error: `MCP connection failed: ${failedServers.map((server) => server.name).join(', ')}`,
+        });
+      },
+      onSlashCommands: (commands, commandContext) => {
+        const visible = selectVisibleSlashCommands(commands, commandContext);
+        const seen = new Set(visible.map((command) => command.name));
+        const merged = [
+          ...visible,
+          ...(deps.listSlashCommands?.() ?? []).filter((command) => {
+            if (seen.has(command.name)) return false;
+            seen.add(command.name);
+            return true;
+          }),
+        ].sort((a, b) => a.name.localeCompare(b.name));
+        emitAppEvent(mainWindow?.webContents, chatEvents.slashCommands, { projectId, chatSessionId, commands: merged });
+      },
+      requestWriteConsent: () =>
+        projectWriteGrants.request(projectId, async () => {
+          const result = await promptUser(mainWindow, projectId, 'Write', {}, {
+            chatSessionId,
+            kind: 'write-access',
+          });
+          return result.behavior === 'allow';
+        }),
+      hasWriteAccess: () => projectWriteGrants.has(projectId),
+      requestApproval: async (toolName, input) => {
+        const result = await promptUser(mainWindow, projectId, toolName, input, {
+          chatSessionId,
+          kind: 'elicitation',
+        });
+        return result.behavior === 'allow';
+      },
+      onElicitation: (request, options) =>
+        decideMcpElicitation(request, {
+          promptUser: mainWindow
+            ? async (toolName, input) => {
+                const result = await promptUser(mainWindow, projectId, toolName, input, {
+                  chatSessionId,
+                  kind: 'elicitation',
+                  signal: options?.signal,
+                });
+                return result.behavior === 'allow';
+              }
+            : undefined,
+          openExternal: (url) => {
+            void import('electron')
+              .then(({ shell }) => shell.openExternal(url))
+              .catch((error) => console.error('[StreamingSessionService] Failed to open elicitation URL:', error));
+          },
+          autoApprove: provider === 'codex' ? isAutoApprovedCodexMcpServer : undefined,
+        }),
+      onContextFileEdit: (editProjectId, newContent) => {
+        // Record so a subsequent Edit (built-in or propose_context_edit)
+        // this turn builds on this content instead of stale disk — the
+        // interception denies the write, so disk never reflects it.
+        recordPendingDocumentContent(chatSessionId, CONTEXT_FILE_PENDING_CACHE_KEY, newContent);
+        void (async () => {
+          const currentContent = await deps.readProjectContextFile(editProjectId);
+          emitAppEvent(mainWindow?.webContents, chatEvents.contextFileUpdate, {
+            projectId: editProjectId,
+            oldContent: currentContent.success ? currentContent.content : null,
+            newContent,
+            forceReview: forceApprovalReview,
+          });
+        })().catch((error) => {
+          console.error('[StreamingSessionService] Failed to read context file for intercepted edit:', error);
+        });
+      },
+      onProjectFileWrite: (writeProjectId, filePath, content) => {
+        recordPendingDocumentContent(chatSessionId, filePath, content);
+        void (async () => {
+          const currentContent = await deps.readDocumentFile(writeProjectId, filePath);
+          emitAppEvent(mainWindow?.webContents, chatEvents.fileUpdate, {
+            projectId: writeProjectId,
+            chatSessionId,
+            filePath,
+            content,
+            oldContent: currentContent.success ? currentContent.content : null,
+            forceReview: forceApprovalReview,
+          });
+        })().catch((error) => {
+          console.error('[StreamingSessionService] Failed to read file for intercepted write:', error);
+        });
+      },
+      // Successive Edit/Write calls to one file in a turn must accumulate;
+      // the interception denies each write, so disk stays unchanged.
+      peekPendingFile: (relativeFilePath) => peekPendingDocumentContent(chatSessionId, relativeFilePath),
+    };
   }
 
   /**
    * Create and start a streaming session with an initial message.
    */
   async function createSession(config: SessionCreationConfig): AsyncResult<{ sessionId: string }> {
-    const {
-      key,
-      projectId,
-      chatSessionId,
-      provider,
-      initialMessage,
-      model,
-      providerModel,
-      effort,
-      resumeSessionId,
-      context,
-      persistHistory,
-      forceApprovalReview,
-      onMessage,
-    } = config;
+    const { key, projectId, chatSessionId, initialMessage } = config;
 
     // Disconnect existing session
     await disconnectSession(key, {
@@ -1227,321 +1375,35 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     let unsubscribeToolProposals: (() => void) | null = null;
 
     try {
-      const claudeEffort = effort === 'low' || effort === 'medium' || effort === 'high' || effort === 'max'
-        ? effort
-        : undefined;
-      // One set of handlers for every provider's elicitations. `signal` is
-      // per-call: only Claude can cancel a pending elicitation mid-turn.
-      const elicitationHandlers = (signal?: AbortSignal) => ({
-        promptUser: mainWindow
-          ? async (toolName: string, input: Record<string, unknown>) => {
-              const result = await promptUser(mainWindow, projectId, toolName, input, {
-                chatSessionId,
-                kind: 'elicitation' as const,
-                signal,
-              });
-              return result.behavior === 'allow';
-            }
-          : undefined,
-        openExternal: (url: string) => {
-          void import('electron')
-            .then(({ shell }) => shell.openExternal(url))
-            .catch((error) => console.error('[StreamingSessionService] Failed to open elicitation URL:', error));
-        },
-        autoApprove: provider === 'codex' ? isAutoApprovedCodexMcpServer : undefined,
-      });
+      unsubscribeToolProposals = subscribeToToolProposals(config, mainWindow);
 
-      const createClaudeSdkOptions = () => deps.buildSdkOptions(context, {
-        model,
-        effort: claudeEffort,
-        resumeSessionId,
-        mainWindow,
-        chatSessionId,
-        // Callback for intercepted context file edits from the permission handler
-        onContextFileEdit: (editProjectId: string, newContent: string) => {
-          // Record so a subsequent Edit (built-in or propose_context_edit)
-          // this turn builds on this content instead of stale disk — the
-          // interception denies the write, so disk never reflects it.
-          recordPendingDocumentContent(chatSessionId, CONTEXT_FILE_PENDING_CACHE_KEY, newContent);
-          // Read current context file for diff display
-          void (async () => {
-            const currentContent = await deps.readProjectContextFile(editProjectId);
-            emitAppEvent(mainWindow?.webContents, chatEvents.contextFileUpdate, {
-              projectId: editProjectId,
-              oldContent: currentContent.success ? currentContent.content : null,
-              newContent,
-              forceReview: forceApprovalReview,
-            });
-            console.log(`[StreamingSessionService] Context file edit intercepted and emitted for project ${editProjectId}`);
-          })().catch((error) => {
-            console.error('[StreamingSessionService] Failed to read context file for intercepted edit:', error);
-          });
-        },
-        // Returns pending content for a project-relative path so successive
-        // Edit/Write calls to the same file in one turn accumulate instead of
-        // each reading stale on-disk content (the interception denies the write).
-        peekPendingFile: (relativeFilePath: string) =>
-          peekPendingDocumentContent(chatSessionId, relativeFilePath),
-        // Callback for intercepted project file writes from the permission handler
-        onProjectFileWrite: (writeProjectId: string, filePath: string, content: string) => {
-          // Record the proposed content so the next same-file edit this turn
-          // builds on it rather than re-reading unchanged disk.
-          recordPendingDocumentContent(chatSessionId, filePath, content);
-          // Read current file for diff display
-          void (async () => {
-            const currentContent = await deps.readDocumentFile(writeProjectId, filePath);
-            emitAppEvent(mainWindow?.webContents, chatEvents.fileUpdate, {
-              projectId: writeProjectId,
-              chatSessionId,
-              filePath,
-              content,
-              oldContent: currentContent.success ? currentContent.content : null,
-              forceReview: forceApprovalReview,
-            });
-            console.log(`[StreamingSessionService] Project file write intercepted and emitted: ${filePath}`);
-          })().catch((error) => {
-            console.error('[StreamingSessionService] Failed to read file for intercepted write:', error);
-          });
-        },
-        onElicitation: async (request, { signal }) => {
-          const decision = await decideMcpElicitation(request, elicitationHandlers(signal));
-          return { action: decision.action, ...(decision.content ? { content: decision.content } : {}) };
-        },
-      });
+      // Filled in once the launch exists; the host is wired before the
+      // provider session that reports to it can be built.
+      const launched: { session?: IChatSession } = {};
 
-      // Subscribe once to the KPM-native proposal seam and fan out to the
-      // existing renderer approval channels. The approval queue keeps manual
-      // review and auto-apply behavior unchanged.
-      unsubscribeToolProposals = deps.subscribeToKpmToolProposals((proposal) => {
-        const matchesSession = proposal.chatSessionId
-          ? proposal.chatSessionId === chatSessionId
-          : ['connecting', 'processing'].includes(sessions.get(key)?.state ?? '');
-
-        if (proposal.projectId !== projectId || !matchesSession) return;
-
-        if (proposal.type === 'plan-actions') {
-          emitAppEvent(mainWindow?.webContents, chatEvents.planActions, {
-            projectId: proposal.projectId,
-            chatSessionId: proposal.chatSessionId,
-            actions: proposal.actions,
-          });
-          return;
-        }
-
-        if (proposal.type === 'project-context-update') {
-          // The tool already read the file to validate old_string; reuse what
-          // it captured rather than reading disk a second time.
-          emitAppEvent(mainWindow?.webContents, chatEvents.fileUpdate, {
-            projectId,
-            chatSessionId,
-            filePath: proposal.filename ?? DEFAULT_CONTEXT_FILENAME,
-            content: proposal.newContent,
-            oldContent: proposal.oldContent,
-            forceReview: sessions.get(key)?.forceApprovalReview ?? forceApprovalReview,
-          });
-          return;
-        }
-
-        if (proposal.type === 'document-update') {
-          // The tool already has the pre-edit content (or null for create);
-          // forward it instead of re-reading disk.
-          emitAppEvent(mainWindow?.webContents, chatEvents.fileUpdate, {
-            projectId,
-            chatSessionId,
-            filePath: proposal.filePath,
-            content: proposal.content,
-            oldContent: proposal.oldContent,
-            forceReview: sessions.get(key)?.forceApprovalReview ?? forceApprovalReview,
-          });
-          return;
-        }
-
-        if (proposal.type === 'file-move') {
-          emitAppEvent(mainWindow?.webContents, chatEvents.fileMove, {
-            projectId,
-            chatSessionId,
-            sourcePath: proposal.sourcePath,
-            targetPath: proposal.targetPath,
-          });
-          return;
-        }
-
-        if (proposal.type === 'file-delete') {
-          emitAppEvent(mainWindow?.webContents, chatEvents.fileDelete, {
-            projectId,
-            chatSessionId,
-            path: proposal.path,
-            isDirectory: proposal.isDirectory,
-          });
-          return;
-        }
-
-        const _exhaustive: never = proposal;
-        void _exhaustive;
-      });
-
-      const isFocusDocumentSession = Boolean(context.focusDocument);
-      const piKpmToolSet = provider === 'pi'
-        ? buildPiKpmTools({ focus: isFocusDocumentSession, projectId, chatSessionId })
-        : undefined;
-      const registerCodexKpmMcpSession = provider === 'codex'
-        ? () => registerCodexMcpSession({ projectId, chatSessionId, focus: isFocusDocumentSession })
-        : undefined;
-
-      const requestWriteConsent = (): Promise<{ allowed: true } | { allowed: false; reason: string }> =>
-        projectWriteGrants.request(projectId, async () => {
-          const result = await promptUser(mainWindow, projectId, 'Write', {}, {
-            chatSessionId,
-            kind: 'write-access',
-          });
-          return result.behavior === 'allow';
-        });
-
-      const requestCodexExternalApproval = async (toolName: string, input: Record<string, unknown>): Promise<boolean> => {
-        const result = await promptUser(mainWindow, projectId, toolName, input, {
-          chatSessionId,
-          kind: 'elicitation',
-        });
-        return result.behavior === 'allow';
-      };
-
-      // Create streaming session — let required: const can't be referenced in its own initializer closures
-      // eslint-disable-next-line prefer-const
-      let session!: IChatSession;
-      const onReadyWithoutMcpStatus = (sessionId: string) => {
-        const managed = sessions.get(key);
-        if (managed?.session !== session) {
-          ssLog(`[StreamingSessionService] Ignoring stale onReady for ${key}`);
-          return;
-        }
-        markSessionReady(managed, {
-          sessionId,
-          provider,
-          chatSessionId,
-          persistHistory,
-          projectId,
-          mainWindow,
-          chatSessionRepository: deps.chatSessionRepository,
-        });
-      };
-      session = provider === 'codex'
-        ? new CodexChatSession({
-            context,
-            chatSessionId,
-            resumeThreadId: resumeSessionId,
-            model: providerModel,
-            modelReasoningEffort: effort === 'minimal' || effort === 'low' || effort === 'medium' || effort === 'high' || effort === 'xhigh' || effort === 'max'
-              ? effort
-              : undefined,
-            onMessage: (msg) => onMessage(session, msg),
-            onSessionEnd: (reason, error) => handleSessionEnd(key, session, reason, error),
-            onReady: onReadyWithoutMcpStatus,
-            registerMcpSession: registerCodexKpmMcpSession,
-            requestWriteConsent,
-            hasWriteAccess: () => projectWriteGrants.has(projectId),
-            requestExternalApproval: requestCodexExternalApproval,
-            onMcpElicitation: (request) => decideMcpElicitation(request, elicitationHandlers()),
-          })
-        : provider === 'pi'
-        ? new PiChatSession({
-            context,
-            chatSessionId,
-            resumeSessionId,
-            model: providerModel,
-            thinkingLevel: effort ?? undefined,
-            onMessage: (msg) => onMessage(session, msg),
-            onSessionEnd: (reason, error) => handleSessionEnd(key, session, reason, error),
-            onReady: onReadyWithoutMcpStatus,
-            kpmTools: piKpmToolSet,
-            requestWriteConsent,
-          })
-        : new StreamingSession({
-            sdkOptions: createClaudeSdkOptions(),
-            onMessage: (msg) => onMessage(session, msg),
-            onSessionEnd: (reason, error) => handleSessionEnd(key, session, reason, error),
-            onReady: (sessionId, mcpStatus) => {
-              const managed = sessions.get(key);
-              if (managed?.session !== session) {
-                ssLog(`[StreamingSessionService] Ignoring stale onReady for ${key}`);
-                return;
-              }
-              // The initial user message is already in-flight during start(),
-              // so this session should be considered processing until we receive
-              // the result message for that first turn.
-              markSessionReady(managed, {
-                sessionId,
-                provider,
-                chatSessionId,
-                persistHistory,
-                mcpStatus,
-                projectId,
-                mainWindow,
-                chatSessionRepository: deps.chatSessionRepository,
-                onMcpStatusReady: deps.onMcpStatusReady,
-              });
-            },
-            onMcpError: (failedServers) => {
-              const managed = sessions.get(key);
-              if (managed?.session === session) {
-                managed.state = 'error';
-              } else {
-                ssLog(`[StreamingSessionService] Ignoring stale onMcpError for ${key}`);
-                return;
-              }
-              emitAppEvent(mainWindow?.webContents, chatEvents.sessionError, {
-                projectId,
-                chatSessionId,
-                error: `MCP connection failed: ${failedServers.map(s => s.name).join(', ')}`,
-              });
-            },
-            onSlashCommands: (commands, context) => {
-              const visible = selectVisibleSlashCommands(commands, context);
-              const seen = new Set(visible.map((command) => command.name));
-              const merged = [
-                ...visible,
-                ...(deps.listSlashCommands?.() ?? []).filter((command) => {
-                  if (seen.has(command.name)) return false;
-                  seen.add(command.name);
-                  return true;
-                }),
-              ].sort((a, b) => a.name.localeCompare(b.name));
-              emitAppEvent(mainWindow?.webContents, chatEvents.slashCommands, { projectId, chatSessionId, commands: merged });
-            },
-          });
-
-      // Store managed session BEFORE calling start() to ensure cleanup on timeout/error
-      // State = 'connecting' until start() resolves successfully
-      sessions.set(key, {
+      const launch = buildChatSessionLaunch({
         key,
-        type: 'chat',
         projectId,
         chatSessionId,
-        session,
-        state: 'connecting',
-        provider,
-        model,
-        providerModel,
-        effort,
-        lastActivity: Date.now(),
-        turnStartedAt: Date.now(),
+        provider: config.provider,
+        model: config.model,
+        providerModel: config.providerModel,
+        effort: config.effort,
+        context: config.context,
+        resumeSessionId: config.resumeSessionId,
+        persistHistory: config.persistHistory,
+        forceApprovalReview: config.forceApprovalReview,
         titleSeed: initialMessage.titleSeed,
-        mcpHealthStatus: 'healthy',
-        mcpRecoveryAttempts: 0,
-        segmentState: {
-          currentSegmentId: 0,
-          hasTextInCurrentSegment: false,
-          pendingActivities: [],
-        },
-        toolUseActivities: new Map(),
-        persistHistory,
-        forceApprovalReview,
-        accumulatedResponse: '',
-        hasStreamedResponseText: false,
-        turn: createTurnLifecycle(),
-        suppressLifecycleEventsOnEnd: false,
-        followUps: createFollowUpQueue(),
-        unsubscribeToolProposals: unsubscribeToolProposals ?? (() => {}),
+        mainWindow,
+        unsubscribeToolProposals,
+        buildClaudeSdkOptions: deps.buildSdkOptions,
+        host: buildChatSessionHost(config, mainWindow, launched),
       });
+      launched.session = launch.session;
+
+      // Registered BEFORE start() so a timeout or MCP failure still has a
+      // session to tear down.
+      sessions.set(key, launch.managed);
 
       // Start session WITH the initial message (required by SDK).
       // For attachments, build native multimodal blocks and seed them into
@@ -1552,7 +1414,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
           ? await buildUserContentBlocks(initialMessage.text, initialMessage.attachments)
           : initialMessage.text;
       await runWithToolExecutionContext({ projectId, chatSessionId }, () =>
-        session.start(seedContent)
+        launch.session.start(seedContent)
       );
 
       const managed = sessions.get(key);
@@ -1834,7 +1696,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       context,
       persistHistory,
       forceApprovalReview: !!options.focusDocument,
-      onMessage: (session, msg) => handleChatSessionMessage(projectId, chatSessionId, session, msg),
+      onMessage: (managed, msg) => handleChatSessionMessage(projectId, chatSessionId, managed, msg),
     });
   }
 
@@ -2100,18 +1962,11 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
   function handleChatSessionMessage(
     projectId: string,
     chatSessionId: string,
-    sourceSession: IChatSession,
+    managed: ManagedSession,
     msg: unknown,
   ): void {
     const mainWindow = deps.getMainWindow();
-    const key = buildSessionKey(projectId, chatSessionId);
-    const managed = sessions.get(key);
-
-    if (!managed) return;
-    if (managed.session !== sourceSession) {
-      ssLog(`[StreamingSessionService] Ignoring stale onMessage for ${key}`);
-      return;
-    }
+    const key = managed.key;
 
     // Track latest SDK activity for idle-while-processing detection
     managed.turn.noteActivity(Date.now());
@@ -2213,17 +2068,11 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
   function handleSessionEnd(
     key: string,
-    sourceSession: IChatSession,
+    managed: ManagedSession,
     reason: string,
     error?: Error,
   ): void {
-    const managed = sessions.get(key);
-    if (!managed) return;
     const stateBefore = managed.state;
-    if (managed.session !== sourceSession) {
-      ssLog(`[StreamingSessionService] Ignoring stale onSessionEnd for ${key} (${reason})`);
-      return;
-    }
 
     if (managed.chatSessionId) clearPendingDocumentContent(managed.chatSessionId);
     managed.unsubscribeToolProposals();

@@ -22,7 +22,6 @@ function makeFollowUps(queuedClientMessageIds: string[] = []): FollowUpQueue {
 function makeManaged(overrides: Partial<ManagedSessionArg> = {}): ManagedSessionArg {
   return {
     key: 'chat:project-1:session-1',
-    type: 'chat',
     projectId: 'project-1',
     session: { pendingQueuedCount: () => 0 } as unknown as ManagedSessionArg['session'],
     state: 'processing',

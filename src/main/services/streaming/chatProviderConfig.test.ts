@@ -14,7 +14,6 @@ import { createTurnLifecycle } from './turnLifecycle';
 function makeManaged(): Parameters<typeof markSessionReady>[0] {
   return {
     key: 'chat:project-1:session-1',
-    type: 'chat',
     projectId: 'project-1',
     session: {} as unknown as Parameters<typeof markSessionReady>[0]['session'],
     state: 'connecting',
