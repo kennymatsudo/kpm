@@ -26,10 +26,10 @@ import type {
   ReviewTaskStatus,
 } from '../../../shared/types';
 import { failure, success, type AsyncResult, type ServiceResult } from '../result';
-import { PR_REVIEW_FOLLOWUP_STEP } from '../../../shared/playbooks';
 import type { createDevSessionService } from './DevSessionService';
 import type { createGitHubService } from './GitHubService';
 import type { AutomationPhaseMachine } from '../agents/automationPhaseMachine';
+import { requestHarnessTurn } from '../agents/harnessTurn';
 
 type GitHubService = ReturnType<typeof createGitHubService>;
 type DevSessionService = ReturnType<typeof createDevSessionService>;
@@ -437,8 +437,6 @@ export function createReviewService(deps: ReviewServiceDeps) {
       return success({ inbox: inboxResult.data, taskIds: [], context: '', sent: false });
     }
 
-    deps.phaseMachine.transition(sessionId, { type: 'prReviewThreadsQueued', stepId: PR_REVIEW_FOLLOWUP_STEP.id });
-
     const deferred = async (
       reason: DispatchDeferredReason
     ): AsyncResult<DispatchQueuedReviewTasksResult> => {
@@ -458,19 +456,27 @@ export function createReviewService(deps: ReviewServiceDeps) {
     }
 
     const threadIds = queuedTasks.map((task) => task.thread_id);
-    const contextResult = await deps.gitHubService.buildAddressReviewContext(sessionId, { threadIds });
-    if (!contextResult.ok) return contextResult;
-
-    const followUpResult = await deps.devSessionService.sendAgentFollowUp(
-      sessionId,
-      buildAutomationPrompt(contextResult.data),
-      { restartIfBusy: false }
+    let context = '';
+    const turnResult = await requestHarnessTurn(
+      {
+        devSessions: deps.devSessions,
+        phaseMachine: deps.phaseMachine,
+        sendAgentFollowUp: (id, text, followUpOptions) =>
+          deps.devSessionService.sendAgentFollowUp(id, text, followUpOptions),
+      },
+      {
+        sessionId,
+        kind: 'pr-review-followup',
+        buildPrompt: async () => {
+          const contextResult = await deps.gitHubService.buildAddressReviewContext(sessionId, { threadIds });
+          if (!contextResult.ok) return contextResult;
+          context = contextResult.data;
+          return success(buildAutomationPrompt(context));
+        },
+      },
     );
-    if (!followUpResult.ok) {
-      return failure(followUpResult.error);
-    }
-
-    if (followUpResult.data.deferred) {
+    if (!turnResult.ok) return failure(turnResult.error);
+    if (turnResult.data !== 'sent') {
       return deferred('agent_busy');
     }
 
@@ -490,7 +496,7 @@ export function createReviewService(deps: ReviewServiceDeps) {
     return success({
       inbox: refreshedInbox.data,
       taskIds,
-      context: contextResult.data,
+      context,
       sent: true,
     });
   }

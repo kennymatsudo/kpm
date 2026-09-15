@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { DevSession, ReviewTask } from '../../../shared/types';
-import { PR_REVIEW_FOLLOWUP_STEP } from '../../../shared/playbooks';
+import { BUILT_IN_PLAYBOOKS } from '../../../shared/playbooks';
+import { advancePlaybook } from '../../../shared/playbookRuntime';
+import { createAutomationPhaseMachine } from '../agents/automationPhaseMachine';
+import { resolveCursorStep } from '../agents/sessionPlaybook';
 import { createReviewService } from './ReviewService';
+
+vi.mock('electron', () => ({ BrowserWindow: { getAllWindows: () => [] } }));
 
 function createSession(): DevSession {
   return {
@@ -156,7 +161,11 @@ function createReviewSnapshot() {
   };
 }
 
-function createServiceHarness(tasks: ReviewTask[], sessionOverrides: Partial<DevSession> = {}) {
+function createServiceHarness(
+  tasks: ReviewTask[],
+  sessionOverrides: Partial<DevSession> = {},
+  buildPhaseMachine?: (session: DevSession) => { transition: ReturnType<typeof vi.fn> },
+) {
   const session = createSession();
   Object.assign(session, sessionOverrides);
   const syncState = {
@@ -185,7 +194,7 @@ function createServiceHarness(tasks: ReviewTask[], sessionOverrides: Partial<Dev
   const devSessionService = {
     sendAgentFollowUp: vi.fn().mockResolvedValue({ ok: true, data: { restarted: false } }),
   };
-  const phaseMachine = { transition: vi.fn() };
+  const phaseMachine = buildPhaseMachine?.(session) ?? { transition: vi.fn() };
   const reviewTasks = {
     getByRepoPr: vi.fn(() => tasks),
     updateStatus: vi.fn((id: string, status: ReviewTask['status'], meta?: Partial<ReviewTask>) => {
@@ -225,7 +234,7 @@ function createServiceHarness(tasks: ReviewTask[], sessionOverrides: Partial<Dev
     phaseMachine,
   } as never);
 
-  return { service, gitHubService, devSessionService, phaseMachine, reviewTasks };
+  return { service, session, gitHubService, devSessionService, phaseMachine, reviewTasks };
 }
 
 describe('ReviewService', () => {
@@ -273,7 +282,7 @@ describe('ReviewService', () => {
       status: 'in_progress',
       internal_state: 'implementation_queued',
     });
-    expect(phaseMachine.transition).toHaveBeenCalledWith('session-1', { type: 'prReviewThreadsQueued', stepId: PR_REVIEW_FOLLOWUP_STEP.id });
+    expect(phaseMachine.transition).not.toHaveBeenCalled();
     expect(gitHubService.buildAddressReviewContext).not.toHaveBeenCalled();
     expect(devSessionService.sendAgentFollowUp).not.toHaveBeenCalled();
   });
@@ -338,6 +347,45 @@ describe('ReviewService', () => {
     expect(result.data).toMatchObject({ sent: false, deferredReason: 'session_active' });
     expect(devSessionService.sendAgentFollowUp).not.toHaveBeenCalled();
     expect(task.internal_state).toBe('implementation_queued');
+  });
+
+  it('leaves the playbook cursor on the live implementation step when a PR review defers', async () => {
+    const playbook = BUILT_IN_PLAYBOOKS.implementOpposingReview;
+    const task = createTask({
+      status: 'in_progress',
+      internal_state: 'implementation_queued',
+    });
+    const { service, session } = createServiceHarness(
+      [task],
+      {
+        status: 'active',
+        automation_phase: 'idle',
+        playbook_id: playbook.id,
+        playbook_snapshot: JSON.stringify(playbook),
+        current_step_id: 'implement',
+      },
+      (live) => createAutomationPhaseMachine({
+        devSessions: {
+          get: () => live,
+          updateAutomationPhase: (_id, phase) => { live.automation_phase = phase; },
+          updateAutomationState: (_id, state) => {
+            live.automation_phase = state.phase;
+            if (state.currentStepId !== undefined) live.current_step_id = state.currentStepId;
+          },
+        },
+      }) as never,
+    );
+
+    await service.dispatchQueuedReviewTasks('session-1', { onlyIfIdle: true });
+
+    expect(session.current_step_id).toBe('implement');
+    expect(session.automation_phase).toBe('idle');
+
+    const cursor = resolveCursorStep(playbook, session.current_step_id)!;
+    expect(advancePlaybook(playbook, cursor.id, { hasFindings: false, madeProgress: true }, {})).toMatchObject({
+      kind: 'step',
+      stepId: 'review',
+    });
   });
 
   it('marks outdated review tasks done during sync instead of leaving stale attention', async () => {

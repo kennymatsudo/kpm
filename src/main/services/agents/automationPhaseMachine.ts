@@ -30,14 +30,14 @@ export type AutomationPhaseEvent =
     }
   | { type: 'paused'; stepId: string; reason: DevSessionPausedReason; stepPassCounts?: Record<string, number> }
   | { type: 'opposingReviewLaunched'; stepId: string }
-  | { type: 'opposingReviewLaunchAborted' }
+  | { type: 'harnessTurnAborted'; restore: AutomationStateSnapshot }
   | { type: 'prReviewThreadsQueued'; stepId: string }
   | { type: 'movedToReview' }
   | { type: 'agentTerminatedUnexpectedly' }
   | { type: 'commitHookRepairStarted' }
   | { type: 'manualCommitResolved' }
   | { type: 'automationDismissed' }
-  | { type: 'sessionStarted' }
+  | { type: 'sessionStarted'; phase?: DevSessionAutomationPhase }
   | { type: 'automationFailed'; reason: DevSessionAttentionReason };
 
 export interface AutomationPhaseRepository {
@@ -64,6 +64,23 @@ export interface AutomationPhaseMachineDeps {
   eventBus?: Pick<UpdateEventBus, 'emit'>;
   /** Resolves the label a notification should call this session's work. */
   resolveTaskName?: (session: DevSession) => string | null;
+}
+
+/** The automation state a harness-injected turn interrupted, so it can be put back. */
+export interface AutomationStateSnapshot {
+  phase: DevSessionAutomationPhase | null;
+  stepId: string | null;
+  pausedReason: DevSessionPausedReason | null;
+  attentionReason: DevSessionAttentionReason | null;
+}
+
+export function captureAutomationState(session: DevSession): AutomationStateSnapshot {
+  return {
+    phase: session.automation_phase,
+    stepId: session.current_step_id,
+    pausedReason: session.paused_reason ?? null,
+    attentionReason: session.attention_reason ?? null,
+  };
 }
 
 function isTerminationGuardedPhase(phase: DevSessionAutomationPhase | null): boolean {
@@ -125,8 +142,13 @@ function nextState(
     case 'opposingReviewLaunched':
       return { phase: 'reviewing', currentStepId: event.stepId, pausedReason: null, attentionReason: null };
 
-    case 'opposingReviewLaunchAborted':
-      return { phase: 'idle', currentStepId: null, pausedReason: null, attentionReason: null };
+    case 'harnessTurnAborted':
+      return {
+        phase: event.restore.phase,
+        currentStepId: event.restore.stepId,
+        pausedReason: event.restore.pausedReason,
+        attentionReason: event.restore.attentionReason,
+      };
 
     case 'prReviewThreadsQueued':
       return {
@@ -171,7 +193,7 @@ function nextState(
 
     case 'sessionStarted':
       return {
-        phase: 'idle',
+        phase: event.phase ?? 'idle',
         // New sessions already persist their first cursor. Preserve null for a
         // terminal snapshotted playbook receiving an allowed ad-hoc follow-up;
         // inventing `implement` here would restart the completed playbook.

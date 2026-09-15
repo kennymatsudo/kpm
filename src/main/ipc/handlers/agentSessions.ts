@@ -13,6 +13,7 @@ import { getAvailableAgents } from '../../services/agents/agentCatalog';
 import { launchAutoReview } from '../../services/agents/autoReview';
 import { isBoardRunnableProvider } from '../../services/agents/agentLaunch';
 import { playbookForSession, resolveHarnessStep, stepById } from '../../services/agents/sessionPlaybook';
+import { requestHarnessReview } from '../../services/agents/harnessTurn';
 import { listBoardProviders } from '../../services/agents/boardProviderRegistry';
 import { resolvePlaybookPlan } from '../../../shared/playbookRuntime';
 import type { DefaultModel } from '../../../shared/modelDefault';
@@ -189,7 +190,6 @@ function buildAgentSessionHandlers(
 
       const playbook = playbookForSession(session);
       const reviewStep = resolveHarnessStep(playbook, 'ad-hoc-review');
-      phaseMachine.transition(devSessionId, { type: 'opposingReviewLaunched', stepId: reviewStep.id });
 
       // When the review step belongs to the playbook, run the reviewer the user
       // configured on it. Only the harness's own ad-hoc step — the fallback for
@@ -199,29 +199,27 @@ function buildAgentSessionHandlers(
         ? await resolveStepReviewer(reviewStep.id, playbook, getDefaultModel())
         : undefined;
 
-      try {
-        const reviewSessionId = await launchAutoReview({
-          reviewer,
-          implementationSessionId: devSessionId,
-          implementationAgentType: session.agent_type,
-          worktreePath: session.worktree_path,
-          baseBranch: session.base_branch,
-          taskDescription: session.initial_instructions,
-          projectId: session.project_id,
-          agentSessionManager,
-          getPromptContent: (key) => unwrapOrThrow(promptOverrideService.getContent(key)),
-          stepId: reviewStep.id,
-        });
+      const reviewSessionId = await requestHarnessReview(
+        { devSessions: { get: (id) => devSessionService.get(id) }, phaseMachine },
+        {
+          sessionId: devSessionId,
+          step: reviewStep,
+          launch: () => launchAutoReview({
+            reviewer,
+            implementationSessionId: devSessionId,
+            implementationAgentType: session.agent_type,
+            worktreePath: session.worktree_path,
+            baseBranch: session.base_branch,
+            taskDescription: session.initial_instructions,
+            projectId: session.project_id,
+            agentSessionManager,
+            getPromptContent: (key) => unwrapOrThrow(promptOverrideService.getContent(key)),
+            stepId: reviewStep.id,
+          }),
+        },
+      );
 
-        if (!reviewSessionId) {
-          phaseMachine.transition(devSessionId, { type: 'opposingReviewLaunchAborted' });
-        }
-
-        return { reviewSessionId };
-      } catch (error) {
-        phaseMachine.transition(devSessionId, { type: 'opposingReviewLaunchAborted' });
-        throw error;
-      }
+      return { reviewSessionId: unwrapOrThrow(reviewSessionId) };
     },
 
     // Generate a commit message for the agent session's changes using configured instructions

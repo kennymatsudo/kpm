@@ -82,8 +82,27 @@ describe('automationPhaseMachine.transition', () => {
     expect(updateAutomationState).toHaveBeenCalledWith('s1', expect.objectContaining({ currentStepId: 'ad-hoc-review' }));
   });
 
-  it('opposingReviewLaunchAborted always moves to idle', () => {
-    expect(transitionFrom('reviewing', { type: 'opposingReviewLaunchAborted' })).toBe('idle');
+  it('harnessTurnAborted puts back the cursor the injected turn interrupted', () => {
+    const updateAutomationState = vi.fn();
+    const machine = createAutomationPhaseMachine({
+      devSessions: {
+        get: () => ({ id: 's1', project_id: 'p1', status: 'active', automation_phase: 'reviewing', current_step_id: 'ad-hoc-review', step_pass_counts: null, paused_reason: null }) as DevSession,
+        updateAutomationPhase: vi.fn(),
+        updateAutomationState,
+      },
+    });
+
+    machine.transition('s1', {
+      type: 'harnessTurnAborted',
+      restore: { phase: 'paused', stepId: 'implement', pausedReason: 'gate', attentionReason: null },
+    });
+
+    expect(updateAutomationState).toHaveBeenCalledWith('s1', {
+      phase: 'paused',
+      currentStepId: 'implement',
+      pausedReason: 'gate',
+      attentionReason: null,
+    });
   });
 
   it.each(['idle', 'reviewing'] satisfies DevSessionAutomationPhase[])(

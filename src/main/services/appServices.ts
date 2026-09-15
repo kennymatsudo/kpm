@@ -386,7 +386,6 @@ export function createAppServices(container: IRepositoryContainer) {
     gitHubService,
     planService,
     agentSessionManager,
-    phaseMachine,
     broadcastToWindows,
     requestPlanRefresh,
     scheduler: pollScheduler,

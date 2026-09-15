@@ -113,6 +113,8 @@ The orchestration lives in `src/main/services/agents/BoardAgentOrchestrator.ts` 
 
 `dev_sessions.current_step_id` must always name a step the session's `playbook_snapshot` can resolve. The phase machine never invents one: every cursor-writing event carries a `stepId` the caller resolved first, through `sessionPlaybook.ts`.
 
+Every injected turn goes through `harnessTurn.ts` (`requestHarnessTurn` for a turn sent to the session's own agent, `requestHarnessReview` for an unscheduled review subagent). It moves the cursor only once the agent accepts the turn, and puts back the interrupted cursor when a review never launches. Writing the cursor first is what silently drops a run's remaining steps: the injected step is not in `playbook.steps`, so the live turn's completion resolves that cursor and `advancePlaybook` completes the run.
+
 Some turns the harness injects are not declared by any playbook — an ad-hoc review launched from the board, and a PR-review follow-up. Those are declared once as standalone `PlaybookStep` values (`AD_HOC_REVIEW_STEP`, `PR_REVIEW_FOLLOWUP_STEP` in `src/shared/playbooks.ts`) and resolved by `resolveHarnessStep` / `resolveCursorStep`. They are deliberately **not** members of any playbook's `steps` array: `advancePlaybook` completes the run for a step id it cannot find in the playbook, which is what makes an injected turn end at its terminal instead of restarting the playbook from step one. An ad-hoc review on a playbook that already has a findings-producing review step resolves to that step instead, so it routes to that playbook's address step exactly as the automated path does.
 
 ### Implementation completion
@@ -195,6 +197,7 @@ If a session was destroyed rather than stopped, the old worktree is gone and KPM
 | `src/main/services/agents/AgentSessionManager.ts` | session registry, event wiring, review persistence, 30 min TTL eviction |
 | `src/main/services/agents/PiSdkAgentSession.ts` | Pi SDK board adapter, model selection, worktree tools, usage, and activity mapping |
 | `src/main/services/agents/autoReview.ts` | one-shot opposing review launch; accepts `baseBranch` and the `stepId` its completion resolves back to |
+| `src/main/services/agents/harnessTurn.ts` | injected turns the playbook never declared: cursor discipline, deferral, and the one failure reason they land on |
 | `src/main/services/agents/sessionPlaybook.ts` | session snapshot → `Playbook`, and persisted cursor → step (`resolveCursorStep`, `resolveHarnessStep`) |
 | `src/main/services/agents/reviewOutputContract.ts` | `REVIEW_FINDINGS_SCHEMA`, `parseReviewFindings`, `deriveReviewOutcome` — the shared review-output contract every adapter's `getResult()` parses through |
 | `src/main/services/agents/BoardAgentOrchestrator.ts` | automation state machine: implement → review → address → ready |

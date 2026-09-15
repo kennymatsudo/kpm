@@ -32,7 +32,6 @@ import type { ReviewAssessmentService } from './ReviewAssessmentService';
 import type { GitHubService } from './GitHubService';
 import type { PlanService } from '../core/PlanService';
 import type { AgentSessionManager } from '../agents/AgentSessionManager';
-import type { AutomationPhaseMachine } from '../agents/automationPhaseMachine';
 import type { PollScheduler, PollTickResult } from '../core/PollScheduler';
 import type { UpdateEventBus } from '../core/UpdateEventBus';
 import type { EventDefinition, EventPayload } from '../../../shared/ipc/appEvents';
@@ -54,7 +53,6 @@ export interface ReviewPollServiceDeps {
   gitHubService: GitHubService;
   planService: Pick<PlanService, 'updateItem'>;
   agentSessionManager: AgentSessionManager;
-  phaseMachine: Pick<AutomationPhaseMachine, 'transition'>;
   broadcastToWindows: (channel: string, payload: unknown) => void;
   requestPlanRefresh: (projectId: string) => void;
   scheduler: PollScheduler;
@@ -509,7 +507,6 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
       const dispatchResult = await deps.reviewService.dispatchQueuedReviewTasks(sessionId, { onlyIfIdle: true });
       if (!dispatchResult.ok) {
         applyBackoff(sessionId);
-        deps.phaseMachine.transition(sessionId, { type: 'automationFailed', reason: 'follow-up-send-failed' });
         return {
           sessionId,
           action: 'error',

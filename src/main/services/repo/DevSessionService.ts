@@ -51,6 +51,7 @@ import {
 } from '../agents/agentLaunch';
 import { FollowUpNotAllowedError } from '../agents/BaseAgentSession';
 import type { AutomationPhaseMachine } from '../agents/automationPhaseMachine';
+import { requestHarnessTurn } from '../agents/harnessTurn';
 import type { PlaybookService } from '../core/PlaybookService';
 import { parsePlaybook, type BoardProvider, type Playbook } from '../../../shared/playbooks';
 import { BOARD_AGENT_WRITE_POLICY, renderPlaybookDirective, resolvePlaybookPlan } from '../../../shared/playbookRuntime';
@@ -121,6 +122,15 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
   function playbookFromSnapshot(session: DevSession): Playbook | null {
     if (!session.playbook_snapshot) return null;
     try { return parsePlaybook(JSON.parse(session.playbook_snapshot)); } catch { return null; }
+  }
+
+  function harnessTurnDeps() {
+    return {
+      devSessions: deps.devSessions,
+      phaseMachine: deps.phaseMachine,
+      sendAgentFollowUp: (id: string, text: string, options: { restartIfBusy: false }) =>
+        service.sendAgentFollowUp(id, text, options),
+    };
   }
 
   function selectedPlaybook(id?: string): ServiceResult<Playbook> {
@@ -864,19 +874,16 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           return success({ started: false, alreadyAttempted: true });
         }
 
-        deps.phaseMachine.transition(sessionId, { type: 'commitHookRepairStarted' });
-
-        const followUpResult = await service.sendAgentFollowUp(
+        const turnResult = await requestHarnessTurn(harnessTurnDeps(), {
           sessionId,
-          buildCommitHookRepairPrompt(hookOutput),
-        );
-
-        if (!followUpResult.ok) {
-          deps.phaseMachine.transition(sessionId, { type: 'automationFailed', reason: 'follow-up-send-failed' });
-          return failure(followUpResult.error);
+          kind: 'commit-hook-repair',
+          buildPrompt: () => Promise.resolve(success(buildCommitHookRepairPrompt(hookOutput))),
+        });
+        if (!turnResult.ok) {
+          return failure(turnResult.error);
         }
 
-        return success({ started: true, alreadyAttempted: false });
+        return success({ started: turnResult.data === 'sent', alreadyAttempted: false });
       } catch (error) {
         deps.phaseMachine.transition(sessionId, { type: 'automationFailed', reason: 'commit-hook-repair-errored' });
         return failure(error instanceof Error ? error.message : String(error));
