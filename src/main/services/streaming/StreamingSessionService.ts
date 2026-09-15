@@ -46,6 +46,7 @@ import { createTurnLifecycle, type TurnLifecycle } from './turnLifecycle';
 import { extractFilePaths } from '../toollog/extractFilePaths';
 import { DEFAULT_CONTEXT_FILENAME, CONTEXT_FILE_PENDING_CACHE_KEY } from '../../../shared/contextFile';
 import { promptUser } from '../core/PermissionPromptService';
+import { decideMcpElicitation, isAutoApprovedCodexMcpServer } from './mcpElicitation';
 import { isAllowedExternalUrl } from '../../security/externalUrl';
 import { selectVisibleSlashCommands } from '../core/SlashCommandService';
 import type { PollScheduler, PollTickResult } from '../core/PollScheduler';
@@ -75,12 +76,6 @@ export type ModelType = 'opus' | 'sonnet' | 'haiku';
 export type ViewMode = 'plan' | 'workspace' | 'focus';
 
 const KPM_CONTEXT_PLACEHOLDER = '$KPM_CONTEXT';
-
-/** Claude already auto-allows configured MCP tools. Keep Codex browser work
- * consistent by treating Playwright's interaction requests as pre-approved. */
-export function isAutoApprovedCodexMcpServer(serverName: unknown): boolean {
-  return typeof serverName === 'string' && serverName.toLowerCase() === 'playwright';
-}
 
 function buildViewHintLine(currentView?: ViewMode): string | undefined {
   if (currentView === 'plan') return '[Context: user is viewing the plan]';
@@ -1235,6 +1230,27 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       const claudeEffort = effort === 'low' || effort === 'medium' || effort === 'high' || effort === 'max'
         ? effort
         : undefined;
+      // One set of handlers for every provider's elicitations. `signal` is
+      // per-call: only Claude can cancel a pending elicitation mid-turn.
+      const elicitationHandlers = (signal?: AbortSignal) => ({
+        promptUser: mainWindow
+          ? async (toolName: string, input: Record<string, unknown>) => {
+              const result = await promptUser(mainWindow, projectId, toolName, input, {
+                chatSessionId,
+                kind: 'elicitation' as const,
+                signal,
+              });
+              return result.behavior === 'allow';
+            }
+          : undefined,
+        openExternal: (url: string) => {
+          void import('electron')
+            .then(({ shell }) => shell.openExternal(url))
+            .catch((error) => console.error('[StreamingSessionService] Failed to open elicitation URL:', error));
+        },
+        autoApprove: provider === 'codex' ? isAutoApprovedCodexMcpServer : undefined,
+      });
+
       const createClaudeSdkOptions = () => deps.buildSdkOptions(context, {
         model,
         effort: claudeEffort,
@@ -1287,36 +1303,9 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
             console.error('[StreamingSessionService] Failed to read file for intercepted write:', error);
           });
         },
-        // Handle MCP elicitation requests (auth flows, form input from managed servers).
-        // Routes them to the renderer as permission-style prompts so the user can
-        // approve/decline or complete OAuth flows.
         onElicitation: async (request, { signal }) => {
-          if (!mainWindow) {
-            return { action: 'decline' as const };
-          }
-          // For URL-mode elicitation (OAuth), open the URL and auto-accept —
-          // but only after validating the scheme, since a compromised MCP
-          // server could hand us a file:// or custom-scheme URL.
-          if (request.mode === 'url' && request.url) {
-            if (!isAllowedExternalUrl(request.url)) {
-              console.warn(`[StreamingSessionService] Blocked unsafe MCP elicitation URL: ${request.url}`);
-              return { action: 'decline' as const };
-            }
-            const { shell } = await import('electron');
-            void shell.openExternal(request.url);
-            return { action: 'accept' as const, content: {} };
-          }
-          // For form-mode elicitation, route to the permission prompt UI
-          const result = await promptUser(mainWindow, projectId, `mcp_elicitation:${request.serverName}`, {
-            message: request.message,
-            mode: request.mode,
-          }, {
-            signal,
-            chatSessionId,
-          });
-          return result.behavior === 'allow'
-            ? { action: 'accept' as const, content: {} }
-            : { action: 'decline' as const };
+          const decision = await decideMcpElicitation(request, elicitationHandlers(signal));
+          return { action: decision.action, ...(decision.content ? { content: decision.content } : {}) };
         },
       });
 
@@ -1416,28 +1405,6 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         return result.behavior === 'allow';
       };
 
-      const handleCodexMcpElicitation = async (request: Record<string, unknown>) => {
-        if (!mainWindow) return { action: 'decline' as const };
-        if (request.mode === 'url' && typeof request.url === 'string') {
-          if (!isAllowedExternalUrl(request.url)) {
-            console.warn(`[StreamingSessionService] Blocked unsafe MCP elicitation URL: ${request.url}`);
-            return { action: 'decline' as const };
-          }
-          const { shell } = await import('electron');
-          void shell.openExternal(request.url);
-          return { action: 'accept' as const, content: {} };
-        }
-        const serverName = typeof request.serverName === 'string' ? request.serverName : 'unknown';
-        if (isAutoApprovedCodexMcpServer(serverName)) {
-          return { action: 'accept' as const, content: {} };
-        }
-        const allowed = await requestCodexExternalApproval(`mcp_elicitation:${serverName}`, {
-          message: request.message,
-          mode: request.mode,
-        });
-        return allowed ? { action: 'accept' as const, content: {} } : { action: 'decline' as const };
-      };
-
       // Create streaming session — let required: const can't be referenced in its own initializer closures
       // eslint-disable-next-line prefer-const
       let session!: IChatSession;
@@ -1473,7 +1440,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
             requestWriteConsent,
             hasWriteAccess: () => projectWriteGrants.has(projectId),
             requestExternalApproval: requestCodexExternalApproval,
-            onMcpElicitation: handleCodexMcpElicitation,
+            onMcpElicitation: (request) => decideMcpElicitation(request, elicitationHandlers()),
           })
         : provider === 'pi'
         ? new PiChatSession({
