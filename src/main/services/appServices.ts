@@ -369,6 +369,7 @@ export function createAppServices(container: IRepositoryContainer) {
     listBoardProviders,
     getSkillBody: slashCommandService.getSkillBody,
     resumePlaybook: boardAgentOrchestrator.resumePlaybook,
+    startPlaybookReviewPass: boardAgentOrchestrator.startPlaybookReviewPass,
   });
   devSessionServiceRef = devSessionService;
   reviewServiceRef = reviewService;

@@ -152,8 +152,13 @@ function nextState(
 
     case 'prReviewThreadsQueued':
       return {
+        // A parked failure survives an automated follow-up — only the user's own
+        // decision clears it. The cursor still moves, because the agent accepted
+        // the turn: left on the step that failed, the follow-up's completion
+        // settles THAT step and silently completes the run from a step that
+        // never ran.
         phase: current === 'needs_attention' ? current : 'addressing_review',
-        currentStepId: current === 'needs_attention' ? session.current_step_id : event.stepId,
+        currentStepId: event.stepId,
         pausedReason: null,
         attentionReason: current === 'needs_attention' ? session.attention_reason ?? null : null,
       };

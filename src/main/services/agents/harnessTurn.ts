@@ -14,13 +14,14 @@
  */
 
 import { PR_REVIEW_FOLLOWUP_STEP, type PlaybookStep } from '../../../shared/playbooks';
-import type { DevSession } from '../../../shared/types';
+import type { DevSession, DevSessionAutomationPhase } from '../../../shared/types';
 import { failure, success, type AsyncResult, type ServiceResult } from '../result';
 import {
   captureAutomationState,
   type AutomationPhaseEvent,
   type AutomationPhaseMachine,
 } from './automationPhaseMachine';
+import type { TurnReentry } from './mainStepTurn';
 
 /**
  * `sent` — the agent accepted the turn and the cursor moved.
@@ -37,13 +38,24 @@ export interface HarnessTurnDeps {
   sendAgentFollowUp: (
     sessionId: string,
     text: string,
-    options: { restartIfBusy: false },
+    options: { restartIfBusy: false; restartAs: TurnReentry },
   ) => AsyncResult<{ restarted: boolean; deferred?: boolean }>;
 }
 
 const ACCEPTED_BY_KIND: Record<HarnessTurnKind, AutomationPhaseEvent> = {
   'pr-review-followup': { type: 'prReviewThreadsQueued', stepId: PR_REVIEW_FOLLOWUP_STEP.id },
   'commit-hook-repair': { type: 'commitHookRepairStarted' },
+};
+
+/**
+ * Eviction and main-process restarts make a follow-up that turns into a fresh
+ * agent routine, and a fresh agent re-enters at `idle` unless told otherwise —
+ * where a crash on this turn never reaches the board as needing attention. The
+ * role prompt is left to the playbook's first main step; only the phase is ours.
+ */
+const RESTART_PHASE_BY_KIND: Record<HarnessTurnKind, DevSessionAutomationPhase> = {
+  'pr-review-followup': 'addressing_review',
+  'commit-hook-repair': 'fixing_commit_hooks',
 };
 
 function fail(
@@ -77,7 +89,10 @@ export async function requestHarnessTurn(
   if (!prompt.ok) return fail(deps, request.sessionId, prompt.error);
   if (prompt.data === null) return success('refused');
 
-  const sent = await deps.sendAgentFollowUp(request.sessionId, prompt.data, { restartIfBusy: false });
+  const sent = await deps.sendAgentFollowUp(request.sessionId, prompt.data, {
+    restartIfBusy: false,
+    restartAs: { phase: RESTART_PHASE_BY_KIND[request.kind] },
+  });
   if (!sent.ok) return fail(deps, request.sessionId, sent.error);
   if (sent.data.deferred) return success('deferred');
 

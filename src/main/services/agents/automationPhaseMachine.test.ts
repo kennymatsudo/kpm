@@ -138,6 +138,29 @@ describe('automationPhaseMachine.transition', () => {
     expect(transitionFrom('needs_attention', { type: 'prReviewThreadsQueued', stepId: 'pr-review-followup' })).toBe('needs_attention');
   });
 
+  it('prReviewThreadsQueued still moves the cursor onto the accepted turn while needs_attention stands', () => {
+    const updateAutomationState = vi.fn();
+    const parked: Partial<DevSession> = {
+      id: 's1', project_id: 'p1', status: 'active', automation_phase: 'needs_attention',
+      attention_reason: 'all-runs-failed:review', current_step_id: 'review', step_pass_counts: null, paused_reason: null,
+    };
+    const machine = createAutomationPhaseMachine({
+      devSessions: {
+        get: () => parked as DevSession,
+        updateAutomationPhase: vi.fn(),
+        updateAutomationState,
+      },
+    });
+
+    machine.transition('s1', { type: 'prReviewThreadsQueued', stepId: 'pr-review-followup' });
+
+    expect(updateAutomationState).toHaveBeenCalledWith('s1', expect.objectContaining({
+      phase: 'needs_attention',
+      attentionReason: 'all-runs-failed:review',
+      currentStepId: 'pr-review-followup',
+    }));
+  });
+
   it('movedToReview always moves to ready_for_review', () => {
     expect(transitionFrom('addressing_review', { type: 'movedToReview' })).toBe('ready_for_review');
   });

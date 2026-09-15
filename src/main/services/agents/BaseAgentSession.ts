@@ -14,6 +14,7 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { deriveReviewOutcome } from './reviewOutputContract';
+import { isAgentTerminal } from '../../../shared/agent-types';
 import type {
   AgentActivity,
   AgentCompletionSummary,
@@ -210,7 +211,7 @@ export abstract class BaseAgentSession {
 
   /** Whether the session has reached a state a follow-up turn can resume from. */
   protected isFollowUpAllowed(): boolean {
-    return this._state === 'complete' || this._state === 'failed' || this._state === 'stopped';
+    return isAgentTerminal(this._state);
   }
 
   /**
@@ -277,8 +278,7 @@ export abstract class BaseAgentSession {
    */
   protected async stopSession(
     abortTransport: () => void | Promise<void>,
-    alreadyStopped: () => boolean = () =>
-      this._state === 'stopped' || this._state === 'complete' || this._state === 'failed',
+    alreadyStopped: () => boolean = () => isAgentTerminal(this._state),
   ): Promise<void> {
     if (alreadyStopped()) {
       return;
@@ -306,7 +306,7 @@ export abstract class BaseAgentSession {
    */
   protected failTurn(error: unknown, classify: (error: unknown) => { message: string }): void {
     if (this.stopping) return;
-    if (this._state === 'failed' || this._state === 'stopped' || this._state === 'complete') return;
+    if (isAgentTerminal(this._state)) return;
 
     const classified = classify(error);
     this.emitActivity({

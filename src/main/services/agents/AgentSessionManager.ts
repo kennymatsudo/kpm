@@ -19,7 +19,7 @@ import type {
   ReviewFinding,
   IAgentSession,
 } from '../../../shared/agent-types';
-import { toImplSessionId } from '../../../shared/agent-types';
+import { isAgentActive, isAgentTerminal, toImplSessionId } from '../../../shared/agent-types';
 import { ClaudeSdkSession } from './ClaudeSdkSession';
 import { CliAgentSession } from './CliAgentSession';
 import { CodexSdkAgentSession } from './CodexSdkAgentSession';
@@ -71,7 +71,7 @@ export interface AgentSessionManagerDeps {
   }) => void | Promise<void>;
   onSessionComplete?: (event: {
     devSessionId: string;
-    implementationSessionId?: string;
+    implementationSessionId: string;
     stepId?: string;
     runIndex?: number;
     role: AgentSessionRole;
@@ -82,7 +82,7 @@ export interface AgentSessionManagerDeps {
   }) => void | Promise<void>;
   onSessionStateChange?: (event: {
     devSessionId: string;
-    implementationSessionId?: string;
+    implementationSessionId: string;
     stepId?: string;
     runIndex?: number;
     role: AgentSessionRole;
@@ -255,7 +255,7 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
   function getActiveForProject(projectId: string): IAgentSession[] {
     const result: IAgentSession[] = [];
     for (const tracked of sessions.values()) {
-      if (tracked.projectId === projectId && isActiveState(tracked.agentSession.state)) {
+      if (tracked.projectId === projectId && isAgentActive(tracked.agentSession.state)) {
         result.push(tracked.agentSession);
       }
     }
@@ -275,7 +275,7 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
     const counts = new Map<string, { working: number; awaitingInput: number }>();
     for (const tracked of sessions.values()) {
       const state = tracked.agentSession.state;
-      if (!isActiveState(state)) continue;
+      if (!isAgentActive(state)) continue;
       const entry = counts.get(tracked.projectId) ?? { working: 0, awaitingInput: 0 };
       if (state === 'waiting_for_input') entry.awaitingInput += 1;
       else entry.working += 1;
@@ -287,7 +287,7 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
   /** Whether the session tracked for this dev session is still busy (starting/working/waiting_for_input). False if no session is registered. */
   function isSessionBusy(devSessionId: string): boolean {
     const session = getByDevSession(devSessionId);
-    return session !== undefined && isActiveState(session.state);
+    return session !== undefined && isAgentActive(session.state);
   }
 
   // ===========================================================================
@@ -314,7 +314,7 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
 
   async function stopForImplementationSession(implementationSessionId: string): Promise<boolean> {
     const matching = [...sessions.values()].filter((tracked) =>
-      tracked.implementationSessionId === implementationSessionId && isActiveState(tracked.agentSession.state),
+      tracked.implementationSessionId === implementationSessionId && isAgentActive(tracked.agentSession.state),
     );
     if (matching.length === 0) return false;
     await Promise.allSettled(matching.map((tracked) => tracked.agentSession.stop()));
@@ -325,7 +325,7 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
   async function stopAll(): Promise<void> {
     const allTracked = Array.from(sessions.values());
     const allActive = allTracked
-      .filter(t => isActiveState(t.agentSession.state))
+      .filter(t => isAgentActive(t.agentSession.state))
       .map(t => t.agentSession);
     await Promise.allSettled(allActive.map(s => s.stop()));
     for (const tracked of allTracked) {
@@ -374,7 +374,7 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
         ...getStepContext(tracked),
       });
 
-      if (state === 'starting' || state === 'working' || state === 'waiting_for_input') {
+      if (isAgentActive(state)) {
         const existingTimer = terminalEvictionTimers.get(agentSession.id);
         if (existingTimer) {
           clearTimeout(existingTimer);
@@ -382,7 +382,7 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
         }
       }
 
-      if (state === 'complete' || state === 'failed' || state === 'stopped') {
+      if (isAgentTerminal(state)) {
         const existingTimer = terminalEvictionTimers.get(agentSession.id);
         if (existingTimer) clearTimeout(existingTimer);
         const evictionTimer = setTimeout(() => {
@@ -523,10 +523,6 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
   // ===========================================================================
   // Utilities
   // ===========================================================================
-
-  function isActiveState(state: AgentSessionState): boolean {
-    return state === 'starting' || state === 'working' || state === 'waiting_for_input';
-  }
 
   function getStepContext(tracked: Pick<TrackedSession, 'stepId' | 'runIndex'> | undefined): {
     stepId?: string;

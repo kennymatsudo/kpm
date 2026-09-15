@@ -119,6 +119,7 @@ describe('BoardAgentOrchestrator', () => {
 
     await callbacks.onSessionComplete?.({
       devSessionId: session.id,
+      implementationSessionId: session.id,
       role: 'implement',
       summary: { filesChanged: 1, additions: 2, deletions: 0 },
     });
@@ -177,6 +178,7 @@ describe('BoardAgentOrchestrator', () => {
 
     await callbacks.onSessionComplete?.({
       devSessionId: session.id,
+      implementationSessionId: session.id,
       role: 'implement',
       summary: { filesChanged: 1, additions: 2, deletions: 0 },
     });
@@ -228,6 +230,7 @@ describe('BoardAgentOrchestrator', () => {
 
     await callbacks.onSessionComplete?.({
       devSessionId: session.id,
+      implementationSessionId: session.id,
       role: 'implement',
       summary: { filesChanged: 1, additions: 2, deletions: 0 },
     });
@@ -277,6 +280,7 @@ describe('BoardAgentOrchestrator', () => {
 
     await callbacks.onSessionComplete?.({
       devSessionId: session.id,
+      implementationSessionId: session.id,
       role: 'implement',
       summary: { filesChanged: 1, additions: 2, deletions: 0 },
     });
@@ -329,6 +333,7 @@ describe('BoardAgentOrchestrator', () => {
 
     await callbacks.onSessionComplete?.({
       devSessionId: session.id,
+      implementationSessionId: session.id,
       role: 'implement',
       summary: { filesChanged: 1, additions: 2, deletions: 0 },
     });
@@ -374,6 +379,7 @@ describe('BoardAgentOrchestrator', () => {
 
     await callbacks.onSessionComplete?.({
       devSessionId: session.id,
+      implementationSessionId: session.id,
       role: 'implement',
       summary: { filesChanged: 1, additions: 2, deletions: 0 },
     });
@@ -421,6 +427,7 @@ describe('BoardAgentOrchestrator', () => {
 
     await callbacks.onSessionComplete?.({
       devSessionId: session.id,
+      implementationSessionId: session.id,
       role: 'implement',
       summary: { filesChanged: 1, additions: 2, deletions: 0 },
     });
@@ -468,6 +475,7 @@ describe('BoardAgentOrchestrator', () => {
 
     await callbacks.onSessionComplete?.({
       devSessionId: session.id,
+      implementationSessionId: session.id,
       role: 'implement',
       summary: { filesChanged: 1, additions: 2, deletions: 0 },
     });
@@ -571,7 +579,7 @@ describe('BoardAgentOrchestrator', () => {
     });
 
     await callbacks.onSessionComplete?.({
-      devSessionId: session.id, role: 'implement', finalText: 'Ad-hoc follow-up done',
+      devSessionId: session.id, implementationSessionId: session.id, role: 'implement', finalText: 'Ad-hoc follow-up done',
       summary: { filesChanged: 1, additions: 1, deletions: 0 },
     });
 
@@ -615,6 +623,7 @@ describe('BoardAgentOrchestrator', () => {
 
     await callbacks.onSessionComplete?.({
       devSessionId: session.id,
+      implementationSessionId: session.id,
       role: 'implement',
       summary: { filesChanged: 1, additions: 1, deletions: 0 },
     });
@@ -665,7 +674,7 @@ describe('BoardAgentOrchestrator', () => {
       ],
     });
 
-    await callbacks.onSessionComplete?.({ devSessionId: session.id, role: 'implement', summary: { filesChanged: 1, additions: 1, deletions: 0 } });
+    await callbacks.onSessionComplete?.({ devSessionId: session.id, implementationSessionId: session.id, role: 'implement', summary: { filesChanged: 1, additions: 1, deletions: 0 } });
     await callbacks.onSessionComplete?.({
       devSessionId: 'writer-runtime', implementationSessionId: session.id, stepId: 'writer', runIndex: 0,
       role: 'review', summary: { filesChanged: 1, additions: 1, deletions: 0 }, finalText: 'Writer output',
@@ -743,6 +752,129 @@ describe('BoardAgentOrchestrator', () => {
     expect(session.step_pass_counts).toBe('{"critics":0}');
   });
 
+  it('runs an ad-hoc review as a fresh round, so its findings reach the address step', async () => {
+    const playbook = BUILT_IN_PLAYBOOKS.implementCodeReview;
+    const session = createSession({
+      playbook_id: playbook.id,
+      playbook_snapshot: JSON.stringify(playbook),
+      current_step_id: null,
+      automation_phase: 'ready_for_review',
+    });
+    const sendAgentFollowUp = vi.fn().mockResolvedValue({ ok: true, data: { restarted: false } });
+    // The rows a clean automated review left behind on the previous attempt.
+    const getByReviewSessionIds = vi.fn((ids: string[]) => ids
+      .filter((id) => id.includes('-review-0-'))
+      .map((id, runIndex) => ({
+        review_session_id: id, run_index: runIndex, status: 'complete', raw_output: 'no issues', findings: [],
+      }))) as never;
+    vi.mocked(launchPlaybookSubagent).mockImplementation((params) =>
+      Promise.resolve(`session-1-playbook-review-${params.attempt}-${params.runIndex}`));
+
+    const callbacks = createBoardAgentOrchestrator({
+      agentReviews: {
+        persistStartedReview: vi.fn(), persistCompletedReview: vi.fn(), persistFailedReview: vi.fn(),
+        getByReviewSessionIds,
+      },
+      planService: { updateItem: vi.fn() }, phaseMachine: createTestPhaseMachine(session),
+      getDevSessionService: () => ({
+        get: vi.fn(() => session), sendAgentFollowUp, updateStatus: vi.fn(),
+        commitSessionChanges: vi.fn(), requestCommitHookRepair: vi.fn(), savePlaybookOutputs: vi.fn(),
+      }),
+      getReviewService: () => null,
+      getAgentSessionManager: () => ({ isSessionBusy: vi.fn(() => false) } as never),
+      getPromptContent: vi.fn((key: string) => (
+        key === 'agents.review_assessment' ? 'Address the findings:\n{{findings}}' : key
+      )),
+      claudeUsageService: { recordUsage: vi.fn() }, requestPlanRefresh: vi.fn(),
+      listBoardProviders: async () => [
+        { id: 'claude', name: 'Claude', available: true, models: [{ id: 'sonnet', name: 'Sonnet', isDefault: true }], capabilities: { nativeSkills: true, reviewSandbox: false } },
+        { id: 'codex', name: 'Codex', available: true, models: [{ id: 'codex', name: 'Codex', isDefault: true }], capabilities: { nativeSkills: false, reviewSandbox: true } },
+      ],
+    });
+
+    expect(await callbacks.startPlaybookReviewPass(session.id)).toBe('session-1-playbook-review-1-0');
+
+    expect(getByReviewSessionIds).toHaveBeenCalledWith([
+      'session-1-playbook-review-1-0', 'session-1-playbook-review-1-1',
+    ]);
+    expect(launchPlaybookSubagent).toHaveBeenCalledTimes(2);
+
+    for (const runIndex of [0, 1]) {
+      await callbacks.onSessionComplete?.({
+        devSessionId: `session-1-playbook-review-1-${runIndex}`,
+        implementationSessionId: session.id,
+        stepId: 'review',
+        runIndex,
+        role: 'review',
+        findings: runIndex === 0
+          ? [{ severity: 'critical', description: 'Unhandled null from the new cache read', agent: 'codex', source: 'agent' }]
+          : [],
+        summary: { filesChanged: 0, additions: 0, deletions: 0 },
+      });
+    }
+
+    expect(sendAgentFollowUp).toHaveBeenCalledWith(
+      session.id,
+      expect.stringContaining('Unhandled null from the new cache read'),
+      expect.anything(),
+    );
+    expect(session.current_step_id).toBe('address');
+    expect(session.automation_phase).toBe('addressing_review');
+  });
+
+  it('launches every run of an ad-hoc review on a two-run step, so the round can settle', async () => {
+    const playbook = BUILT_IN_PLAYBOOKS.implementCodeReview;
+    const session = createSession({
+      playbook_id: playbook.id,
+      playbook_snapshot: JSON.stringify(playbook),
+      current_step_id: 'review',
+      automation_phase: 'needs_attention',
+      attention_reason: 'all-runs-failed:review',
+    });
+    const updateItem = vi.fn().mockReturnValue({ ok: true, data: undefined });
+    vi.mocked(launchPlaybookSubagent).mockImplementation((params) =>
+      Promise.resolve(`session-1-playbook-review-${params.attempt}-${params.runIndex}`));
+
+    const callbacks = createBoardAgentOrchestrator({
+      agentReviews: {
+        persistStartedReview: vi.fn(), persistCompletedReview: vi.fn(), persistFailedReview: vi.fn(),
+        getByReviewSessionIds: vi.fn(() => []),
+      },
+      planService: { updateItem }, phaseMachine: createTestPhaseMachine(session),
+      getDevSessionService: () => ({
+        get: vi.fn(() => session), sendAgentFollowUp: vi.fn(), updateStatus: vi.fn(),
+        commitSessionChanges: vi.fn(), requestCommitHookRepair: vi.fn(), savePlaybookOutputs: vi.fn(),
+      }),
+      getReviewService: () => null,
+      getAgentSessionManager: () => ({ isSessionBusy: vi.fn(() => false) } as never),
+      getPromptContent: vi.fn((key: string) => key),
+      claudeUsageService: { recordUsage: vi.fn() }, requestPlanRefresh: vi.fn(),
+      listBoardProviders: async () => [
+        { id: 'claude', name: 'Claude', available: true, models: [{ id: 'sonnet', name: 'Sonnet', isDefault: true }], capabilities: { nativeSkills: true, reviewSandbox: false } },
+        { id: 'codex', name: 'Codex', available: true, models: [{ id: 'codex', name: 'Codex', isDefault: true }], capabilities: { nativeSkills: false, reviewSandbox: true } },
+      ],
+    });
+
+    await callbacks.startPlaybookReviewPass(session.id);
+
+    expect(launchPlaybookSubagent).toHaveBeenCalledTimes(2);
+
+    for (const runIndex of [0, 1]) {
+      await callbacks.onSessionComplete?.({
+        devSessionId: `session-1-playbook-review-1-${runIndex}`,
+        implementationSessionId: session.id,
+        stepId: 'review',
+        runIndex,
+        role: 'review',
+        findings: [],
+        summary: { filesChanged: 0, additions: 0, deletions: 0 },
+      });
+    }
+
+    expect(updateItem).toHaveBeenCalledWith('plan-1', { status_category: 'in_review' });
+    expect(session.automation_phase).toBe('ready_for_review');
+  });
+
   it('finishes an ad-hoc review on the fresh-install implement-only playbook instead of failing on an unknown cursor', async () => {
     const playbook = BUILT_IN_PLAYBOOKS.implementOnly;
     const session = createSession({
@@ -818,6 +950,7 @@ describe('BoardAgentOrchestrator', () => {
 
     await callbacks.onSessionComplete?.({
       devSessionId: session.id,
+      implementationSessionId: session.id,
       role: 'implement',
       summary: { filesChanged: 1, additions: 1, deletions: 0 },
     });

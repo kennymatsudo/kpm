@@ -7,22 +7,10 @@
 import { runGeneration } from '../../generation';
 import type { AgentSessionManager } from '../../services/agents/AgentSessionManager';
 import type { DevSessionService } from '../../services/repo/DevSessionService';
-import type { AutomationPhaseMachine } from '../../services/agents/automationPhaseMachine';
 import type { PromptOverrideService } from '../../services/core/PromptOverrideService';
 import { getAvailableAgents } from '../../services/agents/agentCatalog';
-import { launchAutoReview } from '../../services/agents/autoReview';
-import { isBoardRunnableProvider } from '../../services/agents/agentLaunch';
-import { playbookForSession, resolveHarnessStep, stepById } from '../../services/agents/sessionPlaybook';
-import { requestHarnessReview } from '../../services/agents/harnessTurn';
-import { listBoardProviders } from '../../services/agents/boardProviderRegistry';
-import { resolvePlaybookPlan } from '../../../shared/playbookRuntime';
-import type { DefaultModel } from '../../../shared/modelDefault';
-import type { AgentType } from '../../../shared/agent-types';
-import type { Playbook } from '../../../shared/playbooks';
-import type { AgentEffortLevel } from '../../../shared/types';
 import { unwrapOrThrow } from '../../services/result';
 import { getConfig } from '../../config';
-import { toReviewSessionId } from '../../../shared/agent-types';
 import { agentSessionEndpoints, type AgentSessionEndpointName } from '../../../shared/ipc/agentSessionEndpoints';
 import type { UnwrappedHandlerFor } from '../../../shared/ipc/endpoints';
 import { createRegistryIpcHandlers } from '../validation/utils';
@@ -64,29 +52,10 @@ function assertInterpreterAllowsInteraction(devSessionService: DevSessionService
   }
 }
 
-/**
- * The provider + model the playbook's own review step resolves to right now.
- * Undefined when the step names no runnable provider, which leaves the caller
- * on the opposing-agent default rather than failing the review outright.
- */
-async function resolveStepReviewer(
-  stepId: string,
-  playbook: Playbook,
-  defaultModel: DefaultModel,
-): Promise<{ provider: AgentType; model?: string; effort?: AgentEffortLevel } | undefined> {
-  const plan = resolvePlaybookPlan(playbook, await listBoardProviders(), defaultModel);
-  const agent = plan.steps.find((entry) => entry.stepId === stepId)?.runs[0];
-  if (!agent) return undefined;
-  if (!isBoardRunnableProvider(agent.provider)) return undefined;
-  return { provider: agent.provider, model: agent.model, ...(agent.effort ? { effort: agent.effort } : {}) };
-}
-
 function buildAgentSessionHandlers(
   agentSessionManager: AgentSessionManager,
   devSessionService: DevSessionService,
   promptOverrideService: PromptOverrideService,
-  phaseMachine: Pick<AutomationPhaseMachine, 'transition'>,
-  getDefaultModel: () => DefaultModel,
 ): AgentSessionHandlers {
   return {
     // Create pending session + start agent in one atomic call.
@@ -168,58 +137,10 @@ function buildAgentSessionHandlers(
       return { agents };
     },
 
-    // Launch opposing-agent auto-review for a completed session.
-    // Used by the board UI "Run Review" action when the automated post-implementation
-    // review was skipped (e.g. Codex unavailable at the time) and the user wants to
-    // trigger it after the fact. Goes through the same orchestration as the auto path:
-    // sets automation_phase to 'reviewing' so findings will route through the normal
-    // address-review flow in appServices.onSessionComplete.
+    // The board's "Run review" action, used when the automated post-implementation
+    // review was skipped (e.g. Codex unavailable at the time) or needs re-running.
     launchReview: async ({ devSessionId }) => {
-      const session = devSessionService.get(devSessionId);
-      if (!session) {
-        throw new Error(`Session not found: ${devSessionId}`);
-      }
-
-      if (agentSessionManager.isSessionBusy(devSessionId)) {
-        throw new Error('Implementation agent is still running — stop it before running review');
-      }
-
-      if (agentSessionManager.isSessionBusy(toReviewSessionId(devSessionId))) {
-        throw new Error('A review is already running for this session');
-      }
-
-      const playbook = playbookForSession(session);
-      const reviewStep = resolveHarnessStep(playbook, 'ad-hoc-review');
-
-      // When the review step belongs to the playbook, run the reviewer the user
-      // configured on it. Only the harness's own ad-hoc step — the fallback for
-      // a playbook with no review step of its own — leaves the choice to the
-      // opposing-agent default.
-      const reviewer = stepById(playbook, reviewStep.id)
-        ? await resolveStepReviewer(reviewStep.id, playbook, getDefaultModel())
-        : undefined;
-
-      const reviewSessionId = await requestHarnessReview(
-        { devSessions: { get: (id) => devSessionService.get(id) }, phaseMachine },
-        {
-          sessionId: devSessionId,
-          step: reviewStep,
-          launch: () => launchAutoReview({
-            reviewer,
-            implementationSessionId: devSessionId,
-            implementationAgentType: session.agent_type,
-            worktreePath: session.worktree_path,
-            baseBranch: session.base_branch,
-            taskDescription: session.initial_instructions,
-            projectId: session.project_id,
-            agentSessionManager,
-            getPromptContent: (key) => unwrapOrThrow(promptOverrideService.getContent(key)),
-            stepId: reviewStep.id,
-          }),
-        },
-      );
-
-      return { reviewSessionId: unwrapOrThrow(reviewSessionId) };
+      return unwrapOrThrow(await devSessionService.runAdHocReview(devSessionId));
     },
 
     // Generate a commit message for the agent session's changes using configured instructions
@@ -333,18 +254,10 @@ export function registerAgentSessionHandlers(
   agentSessionManager: AgentSessionManager,
   devSessionService: DevSessionService,
   promptOverrideService: PromptOverrideService,
-  phaseMachine: Pick<AutomationPhaseMachine, 'transition'>,
-  getDefaultModel: () => DefaultModel,
 ): void {
   createRegistryIpcHandlers(
     agentSessionEndpoints,
-    buildAgentSessionHandlers(
-      agentSessionManager,
-      devSessionService,
-      promptOverrideService,
-      phaseMachine,
-      getDefaultModel,
-    ),
+    buildAgentSessionHandlers(agentSessionManager, devSessionService, promptOverrideService),
     'Agent session operation failed'
   );
 }

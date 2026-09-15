@@ -388,6 +388,41 @@ describe('ReviewService', () => {
     });
   });
 
+  it('clears a parked failure when the user triggers the address turn, and lands on the injected step', async () => {
+    const playbook = BUILT_IN_PLAYBOOKS.implementOpposingReview;
+    const task = createTask();
+    const { service, session, devSessionService } = createServiceHarness(
+      [task],
+      {
+        status: 'inactive',
+        automation_phase: 'needs_attention',
+        attention_reason: 'all-runs-failed:review',
+        playbook_id: playbook.id,
+        playbook_snapshot: JSON.stringify(playbook),
+        current_step_id: 'review',
+      },
+      (live) => createAutomationPhaseMachine({
+        devSessions: {
+          get: () => live,
+          updateAutomationPhase: (_id, phase) => { live.automation_phase = phase; },
+          updateAutomationState: (_id, state) => {
+            live.automation_phase = state.phase;
+            if (state.currentStepId !== undefined) live.current_step_id = state.currentStepId;
+            if (state.attentionReason !== undefined) live.attention_reason = state.attentionReason;
+          },
+        },
+      }) as never,
+    );
+
+    const result = await service.triggerReviewAutomation('session-1', [task.id]);
+
+    expect(result.ok).toBe(true);
+    expect(devSessionService.sendAgentFollowUp).toHaveBeenCalledTimes(1);
+    expect(session.automation_phase).toBe('addressing_review');
+    expect(session.attention_reason).toBeNull();
+    expect(session.current_step_id).toBe('pr-review-followup');
+  });
+
   it('marks outdated review tasks done during sync instead of leaving stale attention', async () => {
     const task = createTask({
       status: 'assessed',

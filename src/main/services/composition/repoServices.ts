@@ -44,6 +44,7 @@ export interface RepoServicesCompositionDeps {
   listBoardProviders: () => Promise<BoardProvider[]>;
   getSkillBody: (name: string) => ServiceResult<string>;
   resumePlaybook: (sessionId: string, options?: { note?: string; action?: 'resume' | 'proceed' | 'one_more_pass' }) => Promise<boolean>;
+  startPlaybookReviewPass: (sessionId: string) => Promise<string | null>;
 }
 
 export function createRepoServices({
@@ -62,6 +63,7 @@ export function createRepoServices({
   listBoardProviders,
   getSkillBody,
   resumePlaybook,
+  startPlaybookReviewPass,
 }: RepoServicesCompositionDeps) {
   const repoService = createRepoService({
     repos: container.repos,
@@ -104,6 +106,7 @@ export function createRepoServices({
     listBoardProviders,
     getSkillBody,
     resumePlaybook,
+    startPlaybookReviewPass,
   });
 
   const gitHubService = createGitHubService({

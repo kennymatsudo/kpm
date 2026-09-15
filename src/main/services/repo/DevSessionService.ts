@@ -40,6 +40,7 @@ import type {
 } from '../../db/interfaces';
 import { computeMergeOrder, type MergeOrderEntry } from './mergeOrder';
 import { formatPlanRefSection } from '../../claude/contextRefs';
+import { toReviewSessionId } from '../../../shared/agent-types';
 import { createStatusBroadcaster } from './rendererBroadcast';
 import { devSessionEvents } from '../../../shared/ipc/devSessionEvents';
 import { gitExec, resolveBaseSha } from './gitUtils';
@@ -52,7 +53,9 @@ import {
 } from '../agents/agentLaunch';
 import { FollowUpNotAllowedError } from '../agents/BaseAgentSession';
 import type { AutomationPhaseMachine } from '../agents/automationPhaseMachine';
-import { requestHarnessTurn } from '../agents/harnessTurn';
+import { requestHarnessReview, requestHarnessTurn } from '../agents/harnessTurn';
+import { launchAutoReview } from '../agents/autoReview';
+import { playbookForSession, resolveHarnessStep } from '../agents/sessionPlaybook';
 import { runMainStep, type TurnReentry } from '../agents/mainStepTurn';
 import type { PlaybookService } from '../core/PlaybookService';
 import { parsePlaybook, type BoardProvider, type Playbook } from '../../../shared/playbooks';
@@ -111,6 +114,11 @@ export interface DevSessionServiceDeps {
   listBoardProviders: () => Promise<BoardProvider[]>;
   getSkillBody: (name: string) => ServiceResult<string>;
   resumePlaybook: (sessionId: string, options?: { note?: string; action?: 'resume' | 'proceed' | 'one_more_pass' }) => Promise<boolean>;
+  /**
+   * Runs the session's playbook review step as a fresh pass. Resolves the first
+   * run's session id, or null when the playbook has no review step of its own.
+   */
+  startPlaybookReviewPass: (sessionId: string) => Promise<string | null>;
 }
 const broadcastSessionStatusChange = createStatusBroadcaster<DevSession, typeof devSessionEvents.statusChanged>(devSessionEvents.statusChanged);
 
@@ -130,7 +138,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
     return {
       devSessions: deps.devSessions,
       phaseMachine: deps.phaseMachine,
-      sendAgentFollowUp: (id: string, text: string, options: { restartIfBusy: false }) =>
+      sendAgentFollowUp: (id: string, text: string, options: { restartIfBusy: false; restartAs: TurnReentry }) =>
         service.sendAgentFollowUp(id, text, options),
     };
   }
@@ -264,6 +272,54 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         },
         changed: true,
       });
+    },
+
+    /**
+     * The board's "Run review" for a session whose implementation has stopped.
+     *
+     * A playbook that owns a findings-producing review step runs that step, so
+     * the review lands in the round the interpreter settles and its findings
+     * reach that playbook's address step. Only a playbook without one falls back
+     * to the harness's own ad-hoc review, which ends at its own terminal.
+     */
+    async runAdHocReview(sessionId: string): AsyncResult<{ reviewSessionId: string | null }> {
+      const session = deps.devSessions.get(sessionId);
+      if (!session) {
+        return failure(`Session not found: ${sessionId}`);
+      }
+      if (!deps.agentSessionManager) {
+        return failure('Agent session manager is not available');
+      }
+      if (deps.agentSessionManager.isSessionBusy(sessionId)) {
+        return failure('Implementation agent is still running — stop it before running review');
+      }
+      if (deps.agentSessionManager.isSessionBusy(toReviewSessionId(sessionId))) {
+        return failure('A review is already running for this session');
+      }
+
+      const playbookRunId = await deps.startPlaybookReviewPass(sessionId);
+      if (playbookRunId) {
+        return success({ reviewSessionId: playbookRunId });
+      }
+
+      const agentSessionManager = deps.agentSessionManager;
+      const adHocStep = resolveHarnessStep(playbookForSession(session), 'ad-hoc-review');
+      const launched = await requestHarnessReview(harnessTurnDeps(), {
+        sessionId,
+        step: adHocStep,
+        launch: () => launchAutoReview({
+          implementationSessionId: sessionId,
+          implementationAgentType: session.agent_type,
+          worktreePath: session.worktree_path,
+          baseBranch: session.base_branch,
+          taskDescription: session.initial_instructions,
+          projectId: session.project_id,
+          agentSessionManager,
+          getPromptContent: deps.getPromptContent,
+          stepId: adHocStep.id,
+        }),
+      });
+      return launched.ok ? success({ reviewSessionId: launched.data }) : launched;
     },
 
     async resumePlaybook(

@@ -5,7 +5,6 @@ import { registerFileExplorerHandlers } from '../handlers/fileExplorer';
 import { registerRepoFileHandlers } from '../handlers/repoFiles';
 import { registerAgentSessionHandlers } from '../handlers/agentSessions';
 import { registerPlaybookHandlers } from '../handlers/playbooks';
-import { getDefaultModel } from '../../db/appSettingsAccess';
 import type { IpcRegistrationContext } from './types';
 
 export function registerDevelopmentHandlers({
@@ -22,7 +21,5 @@ export function registerDevelopmentHandlers({
     services.agentSessionManager,
     services.devSessionService,
     services.promptOverrideService,
-    services.phaseMachine,
-    () => getDefaultModel(services.container.appSettings),
   );
 }

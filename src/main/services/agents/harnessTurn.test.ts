@@ -3,6 +3,7 @@ import type { DevSession } from '../../../shared/types';
 import { AD_HOC_REVIEW_STEP, BUILT_IN_PLAYBOOKS } from '../../../shared/playbooks';
 import { failure, success } from '../result';
 import { createAutomationPhaseMachine, type AutomationPhaseRepository } from './automationPhaseMachine';
+import type { TurnReentry } from './mainStepTurn';
 import { requestHarnessReview, requestHarnessTurn } from './harnessTurn';
 
 vi.mock('electron', () => ({ BrowserWindow: { getAllWindows: () => [] } }));
@@ -95,6 +96,33 @@ describe('requestHarnessTurn', () => {
     expect(result).toEqual({ ok: true, data: 'sent' });
     expect(session.current_step_id).toBe('pr-review-followup');
     expect(session.automation_phase).toBe('addressing_review');
+  });
+
+  it('re-enters a restarted turn at its own phase, so a crash on that turn still reaches the board', async () => {
+    const session = createSession();
+    const base = createDeps(session);
+    const deps = {
+      ...base,
+      // The eviction path: no live agent left, so the follow-up becomes a fresh start.
+      sendAgentFollowUp: vi.fn((id: string, _text: string, options: { restartAs: TurnReentry }) => {
+        base.phaseMachine.transition(id, {
+          type: 'sessionStarted',
+          ...(options.restartAs.phase ? { phase: options.restartAs.phase } : {}),
+        });
+        base.phaseMachine.transition(id, { type: 'agentTerminatedUnexpectedly' });
+        return Promise.resolve(success({ restarted: true }));
+      }),
+    };
+
+    const result = await requestHarnessTurn(deps, {
+      sessionId: session.id,
+      kind: 'pr-review-followup',
+      buildPrompt: () => Promise.resolve(success('address these threads')),
+    });
+
+    expect(result).toEqual({ ok: true, data: 'sent' });
+    expect(session.automation_phase).toBe('needs_attention');
+    expect(session.attention_reason).toBe('agent-terminated');
   });
 
   it('needs attention when the turn cannot be built', async () => {

@@ -1,5 +1,5 @@
+import { isAgentTerminal } from '../../../shared/agent-types';
 import type { ReviewAxis, ReviewFinding } from '../../../shared/agent-types';
-import { toImplSessionId } from '../../../shared/agent-types';
 import type { BoardProvider, Playbook, PlaybookStep } from '../../../shared/playbooks';
 import { BOARD_AGENT_WRITE_POLICY, parsePassCounts, renderPlaybookDirective, resolvePlaybookPlan } from '../../../shared/playbookRuntime';
 import { isCommitHookRepairPhase, type DevSession } from '../../../shared/types';
@@ -10,12 +10,12 @@ import type { ClaudeUsageService } from '../core/ClaudeUsageService';
 import type { DevSessionService } from '../repo/DevSessionService';
 import type { ReviewService } from '../repo/ReviewService';
 import type { AgentSessionManager, AgentSessionManagerDeps } from './AgentSessionManager';
-import { launchPlaybookSubagent } from './autoReview';
+import { launchPlaybookSubagent, toPlaybookSubagentSessionId } from './autoReview';
 import { createPlaybookRoundStore, type RunGroup } from './playbookRoundStore';
 import { listBoardProviders as detectBoardProviders } from './boardProviderRegistry';
 import { failure, type ServiceResult } from '../result';
 import { effectivePhase, type AutomationPhaseMachine } from './automationPhaseMachine';
-import { playbookForSession, phaseForPlaybookStep, resolveCursorStep, stepById } from './sessionPlaybook';
+import { playbookForSession, phaseForPlaybookStep, resolveCursorStep, resolveHarnessStep, stepById } from './sessionPlaybook';
 import { createPlaybookStepRunner } from './playbookStepRunner';
 import { runMainStep, type TurnReentry } from './mainStepTurn';
 
@@ -164,6 +164,7 @@ async function captureWorkOnBranch(
 
 export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): AgentManagerCallbacks & {
   resumePlaybook: (sessionId: string, options?: { note?: string; action?: 'resume' | 'proceed' | 'one_more_pass' }) => Promise<boolean>;
+  startPlaybookReviewPass: (sessionId: string) => Promise<string | null>;
 } {
   const rounds = createPlaybookRoundStore({
     agentReviews: deps.agentReviews,
@@ -396,6 +397,39 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
       return true;
     },
 
+    /**
+     * The board's "Run review", routed through the playbook's own review step so
+     * the round it starts is the round the interpreter settles: same run ids,
+     * same expected count, same per-run reviewers and axes. Resolves null when
+     * the playbook declares no findings step, leaving the caller on the
+     * harness's own ad-hoc review.
+     *
+     * Spending a pass is what makes the round fresh. Run ids are keyed off the
+     * step's pass count, so reusing it would rebuild the previous round's
+     * completed rows and settle this review on their stale findings.
+     */
+    startPlaybookReviewPass: async (sessionId) => {
+      const session = deps.getDevSessionService()?.get(sessionId);
+      if (!session) return null;
+      const playbook = playbookForSession(session);
+      const step = resolveHarnessStep(playbook, 'ad-hoc-review');
+      if (!stepById(playbook, step.id)) return null;
+
+      const passCounts = parsePassCounts(session.step_pass_counts);
+      passCounts[step.id] = (passCounts[step.id] ?? 0) + 1;
+      deps.phaseMachine.transition(sessionId, {
+        type: 'stepCompleted',
+        stepId: step.id,
+        nextStepId: step.id,
+        nextPhase: phaseForPlaybookStep(step),
+        stepPassCounts: passCounts,
+      });
+
+      const refreshed = deps.getDevSessionService()?.get(sessionId) ?? session;
+      await dispatchStep(refreshed, playbook, step);
+      return toPlaybookSubagentSessionId(sessionId, step.id, passCounts[step.id], 0);
+    },
+
     persistReviewStarted: ({ implementationSessionId, reviewSessionId, reviewerAgent, stepId, runIndex }) => {
       deps.agentReviews.persistStartedReview({
         implementation_session_id: implementationSessionId,
@@ -430,14 +464,13 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
       });
     },
 
-    onSessionComplete: async ({ devSessionId, implementationSessionId, stepId, runIndex, role, findings, finalText }) => {
+    onSessionComplete: async ({ implementationSessionId, stepId, runIndex, role, findings, finalText }) => {
       const devSessionService = deps.getDevSessionService();
       if (!devSessionService) {
         return;
       }
 
-      const implSessionId = implementationSessionId ?? (role === 'review' ? toImplSessionId(devSessionId) : devSessionId);
-      const session = devSessionService.get(implSessionId);
+      const session = devSessionService.get(implementationSessionId);
       if (!session) {
         return;
       }
@@ -483,24 +516,23 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
       return;
     },
 
-    onSessionStateChange: async ({ devSessionId, implementationSessionId, stepId, runIndex, role, state }) => {
+    onSessionStateChange: async ({ implementationSessionId, stepId, runIndex, role, state }) => {
       const devSessionService = deps.getDevSessionService();
       if (!devSessionService) {
         return;
       }
 
-      const implSessionId = implementationSessionId ?? (role === 'review' ? toImplSessionId(devSessionId) : devSessionId);
-      const session = devSessionService.get(implSessionId);
+      const session = devSessionService.get(implementationSessionId);
       if (!session) {
         return;
       }
 
       if (
         role === 'implement'
-        && (state === 'complete' || state === 'failed' || state === 'stopped')
+        && isAgentTerminal(state)
         && session.status === 'active'
       ) {
-        devSessionService.updateStatus(implSessionId, 'inactive');
+        devSessionService.updateStatus(implementationSessionId, 'inactive');
       }
 
       if (state !== 'failed' && state !== 'stopped') {
@@ -515,7 +547,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
       }
 
       if (state === 'stopped') {
-        deps.phaseMachine.transition(implSessionId, {
+        deps.phaseMachine.transition(implementationSessionId, {
           type: 'paused',
           stepId: session.current_step_id ?? 'implement',
           reason: 'stopped',
@@ -523,16 +555,15 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
         return;
       }
 
-      deps.phaseMachine.transition(implSessionId, { type: 'agentTerminatedUnexpectedly' });
+      deps.phaseMachine.transition(implementationSessionId, { type: 'agentTerminatedUnexpectedly' });
     },
 
-    onSessionUsage: ({ devSessionId, implementationSessionId, projectId, role, usage, stepId, runIndex }) => {
-      const implSessionId = implementationSessionId ?? (role === 'review' ? toImplSessionId(devSessionId) : devSessionId);
-      const session = deps.getDevSessionService()?.get(implSessionId);
+    onSessionUsage: ({ implementationSessionId, projectId, role, usage, stepId, runIndex }) => {
+      const session = deps.getDevSessionService()?.get(implementationSessionId);
       deps.claudeUsageService.recordUsage({
         projectId,
         source: 'board_playbook',
-        devSessionId: implSessionId,
+        devSessionId: implementationSessionId,
         stepId: stepId ?? session?.current_step_id ?? (role === 'review' ? 'review' : 'implement'),
         runIndex: runIndex ?? (role === 'review' ? 0 : null),
         model: usage.model,

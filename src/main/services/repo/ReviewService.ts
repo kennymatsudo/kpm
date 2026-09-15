@@ -534,6 +534,14 @@ export function createReviewService(deps: ReviewServiceDeps) {
       return success({ inbox, taskIds: [], context: '' });
     }
 
+    // The user asked for this turn, so their own click is what clears a parked
+    // failure. `prReviewThreadsQueued` preserves `needs_attention` on purpose
+    // for the automated callers, which would otherwise leave the board showing
+    // a failure the user has already answered.
+    if (session.automation_phase === 'needs_attention') {
+      deps.phaseMachine.transition(sessionId, { type: 'automationDismissed' });
+    }
+
     const dispatchResult = await dispatchQueuedReviewTasks(sessionId, { onlyIfIdle: true });
     if (!dispatchResult.ok) {
       deps.phaseMachine.transition(sessionId, { type: 'automationFailed', reason: 'follow-up-send-failed' });

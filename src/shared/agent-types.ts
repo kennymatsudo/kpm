@@ -24,6 +24,16 @@ export type AgentSessionState =
 /** Role of an agent session — implementation or review */
 export type AgentSessionRole = 'implement' | 'review';
 
+/** The session still exists and can still do something. Exact complement of `isAgentTerminal`. */
+export function isAgentActive(state?: AgentSessionState): boolean {
+  return state === 'starting' || state === 'working' || state === 'waiting_for_input';
+}
+
+/** The session has run out: nothing more will arrive from it. */
+export function isAgentTerminal(state?: AgentSessionState): boolean {
+  return state === 'complete' || state === 'failed' || state === 'stopped';
+}
+
 // =============================================================================
 // Activity Feed
 // =============================================================================

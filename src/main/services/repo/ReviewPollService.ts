@@ -24,6 +24,7 @@ import type {
   IReviewSyncStateRepository,
   IReviewTaskRepository,
 } from '../../db/interfaces';
+import { isAgentTerminal } from '../../../shared/agent-types';
 import { isLiveAutomationPhase } from '../../../shared/types';
 import type { DevSession, PrReviewSnapshot, ReviewActionableSummary } from '../../../shared/types';
 import { getConfig } from '../../config';
@@ -161,7 +162,7 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
         if (latestSession?.id !== session.id) continue;
 
         const agentSession = deps.agentSessionManager.getByDevSession(session.id);
-        if (agentSession && !isTerminalState(agentSession.state)) continue;
+        if (agentSession && !isAgentTerminal(agentSession.state)) continue;
 
         const activeCount = deps.agentSessionManager.getActiveCountForProject(session.project_id);
         if (activeCount >= getConfig().agentSession.maxConcurrentSessionsPerProject) continue;
@@ -203,10 +204,6 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
   function resetQuiet(sessionId: string): void {
     quietCount.delete(sessionId);
     quietSkip.delete(sessionId);
-  }
-
-  function isTerminalState(state: string): boolean {
-    return state === 'complete' || state === 'failed' || state === 'stopped';
   }
 
   function normalizeBaseRefName(refName: string | null | undefined): string | null {
@@ -693,7 +690,7 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
     }
 
     const agentSession = deps.agentSessionManager.getByDevSession(sessionId);
-    if (agentSession && !isTerminalState(agentSession.state)) {
+    if (agentSession && !isAgentTerminal(agentSession.state)) {
       return { sessionId, action: 'skipped', newThreadCount: 0, implementCount: 0 };
     }
 
