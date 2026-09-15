@@ -16,11 +16,15 @@ Project folder: `/tmp/project-1`
 Connected repos:
 - `/tmp/repo-1`
 
-# Prior Conversation
+# Prior Conversation (continued)
+
+Your tool cache was reset since your last turn. Re-read files before citing their contents; anything the history below claims about a file may now be stale. The chat history is for context; the user's next message picks up from where it left off.
 
 User: What did we decide about exports?
 
 Assistant: We translate at the export boundary.
+
+---
 
 # Focused Document
 Path: `/tmp/project-1/notes/spec.md`

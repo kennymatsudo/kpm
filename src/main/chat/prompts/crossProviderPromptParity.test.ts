@@ -121,6 +121,15 @@ describe.each(Object.keys(providerFocusPromptBuilders))('%s focus-scope system p
     expect(prompt).toContain('# Operating Rules');
   });
 
+  it('warns that replayed history may cite stale file contents', () => {
+    const prompt = build(focusFixture);
+
+    expect(prompt).toContain('Re-read files before citing their contents');
+    // The caveat used to blame a worktree switch, which is wrong on the
+    // provider-switch path that also replays history.
+    expect(prompt).not.toContain('switched worktrees');
+  });
+
   it('does not inject main-only plan tooling or plan-structure guidance into focus scope', () => {
     const prompt = build(focusFixture);
 

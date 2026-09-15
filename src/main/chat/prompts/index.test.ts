@@ -128,4 +128,24 @@ describe('buildFocusSystemPrompt', () => {
   it('omits the global instructions section when absent', () => {
     expect(buildFocusSystemPrompt(buildContext())).not.toContain('# User Global Preferences');
   });
+
+  it('replays prior turns with the stale-tool-cache caveat', () => {
+    const prompt = buildFocusSystemPrompt(
+      buildContext({
+        continuationHistory: [
+          { role: 'user', content: 'What did we decide about exports?' },
+          { role: 'assistant', content: 'We translate at the export boundary.' },
+        ],
+      })
+    );
+
+    expect(prompt).toContain('# Prior Conversation (continued)');
+    expect(prompt).toContain('Re-read files before citing their contents');
+    expect(prompt).toContain('What did we decide about exports?');
+    expect(prompt).toContain('We translate at the export boundary.');
+  });
+
+  it('omits the prior-conversation section when there is nothing to replay', () => {
+    expect(buildFocusSystemPrompt(buildContext())).not.toContain('# Prior Conversation');
+  });
 });

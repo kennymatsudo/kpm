@@ -29,7 +29,7 @@ function buildContinuationSection(history?: ContinuationTurn[]): string {
 
   return `# Prior Conversation (continued)
 
-The user switched worktrees since your last turn, so your tool cache was reset. Re-read files before citing their contents — prior claims about file contents may reflect a different worktree. The chat history below is for context; the user's next message picks up from where it left off.
+Your tool cache was reset since your last turn. Re-read files before citing their contents; anything the history below claims about a file may now be stale. The chat history is for context; the user's next message picks up from where it left off.
 
 ${turns}
 
@@ -150,11 +150,8 @@ export function buildChatSystemPrompt(
     ? context.repos.map((repo) => `- \`${resolveEffectiveRepoPath(repo)}\``).join('\n')
     : 'No repos connected.';
   const planSummary = context.planItems.length > 0 ? buildItemReferenceTable(context.planItems) : 'Empty.';
-  const continuation = context.continuationHistory?.length
-    ? `\n# Prior Conversation\n\n${context.continuationHistory
-        .map((turn) => `${turn.role === 'user' ? 'User' : 'Assistant'}: ${turn.content}`)
-        .join('\n\n')}\n`
-    : '';
+  const continuationSection = buildContinuationSection(context.continuationHistory);
+  const continuation = continuationSection ? `\n${continuationSection}` : '';
   const focusDocument = context.focusDocument
     ? `\n# Focused Document\nPath: \`${context.focusDocument.path}\`\nTitle: ${context.focusDocument.title}\n\n<document>\n${context.focusDocument.content}\n</document>\n`
     : '';
@@ -259,7 +256,7 @@ Rules:
 }
 
 export function buildFocusSystemPrompt(context: PlanContext): string {
-  const { project, repos, focusDocument, userGlobalInstructions } = context;
+  const { project, repos, focusDocument, userGlobalInstructions, continuationHistory } = context;
   const connectedRepos = repos.length > 0
     ? repos.map((repo) => `- ID: \`${repo.id}\` — path: \`${resolveEffectiveRepoPath(repo)}\``).join('\n')
     : 'No repos connected.';
@@ -276,7 +273,7 @@ ${focusDocument.content}
 
   return `You are a focused document assistant in KPM. The document below is already loaded and is the user's implicit subject unless they ask about something else.
 
-# Project
+${buildContinuationSection(continuationHistory)}# Project
 Name: ${project.name}
 ID: \`${project.id}\`
 Project folder: \`${project.folder_path}\`
