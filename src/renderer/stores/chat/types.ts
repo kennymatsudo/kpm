@@ -28,10 +28,13 @@ export interface Message {
    * `chat:queued` / `chat:queue-cleared` events. Only set on user messages.
    */
   clientMessageId?: string;
-  /** True while a live follow-up has not yet been accepted by the SDK input stream. */
-  queued?: boolean;
-  /** Marks a user message sent while KPM was responding so it renders as a live interjection. */
-  liveFollowUp?: boolean;
+  /**
+   * Set on a user message sent while KPM was already responding, so it renders
+   * as a live interjection: `awaiting` until the provider takes it (the user
+   * can still withdraw it), then `delivered` for the rest of the turn.
+   * Absent once the turn settles, and on any message that started its own turn.
+   */
+  followUp?: 'awaiting' | 'delivered';
 }
 
 // Re-export types for consumers
@@ -159,19 +162,19 @@ export interface ChatState {
     chatSessionId: string,
     content: string,
     attachments?: ChatAttachment[],
-    options?: { queued?: boolean; liveFollowUp?: boolean; clientMessageId?: string },
+    options?: { followUp?: 'awaiting' | 'delivered'; clientMessageId?: string },
   ) => void;
   /**
-   * Find the user message with the given clientMessageId and clear its queued
-   * flag. Called when the backend reports the queued message has been pulled
-   * by the SDK (a new turn is starting) or cancelled/disconnected.
+   * Mark a follow-up as taken by the provider. Called when the backend reports
+   * the queued message has been pulled (a new turn is starting) or that a
+   * cancellation lost the race.
    */
-  clearQueuedFlag: (chatSessionId: string, clientMessageId?: string) => void;
+  markFollowUpDelivered: (chatSessionId: string, clientMessageId?: string) => void;
   /**
-   * Remove a queued user message from the transcript when the backend confirms
-   * that it was cancelled or lost before reaching the model.
+   * Remove a follow-up from the transcript when the backend confirms it was
+   * cancelled or lost before reaching the model.
    */
-  removeQueuedUserMessage: (chatSessionId: string, clientMessageId: string) => void;
+  withdrawFollowUp: (chatSessionId: string, clientMessageId: string) => void;
   setRetrying: (chatSessionId: string) => void;
   appendChunk: (chatSessionId: string, chunk: string, segmentId?: number, precedingActivities?: Activity[]) => void;
   appendThinking: (chatSessionId: string, text: string) => void;

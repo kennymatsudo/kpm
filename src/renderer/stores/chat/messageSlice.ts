@@ -4,14 +4,14 @@ import { streamingBuffer } from './utils';
 import { applyStreamEvent } from './chatStreamReducer';
 
 export function createMessageSlice(set: ChatSet, _get: ChatGet): Pick<ChatState,
-  'addUserMessage' | 'clearQueuedFlag' | 'removeQueuedUserMessage' | 'setRetrying' | 'setError' | 'clearError' | 'setDraftMessage' | 'setPendingAttachments' | 'setSuggestions' | 'setClaudeSessionId' | 'setSessionTitle' | 'setMcpStatus' | 'setBackgroundTasks' | 'setLastTurnUsage' | 'setSessionState' | 'reset' | 'resetProjectState'
+  'addUserMessage' | 'markFollowUpDelivered' | 'withdrawFollowUp' | 'setRetrying' | 'setError' | 'clearError' | 'setDraftMessage' | 'setPendingAttachments' | 'setSuggestions' | 'setClaudeSessionId' | 'setSessionTitle' | 'setMcpStatus' | 'setBackgroundTasks' | 'setLastTurnUsage' | 'setSessionState' | 'reset' | 'resetProjectState'
 > {
   return {
     addUserMessage: (chatSessionId, content, attachments, options) => set((state) => {
       const session = state.sessions.get(chatSessionId);
       if (!session) return state;
 
-      const isQueued = options?.queued ?? false;
+      const followUp = options?.followUp;
 
       const newUserMessage: Message = {
         id: crypto.randomUUID(),
@@ -20,18 +20,17 @@ export function createMessageSlice(set: ChatSet, _get: ChatGet): Pick<ChatState,
         timestamp: new Date(),
         ...(attachments && attachments.length > 0 ? { attachments } : {}),
         ...(options?.clientMessageId ? { clientMessageId: options.clientMessageId } : {}),
-        ...(isQueued ? { queued: true } : {}),
-        ...(options?.liveFollowUp ? { liveFollowUp: true } : {}),
+        ...(followUp ? { followUp } : {}),
       };
 
       const sessionWithMessage: PerSessionState = { ...session, messages: [...session.messages, newUserMessage] };
 
       // Live follow-ups slip in behind a still-streaming turn — preserve the
       // in-flight assistant state so the response can finish naturally and
-      // its bubble doesn't get blown away. A fresh (non-queued) send starts a
+      // its bubble doesn't get blown away. A fresh send (no follow-up state) starts a
       // new turn; routing that through the reducer's `user-message` event
       // keeps the streaming cluster it resets owned by `applyStreamEvent`.
-      const nextSession = isQueued
+      const nextSession = followUp
         ? sessionWithMessage
         : applyStreamEvent(sessionWithMessage, { type: 'user-message' });
 
@@ -40,7 +39,7 @@ export function createMessageSlice(set: ChatSet, _get: ChatGet): Pick<ChatState,
       return { sessions };
     }),
 
-    clearQueuedFlag: (chatSessionId, clientMessageId) => set((state) => {
+    markFollowUpDelivered: (chatSessionId, clientMessageId) => set((state) => {
       const session = state.sessions.get(chatSessionId);
       if (!session) return state;
 
@@ -52,7 +51,7 @@ export function createMessageSlice(set: ChatSet, _get: ChatGet): Pick<ChatState,
       return { sessions };
     }),
 
-    removeQueuedUserMessage: (chatSessionId, clientMessageId) => set((state) => {
+    withdrawFollowUp: (chatSessionId, clientMessageId) => set((state) => {
       const session = state.sessions.get(chatSessionId);
       if (!session) return state;
 

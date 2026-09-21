@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createInitialPerSessionState } from './baseState';
-import { applyStreamEvent, isStreamStale } from './chatStreamReducer';
+import { applyFollowUpTransition, applyStreamEvent, isStreamStale } from './chatStreamReducer';
 import type { Activity } from '../../../shared/types';
 import type { Message } from './types';
 
@@ -334,7 +334,7 @@ describe('applyStreamEvent done: queued follow-up promote/consume/clear', () => 
           role: 'user',
           segments: [{ type: 'text', content: 'queued prompt' }],
           timestamp: new Date('2026-01-01T00:00:01.000Z'),
-          queued: true,
+          followUp: 'awaiting' as const,
           clientMessageId: queuedClientMessageId,
           ...extra,
         },
@@ -358,7 +358,7 @@ describe('applyStreamEvent done: queued follow-up promote/consume/clear', () => 
     const next = applyStreamEvent(session, { type: 'done', options: { promoteQueuedClientMessageId: queuedClientMessageId } });
 
     expect(next.messages.map((m) => m.role)).toEqual(['user', 'assistant', 'user']);
-    expect(next.messages[2].queued).toBeUndefined();
+    expect(next.messages[2].followUp).toBeUndefined();
     expect(next.messages[2].clientMessageId).toBe(queuedClientMessageId);
     expect(next.isStreaming).toBe(true);
     expect(next.streamingSegments).toEqual([]);
@@ -366,9 +366,9 @@ describe('applyStreamEvent done: queued follow-up promote/consume/clear', () => 
     expect(next.streamStartedAt).not.toBeNull();
   });
 
-  it('promotes even if a racing event already stripped the queued flag (anchors by clientMessageId, not the flag)', () => {
+  it('promotes even if a racing event already settled the follow-up (anchors by clientMessageId, not the state)', () => {
     const session = sessionWithQueuedFollowUp();
-    const { queued: _queued, ...messageWithoutQueuedFlag } = session.messages[1];
+    const { followUp: _followUp, ...messageWithoutQueuedFlag } = session.messages[1];
     session.messages[1] = messageWithoutQueuedFlag;
 
     const next = applyStreamEvent(session, { type: 'done', options: { promoteQueuedClientMessageId: queuedClientMessageId } });
@@ -385,7 +385,7 @@ describe('applyStreamEvent done: queued follow-up promote/consume/clear', () => 
 
     expect(next.messages.map((m) => m.role)).toEqual(['user', 'user', 'assistant']);
     expect(next.messages[1].clientMessageId).toBe(queuedClientMessageId);
-    expect(next.messages[1].queued).toBeUndefined();
+    expect(next.messages[1].followUp).toBeUndefined();
     expect(next.isStreaming).toBe(false);
     expect(next.streamStartedAt).toBeNull();
   });
@@ -410,8 +410,7 @@ describe('applyStreamEvent done: queued follow-up promote/consume/clear', () => 
           role: 'user' as const,
           segments: [{ type: 'text' as const, content: 'consumed follow-up' }],
           timestamp: new Date('2026-01-01T00:00:01.000Z'),
-          queued: true,
-          liveFollowUp: true,
+          followUp: 'awaiting' as const,
           clientMessageId: consumedClientMessageId,
         },
         {
@@ -419,8 +418,7 @@ describe('applyStreamEvent done: queued follow-up promote/consume/clear', () => 
           role: 'user' as const,
           segments: [{ type: 'text' as const, content: 'deferred follow-up' }],
           timestamp: new Date('2026-01-01T00:00:02.000Z'),
-          queued: true,
-          liveFollowUp: true,
+          followUp: 'awaiting' as const,
           clientMessageId: deferredClientMessageId,
         },
       ],
@@ -437,9 +435,9 @@ describe('applyStreamEvent done: queued follow-up promote/consume/clear', () => 
 
     expect(next.messages.map((m) => m.role)).toEqual(['user', 'user', 'assistant', 'user']);
     expect(next.messages[1].clientMessageId).toBe(consumedClientMessageId);
-    expect(next.messages[1].queued).toBeUndefined();
+    expect(next.messages[1].followUp).toBeUndefined();
     expect(next.messages[3].clientMessageId).toBe(deferredClientMessageId);
-    expect(next.messages[3].queued).toBeUndefined();
+    expect(next.messages[3].followUp).toBeUndefined();
     expect(next.isStreaming).toBe(true);
   });
 });
@@ -503,8 +501,72 @@ describe('applyStreamEvent error', () => {
   });
 });
 
+describe('applyFollowUpTransition', () => {
+  function messages(followUp?: 'awaiting' | 'delivered'): Message[] {
+    return [
+      { id: 'm0', role: 'user', segments: [{ type: 'text', content: 'first' }], timestamp: new Date(), clientMessageId: 'first' },
+      {
+        id: 'm1',
+        role: 'user',
+        segments: [{ type: 'text', content: 'follow-up' }],
+        timestamp: new Date(),
+        clientMessageId: 'follow-up',
+        ...(followUp ? { followUp } : {}),
+      },
+    ];
+  }
+
+  it('delivered moves an awaiting follow-up on, keeping the bubble', () => {
+    const next = applyFollowUpTransition(messages('awaiting'), { kind: 'delivered', clientMessageId: 'follow-up' });
+
+    expect(next[1].followUp).toBe('delivered');
+    expect(next).toHaveLength(2);
+  });
+
+  it('delivered with no id settles the oldest awaiting follow-up', () => {
+    const next = applyFollowUpTransition(messages('awaiting'), { kind: 'delivered' });
+
+    expect(next[1].followUp).toBe('delivered');
+  });
+
+  it('withdrawn removes the message whatever state it is showing', () => {
+    // Stop settles locally before the backend's cancellation lands, so by then
+    // the message no longer looks pending.
+    for (const state of [undefined, 'awaiting', 'delivered'] as const) {
+      const next = applyFollowUpTransition(messages(state), { kind: 'withdrawn', clientMessageId: 'follow-up' });
+      expect(next.map((message) => message.clientMessageId)).toEqual(['first']);
+    }
+  });
+
+  it('promoted clears the marker on the follow-up that becomes the next turn', () => {
+    const next = applyFollowUpTransition(messages('awaiting'), { kind: 'promoted', clientMessageId: 'follow-up' });
+
+    expect(next[1].followUp).toBeUndefined();
+    expect(next).toHaveLength(2);
+  });
+
+  it('turn-settled clears every follow-up marker', () => {
+    const next = applyFollowUpTransition(messages('delivered'), { kind: 'turn-settled' });
+
+    expect(next[1].followUp).toBeUndefined();
+  });
+
+  it('turn-settled leaves a follow-up at or after the promoted anchor pending', () => {
+    const pending = messages('awaiting');
+    const next = applyFollowUpTransition(pending, { kind: 'turn-settled', beforeClientMessageId: 'follow-up' });
+
+    expect(next[1].followUp).toBe('awaiting');
+  });
+
+  it('returns the same array when nothing matches', () => {
+    const unchanged = messages();
+    expect(applyFollowUpTransition(unchanged, { kind: 'withdrawn', clientMessageId: 'ghost' })).toBe(unchanged);
+    expect(applyFollowUpTransition(unchanged, { kind: 'turn-settled' })).toBe(unchanged);
+  });
+});
+
 describe('applyStreamEvent queue-cleared', () => {
-  it('already-sent: clears the queued flag but keeps the bubble', () => {
+  it('already-sent: marks the follow-up delivered but keeps the bubble', () => {
     const clientMessageId = 'race-message';
     const session = {
       ...createInitialPerSessionState(1),
@@ -514,7 +576,7 @@ describe('applyStreamEvent queue-cleared', () => {
           role: 'user' as const,
           segments: [{ type: 'text' as const, content: 'hi' }],
           timestamp: new Date(),
-          queued: true,
+          followUp: 'awaiting' as const,
           clientMessageId,
         },
       ],
@@ -523,7 +585,7 @@ describe('applyStreamEvent queue-cleared', () => {
     const next = applyStreamEvent(session, { type: 'queue-cleared-already-sent', clientMessageId });
 
     expect(next.messages).toHaveLength(1);
-    expect(next.messages[0].queued).toBeUndefined();
+    expect(next.messages[0].followUp).toBe('delivered');
     expect(next.messages[0].clientMessageId).toBe(clientMessageId);
   });
 
@@ -537,8 +599,7 @@ describe('applyStreamEvent queue-cleared', () => {
           role: 'user' as const,
           segments: [{ type: 'text' as const, content: 'hi' }],
           timestamp: new Date(),
-          queued: true,
-          liveFollowUp: true,
+          followUp: 'awaiting' as const,
           clientMessageId,
         },
       ],
@@ -547,6 +608,38 @@ describe('applyStreamEvent queue-cleared', () => {
     const next = applyStreamEvent(session, { type: 'queue-cleared-dropped', clientMessageId });
 
     expect(next.messages).toHaveLength(0);
+  });
+
+  it('dropped: removes the bubble even after Stop already finalized the interrupted turn', () => {
+    // Stop finalizes locally before the backend's cancellation arrives, and
+    // that finalize clears the follow-up state — the removal must not
+    // depend on it.
+    const clientMessageId = 'stopped-follow-up';
+    const session = {
+      ...createInitialPerSessionState(1),
+      isStreaming: true,
+      streamStartedAt: Date.now(),
+      streamingSegments: [{ type: 'text' as const, content: 'partial' }],
+      streamingContent: 'partial',
+      messages: [
+        {
+          id: 'user-1',
+          role: 'user' as const,
+          segments: [{ type: 'text' as const, content: 'follow-up' }],
+          timestamp: new Date(),
+          followUp: 'awaiting' as const,
+          clientMessageId,
+        },
+      ],
+    };
+
+    const finalized = applyStreamEvent(session, { type: 'done', options: { interrupted: true }, buffered: '' });
+    expect(finalized.messages[0].followUp).toBeUndefined();
+
+    const next = applyStreamEvent(finalized, { type: 'queue-cleared-dropped', clientMessageId });
+
+    expect(next.messages.some((message) => message.clientMessageId === clientMessageId)).toBe(false);
+    expect(next.messages.some((message) => message.role === 'assistant')).toBe(true);
   });
 
   it('dropped with no clientMessageId is a no-op', () => {

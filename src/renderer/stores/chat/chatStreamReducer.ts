@@ -135,60 +135,91 @@ function flushTextIntoSession(session: PerSessionState, text: string, now: numbe
 }
 
 /**
- * Clear the `queued` flag from the targeted user message. If a
- * clientMessageId is supplied, target that specific message; otherwise clear
- * the first queued user message found (covers callers that don't track ids).
+ * What can happen to a message the user sent while a turn was running.
+ *
+ * - `delivered` — the provider pulled it in; it is being answered now.
+ * - `promoted` — it becomes the next turn, so it stops reading as an aside.
+ * - `withdrawn` — the backend pulled it back out; it never reached the model.
+ * - `turn-settled` — the turn is over, so no follow-up is pending any more.
  */
-function clearQueuedFlagByClientMessageId(messages: Message[], clientMessageId: string | undefined): Message[] {
+export type FollowUpTransition =
+  | { kind: 'delivered'; clientMessageId?: string }
+  | { kind: 'promoted'; clientMessageId: string }
+  | { kind: 'withdrawn'; clientMessageId: string }
+  | { kind: 'turn-settled'; beforeClientMessageId?: string };
+
+function withoutFollowUp(message: Message): Message {
+  const { followUp: _followUp, ...rest } = message;
+  return rest;
+}
+
+/**
+ * The one place a message's follow-up state changes.
+ *
+ * Every transition matches by `clientMessageId`, never by the state being
+ * rendered: Stop settles the interrupted turn locally before the backend's
+ * cancellation arrives, so by then the message no longer looks pending. The
+ * single exception is a `delivered` with no id, which the backend may send
+ * when it cannot name the message — then the oldest awaiting one is the only
+ * candidate.
+ */
+export function applyFollowUpTransition(messages: Message[], transition: FollowUpTransition): Message[] {
+  if (transition.kind === 'withdrawn') {
+    const index = messages.findIndex(
+      (message) => message.role === 'user' && message.clientMessageId === transition.clientMessageId,
+    );
+    if (index === -1) return messages;
+    return [...messages.slice(0, index), ...messages.slice(index + 1)];
+  }
+
+  if (transition.kind === 'turn-settled') {
+    const promoteIndex = transition.beforeClientMessageId
+      ? messages.findIndex((message) => (
+        message.role === 'user' && message.clientMessageId === transition.beforeClientMessageId
+      ))
+      : -1;
+    let changed = false;
+    const next = messages.map((message, index) => {
+      if (message.role !== 'user' || !message.followUp) return message;
+      if (transition.beforeClientMessageId && index >= promoteIndex) return message;
+      changed = true;
+      return withoutFollowUp(message);
+    });
+    return changed ? next : messages;
+  }
+
   const index = messages.findIndex((message) => {
-    if (message.role !== 'user' || !message.queued) return false;
-    return !clientMessageId || message.clientMessageId === clientMessageId;
+    if (message.role !== 'user') return false;
+    if (transition.clientMessageId) return message.clientMessageId === transition.clientMessageId;
+    return message.followUp === 'awaiting';
   });
   if (index === -1) return messages;
 
-  const { queued: _queued, ...rest } = messages[index];
-  return [...messages.slice(0, index), rest, ...messages.slice(index + 1)];
+  const target = messages[index];
+  if (!target.followUp) return messages;
+  const settled = transition.kind === 'promoted'
+    ? withoutFollowUp(target)
+    : { ...target, followUp: 'delivered' as const };
+  return [...messages.slice(0, index), settled, ...messages.slice(index + 1)];
 }
 
-function removeQueuedFollowUp(messages: Message[], clientMessageId: string): Message[] {
-  const index = messages.findIndex(
-    (message) => message.role === 'user' && message.liveFollowUp && message.clientMessageId === clientMessageId,
-  );
-  if (index === -1) return messages;
-  return [...messages.slice(0, index), ...messages.slice(index + 1)];
-}
-
-function applyPromotionOrClear(
+/**
+ * Settle every follow-up a finished turn touched: the one it hands off to (or
+ * the one it answered), then any that are no longer pending.
+ */
+function settleFollowUps(
   messages: Message[],
   promoteId: string | undefined,
   clearQueuedId: string | undefined,
 ): Message[] {
-  const stripQueuedId = promoteId ?? clearQueuedId;
-  if (!stripQueuedId) return messages;
-  return messages.map((message) => {
-    if (message.role !== 'user' || message.clientMessageId !== stripQueuedId) return message;
-    if (promoteId && message.liveFollowUp) {
-      const { queued: _queued, liveFollowUp: _liveFollowUp, ...rest } = message;
-      return rest;
-    }
-    if (message.queued) {
-      const { queued: _queued, ...rest } = message;
-      return rest;
-    }
-    return message;
-  });
-}
-
-function clearCompletedLiveFollowUps(messages: Message[], promoteId: string | undefined): Message[] {
-  const promoteIndex = promoteId
-    ? messages.findIndex((message) => message.role === 'user' && message.clientMessageId === promoteId)
-    : -1;
-  return messages.map((message, index) => {
-    if (message.role !== 'user' || !message.liveFollowUp) return message;
-    const belongsToCompletedTurn = promoteId ? index < promoteIndex : true;
-    if (!belongsToCompletedTurn) return message;
-    const { queued: _queued, liveFollowUp: _liveFollowUp, ...rest } = message;
-    return rest;
+  const target = promoteId
+    ? applyFollowUpTransition(messages, { kind: 'promoted', clientMessageId: promoteId })
+    : clearQueuedId
+      ? applyFollowUpTransition(messages, { kind: 'delivered', clientMessageId: clearQueuedId })
+      : messages;
+  return applyFollowUpTransition(target, {
+    kind: 'turn-settled',
+    ...(promoteId ? { beforeClientMessageId: promoteId } : {}),
   });
 }
 
@@ -260,7 +291,7 @@ function finalize(session: PerSessionState, options: FinalizeOptions | undefined
   if (finalSegments.length === 0) {
     return {
       ...session,
-      messages: clearCompletedLiveFollowUps(applyPromotionOrClear(session.messages, promoteId, clearQueuedId), promoteId),
+      messages: settleFollowUps(session.messages, promoteId, clearQueuedId),
       streamingContent: '',
       streamingThinking: '',
       streamingSegments: [],
@@ -278,7 +309,7 @@ function finalize(session: PerSessionState, options: FinalizeOptions | undefined
   // consumed follow-up this matters: once it is no longer flagged queued, the
   // fallback walk below won't step over it, so the assistant bubble lands
   // AFTER it — chronologically correct, since this turn answered it.
-  const baseMessages = clearCompletedLiveFollowUps(applyPromotionOrClear(session.messages, promoteId, clearQueuedId), promoteId);
+  const baseMessages = settleFollowUps(session.messages, promoteId, clearQueuedId);
 
   // Merge this turn into the previous message when it's an uninterrupted
   // assistant turn with nothing in between — this is what keeps a multi-turn
@@ -335,7 +366,7 @@ function finalize(session: PerSessionState, options: FinalizeOptions | undefined
       while (
         insertAt > 0 &&
         baseMessages[insertAt - 1]?.role === 'user' &&
-        baseMessages[insertAt - 1]?.queued
+        baseMessages[insertAt - 1]?.followUp === 'awaiting'
       ) {
         insertAt -= 1;
       }
@@ -465,13 +496,13 @@ export function applyStreamEvent(session: PerSessionState, event: ChatStreamEven
       };
 
     case 'queue-cleared-already-sent': {
-      const messages = clearQueuedFlagByClientMessageId(session.messages, event.clientMessageId);
+      const messages = applyFollowUpTransition(session.messages, { kind: 'delivered', clientMessageId: event.clientMessageId });
       return messages === session.messages ? session : { ...session, messages };
     }
 
     case 'queue-cleared-dropped': {
       if (!event.clientMessageId) return session;
-      const messages = removeQueuedFollowUp(session.messages, event.clientMessageId);
+      const messages = applyFollowUpTransition(session.messages, { kind: 'withdrawn', clientMessageId: event.clientMessageId });
       return messages === session.messages ? session : { ...session, messages };
     }
 

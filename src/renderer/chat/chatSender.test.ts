@@ -68,8 +68,8 @@ function makeChatState(
     getOrCreateSession: vi.fn(() => session),
     openChatChoice: vi.fn(async () => makeChoice()),
     addUserMessage: vi.fn(),
-    removeQueuedUserMessage: vi.fn(),
-    clearQueuedFlag: vi.fn(),
+    withdrawFollowUp: vi.fn(),
+    markFollowUpDelivered: vi.fn(),
     finalizeMessage: vi.fn(),
     setRetrying: vi.fn(),
     setError: vi.fn(),
@@ -115,8 +115,6 @@ describe('send', () => {
 
     expect(clientMessageId).toBe(CLIENT_MESSAGE_ID);
     expect(chatState.addUserMessage).toHaveBeenCalledWith(SESSION_ID, 'hello', undefined, {
-      queued: false,
-      liveFollowUp: false,
       clientMessageId: CLIENT_MESSAGE_ID,
     });
     expect(services.sendChatMessage).toHaveBeenCalledWith({
@@ -138,8 +136,7 @@ describe('send', () => {
     await createChatSender(deps).send('follow-up', undefined, CLIENT_MESSAGE_ID);
 
     expect(chatState.addUserMessage).toHaveBeenCalledWith(SESSION_ID, 'follow-up', undefined, {
-      queued: true,
-      liveFollowUp: true,
+      followUp: 'awaiting',
       clientMessageId: CLIENT_MESSAGE_ID,
     });
     expect(services.sendChatMessage).toHaveBeenCalledTimes(1);
@@ -189,7 +186,7 @@ describe('rollback', () => {
 
     await createChatSender(deps).send('follow-up', undefined, CLIENT_MESSAGE_ID);
 
-    expect(chatState.removeQueuedUserMessage).toHaveBeenCalledWith(SESSION_ID, CLIENT_MESSAGE_ID);
+    expect(chatState.withdrawFollowUp).toHaveBeenCalledWith(SESSION_ID, CLIENT_MESSAGE_ID);
     expect(chatState.setError).toHaveBeenCalledWith(SESSION_ID, 'Session is shutting down');
   });
 
@@ -200,7 +197,7 @@ describe('rollback', () => {
 
     await createChatSender(deps).send('hello', undefined, CLIENT_MESSAGE_ID);
 
-    expect(chatState.removeQueuedUserMessage).not.toHaveBeenCalled();
+    expect(chatState.withdrawFollowUp).not.toHaveBeenCalled();
     expect(chatState.setError).toHaveBeenCalledWith(SESSION_ID, 'No such repo');
   });
 
@@ -212,7 +209,7 @@ describe('rollback', () => {
     const clientMessageId = await createChatSender(deps).send('follow-up', undefined, CLIENT_MESSAGE_ID);
 
     expect(clientMessageId).toBe(CLIENT_MESSAGE_ID);
-    expect(chatState.removeQueuedUserMessage).toHaveBeenCalledWith(SESSION_ID, CLIENT_MESSAGE_ID);
+    expect(chatState.withdrawFollowUp).toHaveBeenCalledWith(SESSION_ID, CLIENT_MESSAGE_ID);
     expect(chatState.setError).toHaveBeenCalledWith(SESSION_ID, 'IPC channel closed');
   });
 });
@@ -322,7 +319,7 @@ describe('cancellation', () => {
 
     createChatSender(deps).cancelQueued(CLIENT_MESSAGE_ID);
     await vi.waitFor(() => {
-      expect(chatState.clearQueuedFlag).toHaveBeenCalledWith(SESSION_ID, CLIENT_MESSAGE_ID);
+      expect(chatState.markFollowUpDelivered).toHaveBeenCalledWith(SESSION_ID, CLIENT_MESSAGE_ID);
     });
   });
 
@@ -333,7 +330,7 @@ describe('cancellation', () => {
     createChatSender(deps).cancelQueued(CLIENT_MESSAGE_ID);
     await flushMicrotasks();
 
-    expect(chatState.clearQueuedFlag).not.toHaveBeenCalled();
+    expect(chatState.markFollowUpDelivered).not.toHaveBeenCalled();
   });
 });
 

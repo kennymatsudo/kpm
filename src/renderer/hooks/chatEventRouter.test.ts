@@ -66,8 +66,8 @@ function makeChatState(overrides: Partial<ChatStoreView> = {}): ChatStoreView {
     setMcpStatus: vi.fn(),
     setBackgroundTasks: vi.fn(),
     setLastTurnUsage: vi.fn(),
-    clearQueuedFlag: vi.fn(),
-    removeQueuedUserMessage: vi.fn(),
+    markFollowUpDelivered: vi.fn(),
+    withdrawFollowUp: vi.fn(),
     ...overrides,
   };
 }
@@ -329,8 +329,8 @@ describe('queue-cleared handling', () => {
       reason: 'already_sent',
     });
 
-    expect(chatState.clearQueuedFlag).toHaveBeenCalledWith(SESSION_ID, 'm1');
-    expect(chatState.removeQueuedUserMessage).not.toHaveBeenCalled();
+    expect(chatState.markFollowUpDelivered).toHaveBeenCalledWith(SESSION_ID, 'm1');
+    expect(chatState.withdrawFollowUp).not.toHaveBeenCalled();
   });
 
   it('removes the bubble entirely when the queued message was cancelled', () => {
@@ -345,8 +345,8 @@ describe('queue-cleared handling', () => {
       reason: 'cancelled',
     });
 
-    expect(chatState.removeQueuedUserMessage).toHaveBeenCalledWith(SESSION_ID, 'm1');
-    expect(chatState.clearQueuedFlag).not.toHaveBeenCalled();
+    expect(chatState.withdrawFollowUp).toHaveBeenCalledWith(SESSION_ID, 'm1');
+    expect(chatState.markFollowUpDelivered).not.toHaveBeenCalled();
   });
 });
 

@@ -120,7 +120,7 @@ describe('streamingSlice.finalizeMessage', () => {
           role: 'user',
           segments: [{ type: 'text', content: 'queued prompt' }],
           timestamp: new Date('2026-01-01T00:00:01.000Z'),
-          queued: true,
+          followUp: 'awaiting' as const,
           clientMessageId: queuedClientMessageId,
         },
       ],
@@ -134,13 +134,13 @@ describe('streamingSlice.finalizeMessage', () => {
     expect(messages[2].clientMessageId).toBe(queuedClientMessageId);
   });
 
-  it('promotes the follow-up even if a racing event already stripped its queued flag', () => {
+  it('promotes the follow-up even if a racing event already settled its follow-up state', () => {
     const sessionId = 'session-promote-already-cleared';
     const base = createInitialPerSessionState(1);
     const queuedClientMessageId = 'race-client-message';
 
     // Simulate the race: `chat:queue-cleared:already_sent` arrived first and
-    // removed the `queued` flag before `chat:done` finalizes the prior turn.
+    // settled the follow-up state before `chat:done` finalizes the prior turn.
     const store = createTestStore(sessionId, {
       ...base,
       isStreaming: true,
@@ -158,7 +158,7 @@ describe('streamingSlice.finalizeMessage', () => {
           role: 'user',
           segments: [{ type: 'text', content: 'queued prompt' }],
           timestamp: new Date('2026-01-01T00:00:01.000Z'),
-          // No `queued` flag — already cleared by the racing event.
+          // No follow-up state — already settled by the racing event.
           clientMessageId: queuedClientMessageId,
         },
       ],
@@ -170,7 +170,7 @@ describe('streamingSlice.finalizeMessage', () => {
 
     const session = store.getState().sessions.get(sessionId);
     const messages = session?.messages ?? [];
-    // Anchoring by clientMessageId (not the `queued` flag) keeps chronology
+    // Anchoring by clientMessageId (not the follow-up state) keeps chronology
     // correct: the assistant bubble still lands before the follow-up.
     expect(messages.map((message) => message.role)).toEqual(['user', 'assistant', 'user']);
     expect(messages[2].clientMessageId).toBe(queuedClientMessageId);
@@ -203,8 +203,7 @@ describe('streamingSlice.finalizeMessage', () => {
           role: 'user',
           segments: [{ type: 'text', content: 'consumed follow-up' }],
           timestamp: new Date('2026-01-01T00:00:01.000Z'),
-          queued: true,
-          liveFollowUp: true,
+          followUp: 'awaiting' as const,
           clientMessageId: consumedClientMessageId,
         },
         {
@@ -212,8 +211,7 @@ describe('streamingSlice.finalizeMessage', () => {
           role: 'user',
           segments: [{ type: 'text', content: 'deferred follow-up' }],
           timestamp: new Date('2026-01-01T00:00:02.000Z'),
-          queued: true,
-          liveFollowUp: true,
+          followUp: 'awaiting' as const,
           clientMessageId: deferredClientMessageId,
         },
       ],
@@ -233,10 +231,10 @@ describe('streamingSlice.finalizeMessage', () => {
     expect(messages.map((message) => message.role)).toEqual(['user', 'user', 'assistant', 'user']);
     // Consumed interjection keeps its place above the answer; badge cleared.
     expect(messages[1].clientMessageId).toBe(consumedClientMessageId);
-    expect(messages[1].queued).toBeUndefined();
+    expect(messages[1].followUp).toBeUndefined();
     // Deferred follow-up stays below the answer and re-enters streaming.
     expect(messages[3].clientMessageId).toBe(deferredClientMessageId);
-    expect(messages[3].queued).toBeUndefined();
+    expect(messages[3].followUp).toBeUndefined();
     expect(session?.isStreaming).toBe(true);
   });
 

@@ -578,6 +578,8 @@ export const MessageRow = memo(function MessageRow({
   }
 
   const userText = userParsed?.cleanContent || textContent;
+  // Only a follow-up the provider has not taken yet can still be withdrawn.
+  const awaitingDelivery = message.followUp === 'awaiting';
 
   return (
     <div
@@ -604,23 +606,23 @@ export const MessageRow = memo(function MessageRow({
 
       <div
         className={`chat-message-content chat-note text-text-secondary whitespace-pre-wrap ${
-          message.queued ? 'chat-note-queued' : ''
+          awaitingDelivery ? 'chat-note-queued' : ''
         }`}
       >
         <UserMessageText content={userText} />
       </div>
 
-      {message.liveFollowUp && (
+      {message.followUp && (
         <div className="mt-1 flex items-center gap-2 text-xs text-text-muted">
           <span className="inline-flex items-center gap-1">
-            {message.queued && (
+            {awaitingDelivery && (
               <svg className="w-3 h-3 animate-pulse" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
                 <circle cx="8" cy="8" r="6" />
               </svg>
             )}
-            {message.queued ? 'Adding to current response…' : 'Added while KPM was responding'}
+            {awaitingDelivery ? 'Adding to current response…' : 'Added while KPM was responding'}
           </span>
-          {message.queued && onCancelQueued && message.clientMessageId && (
+          {awaitingDelivery && onCancelQueued && message.clientMessageId && (
             <button
               type="button"
               onClick={() => onCancelQueued(message.clientMessageId!)}

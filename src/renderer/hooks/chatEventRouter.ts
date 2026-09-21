@@ -74,8 +74,8 @@ export type ChatStoreView = Pick<
   | 'setMcpStatus'
   | 'setBackgroundTasks'
   | 'setLastTurnUsage'
-  | 'clearQueuedFlag'
-  | 'removeQueuedUserMessage'
+  | 'markFollowUpDelivered'
+  | 'withdrawFollowUp'
 >;
 
 export interface ProposedChangeActions {
@@ -362,13 +362,13 @@ export function createChatEventRouter(deps: ChatEventRouterDeps): ChatEventRoute
         // Race lost — the SDK pulled the message between cancel intent and
         // the IPC arriving. Drop the queued badge but keep the bubble; the
         // turn will stream normally.
-        getChatState().clearQueuedFlag(sessionId, data.clientMessageId);
+        getChatState().markFollowUpDelivered(sessionId, data.clientMessageId);
         return;
       }
       // Cancelled by user or lost to a session disconnect — drop the
       // bubble entirely. The message never reached the model.
       if (data.clientMessageId) {
-        getChatState().removeQueuedUserMessage(sessionId, data.clientMessageId);
+        getChatState().withdrawFollowUp(sessionId, data.clientMessageId);
       }
     },
     onError: (data) => {

@@ -10,8 +10,8 @@ export type ChatSenderStoreView = Pick<
   | 'getOrCreateSession'
   | 'openChatChoice'
   | 'addUserMessage'
-  | 'removeQueuedUserMessage'
-  | 'clearQueuedFlag'
+  | 'withdrawFollowUp'
+  | 'markFollowUpDelivered'
   | 'finalizeMessage'
   | 'setRetrying'
   | 'setError'
@@ -136,7 +136,7 @@ export function createChatSender(deps: ChatSenderDeps): ChatSender {
     error: string,
   ): void => {
     if (wasQueued) {
-      getChatState().removeQueuedUserMessage(chatSessionId, clientMessageId);
+      getChatState().withdrawFollowUp(chatSessionId, clientMessageId);
     }
     getChatState().setError(chatSessionId, error);
   };
@@ -159,8 +159,7 @@ export function createChatSender(deps: ChatSenderDeps): ChatSender {
     const queuedBehindLiveTurn = turn.turnInFlight;
 
     getChatState().addUserMessage(chatSessionId, message, attachments, {
-      queued: queuedBehindLiveTurn,
-      liveFollowUp: queuedBehindLiveTurn,
+      ...(queuedBehindLiveTurn ? { followUp: 'awaiting' as const } : {}),
       clientMessageId: effectiveClientMessageId,
     });
 
@@ -247,12 +246,12 @@ export function createChatSender(deps: ChatSenderDeps): ChatSender {
     services.cancelQueuedChatMessage(projectId, viewedSessionId, clientMessageId)
       .then((outcome) => {
         if (!outcome.success) {
-          getChatState().clearQueuedFlag(viewedSessionId, clientMessageId);
+          getChatState().markFollowUpDelivered(viewedSessionId, clientMessageId);
         }
       })
       .catch((error: unknown) => {
         console.error('[chatSender] Cancel queued failed:', error);
-        getChatState().clearQueuedFlag(viewedSessionId, clientMessageId);
+        getChatState().markFollowUpDelivered(viewedSessionId, clientMessageId);
       });
   };
 
