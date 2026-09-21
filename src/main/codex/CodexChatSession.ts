@@ -67,6 +67,9 @@ function imageExtension(mediaType: string): string { const subtype = mediaType.s
 function isObject(value: unknown): value is JsonObject { return typeof value === 'object' && value !== null && !Array.isArray(value); }
 function text(value: unknown): string { return typeof value === 'string' ? value : ''; }
 function number(...values: unknown[]): number { const value = values.find((candidate) => typeof candidate === 'number'); return typeof value === 'number' ? value : 0; }
+function contextWindow(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
+}
 
 /** App-server chat adapter. Board execution intentionally stays on the SDK. */
 export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
@@ -80,6 +83,7 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
   private readonly items = new Map<string, JsonObject>();
   private readonly mcpStartupStates = new Map<string, Pick<SessionMcpServer, 'status' | 'error'>>();
   private tokenUsage: JsonObject = {};
+  private modelContextWindow: number | undefined;
   private readonly attachmentCleanups = new Set<() => Promise<void>>();
 
   constructor(config: CodexChatSessionConfig) { super(config.onMessage, config.onSessionEnd); this.config = config; this.systemPrompt = buildChatSystemPrompt(config.context, { provider: 'codex', scope: config.context.focusDocument ? 'focus_document' : 'main' }); this.threadId = config.resumeThreadId ?? null; }
@@ -193,8 +197,8 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
       });
       return;
     }
-    if (method === 'thread/tokenUsage/updated') { const tokenUsage = isObject(params.tokenUsage) ? params.tokenUsage : {}; this.tokenUsage = isObject(tokenUsage.last) ? tokenUsage.last : {}; return; }
-    if (method === 'turn/completed') { const usage = this.tokenUsage; const turn = isObject(params.turn) ? params.turn : {}; const turnError = isObject(turn.error) ? text(turn.error.message) : ''; if (text(turn.status) === 'failed' && turnError) this.config.onMessage(assistantError(turnError)); this.config.onMessage(turnResult({ usage: { input_tokens: number(usage.inputTokens, usage.input_tokens), output_tokens: number(usage.outputTokens, usage.output_tokens), cache_read_input_tokens: number(usage.cachedInputTokens, usage.cached_input_tokens), cache_creation_input_tokens: number(usage.cacheWriteInputTokens, usage.cache_write_input_tokens) }, sessionId: this.threadId ?? undefined })); this.finishTurn?.(); return; }
+    if (method === 'thread/tokenUsage/updated') { const tokenUsage = isObject(params.tokenUsage) ? params.tokenUsage : {}; this.tokenUsage = isObject(tokenUsage.last) ? tokenUsage.last : {}; this.modelContextWindow = contextWindow(tokenUsage.modelContextWindow); return; }
+    if (method === 'turn/completed') { const usage = this.tokenUsage; const turn = isObject(params.turn) ? params.turn : {}; const turnError = isObject(turn.error) ? text(turn.error.message) : ''; if (text(turn.status) === 'failed' && turnError) this.config.onMessage(assistantError(turnError)); this.config.onMessage(turnResult({ usage: { input_tokens: number(usage.inputTokens, usage.input_tokens), output_tokens: number(usage.outputTokens, usage.output_tokens), cache_read_input_tokens: number(usage.cachedInputTokens, usage.cached_input_tokens), cache_creation_input_tokens: number(usage.cacheWriteInputTokens, usage.cache_write_input_tokens) }, contextWindow: this.modelContextWindow, sessionId: this.threadId ?? undefined })); this.finishTurn?.(); return; }
     // The app-server must die with the session: while it lives it holds the
     // thread's writer lock, and the next thread/resume is refused with
     // "already has an active writer".

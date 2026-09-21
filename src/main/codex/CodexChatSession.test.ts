@@ -23,7 +23,14 @@ class FakeAppServer {
     if (method === 'mcpServer/oauth/login') return { authorizationUrl: 'https://linear.app/oauth/authorize' };
     if (method === 'turn/start') {
       if (!this.completeTurns) return { turn: { id: 'turn-1' } };
-      queueMicrotask(() => this.emit('turn/completed', { threadId: 'thread-1', turn: { id: 'turn-1', usage: { inputTokens: 2, outputTokens: 3, cachedInputTokens: 1 } } }));
+      queueMicrotask(() => {
+        this.emit('thread/tokenUsage/updated', {
+          threadId: 'thread-1',
+          turnId: 'turn-1',
+          tokenUsage: { last: { inputTokens: 2, outputTokens: 3, cachedInputTokens: 1 }, total: {}, modelContextWindow: 1_050_000 },
+        });
+        this.emit('turn/completed', { threadId: 'thread-1', turn: { id: 'turn-1', usage: { inputTokens: 2, outputTokens: 3, cachedInputTokens: 1 } } });
+      });
       return { turn: { id: 'turn-1' } };
     }
     return {};
@@ -59,6 +66,7 @@ describe('CodexChatSession', () => {
       },
     });
     expect(client.requests[1]).toMatchObject({ method: 'turn/start', params: { input: [{ type: 'text', text: 'hello' }], sandboxPolicy: { type: 'readOnly' } } });
+    expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'result', contextWindow: 1_050_000 }));
     client.emit('item/started', { item: { id: 'play-1', type: 'mcpToolCall', server: 'playwright', tool: 'browser_tabs', arguments: {}, readOnlyHint: true } });
     expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'assistant' }));
   });

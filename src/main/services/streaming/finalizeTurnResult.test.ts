@@ -195,13 +195,14 @@ describe('finalizeTurnResult', () => {
       expect(contextWindow).toBeUndefined();
     });
 
-    it('leaves the renderer on its model table when a provider reports no usage map', () => {
+    it('reports a context window from an adapter-built provider result', () => {
       const contextWindow = doneContextWindow(makeManaged({ provider: 'codex', resolvedModel: undefined }), {
         type: 'result',
         usage: { input_tokens: 10, output_tokens: 20 },
+        contextWindow: 1_050_000,
       });
 
-      expect(contextWindow).toBeUndefined();
+      expect(contextWindow).toBe(1_050_000);
     });
 
     it('rejects a zero capacity rather than dividing by it', () => {

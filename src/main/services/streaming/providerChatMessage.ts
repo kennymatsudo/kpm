@@ -32,6 +32,8 @@ export interface ProviderTurnResult {
     cache_creation_input_tokens: number;
     cache_read_input_tokens: number;
   };
+  /** Actual model capacity reported by the provider for this thread. */
+  contextWindow?: number;
   cost?: TurnCost;
   session_id?: string;
 }
@@ -78,12 +80,14 @@ export function userTurnEcho(): ProviderChatMessage {
 
 export function turnResult(input: {
   usage: ProviderTurnResult['usage'];
+  contextWindow?: number;
   cost?: TurnCost;
   sessionId?: string;
 }): ProviderTurnResult {
   return {
     type: 'result',
     usage: input.usage,
+    ...(input.contextWindow ? { contextWindow: input.contextWindow } : {}),
     ...(input.cost ? { cost: input.cost } : {}),
     ...(input.sessionId ? { session_id: input.sessionId } : {}),
   };

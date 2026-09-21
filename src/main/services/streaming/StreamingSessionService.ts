@@ -408,6 +408,17 @@ export function resolveTurnContextWindow(
     : undefined;
 }
 
+function resolveReportedContextWindow(
+  result: { contextWindow?: unknown; modelUsage?: unknown },
+  resolvedModel: string | undefined,
+): number | undefined {
+  const contextWindow = result.contextWindow;
+  if (typeof contextWindow === 'number' && Number.isFinite(contextWindow) && contextWindow > 0) {
+    return contextWindow;
+  }
+  return resolveTurnContextWindow(result.modelUsage, resolvedModel);
+}
+
 function authErrorMessage(provider: ChatProvider): string {
   const reconnect: Record<ChatProvider, string> = {
     claude: 'Run /login in a terminal',
@@ -680,10 +691,9 @@ export function finalizeTurnResult(
       outputTokens: ctxSource?.output_tokens ?? undefined,
       cacheReadTokens: ctxSource?.cache_read_input_tokens ?? undefined,
       cacheCreationTokens: ctxSource?.cache_creation_input_tokens ?? undefined,
-      // Occupancy comes from the iteration token counts above; the capacity to
-      // divide it by lives only on modelUsage. Undefined keeps the renderer on
-      // its model table.
-      contextWindow: resolveTurnContextWindow(sdkMsg.modelUsage, managed.resolvedModel),
+      // Capacity comes from the provider's live result when available. Claude
+      // keeps it in modelUsage; Codex reports it on the thread usage event.
+      contextWindow: resolveReportedContextWindow(sdkMsg, managed.resolvedModel),
     },
   });
 
