@@ -4,6 +4,7 @@ import { createAutomationPhaseMachine, type AutomationPhaseRepository } from './
 import { launchPlaybookSubagent } from './autoReview';
 import type * as AutoReviewModule from './autoReview';
 import type { DevSession } from '../../../shared/types';
+import type { DevSessionAutomationService } from './BoardAgentOrchestrator';
 import { BUILT_IN_PLAYBOOKS } from '../../../shared/playbooks';
 import { toReviewSessionId } from '../../../shared/agent-types';
 
@@ -40,6 +41,28 @@ function createTestPhaseMachine(session: DevSession) {
     },
   };
   return createAutomationPhaseMachine({ devSessions });
+}
+
+/**
+ * The interpreter's view of a dev session, whole. Every member is required, so
+ * a test cannot silently exercise a "service is unavailable" branch that
+ * production never takes; override only what the test is about.
+ */
+function devSessionDouble(overrides: Partial<DevSessionAutomationService> = {}): DevSessionAutomationService {
+  const get = overrides.get ?? vi.fn(() => undefined);
+  return {
+    sendAgentFollowUp: vi.fn().mockResolvedValue({ ok: true, data: { restarted: false } }),
+    updateStatus: vi.fn(),
+    commitSessionChanges: vi.fn().mockResolvedValue({ ok: true, data: { sha: 'sha' } }),
+    requestCommitHookRepair: vi.fn().mockResolvedValue({ ok: true, data: { started: false } }),
+    savePlaybookOutputs: vi.fn(),
+    reconcileWorkBrief: vi.fn().mockResolvedValue({ ok: true, data: { reconciled: false } }),
+    // Mirrors the real snapshot sync: it hands back the session it refreshed.
+    syncWorkBriefSnapshot: vi.fn((sessionId: string) => ({ ok: true as const, data: { session: get(sessionId)! } })),
+    startAgentSession: vi.fn().mockResolvedValue({ ok: true, data: {} }),
+    ...overrides,
+    get,
+  } as DevSessionAutomationService;
 }
 
 function createSession(overrides: Partial<DevSession> = {}): DevSession {
@@ -99,7 +122,7 @@ describe('BoardAgentOrchestrator', () => {
       },
       planService: { updateItem },
       phaseMachine: createTestPhaseMachine(session),
-      getDevSessionService: () => ({
+      getDevSessionService: () => devSessionDouble({
         get: vi.fn(() => session),
         sendAgentFollowUp: vi.fn(),
         updateStatus: vi.fn(),
@@ -160,7 +183,7 @@ describe('BoardAgentOrchestrator', () => {
       },
       planService: { updateItem },
       phaseMachine: createTestPhaseMachine(session),
-      getDevSessionService: () => ({
+      getDevSessionService: () => devSessionDouble({
         get: vi.fn(() => session),
         sendAgentFollowUp: vi.fn(),
         updateStatus: vi.fn(),
@@ -210,7 +233,7 @@ describe('BoardAgentOrchestrator', () => {
       },
       planService: { updateItem },
       phaseMachine: createTestPhaseMachine(session),
-      getDevSessionService: () => ({
+      getDevSessionService: () => devSessionDouble({
         get: vi.fn(() => session),
         sendAgentFollowUp: vi.fn(),
         updateStatus: vi.fn(),
@@ -261,7 +284,7 @@ describe('BoardAgentOrchestrator', () => {
       },
       planService: { updateItem },
       phaseMachine: createTestPhaseMachine(session),
-      getDevSessionService: () => ({
+      getDevSessionService: () => devSessionDouble({
         get: vi.fn(() => session),
         sendAgentFollowUp: vi.fn(),
         updateStatus: vi.fn(),
@@ -315,7 +338,7 @@ describe('BoardAgentOrchestrator', () => {
       },
       planService: { updateItem },
       phaseMachine: createTestPhaseMachine(session),
-      getDevSessionService: () => ({
+      getDevSessionService: () => devSessionDouble({
         get: vi.fn(() => session),
         sendAgentFollowUp: vi.fn(),
         updateStatus: vi.fn(),
@@ -359,7 +382,7 @@ describe('BoardAgentOrchestrator', () => {
       },
       planService: { updateItem },
       phaseMachine: createTestPhaseMachine(session),
-      getDevSessionService: () => ({
+      getDevSessionService: () => devSessionDouble({
         get: vi.fn(() => session),
         sendAgentFollowUp: vi.fn(),
         updateStatus: vi.fn(),
@@ -407,7 +430,7 @@ describe('BoardAgentOrchestrator', () => {
       },
       planService: { updateItem },
       phaseMachine: createTestPhaseMachine(session),
-      getDevSessionService: () => ({
+      getDevSessionService: () => devSessionDouble({
         get: vi.fn(() => session),
         sendAgentFollowUp: vi.fn(),
         updateStatus: vi.fn(),
@@ -457,7 +480,7 @@ describe('BoardAgentOrchestrator', () => {
       },
       planService: { updateItem },
       phaseMachine: createTestPhaseMachine(session),
-      getDevSessionService: () => ({
+      getDevSessionService: () => devSessionDouble({
         get: vi.fn(() => session),
         sendAgentFollowUp: vi.fn(),
         updateStatus: vi.fn(),
@@ -504,7 +527,7 @@ describe('BoardAgentOrchestrator', () => {
       },
       planService: { updateItem: vi.fn() },
       phaseMachine: createTestPhaseMachine(session),
-      getDevSessionService: () => ({
+      getDevSessionService: () => devSessionDouble({
         get: vi.fn(() => session),
         sendAgentFollowUp,
         updateStatus: vi.fn(),
@@ -569,7 +592,7 @@ describe('BoardAgentOrchestrator', () => {
         getByReviewSessionIds: vi.fn(() => []),
       },
       planService: { updateItem }, phaseMachine: createTestPhaseMachine(session),
-      getDevSessionService: () => ({
+      getDevSessionService: () => devSessionDouble({
         get: vi.fn(() => session), sendAgentFollowUp: vi.fn(), updateStatus: vi.fn(),
         commitSessionChanges: vi.fn().mockResolvedValue({ ok: true, data: undefined }), requestCommitHookRepair: vi.fn(),
       }),
@@ -612,7 +635,7 @@ describe('BoardAgentOrchestrator', () => {
         getByReviewSessionIds: vi.fn(() => []),
       },
       planService: { updateItem }, phaseMachine: createTestPhaseMachine(session),
-      getDevSessionService: () => ({
+      getDevSessionService: () => devSessionDouble({
         get: vi.fn(() => session), sendAgentFollowUp: vi.fn(), updateStatus: vi.fn(),
         commitSessionChanges: vi.fn().mockResolvedValue({ ok: true, data: undefined }), requestCommitHookRepair: vi.fn(),
       }),
@@ -658,7 +681,7 @@ describe('BoardAgentOrchestrator', () => {
       },
       planService: { updateItem: vi.fn() },
       phaseMachine: createTestPhaseMachine(session),
-      getDevSessionService: () => ({
+      getDevSessionService: () => devSessionDouble({
         get: vi.fn(() => session), sendAgentFollowUp, updateStatus: vi.fn(),
         commitSessionChanges: vi.fn().mockResolvedValue({ ok: true, data: undefined }),
         requestCommitHookRepair: vi.fn(),
@@ -719,7 +742,7 @@ describe('BoardAgentOrchestrator', () => {
         persistStartedReview: vi.fn(), persistCompletedReview: vi.fn(), persistFailedReview: vi.fn(), getByReviewSessionIds,
       },
       planService: { updateItem: vi.fn() }, phaseMachine: createTestPhaseMachine(session),
-      getDevSessionService: () => ({
+      getDevSessionService: () => devSessionDouble({
         get: vi.fn(() => session), sendAgentFollowUp, updateStatus: vi.fn(),
         commitSessionChanges: vi.fn(), requestCommitHookRepair: vi.fn(), savePlaybookOutputs: vi.fn(),
       }),
@@ -752,6 +775,39 @@ describe('BoardAgentOrchestrator', () => {
     expect(session.step_pass_counts).toBe('{"critics":0}');
   });
 
+  it('resumes a session paused on the PR-review follow-up, which no playbook declares', async () => {
+    const session = createSession({
+      current_step_id: 'pr-review-followup',
+      automation_phase: 'paused',
+      paused_reason: 'stopped',
+    });
+    const sendAgentFollowUp = vi.fn().mockResolvedValue({ ok: true, data: { restarted: false } });
+    const callbacks = createBoardAgentOrchestrator({
+      agentReviews: {
+        persistStartedReview: vi.fn(), persistCompletedReview: vi.fn(), persistFailedReview: vi.fn(),
+        getByReviewSessionIds: vi.fn(() => [] as never),
+      },
+      planService: { updateItem: vi.fn() }, phaseMachine: createTestPhaseMachine(session),
+      getDevSessionService: () => devSessionDouble({
+        get: vi.fn(() => session), sendAgentFollowUp, updateStatus: vi.fn(),
+        commitSessionChanges: vi.fn(), requestCommitHookRepair: vi.fn(), savePlaybookOutputs: vi.fn(),
+      }),
+      getReviewService: () => null,
+      getAgentSessionManager: () => ({ isSessionBusy: vi.fn(() => false) } as never),
+      getPromptContent: vi.fn((key: string) => key), claudeUsageService: { recordUsage: vi.fn() },
+      requestPlanRefresh: vi.fn(),
+      listBoardProviders: async () => [
+        { id: 'claude', name: 'Claude', available: true, models: [{ id: 'sonnet', name: 'Sonnet', isDefault: true }], capabilities: { nativeSkills: true, reviewSandbox: false } },
+      ],
+    });
+
+    expect(await callbacks.resumePlaybook(session.id)).toBe(true);
+
+    expect(sendAgentFollowUp).toHaveBeenCalled();
+    expect(session.automation_phase).not.toBe('needs_attention');
+    expect(session.attention_reason ?? null).toBeNull();
+  });
+
   it('runs an ad-hoc review as a fresh round, so its findings reach the address step', async () => {
     const playbook = BUILT_IN_PLAYBOOKS.implementCodeReview;
     const session = createSession({
@@ -776,7 +832,7 @@ describe('BoardAgentOrchestrator', () => {
         getByReviewSessionIds,
       },
       planService: { updateItem: vi.fn() }, phaseMachine: createTestPhaseMachine(session),
-      getDevSessionService: () => ({
+      getDevSessionService: () => devSessionDouble({
         get: vi.fn(() => session), sendAgentFollowUp, updateStatus: vi.fn(),
         commitSessionChanges: vi.fn(), requestCommitHookRepair: vi.fn(), savePlaybookOutputs: vi.fn(),
       }),
@@ -841,7 +897,7 @@ describe('BoardAgentOrchestrator', () => {
         getByReviewSessionIds: vi.fn(() => []),
       },
       planService: { updateItem }, phaseMachine: createTestPhaseMachine(session),
-      getDevSessionService: () => ({
+      getDevSessionService: () => devSessionDouble({
         get: vi.fn(() => session), sendAgentFollowUp: vi.fn(), updateStatus: vi.fn(),
         commitSessionChanges: vi.fn(), requestCommitHookRepair: vi.fn(), savePlaybookOutputs: vi.fn(),
       }),
@@ -895,7 +951,7 @@ describe('BoardAgentOrchestrator', () => {
       },
       planService: { updateItem },
       phaseMachine,
-      getDevSessionService: () => ({
+      getDevSessionService: () => devSessionDouble({
         get: vi.fn(() => session), sendAgentFollowUp: vi.fn(), updateStatus: vi.fn(),
         commitSessionChanges: vi.fn(), requestCommitHookRepair: vi.fn(),
       }),
@@ -939,7 +995,7 @@ describe('BoardAgentOrchestrator', () => {
       },
       planService: { updateItem },
       phaseMachine: createTestPhaseMachine(session),
-      getDevSessionService: () => ({
+      getDevSessionService: () => devSessionDouble({
         get: vi.fn(() => session), sendAgentFollowUp, updateStatus: vi.fn(),
         commitSessionChanges, requestCommitHookRepair: vi.fn(),
       }),

@@ -55,10 +55,10 @@ import { FollowUpNotAllowedError } from '../agents/BaseAgentSession';
 import type { AutomationPhaseMachine } from '../agents/automationPhaseMachine';
 import { requestHarnessReview, requestHarnessTurn } from '../agents/harnessTurn';
 import { launchAutoReview } from '../agents/autoReview';
-import { playbookForSession, resolveHarnessStep } from '../agents/sessionPlaybook';
+import { playbookForSession, playbookSnapshotOf, readSessionRun, resolveHarnessStep } from '../agents/sessionPlaybook';
 import { runMainStep, type TurnReentry } from '../agents/mainStepTurn';
 import type { PlaybookService } from '../core/PlaybookService';
-import { parsePlaybook, type BoardProvider, type Playbook } from '../../../shared/playbooks';
+import type { BoardProvider, Playbook } from '../../../shared/playbooks';
 import { BOARD_AGENT_WRITE_POLICY, resolvePlaybookPlan } from '../../../shared/playbookRuntime';
 import { renderBranchName } from '../../../shared/branchNaming';
 import { getSetting, getDefaultModel } from '../../db/appSettingsAccess';
@@ -129,11 +129,6 @@ interface PreparedWorkBriefUpdate {
 }
 
 export function createDevSessionService(deps: DevSessionServiceDeps) {
-  function playbookFromSnapshot(session: DevSession): Playbook | null {
-    if (!session.playbook_snapshot) return null;
-    try { return parsePlaybook(JSON.parse(session.playbook_snapshot)); } catch { return null; }
-  }
-
   function harnessTurnDeps() {
     return {
       devSessions: deps.devSessions,
@@ -519,7 +514,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
       let sessionId: string;
       let projectId: string;
 
-      const snapshot = existing ? playbookFromSnapshot(existing) : null;
+      const snapshot = existing ? playbookSnapshotOf(existing) : null;
       const playbookResult = snapshot ? success(snapshot) : selectedPlaybook(input.playbookId);
       if (!playbookResult.ok) return playbookResult;
       const playbook: Playbook = playbookResult.data;
@@ -557,7 +552,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
       }
 
       const persisted = deps.devSessions.get(sessionId);
-      if (persisted?.playbook_snapshot && persisted.current_step_id && (persisted.automation_phase === 'paused' || persisted.automation_phase === 'needs_attention')) {
+      if (persisted && readSessionRun(persisted).isResumable) {
         const resumed = await deps.resumePlaybook(sessionId);
         return resumed ? success({ session: deps.devSessions.get(sessionId)! }) : failure('Could not resume the persisted playbook step');
       }
@@ -779,7 +774,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           ...(options?.resumePhase ? { phase: options.resumePhase } : {}),
         });
 
-        const sessionPlaybook = playbookFromSnapshot(session);
+        const sessionPlaybook = playbookSnapshotOf(session);
         const firstMainStep = sessionPlaybook?.steps.find((step) => step.session === 'main');
         const roleSystemPrompt = deps.getPromptContent(
           options?.systemPromptKey ?? firstMainStep?.systemPromptKey ?? 'agents.implementation_system',

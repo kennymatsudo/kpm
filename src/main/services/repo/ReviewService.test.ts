@@ -3,7 +3,7 @@ import type { DevSession, ReviewTask } from '../../../shared/types';
 import { BUILT_IN_PLAYBOOKS } from '../../../shared/playbooks';
 import { advancePlaybook } from '../../../shared/playbookRuntime';
 import { createAutomationPhaseMachine } from '../agents/automationPhaseMachine';
-import { resolveCursorStep } from '../agents/sessionPlaybook';
+import { resolveRunStep } from '../agents/sessionPlaybook';
 import { createReviewService } from './ReviewService';
 
 vi.mock('electron', () => ({ BrowserWindow: { getAllWindows: () => [] } }));
@@ -381,7 +381,7 @@ describe('ReviewService', () => {
     expect(session.current_step_id).toBe('implement');
     expect(session.automation_phase).toBe('idle');
 
-    const cursor = resolveCursorStep(playbook, session.current_step_id)!;
+    const cursor = resolveRunStep(playbook, session.current_step_id)!;
     expect(advancePlaybook(playbook, cursor.id, { hasFindings: false, madeProgress: true }, {})).toMatchObject({
       kind: 'step',
       stepId: 'review',

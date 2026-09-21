@@ -17,6 +17,7 @@ import { isCommitHookRepairPhase } from '../../../shared/types';
 import { createStatusBroadcaster } from '../repo/rendererBroadcast';
 import { devSessionEvents } from '../../../shared/ipc/devSessionEvents';
 import { isBoardAgentNotifyPhase, type UpdateEventBus } from '../core/UpdateEventBus';
+import { readSessionRun } from './sessionPlaybook';
 
 export type AutomationPhaseEvent =
   | { type: 'stepStarted'; stepId: string; phase?: DevSessionAutomationPhase | null }
@@ -93,10 +94,13 @@ function isTerminationGuardedPhase(phase: DevSessionAutomationPhase | null): boo
  */
 export function effectivePhase(
   phase: DevSessionAutomationPhase | null,
-  currentStepId?: string | null,
+  session?: DevSession,
 ): DevSessionAutomationPhase | null {
   if (phase === 'fixing_commit_hooks') {
-    return currentStepId === 'address' ? 'addressing_review' : 'idle';
+    // Resolve the parked cursor rather than matching the built-in step id: a
+    // custom playbook's findings step is named whatever its author chose.
+    const addressing = session ? readSessionRun(session).cursor?.addressesFindings : false;
+    return addressing ? 'addressing_review' : 'idle';
   }
   return phase;
 }
@@ -180,7 +184,7 @@ function nextState(
       };
 
     case 'manualCommitResolved':
-      if (effectivePhase(current, session.current_step_id) === 'addressing_review') {
+      if (effectivePhase(current, session) === 'addressing_review') {
         return { phase: 'ready_for_review', currentStepId: null, pausedReason: null, attentionReason: null };
       }
       if (current === 'fixing_commit_hooks' || current === 'needs_attention') {

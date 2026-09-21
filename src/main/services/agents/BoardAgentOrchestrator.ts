@@ -14,8 +14,8 @@ import { launchPlaybookSubagent, toPlaybookSubagentSessionId } from './autoRevie
 import { createPlaybookRoundStore, type RunGroup } from './playbookRoundStore';
 import { listBoardProviders as detectBoardProviders } from './boardProviderRegistry';
 import { failure, type ServiceResult } from '../result';
-import { effectivePhase, type AutomationPhaseMachine } from './automationPhaseMachine';
-import { playbookForSession, phaseForPlaybookStep, resolveCursorStep, resolveHarnessStep, stepById } from './sessionPlaybook';
+import type { AutomationPhaseMachine } from './automationPhaseMachine';
+import { playbookForSession, phaseForPlaybookStep, readSessionRun, resolveHarnessStep, resolveRunStep, stepById } from './sessionPlaybook';
 import { createPlaybookStepRunner } from './playbookStepRunner';
 import { runMainStep, type TurnReentry } from './mainStepTurn';
 
@@ -23,17 +23,25 @@ const LOG_PREFIX = '[BoardAgentOrchestrator]';
 const WORKTREE_MODIFIED_NOTICE_KEY = '__harness_worktree_modified';
 const WORKTREE_MODIFIED_NOTE = 'Harness note: Another agent modified the worktree in the previous playbook step. Inspect and preserve those changes before continuing.';
 
-type DevSessionAutomationService = Pick<
+/**
+ * Everything the interpreter drives on a dev session. Nothing here is
+ * optional: the real service implements all of it, so a member that could be
+ * absent only ever described a test double, and the branch handling its
+ * absence was a path production never took — including the restart that makes
+ * an evicted session resumable.
+ */
+export type DevSessionAutomationService = Pick<
   DevSessionService,
   | 'get'
   | 'sendAgentFollowUp'
   | 'updateStatus'
   | 'commitSessionChanges'
   | 'requestCommitHookRepair'
-> & Partial<Pick<
-  DevSessionService,
-  'savePlaybookOutputs' | 'reconcileWorkBrief' | 'syncWorkBriefSnapshot' | 'startAgentSession'
->>;
+  | 'savePlaybookOutputs'
+  | 'reconcileWorkBrief'
+  | 'syncWorkBriefSnapshot'
+  | 'startAgentSession'
+>;
 type ReviewQueueService = Pick<ReviewService, 'flushQueuedReviewTasks'>;
 
 interface BoardAgentOrchestratorDeps {
@@ -109,10 +117,6 @@ async function reconcileWorkBriefBeforeAdvance(
   phaseMachine: Pick<AutomationPhaseMachine, 'transition'>,
   session: DevSession,
 ): Promise<boolean> {
-  if (!service.reconcileWorkBrief) {
-    return false;
-  }
-
   const result = await service.reconcileWorkBrief(session.id);
   if (!result.ok) {
     console.error(`${LOG_PREFIX} Failed to reconcile Work Brief for ${session.id}:`, result.error);
@@ -138,7 +142,10 @@ async function captureWorkOnBranch(
   phaseMachine: Pick<AutomationPhaseMachine, 'transition'>,
   session: DevSession,
 ): Promise<CaptureWorkOutcome> {
-  const subject = effectivePhase(session.automation_phase, session.current_step_id) === 'addressing_review'
+  // Ask the step what it was doing, not the phase: `addressing_review` is the
+  // live phase of every main step, so reading it here titles a plain resumed
+  // implementation turn as review work.
+  const subject = readSessionRun(session).cursor?.addressesFindings
     ? 'Address review findings'
     : session.name?.trim() || 'KPM task changes';
 
@@ -168,7 +175,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
 } {
   const rounds = createPlaybookRoundStore({
     agentReviews: deps.agentReviews,
-    saveOutputs: (id, value) => { deps.getDevSessionService()?.savePlaybookOutputs?.(id, value); },
+    saveOutputs: (id, value) => { deps.getDevSessionService()?.savePlaybookOutputs(id, value); },
   });
 
   const mainStepTurnDeps = {
@@ -182,7 +189,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
     },
     startAgentSession: (sessionId: string, options: { prompt: string }) => {
       const service = deps.getDevSessionService();
-      return service?.startAgentSession
+      return service
         ? service.startAgentSession(sessionId, options)
         : Promise.resolve(failure('Dev session service is unavailable'));
     },
@@ -209,7 +216,11 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
     const providers = await (deps.listBoardProviders ?? detectBoardProviders)();
     const plan = resolvePlaybookPlan(playbook, providers, deps.getDefaultModel?.());
     const resolved = plan.steps.find((entry) => entry.stepId === step.id);
-    if (!resolved || resolved.runs.some((run) => !run)) {
+    // A harness step is not in the playbook, so the plan has no entry for it and
+    // no candidate chain to satisfy. It runs on the session's own implementation
+    // provider, resolved just below.
+    const isHarnessStep = !stepById(playbook, step.id);
+    if (!isHarnessStep && (!resolved || resolved.runs.some((run) => !run))) {
       deps.phaseMachine.transition(session.id, { type: 'automationFailed', reason: `provider-unavailable:${step.id}` });
       return;
     }
@@ -242,8 +253,15 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
       return;
     }
 
+    // Subagent steps always come from the playbook; an undeclared one has no
+    // runs to launch.
+    if (!resolved) {
+      deps.phaseMachine.transition(session.id, { type: 'automationFailed', reason: `provider-unavailable:${step.id}` });
+      return;
+    }
+
     let subagentSession = session;
-    const syncResult = deps.getDevSessionService()?.syncWorkBriefSnapshot?.(session.id);
+    const syncResult = deps.getDevSessionService()?.syncWorkBriefSnapshot(session.id);
     if (syncResult && !syncResult.ok) {
       deps.phaseMachine.transition(session.id, { type: 'automationFailed', reason: 'follow-up-send-failed' });
       return;
@@ -365,9 +383,11 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
   return {
     resumePlaybook: async (sessionId, options = {}) => {
       const session = deps.getDevSessionService()?.get(sessionId);
-      if (!session?.playbook_snapshot || !session.current_step_id) return false;
-      const playbook = playbookForSession(session);
-      const step = stepById(playbook, session.current_step_id);
+      if (!session) return false;
+      const run = readSessionRun(session);
+      if (!run.isLive) return false;
+      const { playbook } = run;
+      const step = run.cursor?.step;
       if (!step) {
         deps.phaseMachine.transition(sessionId, { type: 'automationFailed', reason: 'missing-resume-step' });
         return true;
@@ -490,7 +510,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
           await stepRunner.finish(session);
           return;
         }
-        const completed = resolveCursorStep(playbook, session.current_step_id) ?? playbook.steps[0];
+        const completed = resolveRunStep(playbook, session.current_step_id) ?? playbook.steps[0];
         if (finalText) {
           const sessionOutputs = rounds.outputsFor(session);
           sessionOutputs[completed.id] = [finalText];
@@ -499,7 +519,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
         await stepRunner.settle({ session, playbook, step: completed, findings: [], madeProgress });
         return;
       }
-      const completed = resolveCursorStep(playbook, stepId ?? session.current_step_id ?? 'review');
+      const completed = resolveRunStep(playbook, stepId ?? session.current_step_id ?? 'review');
       if (!completed) {
         deps.phaseMachine.transition(session.id, { type: 'automationFailed', reason: 'unknown-completed-step' });
         return;
@@ -541,7 +561,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
 
       if (session.playbook_snapshot && role === 'review' && stepId) {
         const playbook = playbookForSession(session);
-        const step = stepById(playbook, stepId);
+        const step = resolveRunStep(playbook, stepId);
         if (step) await settleSubagentRun({ session, playbook, step, runIndex: runIndex ?? 0, failed: true });
         return;
       }

@@ -359,9 +359,56 @@ describe('automationPhaseMachine board agent events', () => {
 });
 
 describe('effectivePhase', () => {
+  function sessionAt(currentStepId: string | null, playbook: unknown): DevSession {
+    return {
+      id: 's1',
+      project_id: 'p1',
+      status: 'active',
+      automation_phase: 'fixing_commit_hooks',
+      current_step_id: currentStepId,
+      playbook_snapshot: JSON.stringify(playbook),
+      step_pass_counts: null,
+      paused_reason: null,
+    } as DevSession;
+  }
+
+  const reviewPlaybook = {
+    id: 'custom',
+    name: 'Custom',
+    builtIn: false,
+    steps: [
+      {
+        id: 'build',
+        session: 'main',
+        systemPromptKey: 'agents.implementation_system',
+        directive: { kind: 'prompt' },
+      },
+      {
+        id: 'critique',
+        session: 'subagent',
+        agents: [{ provider: 'codex' }],
+        systemPromptKey: 'agents.review_system',
+        directive: { kind: 'prompt' },
+        verdict: 'findings',
+        onFindings: { goto: 'repair', maxPasses: 1, onMaxPasses: 'proceed' },
+      },
+      { id: 'repair', session: 'main', directive: { kind: 'prompt' } },
+    ],
+  };
+
   it('unwraps commit-hook-repair phases to where they were entered from', () => {
     expect(effectivePhase('fixing_commit_hooks')).toBe('idle');
-    expect(effectivePhase('fixing_commit_hooks', 'address')).toBe('addressing_review');
+    expect(effectivePhase('fixing_commit_hooks', sessionAt('repair', reviewPlaybook))).toBe('addressing_review');
+  });
+
+  it('unwraps a custom findings step by its route, not by the built-in step id', () => {
+    // 'repair' is this playbook's address step; 'build' is not.
+    expect(effectivePhase('fixing_commit_hooks', sessionAt('build', reviewPlaybook))).toBe('idle');
+  });
+
+  it('treats a parked PR-review follow-up as addressing review', () => {
+    expect(effectivePhase('fixing_commit_hooks', sessionAt('pr-review-followup', reviewPlaybook)))
+      .toBe('addressing_review');
   });
 
   it('passes through every other phase unchanged', () => {

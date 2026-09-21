@@ -33,6 +33,7 @@ import type { ReviewAssessmentService } from './ReviewAssessmentService';
 import type { GitHubService } from './GitHubService';
 import type { PlanService } from '../core/PlanService';
 import type { AgentSessionManager } from '../agents/AgentSessionManager';
+import { readSessionRun } from '../agents/sessionPlaybook';
 import type { PollScheduler, PollTickResult } from '../core/PollScheduler';
 import type { UpdateEventBus } from '../core/UpdateEventBus';
 import type { EventDefinition, EventPayload } from '../../../shared/ipc/appEvents';
@@ -126,8 +127,7 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
     // fields (state, review, draft) forever; processSession separately
     // blocks assessment/auto-follow-up for it, so only the field refresh resumes.
     if (session.automation_phase === 'needs_attention') return false;
-    return isLiveAutomationPhase(session.automation_phase)
-      || Boolean(session.playbook_snapshot && session.current_step_id);
+    return isLiveAutomationPhase(session.automation_phase) || readSessionRun(session).isLive;
   }
 
   function discoverEligibleSessions(): DevSession[] {

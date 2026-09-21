@@ -9,6 +9,7 @@ import type { AgentSessionManager } from '../../services/agents/AgentSessionMana
 import type { DevSessionService } from '../../services/repo/DevSessionService';
 import type { PromptOverrideService } from '../../services/core/PromptOverrideService';
 import { getAvailableAgents } from '../../services/agents/agentCatalog';
+import { readSessionRun } from '../../services/agents/sessionPlaybook';
 import { unwrapOrThrow } from '../../services/result';
 import { getConfig } from '../../config';
 import { agentSessionEndpoints, type AgentSessionEndpointName } from '../../../shared/ipc/agentSessionEndpoints';
@@ -44,10 +45,7 @@ type AgentSessionHandlers = {
 
 function assertInterpreterAllowsInteraction(devSessionService: DevSessionService, devSessionId: string): void {
   const persisted = devSessionService.get(devSessionId);
-  if (
-    persisted?.playbook_snapshot
-    && persisted.current_step_id
-  ) {
+  if (persisted && readSessionRun(persisted).isLive) {
     throw new Error('Stop to interact');
   }
 }
@@ -74,8 +72,7 @@ function buildAgentSessionHandlers(
       // The direct start fallback is retained only for pre-migration sessions
       // that have no snapshot. Every newly created row is snapshotted and uses
       // interpreter resume/dispatch semantics.
-      const result = persisted?.playbook_snapshot && persisted.current_step_id
-        && (persisted.automation_phase === 'paused' || persisted.automation_phase === 'needs_attention')
+      const result = persisted && readSessionRun(persisted).isResumable
         ? await devSessionService.resumePlaybook(devSessionId)
         : await devSessionService.startAgentSession(devSessionId);
       if (!result.ok) {
