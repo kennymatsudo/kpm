@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { buildFocusedSection, renderFocusedBlocks } from './focusedResources';
-import type { FocusedResource } from '../../../shared/types';
+import type { FocusedResource, PlanItem } from '../../../shared/types';
+import { makePlanItem } from './__fixtures__/promptContextFixtures';
 
 // ---------------------------------------------------------------------------
 // renderFocusedBlocks — type annotation and unresolved-resource tests
@@ -74,6 +75,72 @@ describe('renderFocusedBlocks', () => {
     ];
     const { blocks } = renderFocusedBlocks(resources);
     expect(blocks[0]).not.toBe(`- ${bareUuid}`);
+  });
+
+  it('inlines a focused plan item\'s intent, acceptance criteria, and description', () => {
+    const item = makePlanItem('11111111-1111-4111-8111-111111111111', {
+      title: 'Ship export pipeline',
+      intent: 'Translate at the export boundary.',
+      acceptance_criteria: ['Jira payload passes through toExternalMarkdown'],
+      description: 'Covers Jira and Linear.',
+      external_key: 'PROJ-9',
+      status_category: 'in_progress',
+    });
+    const resources: FocusedResource[] = [{ type: 'plan_item', id: item.id, title: item.title }];
+
+    const { blocks, truncatedPlanItemIds } = renderFocusedBlocks(resources, [item]);
+
+    expect(blocks[0]).toContain('Plan item `11111111-1111-4111-8111-111111111111` "Ship export pipeline"');
+    expect(blocks[0]).toContain('[PROJ-9]');
+    expect(blocks[0]).toContain('(status: in_progress)');
+    expect(blocks[0]).toContain('Intent: Translate at the export boundary.');
+    expect(blocks[0]).toContain('Jira payload passes through toExternalMarkdown');
+    expect(blocks[0]).toContain('Description: Covers Jira and Linear.');
+    expect(truncatedPlanItemIds).toEqual([]);
+  });
+
+  it('falls back to a bare reference and flags truncation when the focused plan item was not loaded', () => {
+    const resources: FocusedResource[] = [
+      { type: 'plan_item', id: '22222222-2222-4222-8222-222222222222', title: 'Missing item' },
+    ];
+
+    const { blocks, truncatedPlanItemIds } = renderFocusedBlocks(resources, []);
+
+    expect(blocks[0]).toBe('- "Missing item" (plan item id: 22222222-2222-4222-8222-222222222222)');
+    expect(truncatedPlanItemIds).toEqual(['22222222-2222-4222-8222-222222222222']);
+  });
+
+  it('truncates a plan item whose intent alone overruns the 2500-char per-item cap', () => {
+    const item = makePlanItem('33333333-3333-4333-8333-333333333333', {
+      title: 'Oversized item',
+      intent: 'x'.repeat(3000),
+      description: 'kept short',
+    });
+    const resources: FocusedResource[] = [{ type: 'plan_item', id: item.id, title: item.title }];
+
+    const { blocks, truncatedPlanItemIds } = renderFocusedBlocks(resources, [item]);
+
+    expect(blocks[0]).not.toContain('x'.repeat(3000));
+    // A truncated intent aborts the rest of the block too — the description never renders.
+    expect(blocks[0]).not.toContain('kept short');
+    expect(truncatedPlanItemIds).toEqual([item.id]);
+  });
+
+  it('spends the shared 8000-char budget across items, truncating a later item once earlier ones exhaust it', () => {
+    // Each intent (2400 chars) fits under the 2500 per-item cap on its own, but
+    // four of them (9640 chars incl. "  Intent: " prefixes) exceed the shared
+    // 8000-char total budget, so the last item runs out of room.
+    const items: PlanItem[] = Array.from({ length: 4 }, (_, i) =>
+      makePlanItem(`4444444${i}-4444-4444-8444-444444444444`, {
+        title: `Item ${i}`,
+        intent: 'x'.repeat(2400),
+      })
+    );
+    const resources: FocusedResource[] = items.map((i) => ({ type: 'plan_item', id: i.id, title: i.title }));
+
+    const { truncatedPlanItemIds } = renderFocusedBlocks(resources, items);
+
+    expect(truncatedPlanItemIds).toEqual([items[3].id]);
   });
 });
 

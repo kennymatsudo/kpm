@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { Stats } from 'fs';
 import {
   writeInitialProjectContextFilesSync,
   writeProjectContextFilesSync,
@@ -58,6 +59,59 @@ describe('writeProjectContextFilesSync (regen path)', () => {
     const fsImpl = createMockFs({ [PRIMARY_PATH]: '# Old' });
     writeProjectContextFilesSync(fsImpl, FOLDER, '# New');
     expect(fsImpl.writes.get(PRIMARY_PATH)).toBe('# New');
+  });
+
+  it('creates the compat file as a symlink to the primary file when symlinks are supported', () => {
+    const files = new Map<string, string>();
+    const symlinks = new Map<string, string>();
+    const fsImpl: ContextFileCompatSyncFs = {
+      existsSync: (p) => files.has(p) || symlinks.has(p),
+      writeFileSync: (p, content) => {
+        files.set(p, content);
+      },
+      symlinkSync: (target, p) => {
+        symlinks.set(p, target);
+      },
+    };
+
+    writeProjectContextFilesSync(fsImpl, FOLDER, '# New');
+
+    expect(files.get(PRIMARY_PATH)).toBe('# New');
+    expect(symlinks.get(COMPAT_PATH)).toBe('AGENTS.md');
+    // The write-fallback path must not have also fired.
+    expect(files.has(COMPAT_PATH)).toBe(false);
+  });
+
+  it('leaves an existing compat symlink that already resolves to the primary file untouched', () => {
+    const files = new Map<string, string>([[PRIMARY_PATH, '# Old']]);
+    const symlinks = new Map<string, string>([[COMPAT_PATH, 'AGENTS.md']]);
+    let unlinkCalls = 0;
+    let symlinkCalls = 0;
+    const fsImpl: ContextFileCompatSyncFs = {
+      existsSync: (p) => files.has(p) || symlinks.has(p),
+      writeFileSync: (p, content) => {
+        files.set(p, content);
+      },
+      lstatSync: (p) =>
+        ({
+          isDirectory: () => false,
+          isSymbolicLink: () => symlinks.has(p),
+        }) as Stats,
+      readlinkSync: (p) => symlinks.get(p) ?? '',
+      unlinkSync: () => {
+        unlinkCalls++;
+      },
+      symlinkSync: () => {
+        symlinkCalls++;
+      },
+    };
+
+    writeProjectContextFilesSync(fsImpl, FOLDER, '# New');
+
+    expect(files.get(PRIMARY_PATH)).toBe('# New');
+    // An already-correct symlink is left alone, not torn down and recreated.
+    expect(unlinkCalls).toBe(0);
+    expect(symlinkCalls).toBe(0);
   });
 });
 

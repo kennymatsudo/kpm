@@ -186,7 +186,37 @@ describe('SyncService', () => {
     }));
   });
 
-  it('does not re-infer status_category from a Linear status name without state type during apply', () => {
+  it('applies the tracker value when a conflict is resolved by taking theirs', () => {
+    const updateFromExternal = vi.fn();
+    const service = createService({ externalPlanItems: { updateFromExternal } });
+    const result = { success: true, created: 0, updated: 0, deleted: 0, errors: [] };
+
+    service.applyConflictResolutions(
+      {
+        tracker_type: 'linear',
+        link_id: 'assoc-1',
+        external_project_key: 'ENG',
+        new_items: [],
+        updated_items: [],
+        conflicts: [{
+          plan_item_id: 'plan-1',
+          external_key: 'ENG-1',
+          title: 'My title',
+          tracker_state: { title: 'Their title', description: 'Their body', updatedAt: '2026-01-02T00:00:00.000Z' },
+          fields: [{ field: 'title', your_value: 'My title', tracker_value: 'Their title' }],
+        }],
+        deleted_in_tracker: [],
+        stats: { total: 1, new: 0, updated: 0, conflicts: 1, deleted: 0, unchanged: 0 },
+      },
+      new Map([['plan-1', 'use_theirs' as const]]),
+      result
+    );
+
+    expect(updateFromExternal).toHaveBeenCalledWith('plan-1', { title: 'Their title' });
+    expect(result.updated).toBe(1);
+  });
+
+  it('writes only the fields present in the change list, without inferring extras', () => {
     const updateFromExternal = vi.fn();
     const service = createService({ externalPlanItems: { updateFromExternal } });
     const result = { success: true, created: 0, updated: 0, deleted: 0, errors: [] };

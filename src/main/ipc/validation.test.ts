@@ -8,7 +8,10 @@
 
 import { describe, it, expect } from 'vitest';
 import { randomUUID } from 'crypto';
+import * as path from 'path';
 import { ValidationError, relativePath } from './validation';
+import { ChatSendSchema } from './validation/chat';
+import { getTempImagesDir } from '../services/files/TempImageService';
 import { projectEndpoints } from '../../shared/ipc/projectEndpoints';
 import { planEndpoints } from '../../shared/ipc/planEndpoints';
 import { chatEndpoints } from '../../shared/ipc/chatEndpoints';
@@ -160,7 +163,7 @@ describe('ProjectSchemas', () => {
   });
 });
 
-describe('ChatSchemas', () => {
+describe('ChatSchemas (model choice)', () => {
   it('does not forward renderer-supplied responding state for model-choice operations', () => {
     const projectId = randomUUID();
     const chatSessionId = randomUUID();
@@ -288,7 +291,7 @@ describe('PlanSchemas', () => {
   });
 });
 
-describe('ChatSchemas', () => {
+describe('ChatSchemas (send)', () => {
   describe('send', () => {
     it('accepts supported send payload variants', () => {
       for (const input of [
@@ -326,6 +329,30 @@ describe('ChatSchemas', () => {
         { projectId: randomUUID(), message: 'a'.repeat(100001) },
       ]) {
         expectInvalid(ChatSchemas.send, input);
+      }
+    });
+  });
+
+  describe('ChatSendSchema (temp image path scoping)', () => {
+    it('accepts a temp image inside the KPM temp images directory', () => {
+      expectValid(ChatSendSchema, {
+        projectId: randomUUID(),
+        message: 'Here is a screenshot',
+        tempImages: [path.join(getTempImagesDir(), 'paste-1.png')],
+      });
+    });
+
+    it('rejects a temp image path escaping the KPM temp images directory', () => {
+      for (const tempImages of [
+        ['/etc/passwd'],
+        [path.join(path.dirname(getTempImagesDir()), 'not-kpm-temp', 'paste-1.png')],
+        [`${getTempImagesDir()}-evil/paste-1.png`],
+      ]) {
+        expectInvalid(ChatSendSchema, {
+          projectId: randomUUID(),
+          message: 'Here is a screenshot',
+          tempImages,
+        });
       }
     });
   });

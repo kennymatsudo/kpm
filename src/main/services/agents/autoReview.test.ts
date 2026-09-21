@@ -88,7 +88,7 @@ describe('launchAutoReview', () => {
 
     await launchAutoReview({
       implementationSessionId: 'session-1',
-      implementationAgentType: 'claude',
+      implementationAgentType: 'codex',
       worktreePath: '/tmp/worktree',
       baseBranch: 'main',
       taskDescription: 'Implement the requested change',
@@ -96,11 +96,14 @@ describe('launchAutoReview', () => {
       agentSessionManager,
       getPromptContent: () => 'Review the implementation.',
       stepId: 'review',
-      reviewer: { provider: 'claude', model: 'opus' },
+      // getReviewOpponent is mocked to always return 'claude' regardless of
+      // implementationAgentType, so a resolved provider of 'pi' can only come
+      // from the playbook's configured reviewer winning over that default.
+      reviewer: { provider: 'pi', model: 'openai/gpt-5-codex' },
     });
 
     const createParams = mocks.create.mock.calls[0]?.[0];
-    expect(createParams.agentType).toBe('claude');
-    expect(createParams.sdkOptions.model).toBe('opus');
+    expect(createParams.agentType).toBe('pi');
+    expect(createParams.model).toBe('openai/gpt-5-codex');
   });
 });

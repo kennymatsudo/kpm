@@ -104,9 +104,9 @@ describe('formatPlanRefSection', () => {
       makeItem(B, { title: 'Beta' }),
     ];
     const out = formatPlanRefSection(`@plan/${B} then @plan/${A}`, items);
-    const aIdx = out.indexOf(`@plan/${B}`);
-    const bIdx = out.indexOf(`@plan/${A}`);
-    expect(aIdx).toBeGreaterThan(0);
-    expect(bIdx).toBeGreaterThan(aIdx);
+    const betaIdx = out.indexOf(`@plan/${B}`);
+    const alphaIdx = out.indexOf(`@plan/${A}`);
+    expect(betaIdx).toBeGreaterThan(0);
+    expect(alphaIdx).toBeGreaterThan(betaIdx);
   });
 });

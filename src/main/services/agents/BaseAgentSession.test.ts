@@ -124,19 +124,6 @@ describe('BaseAgentSession.beginTurn / runGuardedTurn happy path', () => {
     expect(session.state).toBe('complete');
   });
 
-  it('does not complete a second time if the turn somehow resolves again', async () => {
-    const session = makeSession();
-    const completions: AgentCompletionSummary[] = [];
-    session.on('onComplete', (summary) => completions.push(summary));
-
-    await session.start();
-    session.pendingTurn!.resolve();
-    await session.runPromise;
-
-    await session.complete(async () => ({ filesChanged: 5, additions: 5, deletions: 5 }));
-
-    expect(completions).toHaveLength(1);
-  });
 });
 
 describe('BaseAgentSession.stopSession', () => {

@@ -37,3 +37,26 @@ describe('hookEventToActivity kind classification', () => {
     expect(hookEventToActivity({ event: 'pre_tool_use', toolName: 'Bash' })?.callId).toBeUndefined();
   });
 });
+
+describe('hookEventToActivity other event kinds', () => {
+  it('maps a stop event to a system activity', () => {
+    expect(hookEventToActivity({ event: 'stop' })).toEqual({
+      type: 'system',
+      timestamp: expect.any(Number),
+      summary: 'Agent stopped',
+    });
+  });
+
+  it('maps an error event to an error activity carrying the message as both summary and content', () => {
+    expect(hookEventToActivity({ event: 'error', error: 'Tool crashed' })).toEqual({
+      type: 'error',
+      timestamp: expect.any(Number),
+      summary: 'Tool crashed',
+      content: 'Tool crashed',
+    });
+  });
+
+  it('drops a permission_request event, since that is surfaced as a question elsewhere', () => {
+    expect(hookEventToActivity({ event: 'permission_request' })).toBeNull();
+  });
+});

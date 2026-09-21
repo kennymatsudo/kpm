@@ -40,4 +40,62 @@ describe('playbook step runner', () => {
     }));
     expect(dispatch).toHaveBeenCalledWith(session, playbook, playbook.steps[1], []);
   });
+
+  it('moves the plan item to review once the last step completes with no PR', async () => {
+    const session = createSession();
+    const transition = vi.fn();
+    const updateItem = vi.fn().mockReturnValue({ ok: true });
+    const requestPlanRefresh = vi.fn();
+    const dispatch = vi.fn();
+    const playbook = BUILT_IN_PLAYBOOKS.implementOpposingReview;
+    const address = playbook.steps[2];
+
+    const runner = createPlaybookStepRunner({
+      phaseMachine: { transition },
+      planService: { updateItem },
+      getDevSessionService: () => ({ get: vi.fn(() => session) }),
+      getReviewService: () => null,
+      requestPlanRefresh,
+      dispatch,
+    });
+
+    await runner.settle({ session, playbook, step: address, findings: [] });
+
+    expect(transition).toHaveBeenCalledWith(session.id, expect.objectContaining({
+      type: 'stepCompleted', stepId: 'address', nextStepId: null,
+    }));
+    expect(updateItem).toHaveBeenCalledWith(session.plan_item_id, { status_category: 'in_review' });
+    expect(transition).toHaveBeenCalledWith(session.id, { type: 'movedToReview' });
+    expect(requestPlanRefresh).toHaveBeenCalledWith(session.project_id);
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it('pauses instead of re-dispatching once a findings step exhausts its passes', async () => {
+    const playbook = BUILT_IN_PLAYBOOKS.implementCodeReview;
+    const review = playbook.steps.find((step) => step.id === 'review')!;
+    const session = { ...createSession(), step_pass_counts: JSON.stringify({ review: 3 }) };
+    const transition = vi.fn();
+    const dispatch = vi.fn();
+
+    const runner = createPlaybookStepRunner({
+      phaseMachine: { transition },
+      planService: { updateItem: vi.fn() },
+      getDevSessionService: () => ({ get: vi.fn(() => session) }),
+      getReviewService: () => null,
+      requestPlanRefresh: vi.fn(),
+      dispatch,
+    });
+
+    await runner.settle({
+      session,
+      playbook,
+      step: review,
+      findings: [{ severity: 'warning', description: 'Handle null input.', agent: 'codex', source: 'agent' }],
+    });
+
+    expect(transition).toHaveBeenCalledWith(session.id, {
+      type: 'paused', stepId: 'review', reason: 'max_passes', stepPassCounts: { review: 3 },
+    });
+    expect(dispatch).not.toHaveBeenCalled();
+  });
 });

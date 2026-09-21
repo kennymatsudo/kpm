@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events';
 import { PassThrough } from 'stream';
 import { describe, expect, it, vi } from 'vitest';
-import { CodexAppServerClient } from './CodexAppServerClient';
+import { CodexAppServerClient, CodexAppServerError } from './CodexAppServerClient';
 
 class FakeProcess extends EventEmitter {
   readonly stdout = new PassThrough();
@@ -30,6 +30,16 @@ describe('CodexAppServerClient', () => {
     await expect(request).resolves.toEqual({ thread: { id: 'thread-1' } });
     process.reply({ id: 99, method: 'item/commandExecution/requestApproval', params: { command: 'git status' } });
     await vi.waitFor(() => expect(process.sent).toContainEqual({ id: 99, result: { method: 'item/commandExecution/requestApproval', command: 'git status' } }));
+  });
+
+  it('rejects with the server\'s JSON-RPC error, preserving its code', async () => {
+    const process = new FakeProcess();
+    const client = await initializedClient(process);
+    const request = client.request('thread/start', { model: 'gpt' });
+    process.reply({ id: 2, error: { code: -32000, message: 'boom' } });
+
+    await expect(request).rejects.toBeInstanceOf(CodexAppServerError);
+    await expect(request).rejects.toMatchObject({ message: 'boom', code: -32000 });
   });
 
   it('rejects pending calls when the process exits and cleans up on close', async () => {

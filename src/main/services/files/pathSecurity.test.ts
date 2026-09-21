@@ -4,6 +4,7 @@ import os from 'os';
 import path from 'path';
 import { createTestConfig, setConfig } from '../../config';
 import {
+  checkExternalTargetAllowed,
   checkRealpathAccess,
   expandTilde,
   getDeniedPathRoots,
@@ -105,6 +106,58 @@ describe('isGitHooksPath', () => {
     expect(isGitHooksPath('/repo/src/hooks/useThing.ts')).toBe(false);
     expect(isGitHooksPath('/repo/.github/hooks/thing')).toBe(false);
     expect(isGitHooksPath('/repo/.git/config')).toBe(false);
+  });
+});
+
+describe('checkRealpathAccess', () => {
+  it('denies a target that resolves inside a configured protected location', async () => {
+    const secretDir = path.join(tmpRoot, 'vault');
+    fs.mkdirSync(secretDir, { recursive: true });
+    setConfig(createTestConfig({ fileExplorer: { deniedRealpathRoots: [secretDir] } }));
+
+    const result = await checkRealpathAccess(path.join(secretDir, 'token'), tmpRoot);
+
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toMatch(/protected location/i);
+  });
+
+  it('flags a realpath outside the project root as external but still allowed', async () => {
+    const projectFolder = path.join(tmpRoot, 'project');
+    const outside = path.join(tmpRoot, 'elsewhere', 'file.txt');
+    fs.mkdirSync(projectFolder, { recursive: true });
+
+    const result = await checkRealpathAccess(outside, projectFolder);
+
+    expect(result.allowed).toBe(true);
+    expect(result.external).toBe(true);
+  });
+
+  it('marks a realpath inside the project root as not external', async () => {
+    const projectFolder = path.join(tmpRoot, 'project');
+    fs.mkdirSync(projectFolder, { recursive: true });
+
+    const result = await checkRealpathAccess(path.join(projectFolder, 'src', 'index.ts'), projectFolder);
+
+    expect(result.allowed).toBe(true);
+    expect(result.external).toBe(false);
+  });
+});
+
+describe('checkExternalTargetAllowed', () => {
+  it('denies a target that resolves inside a protected location', async () => {
+    const secretDir = path.join(tmpRoot, 'vault');
+    fs.mkdirSync(secretDir, { recursive: true });
+    setConfig(createTestConfig({ fileExplorer: { deniedRealpathRoots: [secretDir] } }));
+
+    const result = await checkExternalTargetAllowed(path.join(secretDir, 'token'));
+
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toMatch(/protected location/i);
+  });
+
+  it('allows an ordinary target outside any denied root', async () => {
+    const result = await checkExternalTargetAllowed(path.join(tmpRoot, 'downloads', 'file.txt'));
+    expect(result.allowed).toBe(true);
   });
 });
 

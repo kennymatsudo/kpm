@@ -475,6 +475,24 @@ describe('adfToMarkdown', () => {
       expect(adfToMarkdown(adf)).toBe('See https://jira.example.com/browse/PROJ-123');
     });
 
+    it('converts a date node to a localized date string', () => {
+      const adf = {
+        version: 1,
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [
+              { type: 'text', text: 'Due: ' },
+              { type: 'date', attrs: { timestamp: '1700000000000' } },
+            ],
+          },
+        ],
+      };
+      const expected = new Date(1700000000000).toLocaleDateString();
+      expect(adfToMarkdown(adf)).toBe(`Due: ${expected}`);
+    });
+
     it('converts status badges', () => {
       const adf = {
         version: 1,

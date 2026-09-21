@@ -161,6 +161,38 @@ describe('AsyncMessageQueue', () => {
     });
   });
 
+  describe('cancelLast()', () => {
+    it('returns null when the queue is empty', () => {
+      expect(queue.cancelLast()).toBeNull();
+    });
+
+    it('removes and returns the most recently pushed message', () => {
+      queue.push(createTestMessage('First'));
+      queue.push(createTestMessage('Second'));
+
+      const cancelled = queue.cancelLast();
+
+      expect(getFirstText(cancelled)).toBe('Second');
+      expect(queue.pendingCount).toBe(1);
+    });
+
+    it('leaves earlier queued messages pullable after cancelling the last one', async () => {
+      queue.push(createTestMessage('First'));
+      queue.push(createTestMessage('Second'));
+      queue.cancelLast();
+
+      const result = await queue.pull();
+      expect(getFirstText(result)).toBe('First');
+    });
+
+    it('cannot cancel a message pull() has already taken off the queue', async () => {
+      queue.push(createTestMessage('First'));
+      await queue.pull();
+
+      expect(queue.cancelLast()).toBeNull();
+    });
+  });
+
   describe('close()', () => {
     it('sets isClosed to true', () => {
       queue.close();

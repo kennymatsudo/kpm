@@ -393,7 +393,10 @@ describe('createPlanActionExecutor', () => {
     expect(spies.setRepositoryTargets).toHaveBeenCalledWith(createdId, 'repo-only', []);
   });
 
-  it('persists an explicit primary repo plus distinct affected repos', () => {
+  it('passes an explicit primary repo and affected repos through to setRepositoryTargets unfiltered', () => {
+    // Dedup of primary-vs-affected happens in PlanItemRepository.setRepositoryTargets
+    // (see PlanItemRepository.add.test.ts), not in this executor, so the raw
+    // affected list — including a repeat of the primary — is expected here as-is.
     const { deps, spies } = createHarness([], ['repo-primary', 'repo-affected']);
 
     const result = run(deps, [{

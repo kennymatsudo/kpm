@@ -146,6 +146,13 @@ describe('deleteRemoteBranch', () => {
 
     expect(outcome).toMatchObject({ ok: false, kind: 'missingRef' });
   });
+
+  it('refuses when there is no branch to delete', async () => {
+    const outcome = await deleteRemoteBranch({ repoPath: REPO, remote: 'origin', branch: null, authorization: boardSession });
+
+    expect(outcome).toEqual({ ok: false, kind: 'refused', reason: 'No branch to delete.' });
+    expect(gitExecCaptured).not.toHaveBeenCalled();
+  });
 });
 
 describe('deleteLocalBranch', () => {
@@ -171,5 +178,12 @@ describe('deleteLocalBranch', () => {
     const outcome = await deleteLocalBranch({ repoPath: REPO, branch: 'gone', authorization: boardSession });
 
     expect(outcome).toMatchObject({ ok: false, kind: 'missingRef' });
+  });
+
+  it('refuses when there is no branch to delete', async () => {
+    const outcome = await deleteLocalBranch({ repoPath: REPO, branch: null, authorization: boardSession });
+
+    expect(outcome).toEqual({ ok: false, kind: 'refused', reason: 'No branch to delete.' });
+    expect(gitExecCaptured).not.toHaveBeenCalled();
   });
 });

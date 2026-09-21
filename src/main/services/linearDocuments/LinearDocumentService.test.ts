@@ -56,7 +56,9 @@ function createLinkRepository() {
       if (link) link = { ...link, ...state };
     },
     updateTitle: () => {},
-    updateDirection: () => {},
+    updateDirection: (_id, direction) => {
+      if (link) link = { ...link, direction };
+    },
     delete: () => {
       link = null;
     },
@@ -251,5 +253,28 @@ describe('publishDocument', () => {
         DOCUMENT_ID
       )
     ).toEqual({ ok: false, error: 'Failed to publish document to Linear' });
+  });
+});
+
+describe('setDirection', () => {
+  it('refuses to change direction on a document that is not published', () => {
+    const links = createLinkRepository();
+    const { api } = createApi();
+
+    expect(service({ links, api }).setDirection(PROJECT, PATH, 'push-only')).toEqual({
+      ok: false,
+      error: 'Document is not published to Linear',
+    });
+  });
+
+  it('updates the direction on a published document', () => {
+    const links = createLinkRepository();
+    links.preset({ id: 'link-1', direction: 'two-way' } as LinearDocumentLink);
+    const { api } = createApi();
+
+    const result = service({ links, api }).setDirection(PROJECT, PATH, 'push-only');
+
+    expect(result).toEqual({ ok: true, data: undefined });
+    expect(links.link).toMatchObject({ direction: 'push-only' });
   });
 });

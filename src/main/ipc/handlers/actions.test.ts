@@ -38,11 +38,21 @@ describe('action IPC handlers', () => {
     await expect(built.get({ id: 'gone' }, {} as never)).rejects.toThrow('Action not found: gone');
   });
 
-  it('passes the history limit through to the repository', async () => {
+  it('passes the history limit through to the repository and wraps the runs', async () => {
     const { built, actionRuns } = handlers({});
 
-    await built.history({ actionId: 'action-1', limit: 5 }, {} as never);
+    const result = await built.history({ actionId: 'action-1', limit: 5 }, {} as never);
 
+    expect(result).toEqual({ runs: [] });
     expect(actionRuns.listByAction).toHaveBeenCalledWith('action-1', 5);
+  });
+
+  it('surfaces the action service error instead of returning a malformed action', async () => {
+    const actionService = { create: vi.fn(() => ({ ok: false, error: 'Name already in use' })) } as never;
+    const built = buildActionHandlers(actionService, {} as never, {} as never);
+
+    await expect(built.create({ name: 'Digest' } as never, {} as never)).rejects.toThrow(
+      'Name already in use'
+    );
   });
 });

@@ -51,7 +51,7 @@ describe('createBoardAgentSession', () => {
     expect(mocks.create.mock.calls[0][0].sdkOptions.effort).toBe('high');
   });
 
-  it('keeps workflows off for a writing subagent', async () => {
+  it('disables the Workflow tool on every launch and marks a writing subagent as not read-only', async () => {
     await launch({ writes: true });
 
     const { sdkOptions } = mocks.create.mock.calls[0][0];

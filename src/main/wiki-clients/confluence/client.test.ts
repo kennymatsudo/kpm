@@ -152,3 +152,25 @@ describe('ConfluenceClient', () => {
     expect(parsedAdf.content[0]?.type).toBe('heading');
   });
 });
+
+describe('ConfluenceClient.parsePageUrl', () => {
+  it('parses the modern spaces/pages URL format', () => {
+    expect(
+      ConfluenceClient.parsePageUrl(
+        'https://company.atlassian.net/wiki/spaces/EN/pages/1234567890/Page+Title'
+      )
+    ).toEqual({ siteUrl: 'company.atlassian.net', spaceKey: 'EN', pageId: '1234567890' });
+  });
+
+  it('parses the legacy viewpage.action URL format, leaving spaceKey empty', () => {
+    expect(
+      ConfluenceClient.parsePageUrl(
+        'https://company.atlassian.net/wiki/pages/viewpage.action?pageId=1234567890'
+      )
+    ).toEqual({ siteUrl: 'company.atlassian.net', spaceKey: '', pageId: '1234567890' });
+  });
+
+  it('returns null for a URL that matches neither format', () => {
+    expect(ConfluenceClient.parsePageUrl('https://company.atlassian.net/wiki/spaces/EN/overview')).toBeNull();
+  });
+});

@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
-import { app } from 'electron';
-import { graphiteColors } from '../../shared/theme';
+import { app, nativeTheme } from 'electron';
+import { fogColors, graphiteColors } from '../../shared/theme';
 import { getConfig } from '../config';
 import {
   readThemeAppearance,
@@ -48,8 +48,25 @@ describe('themeAppearance sidecar', () => {
     expect(resolveStartupBackgroundColor()).toBe('#abcdef');
   });
 
-  it('falls back to the OS-appearance built-in surface when no sidecar exists', () => {
-    // The test electron mock reports shouldUseDarkColors: true.
-    expect(resolveStartupBackgroundColor()).toBe(graphiteColors.surface0);
+  it('falls back to the dark built-in surface when the OS reports dark mode and no sidecar exists', () => {
+    const mockNativeTheme = nativeTheme as { shouldUseDarkColors: boolean };
+    const original = mockNativeTheme.shouldUseDarkColors;
+    mockNativeTheme.shouldUseDarkColors = true;
+    try {
+      expect(resolveStartupBackgroundColor()).toBe(graphiteColors.surface0);
+    } finally {
+      mockNativeTheme.shouldUseDarkColors = original;
+    }
+  });
+
+  it('falls back to the light built-in surface when the OS reports light mode and no sidecar exists', () => {
+    const mockNativeTheme = nativeTheme as { shouldUseDarkColors: boolean };
+    const original = mockNativeTheme.shouldUseDarkColors;
+    mockNativeTheme.shouldUseDarkColors = false;
+    try {
+      expect(resolveStartupBackgroundColor()).toBe(fogColors.surface0);
+    } finally {
+      mockNativeTheme.shouldUseDarkColors = original;
+    }
   });
 });

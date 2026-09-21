@@ -136,6 +136,33 @@ describe('TrackerError', () => {
         const error = TrackerError.fromJiraError(jiraError);
         expect(error.userMessage).toBe('Issue Does Not Exist');
       });
+
+      it('falls back to body.errorMessages when jira.js 6 nests the payload', () => {
+        const jiraError = {
+          status: 400,
+          body: { errorMessages: ['Nested field is required'] },
+        };
+        const error = TrackerError.fromJiraError(jiraError);
+        expect(error.userMessage).toContain('Nested field is required');
+      });
+
+      it('falls back to body.errors when jira.js 6 nests the payload', () => {
+        const jiraError = {
+          status: 400,
+          body: { errors: { summary: 'Nested summary is required' } },
+        };
+        const error = TrackerError.fromJiraError(jiraError);
+        expect(error.userMessage).toContain('Nested summary is required');
+      });
+
+      it('falls back to body.message when jira.js 6 nests the payload', () => {
+        const jiraError = {
+          status: 400,
+          body: { message: 'Nested generic error' },
+        };
+        const error = TrackerError.fromJiraError(jiraError);
+        expect(error.userMessage).toBe('Nested generic error');
+      });
     });
 
     describe('network errors', () => {

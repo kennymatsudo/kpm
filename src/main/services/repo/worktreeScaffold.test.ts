@@ -72,3 +72,68 @@ describe('scaffoldWorktree end-of-options hardening', () => {
     );
   });
 });
+
+describe('scaffoldWorktree error semantics', () => {
+  it('does nothing when the worktree path already exists', async () => {
+    existsSyncMock.mockImplementation((p) => p === worktreesDir || p === worktreePath);
+
+    const result = await scaffoldWorktree({
+      worktreePath,
+      branchName: 'feature-x',
+      baseBranch: 'main',
+      repoPath: '/repo',
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(gitExecMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses to shadow the branch checked out in the primary repo', async () => {
+    resolveCurrentBranchMock.mockResolvedValue('feature-x');
+
+    const result = await scaffoldWorktree({
+      worktreePath,
+      branchName: 'feature-x',
+      baseBranch: 'main',
+      repoPath: '/repo',
+    });
+
+    expect(result).toEqual({ ok: false, kind: 'checkedOutInMainRepo' });
+    expect(gitExecMock).not.toHaveBeenCalled();
+  });
+
+  it('reports checkedOutElsewhere when the branch is already checked out in another worktree', async () => {
+    gitExecMock
+      .mockRejectedValueOnce(new Error('a branch named feature-x already exists'))
+      .mockRejectedValueOnce(new Error("fatal: 'feature-x' is already checked out at '/other/wt'"));
+
+    const result = await scaffoldWorktree({
+      worktreePath,
+      branchName: 'feature-x',
+      baseBranch: 'main',
+      repoPath: '/repo',
+    });
+
+    expect(result).toEqual({ ok: false, kind: 'checkedOutElsewhere' });
+  });
+
+  it('reports createFailed with both error messages when neither attempt succeeds', async () => {
+    gitExecMock
+      .mockRejectedValueOnce(new Error('outer failure'))
+      .mockRejectedValueOnce(new Error('inner failure'));
+
+    const result = await scaffoldWorktree({
+      worktreePath,
+      branchName: 'feature-x',
+      baseBranch: 'main',
+      repoPath: '/repo',
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      kind: 'createFailed',
+      outerMessage: 'outer failure',
+      innerMessage: 'inner failure',
+    });
+  });
+});

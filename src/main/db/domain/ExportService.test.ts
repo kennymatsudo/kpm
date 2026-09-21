@@ -311,28 +311,20 @@ describe('ExportService', () => {
     expect(ctx.repos.outboundChanges.getByPlanItem('plan-1')?.error_message).toContain('Could not resolve');
   });
 
-  it('asks the client to self-assign new issues when the setting is on', async () => {
+  it.each([
+    { assignExportsToMe: true, projectName: 'Assign On Project' },
+    { assignExportsToMe: false, projectName: 'Assign Off Project' },
+  ])('passes assignToSelf=$assignExportsToMe to the client per the setting', async ({ assignExportsToMe, projectName }) => {
     const ctx = createTestRepositoryContext();
-    const { project, association } = queueSingleCreate(ctx, 'Assign On Project');
+    const { project, association } = queueSingleCreate(ctx, projectName);
     const client = createLinearClient();
 
-    const result = await createService(ctx, client, { assignExportsToMe: true })
+    const result = await createService(ctx, client, { assignExportsToMe })
       .executeApprovedExport(project.id, association.id, ['plan-1']);
 
     expect(result.success).toBe(true);
     expect(result.warnings).toEqual([]);
-    expect(client.createIssue).toHaveBeenCalledWith(expect.objectContaining({ assignToSelf: true }));
-  });
-
-  it('leaves new issues unassigned when the setting is off', async () => {
-    const ctx = createTestRepositoryContext();
-    const { project, association } = queueSingleCreate(ctx, 'Assign Off Project');
-    const client = createLinearClient();
-
-    await createService(ctx, client, { assignExportsToMe: false })
-      .executeApprovedExport(project.id, association.id, ['plan-1']);
-
-    expect(client.createIssue).toHaveBeenCalledWith(expect.objectContaining({ assignToSelf: false }));
+    expect(client.createIssue).toHaveBeenCalledWith(expect.objectContaining({ assignToSelf: assignExportsToMe }));
   });
 
   it('warns without failing the export when the tracker refused the assignee', async () => {

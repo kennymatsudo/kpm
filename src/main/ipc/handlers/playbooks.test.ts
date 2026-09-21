@@ -27,4 +27,12 @@ describe('playbook IPC handlers', () => {
     expect(result).toEqual({ providers });
     expect(providerRegistry).toHaveBeenCalledOnce();
   });
+
+  it('surfaces the service error instead of silently no-opping a failed delete', () => {
+    const service = { delete: vi.fn(() => ({ ok: false, error: 'Playbook not found' })) } as never;
+
+    expect(() =>
+      buildPlaybookHandlers(service).delete({ id: 'gone' }, {} as never)
+    ).toThrow('Playbook not found');
+  });
 });

@@ -1013,7 +1013,6 @@ describe('BoardAgentOrchestrator', () => {
 
     expect(sendAgentFollowUp).not.toHaveBeenCalled();
     expect(launchPlaybookSubagent).not.toHaveBeenCalled();
-    expect(launchPlaybookSubagent).not.toHaveBeenCalled();
     expect(updateItem).toHaveBeenCalledWith('plan-1', { status_category: 'in_review' });
     expect(session.automation_phase).toBe('ready_for_review');
   });

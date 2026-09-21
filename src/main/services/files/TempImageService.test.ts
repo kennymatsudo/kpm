@@ -155,4 +155,23 @@ describe('readAttachmentAsDataUrl', () => {
     const result = await svc.readAttachmentAsDataUrl(stranger, 'text/plain');
     expect(result.success).toBe(false);
   });
+
+  it('refuses to read a symlink even when it resolves inside the temp directory', async () => {
+    const svc = createTempImageService({
+      getTempDir: () => tempRoot,
+      generateRandomBytes: randomBytes,
+    });
+    const kpmImagesDir = svc.getTempImagesDir();
+    await fs.mkdir(kpmImagesDir, { recursive: true });
+    const realTarget = path.join(kpmImagesDir, 'real.txt');
+    await fs.writeFile(realTarget, 'hello world');
+    const symlinkPath = path.join(kpmImagesDir, 'kpm-attach-link.txt');
+    await fs.symlink(realTarget, symlinkPath);
+
+    const result = await svc.readAttachmentAsDataUrl(symlinkPath, 'text/plain');
+
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error).toMatch(/symlink/i);
+  });
 });

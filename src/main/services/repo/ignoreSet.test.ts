@@ -68,6 +68,39 @@ describe('resolveIgnoredPaths', () => {
     expect(getIgnoredPathsMock).not.toHaveBeenCalled();
   });
 
+  it('re-queries a path once its cache entry has expired', async () => {
+    vi.useFakeTimers();
+    try {
+      getIgnoredPathsMock.mockResolvedValue(new Set(['dist/out.js']));
+      await resolveIgnoredPaths(gitRoot, ['dist/out.js']);
+
+      vi.advanceTimersByTime(30_001); // past IGNORE_CACHE_TTL_MS
+      await resolveIgnoredPaths(gitRoot, ['dist/out.js']);
+
+      expect(getIgnoredPathsMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('drops the whole repo cache once it grows past the per-root cap', async () => {
+    // MAX_CACHED_PATHS_PER_ROOT is 20_000; fill it, then add one more unknown
+    // path so the next call must overflow and clear instead of growing forever.
+    const manyPaths = Array.from({ length: 20_000 }, (_, i) => `file-${i}.ts`);
+    getIgnoredPathsMock.mockResolvedValueOnce(new Set());
+    await resolveIgnoredPaths(gitRoot, manyPaths);
+
+    getIgnoredPathsMock.mockResolvedValueOnce(new Set(['dist/out.js']));
+    await resolveIgnoredPaths(gitRoot, ['dist/out.js']);
+
+    // The cache was cleared, so a previously-known path must be re-queried.
+    getIgnoredPathsMock.mockClear();
+    getIgnoredPathsMock.mockResolvedValueOnce(new Set());
+    await resolveIgnoredPaths(gitRoot, [manyPaths[0]]);
+
+    expect(getIgnoredPathsMock).toHaveBeenCalledWith(gitRoot, [manyPaths[0]]);
+  });
+
   describe('invalidateIgnoreCache', () => {
     it('forces a re-query for the invalidated repo', async () => {
       getIgnoredPathsMock.mockResolvedValue(new Set(['dist/out.js']));

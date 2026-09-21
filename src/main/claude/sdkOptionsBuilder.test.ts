@@ -85,6 +85,9 @@ describe('buildSdkOptions', () => {
           '/home/developer/.docker/run/docker.sock',
           '/home/developer/.docker/desktop/docker.sock',
         ],
+        // Non-darwin sandboxes additionally allow all Unix sockets — assert
+        // this per-platform so the test doesn't only pass on macOS dev machines.
+        ...(process.platform !== 'darwin' && { allowAllUnixSockets: true }),
       },
       filesystem: {
         allowWrite: ['/'],

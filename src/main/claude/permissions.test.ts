@@ -780,10 +780,8 @@ describe('permissions', () => {
         expect(writeGrants.has('test-project-id')).toBe(false);
       });
 
-      it('gates Bash when the tool input names no path', async () => {
-        const options = { ...createTestOptions(), blockedPath: '/repos/my-app/generated.ts' };
-
-        await handler('Bash', { command: 'printf x > "$OUT"' }, options);
+      it('gates Bash with the standard write-access prompt even when no path is extractable', async () => {
+        await handler('Bash', { command: 'printf x > "$OUT"' }, createTestOptions());
 
         expect(mockPromptUser).toHaveBeenCalledTimes(1);
         expect(mockPromptUser.mock.calls[0][2]).toMatchObject({

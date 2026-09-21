@@ -256,4 +256,24 @@ describe('StreamingSession', () => {
     await session.close();
     expect(session.isActive()).toBe(false);
   });
+
+  it('close() aborts an active session and fires onSessionEnd("closed"), not "completed"', async () => {
+    makeFakeQuery();
+    const config = createConfig();
+    const session = new StreamingSession(config);
+
+    const startPromise = session.start('hello');
+    lastHandle!.emit(initMessage());
+    await startPromise;
+
+    const closePromise = session.close();
+    // The controlled stream only unblocks the message loop once it ends;
+    // close() aborts the session but the fake stream ignores the abort signal.
+    lastHandle!.end();
+    await closePromise;
+
+    expect(session.isActive()).toBe(false);
+    expect(config.onSessionEnd).toHaveBeenCalledWith('closed');
+    expect(config.onSessionEnd).not.toHaveBeenCalledWith('completed');
+  });
 });
