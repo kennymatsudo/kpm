@@ -57,7 +57,7 @@ describe('createDocumentSyncState', () => {
     expect(harness.state.syncError).toBeNull();
   });
 
-  it('keeps the preview error local to the shared state', async () => {
+  it('surfaces a preview failure as a sync error', async () => {
     const harness = createHarness({
       getPreview: vi.fn().mockResolvedValue({ success: false, error: 'Preview expired' }),
     });
@@ -94,6 +94,19 @@ describe('createDocumentSyncState', () => {
     ).resolves.toEqual({ success: false, error: 'Preview expired' });
 
     expect(harness.state.syncError).toBe('Preview expired');
+    expect(harness.state.isSyncing).toBe(false);
+  });
+
+  it('falls back to the configured message when a rejection is not an Error', async () => {
+    const harness = createHarness({
+      push: vi.fn().mockRejectedValue('boom'),
+    });
+
+    await expect(
+      harness.state.executePush('project-1', 'docs/spec.md', 'push-receipt'),
+    ).resolves.toEqual({ success: false, error: 'Failed to push to Linear' });
+
+    expect(harness.state.syncError).toBe('Failed to push to Linear');
     expect(harness.state.isSyncing).toBe(false);
   });
 });

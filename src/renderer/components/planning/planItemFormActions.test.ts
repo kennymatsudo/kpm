@@ -63,6 +63,10 @@ function editDraft(overrides: Partial<PlanTaskEditDraft> = {}): PlanTaskEditDraf
 }
 
 describe('buildPlanTaskEditActions', () => {
+  it('emits no actions when the draft matches the item unchanged', () => {
+    expect(buildPlanTaskEditActions(planItem(), editDraft())).toEqual([]);
+  });
+
   it('constructs only a revision-guarded full Work Brief replacement for a brief-only change', () => {
     const workBrief = {
       title: 'Revised title',

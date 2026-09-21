@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { ThemeColors } from '../../shared/theme';
 import {
   createMermaidThemeVariables,
+  customThemePreferenceId,
+  getCustomThemeId,
   getThemeById,
   THEMES,
   type ThemeId,
@@ -95,4 +97,14 @@ describe('THEMES registry', () => {
       }
     },
   );
+});
+
+describe('custom theme preference id round trip', () => {
+  it('recovers the original custom theme id from its preference id', () => {
+    expect(getCustomThemeId(customThemePreferenceId('theme-123'))).toBe('theme-123');
+  });
+
+  it('returns null for a preference id that is not a custom theme', () => {
+    expect(getCustomThemeId('graphite')).toBeNull();
+  });
 });

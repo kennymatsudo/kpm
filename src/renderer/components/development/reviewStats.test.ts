@@ -97,8 +97,14 @@ function makeInbox(thread: PrReviewThread | null, task: ReviewTask): ReviewInbox
   };
 }
 
+// `getStats` is a thin projection onto `summarizeReviewThreads` (see
+// `shared/reviewThreadSummary.test.ts`, which owns the resolved/outdated
+// filtering and attention-classification domain logic exhaustively). These
+// tests cover only what's unique to this wrapper: how it maps its own
+// `ReviewInboxSnapshot | null` input shape onto that shared call, and that it
+// surfaces the `.work` half of the result.
 describe('getStats', () => {
-  it('counts a new open Review Thread as review work without requiring user attention', () => {
+  it('forwards the inbox snapshot and tasks through to the shared summary', () => {
     const task = makeTask({
       status: 'needs_review',
       internal_state: null,
@@ -111,37 +117,12 @@ describe('getStats', () => {
     expect(stats.queueCount).toBe(1);
     expect(stats.needsReviewCount).toBe(1);
     expect(stats.assessableCount).toBe(1);
-    expect(stats.needsInputCount).toBe(0);
-    expect(stats.failedCount).toBe(0);
-    expect(stats.staleCount).toBe(0);
   });
 
-  it('ignores attention tasks whose live thread is resolved', () => {
-    const stats = getStats(makeInbox(makeThread({ isResolved: true }), makeTask()), 'session-1');
+  it('treats a null inbox (never loaded) as no snapshot and no tasks', () => {
+    const stats = getStats(null, 'session-1');
 
     expect(stats.queueCount).toBe(0);
-    expect(stats.failedCount).toBe(0);
-    expect(stats.staleCount).toBe(0);
-    expect(stats.needsInputCount).toBe(0);
-    expect(stats.assessableCount).toBe(0);
     expect(stats.retryableAttentionTaskIds).toEqual([]);
-  });
-
-  it('ignores attention tasks whose live thread is outdated', () => {
-    const stats = getStats(makeInbox(makeThread({ isOutdated: true }), makeTask()), 'session-1');
-
-    expect(stats.queueCount).toBe(0);
-    expect(stats.staleCount).toBe(0);
-    expect(stats.retryableAttentionTaskIds).toEqual([]);
-  });
-
-  it('falls back to persisted task state when no live snapshot is available', () => {
-    const stats = getStats(makeInbox(null, makeTask()), 'session-1');
-
-    expect(stats.queueCount).toBe(1);
-    expect(stats.failedCount).toBe(1);
-    expect(stats.staleCount).toBe(1);
-    expect(stats.needsInputCount).toBe(1);
-    expect(stats.retryableAttentionTaskIds).toEqual(['task-1']);
   });
 });

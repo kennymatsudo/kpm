@@ -39,16 +39,6 @@ describe('applyStreamEvent chunk', () => {
     expect(next.activities).toEqual([]);
     expect(next.pendingActivities).toEqual([]);
   });
-
-  it('behaves identically whether the session is viewed or unviewed (buffering is a bridge-layer concern)', () => {
-    const base = { ...createInitialPerSessionState(1), isStreaming: true };
-
-    const viewedResult = applyStreamEvent(base, { type: 'chunk', text: 'chunk one' });
-    const unviewedResult = applyStreamEvent(base, { type: 'chunk', text: 'chunk one' });
-
-    expect(viewedResult.streamingSegments).toEqual(unviewedResult.streamingSegments);
-    expect(viewedResult.streamingContent).toEqual(unviewedResult.streamingContent);
-  });
 });
 
 describe('applyStreamEvent queue-activities / flush', () => {

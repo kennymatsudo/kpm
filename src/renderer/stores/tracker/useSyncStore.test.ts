@@ -196,4 +196,48 @@ describe('useSyncStore', () => {
       changeCount: 0,
     });
   });
+
+  describe('applySync', () => {
+    const stats = { total: 1, new: 0, updated: 1, conflicts: 0, deleted: 0, unchanged: 0 };
+    const preview = {
+      tracker_type: 'jira' as const,
+      link_id: 'assoc-1',
+      external_project_key: 'PROJ',
+      new_items: [],
+      updated_items: [],
+      conflicts: [],
+      deleted_in_tracker: [],
+      stats,
+    };
+
+    it('clears the preview and zeroes availability for the association on success', async () => {
+      useSyncStore.setState({ syncPreview: preview, showPanel: true });
+      const syncResult = { success: true, created: 0, updated: 1, deleted: 0, errors: [] };
+      api.tracker.sync.applyChanges.mockResolvedValue({ success: true, result: syncResult });
+      const onComplete = vi.fn().mockResolvedValue(undefined);
+
+      const result = await useSyncStore.getState().applySync('project-1', onComplete);
+
+      expect(result).toEqual(syncResult);
+      expect(useSyncStore.getState().syncPreview).toBeNull();
+      expect(useSyncStore.getState().showPanel).toBe(false);
+      expect(useSyncStore.getState().syncAvailability['assoc-1']).toMatchObject({
+        hasIncomingChanges: false,
+        changeCount: 0,
+      });
+      expect(onComplete).toHaveBeenCalled();
+    });
+
+    it('surfaces the error and leaves the preview in place when the apply fails', async () => {
+      useSyncStore.setState({ syncPreview: preview, showPanel: true });
+      api.tracker.sync.applyChanges.mockResolvedValue({ success: false, error: 'Jira rejected the update' });
+
+      const result = await useSyncStore.getState().applySync('project-1');
+
+      expect(result).toBeNull();
+      expect(useSyncStore.getState().error).toBe('Jira rejected the update');
+      expect(useSyncStore.getState().syncPreview).toEqual(preview);
+      expect(useSyncStore.getState().showPanel).toBe(true);
+    });
+  });
 });

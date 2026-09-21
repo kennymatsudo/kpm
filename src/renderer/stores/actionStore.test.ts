@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ActionDefinition } from '../../shared/actions';
+import type { ActionDefinition, ActionRun } from '../../shared/actions';
 
 const mocks = vi.hoisted(() => ({
   listActions: vi.fn(),
@@ -113,8 +113,15 @@ describe('useActionStore', () => {
   });
 
   it('loads history for a newly selected action', async () => {
+    mocks.getActionHistory.mockResolvedValue({
+      success: true,
+      data: [{ id: 'r1', actionId: 'a1' } as ActionRun],
+    });
+
     useActionStore.getState().selectAction('a1');
+    await vi.waitFor(() => expect(useActionStore.getState().historyLoading).toBe(false));
 
     expect(mocks.getActionHistory).toHaveBeenCalledWith('a1', 20);
+    expect(useActionStore.getState().history).toEqual([{ id: 'r1', actionId: 'a1' }]);
   });
 });

@@ -86,6 +86,21 @@ describe('onboardingTaskBridge onComplete routing', () => {
     expect(task?.result).toBe('generated content');
   });
 
+  it('still completes the task when reading the existing context file fails', async () => {
+    const { getOnCompleteHandler, readContextFile } = installOnboardingApi();
+    readContextFile.mockRejectedValue(new Error('ENOENT'));
+    seedTask('task-1', { projectId: 'project-1', projectName: 'Project One' });
+
+    initOnboardingTaskBridge();
+    getOnCompleteHandler()({ taskId: 'task-1', content: 'generated content' });
+    await flushMicrotasks();
+
+    expect(useProposedChangeDisposal.getState().propose).not.toHaveBeenCalled();
+    const task = useBackgroundTaskStore.getState().tasks['task-1'];
+    expect(task?.status).toBe('completed');
+    expect(task?.result).toBe('generated content');
+  });
+
   it('keeps the badge-resume behavior when the task belongs to a different project', async () => {
     const { getOnCompleteHandler } = installOnboardingApi();
     seedTask('task-1', { projectId: 'other-project', projectName: 'Other Project' });

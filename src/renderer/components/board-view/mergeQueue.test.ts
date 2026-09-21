@@ -70,4 +70,16 @@ describe('isMergeQueueSession', () => {
   it('excludes draft PR sessions', () => {
     expect(isMergeQueueSession(session({ pr_is_draft: true }))).toBe(false);
   });
+
+  it('excludes sessions with no open PR at all', () => {
+    expect(isMergeQueueSession(session({ pr_url: null, pr_number: null, pr_state: null }))).toBe(false);
+  });
+
+  it('excludes sessions whose PR already merged', () => {
+    expect(isMergeQueueSession(session({ pr_state: 'MERGED' }))).toBe(false);
+  });
+
+  it('includes a session with no linked plan item', () => {
+    expect(isMergeQueueSession(session({ plan_item: null }))).toBe(true);
+  });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createStore } from 'zustand/vanilla';
-import { createInitialPerSessionState } from './baseState';
+import { createInitialChatState, createInitialPerSessionState } from './baseState';
 import { createMessageSlice } from './messageSlice';
 import type { ChatAttachment } from '../../../shared/types';
 
@@ -57,6 +57,43 @@ describe('messageSlice.addUserMessage', () => {
     const messages = store.getState().sessions.get(sessionId)?.messages ?? [];
     expect(messages).toHaveLength(1);
     expect(messages[0].attachments).toBeUndefined();
+  });
+});
+
+describe('messageSlice.resetProjectState', () => {
+  it('clears sessions but preserves the persisted model/provider preferences', () => {
+    type FullState = ReturnType<typeof createInitialChatState> & MessageActions;
+    const store = createStore<FullState>()((set, get) => ({
+      ...createInitialChatState(),
+      ...createMessageSlice(set as never, get as never),
+    }));
+
+    store.setState({
+      sessions: new Map([['session-1', createInitialPerSessionState(1)]]),
+      sessionHistory: [{
+        chat_session_id: 'session-1',
+        provider: 'codex',
+        title: null,
+        first_message: 'hi',
+        message_count: 1,
+        created_at: '2026-01-01T00:00:00.000Z',
+        last_activity: '2026-01-01T00:00:00.000Z',
+      }],
+      totalTokens: 4200,
+      model: 'opus',
+      provider: 'codex',
+      piProvidersAvailable: true,
+    });
+
+    store.getState().resetProjectState();
+
+    const state = store.getState();
+    expect(state.sessions.size).toBe(0);
+    expect(state.sessionHistory).toEqual([]);
+    expect(state.totalTokens).toBe(0);
+    expect(state.model).toBe('opus');
+    expect(state.provider).toBe('codex');
+    expect(state.piProvidersAvailable).toBe(true);
   });
 });
 

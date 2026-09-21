@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PlanItem } from '../../../shared/types';
-import { selectFilteredPlannedItems } from './selectors';
+import { selectDescendantIds, selectFilteredPlannedItems } from './selectors';
 
 function makePlanItem(overrides: Partial<PlanItem>): PlanItem {
   return {
@@ -96,5 +96,46 @@ describe('selectFilteredPlannedItems', () => {
     );
 
     expect(filtered.map((item) => item.id)).toEqual(['local-in-progress']);
+  });
+
+  it('matches on the creator key as an alternative to the assignee key', () => {
+    const items = [
+      makePlanItem({
+        id: 'created-by-match',
+        association_id: 'assoc-1',
+        external_key: 'LIN-1',
+        external_assignee_id: 'user-2',
+        external_creator_id: 'user-1',
+        sync_source: 'linear',
+      }),
+      makePlanItem({
+        id: 'no-match',
+        association_id: 'assoc-1',
+        external_key: 'LIN-2',
+        external_assignee_id: 'user-2',
+        external_creator_id: 'user-2',
+        sync_source: 'linear',
+      }),
+    ];
+
+    const filtered = selectFilteredPlannedItems(items, new Set(), new Set(['creator:user-1']));
+
+    expect(filtered.map((item) => item.id)).toEqual(['created-by-match']);
+  });
+});
+
+describe('selectDescendantIds', () => {
+  it('collects descendants across multiple levels without pulling in unrelated siblings', () => {
+    const items: PlanItem[] = [
+      makePlanItem({ id: 'root' }),
+      makePlanItem({ id: 'child-1', parent_id: 'root' }),
+      makePlanItem({ id: 'child-2', parent_id: 'root' }),
+      makePlanItem({ id: 'grandchild', parent_id: 'child-1' }),
+      makePlanItem({ id: 'unrelated', parent_id: null }),
+    ];
+
+    const descendants = selectDescendantIds(items, new Set(['root']));
+
+    expect(descendants).toEqual(new Set(['child-1', 'child-2', 'grandchild']));
   });
 });

@@ -225,6 +225,88 @@ describe('derivePanelStatus — running phases', () => {
       primary: { label: 'Run review', action: 'run_review' },
     });
   });
+
+  it('routes an "all runs failed" reason the same as a single opposing-review error', () => {
+    const status = derivePanelStatus(makeInputs({
+      automationPhase: 'needs_attention',
+      attentionReason: 'all-runs-failed:codex,claude',
+    }));
+
+    expect(status.nextAction).toEqual({
+      tone: 'warning',
+      text: 'Automated review failed',
+      primary: { label: 'Run review', action: 'run_review' },
+    });
+  });
+
+  it('routes a failed move-to-review back to the Ready for Review action', () => {
+    const status = derivePanelStatus(makeInputs({
+      automationPhase: 'needs_attention',
+      attentionReason: 'move-to-review-failed',
+    }));
+
+    expect(status.nextAction).toEqual({
+      tone: 'warning',
+      text: 'Could not move task to review',
+      primary: { label: 'Ready for Review', action: 'ready_for_review' },
+    });
+  });
+
+  it('routes a failed review-queue flush to re-running review', () => {
+    const status = derivePanelStatus(makeInputs({
+      automationPhase: 'needs_attention',
+      attentionReason: 'queued-review-flush-failed',
+    }));
+
+    expect(status.nextAction).toEqual({
+      tone: 'warning',
+      text: 'Could not update the review queue',
+      primary: { label: 'Run review', action: 'run_review' },
+    });
+  });
+
+  it.each(['missing-next-step', 'missing-resume-step', 'unknown-completed-step'] as const)(
+    'reports a playbook that cannot continue as dismissible for %s',
+    (reason) => {
+      const status = derivePanelStatus(makeInputs({
+        automationPhase: 'needs_attention',
+        attentionReason: reason,
+      }));
+
+      expect(status.nextAction).toEqual({
+        tone: 'danger',
+        text: 'Playbook cannot continue',
+        primary: { label: 'Review changes', action: 'view_changes' },
+        dismissible: true,
+      });
+    },
+  );
+
+  it('reports an unavailable agent with no retry action, just a dismiss', () => {
+    const status = derivePanelStatus(makeInputs({
+      automationPhase: 'needs_attention',
+      attentionReason: 'provider-unavailable:codex',
+    }));
+
+    expect(status.nextAction).toEqual({
+      tone: 'danger',
+      text: 'Required agent is unavailable',
+      dismissible: true,
+    });
+  });
+
+  it('reports an unavailable skill with no retry action, just a dismiss', () => {
+    const status = derivePanelStatus(makeInputs({
+      automationPhase: 'needs_attention',
+      attentionReason: 'skill-unavailable:review-playbook',
+    }));
+
+    expect(status.nextAction).toEqual({
+      tone: 'danger',
+      text: 'Required skill is unavailable',
+      dismissible: true,
+    });
+  });
 });
 
 describe('derivePanelStatus — awaiting input (Gemini-only path)', () => {

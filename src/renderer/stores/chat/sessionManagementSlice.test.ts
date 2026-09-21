@@ -59,6 +59,16 @@ describe('sessionManagementSlice.setViewedSession', () => {
     expect(sessionA?.streamingContent).toBe('buffered chunk');
     expect(sessionA?.streamingSegments).toEqual([{ type: 'text', content: 'buffered chunk' }]);
   });
+});
+
+describe('sessionManagementSlice.getOrCreateSession', () => {
+  beforeEach(() => {
+    streamingBuffer.clearAll();
+  });
+
+  afterEach(() => {
+    streamingBuffer.clearAll();
+  });
 
   it('creates backend-restored session shells as unhydrated', () => {
     const store = createTestStore();

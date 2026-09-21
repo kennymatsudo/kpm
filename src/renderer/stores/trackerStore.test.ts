@@ -86,4 +86,44 @@ describe('trackerStore', () => {
     expect(useTrackerStore.getState().getAssociationById('assoc-1')).toEqual(association);
     expect(useTrackerStore.getState().getAssociationById('missing')).toBeNull();
   });
+
+  describe('applyImport', () => {
+    it('clears the import panel and reloads associations on success', async () => {
+      const importResult = { success: true, created: 3, errors: [] };
+      api.tracker.import.apply.mockResolvedValue({ success: true, result: importResult });
+      api.tracker.associations.list.mockResolvedValue([]);
+      useTrackerStore.setState({
+        importPreview: { newItems: [], updatedItems: [] } as never,
+        showImportPanel: true,
+        activeAssociationId: 'assoc-1',
+      });
+
+      const result = await useTrackerStore.getState().applyImport('project-1', 'assoc-1', ['task']);
+
+      expect(api.tracker.import.apply).toHaveBeenCalledWith({
+        projectId: 'project-1',
+        associationId: 'assoc-1',
+        selectedTypes: ['task'],
+      });
+      expect(result).toEqual(importResult);
+      expect(useTrackerStore.getState().importPreview).toBeNull();
+      expect(useTrackerStore.getState().showImportPanel).toBe(false);
+      expect(useTrackerStore.getState().activeAssociationId).toBeNull();
+      expect(api.tracker.associations.list).toHaveBeenCalledWith({ projectId: 'project-1' });
+    });
+
+    it('records the error and leaves the import panel open on failure', async () => {
+      api.tracker.import.apply.mockResolvedValue({ success: false, error: 'Jira rejected the import' });
+      useTrackerStore.setState({
+        importPreview: { newItems: [], updatedItems: [] } as never,
+        showImportPanel: true,
+      });
+
+      const result = await useTrackerStore.getState().applyImport('project-1', 'assoc-1', ['task']);
+
+      expect(result).toBeNull();
+      expect(useTrackerStore.getState().importError).toBe('Jira rejected the import');
+      expect(useTrackerStore.getState().showImportPanel).toBe(true);
+    });
+  });
 });

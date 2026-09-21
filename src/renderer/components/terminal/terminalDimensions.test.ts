@@ -14,4 +14,14 @@ describe('canResizeTerminal', () => {
   it('accepts a usable visible terminal grid', () => {
     expect(canResizeTerminal({ cols: 120, rows: 30 }, true)).toBe(true);
   });
+
+  it('rejects when there are no measurements yet', () => {
+    expect(canResizeTerminal(undefined, true)).toBe(false);
+  });
+
+  it('treats the minimum grid size as inclusive', () => {
+    expect(canResizeTerminal({ cols: 20, rows: 3 }, true)).toBe(true);
+    expect(canResizeTerminal({ cols: 19, rows: 3 }, true)).toBe(false);
+    expect(canResizeTerminal({ cols: 20, rows: 2 }, true)).toBe(false);
+  });
 });

@@ -613,11 +613,11 @@ describe('devSessionsStore', () => {
     useDevSessionsStore.getState().recordReviewRun('dev-session-1', {
       sessionId: 'dev-session-1-playbook-review-0-0',
       stepId: 'review',
-      runIndex: 0,
+      runIndex: 1,
     });
 
     expect(useDevSessionsStore.getState().reviewRunsByImplementationId.get('dev-session-1')).toEqual([
-      { sessionId: 'dev-session-1-playbook-review-0-0', stepId: 'review', runIndex: 0 },
+      { sessionId: 'dev-session-1-playbook-review-0-0', stepId: 'review', runIndex: 1 },
     ]);
   });
 

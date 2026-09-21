@@ -15,6 +15,10 @@ import { useWorkspaceStore } from './workspaceStore';
 import { useProjectStore } from './projectStore';
 import { useTaskPromptTemplateStore } from './taskPromptTemplateStore';
 import { useProposedChangeDisposal } from './proposedChangeDisposal';
+import { useTerminalStore } from './terminalStore';
+import { useLinearDocumentsStore } from './linearDocumentsStore';
+import { usePermissionStore } from './permissionStore';
+import { useActivityStore } from './activityStore';
 import type { PlanItem, OutboundItemChange, SyncReviewItem } from '../../shared/types';
 
 function createPlanItem(id: string, projectId: string): PlanItem {
@@ -137,6 +141,10 @@ describe('resetAllProjectScopedStores', () => {
     ]) {
       store.getState().reset();
     }
+    // These two only expose resetProjectState (no full `reset`), which is
+    // exactly the state this suite cares about clearing between cases.
+    useTerminalStore.getState().resetProjectState();
+    useLinearDocumentsStore.getState().resetProjectState();
     useProposedChangeDisposal.getState().resetProject();
   });
 
@@ -246,6 +254,28 @@ describe('resetAllProjectScopedStores', () => {
     });
     expect(useProposedChangeDisposal.getState().pending).toHaveLength(1);
 
+    useTerminalStore.setState({
+      terminals: [{ id: 'terminal-1', projectId: 'old-project', status: 'running' }],
+      activeTerminalId: 'terminal-1',
+      panelHeight: 400,
+    });
+
+    useLinearDocumentsStore.setState({
+      links: [{
+        id: 'link-1', project_id: 'old-project', document_path: 'notes.md',
+        linear_document_id: 'lin-doc-1', slug_id: null, document_title: null, document_url: null,
+        parent_kind: 'project', parent_id: 'old-project',
+        direction: 'push-only', last_synced_at: null, local_content_hash: null,
+        remote_content_hash: null, remote_version: null,
+        created_at: '2024-01-01T00:00:00.000Z',
+      }],
+      syncPreview: {
+        hasConflict: false, localChanged: true, remoteChanged: false, isInitialSync: false,
+        hasContentDifference: true, localContent: 'local', remoteContent: 'remote',
+        remoteVersion: 1, pushReceipt: 'push-receipt', pullReceipt: 'pull-receipt',
+      },
+    });
+
     resetAllProjectScopedStores();
 
     expect(useChatStore.getState().sessions.size).toBe(0);
@@ -287,6 +317,45 @@ describe('resetAllProjectScopedStores', () => {
 
 
     expect(useProposedChangeDisposal.getState().pending).toEqual([]);
+
+    expect(useTerminalStore.getState().terminals).toEqual([]);
+    expect(useTerminalStore.getState().activeTerminalId).toBeNull();
+
+    expect(useLinearDocumentsStore.getState().links).toEqual([]);
+    expect(useLinearDocumentsStore.getState().syncPreview).toBeNull();
+  });
+
+  it('does not reset permissionStore or activityStore — they describe work outside the open project', () => {
+    usePermissionStore.setState({
+      pendingRequests: new Map([['chat-1', [{
+        requestId: 'req-1', projectId: 'old-project', chatSessionId: 'chat-1',
+        toolName: 'Write', targetPath: '/tmp/file.ts', preview: 'Write /tmp/file.ts',
+        kind: 'write-access',
+      }]]]),
+    });
+    useActivityStore.setState({
+      byProject: { 'old-project': { projectId: 'old-project', chatTurns: 1, agentsWorking: 0, agentsAwaitingInput: 0, terminals: 0 } },
+    });
+
+    resetAllProjectScopedStores();
+
+    expect(usePermissionStore.getState().pendingRequests.get('chat-1')).toHaveLength(1);
+    expect(useActivityStore.getState().byProject['old-project']).toBeDefined();
+  });
+
+  it('preserves terminal panel geometry across a terminal reset', () => {
+    useTerminalStore.setState({
+      terminals: [{ id: 'terminal-1', projectId: 'old-project', status: 'running' }],
+      activeTerminalId: 'terminal-1',
+      panelHeight: 400,
+      isPanelOpen: true,
+    });
+
+    resetAllProjectScopedStores();
+
+    expect(useTerminalStore.getState().terminals).toEqual([]);
+    expect(useTerminalStore.getState().panelHeight).toBe(400);
+    expect(useTerminalStore.getState().isPanelOpen).toBe(true);
   });
 
   it('preserves the model and provider preference across the chat reset', () => {

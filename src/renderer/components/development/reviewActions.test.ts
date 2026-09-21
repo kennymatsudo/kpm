@@ -5,6 +5,7 @@ import {
   buildReviewReplyProposal,
   canReassessTask,
   deriveNextAction,
+  formatReviewerVerdict,
   getThreadLocation,
   getThreadPill,
   getThreadRailClass,
@@ -220,6 +221,19 @@ describe('getThreadPill', () => {
       label: 'Done',
       variant: 'default',
     });
+  });
+});
+
+describe('formatReviewerVerdict', () => {
+  it.each([
+    ['APPROVED', 'Approved'],
+    ['CHANGES_REQUESTED', 'Changes requested'],
+    ['COMMENTED', 'Commented'],
+    ['DISMISSED', 'Dismissed'],
+    ['PENDING', 'Pending'],
+    [null, 'Reviewed'],
+  ] as const)('renders %s as %s', (state, label) => {
+    expect(formatReviewerVerdict(state)).toBe(label);
   });
 });
 

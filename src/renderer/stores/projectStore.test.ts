@@ -150,4 +150,110 @@ describe('projectStore slices', () => {
     });
     expect(store.getState().planItems[0].status_category).toBe('done');
   });
+
+  it('queues a plan-item-created event instead when the item has no tracker link', async () => {
+    api.plan.updateItem.mockResolvedValue({ success: true });
+
+    store.setState({
+      currentProjectId: 'project-1',
+      planItems: [{
+        id: 'item-1',
+        project_id: 'project-1',
+        title: 'Local item',
+        description: null,
+        label: 'task',
+        status: 'planned',
+        status_category: 'not_started',
+        parent_id: null,
+        item_order: 0,
+        code_refs: null,
+        release_tag: null,
+        position_x: null,
+        position_y: null,
+        association_id: null,
+        external_key: null,
+        external_id: null,
+        external_type: null,
+        external_issue_type: null,
+        external_status: null,
+        external_url: null,
+        external_parent_key: null,
+        external_epic_key: null,
+        sync_source: 'local',
+        last_synced_at: null,
+        intent: null,
+        acceptance_criteria: null,
+        source_document_id: null,
+        created_at: '',
+        updated_at: '',
+      }],
+    } as Partial<ProjectState>);
+
+    await store.getState().updateStatusCategory('item-1', 'done');
+
+    expect(emit).toHaveBeenCalledWith({
+      type: 'plan-item-created',
+      payload: {
+        projectId: 'project-1',
+        itemId: 'item-1',
+        statusCategory: 'done',
+        syncSource: 'local',
+      },
+    });
+  });
+
+  it('reverts the optimistic status change and surfaces an error when the save fails', async () => {
+    api.plan.updateItem.mockResolvedValue({ success: false, error: 'save failed' });
+    api.plan.listItems.mockResolvedValue([{
+      id: 'item-1', project_id: 'project-1', title: 'External item', description: null,
+      label: 'task', status: 'planned', status_category: 'not_started', parent_id: null,
+      item_order: 0, code_refs: null, release_tag: null, position_x: null, position_y: null,
+      association_id: 'assoc-1', external_key: 'EXT-123', external_id: 'ext-id',
+      external_type: 'jira', external_issue_type: 'Story', external_status: 'To Do',
+      external_url: 'https://example.com', external_parent_key: null, external_epic_key: null,
+      sync_source: 'local', last_synced_at: null, intent: null, acceptance_criteria: null,
+      source_document_id: null, created_at: '', updated_at: '',
+    }]);
+
+    store.setState({
+      currentProjectId: 'project-1',
+      planItems: [{
+        id: 'item-1',
+        project_id: 'project-1',
+        title: 'External item',
+        description: null,
+        label: 'task',
+        status: 'planned',
+        status_category: 'not_started',
+        parent_id: null,
+        item_order: 0,
+        code_refs: null,
+        release_tag: null,
+        position_x: null,
+        position_y: null,
+        association_id: 'assoc-1',
+        external_key: 'EXT-123',
+        external_id: 'ext-id',
+        external_type: 'jira',
+        external_issue_type: 'Story',
+        external_status: 'To Do',
+        external_url: 'https://example.com',
+        external_parent_key: null,
+        external_epic_key: null,
+        sync_source: 'local',
+        last_synced_at: null,
+        intent: null,
+        acceptance_criteria: null,
+        source_document_id: null,
+        created_at: '',
+        updated_at: '',
+      }],
+    } as Partial<ProjectState>);
+
+    await store.getState().updateStatusCategory('item-1', 'done');
+
+    expect(store.getState().error).toBe('save failed');
+    expect(store.getState().planItems[0].status_category).toBe('not_started');
+    expect(emit).not.toHaveBeenCalled();
+  });
 });

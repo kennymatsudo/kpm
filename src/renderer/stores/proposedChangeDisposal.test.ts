@@ -285,7 +285,7 @@ describe('Proposed Change disposal', () => {
     const disposal = useProposedChangeDisposal.getState();
     disposal.propose({
       type: 'plan-actions', projectId: 'project-1',
-      actions: [{ type: 'update_item', item_id: 'item-1', changes: { title: 'new' } } as never],
+      actions: [{ type: 'update_item', item_id: 'item-1', updates: { label: 'new' } }],
     });
     const id = useProposedChangeDisposal.getState().pending[0].id;
 

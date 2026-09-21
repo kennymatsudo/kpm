@@ -53,6 +53,12 @@ describe('playbook agent-chain editing', () => {
     const onlyCandidate: PlaybookStep = { ...singleStep(), agents: [{ provider: 'gemini' }] };
     expect(removeAgentCandidate(onlyCandidate, 0, 0).agents).toEqual([{ provider: 'gemini' }]);
   });
+
+  it('leaves the chain untouched when moving past either end', () => {
+    const step = singleStep();
+    expect(moveAgentCandidate(step, 0, 0, -1).agents).toEqual(step.agents);
+    expect(moveAgentCandidate(step, 0, 1, 1).agents).toEqual(step.agents);
+  });
 });
 
 describe('playbook output references', () => {

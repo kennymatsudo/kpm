@@ -27,4 +27,11 @@ describe('renderer typed app settings', () => {
     expect(await getOptionalSetting('chatProvider')).toBeUndefined();
     expect(await getSetting('chatProvider')).toBe('claude');
   });
+
+  it('falls back to the default instead of throwing when the IPC call rejects', async () => {
+    api.settings.app.get.mockRejectedValue(new Error('main process unreachable'));
+
+    expect(await getSetting('chatProvider')).toBe('claude');
+    expect(await getOptionalSetting('chatProvider')).toBeUndefined();
+  });
 });
