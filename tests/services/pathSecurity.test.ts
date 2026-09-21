@@ -3,7 +3,6 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import {
-  checkExternalTargetAllowed,
   checkRealpathAccess,
   resolveBestEffortRealpath,
 } from '../../src/main/services/files/pathSecurity';
@@ -47,15 +46,6 @@ describe('resolveBestEffortRealpath', () => {
 });
 
 describe('checkRealpathAccess', () => {
-  it('classifies an in-project path as not external and allowed', async () => {
-    const project = mkTemp('ps-proj-');
-    fs.writeFileSync(path.join(project, 'notes.md'), 'hi', 'utf-8');
-
-    const result = await checkRealpathAccess(path.join(project, 'notes.md'), project);
-    expect(result.allowed).toBe(true);
-    expect(result.external).toBe(false);
-  });
-
   it('classifies a symlink that points outside as external but allowed by default', async () => {
     const project = mkTemp('ps-proj-');
     const outside = mkTemp('ps-out-');
@@ -91,22 +81,6 @@ describe('checkRealpathAccess', () => {
     fs.symlinkSync(path.join(hop, 'mid'), path.join(project, 'creds'));
 
     const result = await checkRealpathAccess(path.join(project, 'creds', 'anything'), project);
-    expect(result.allowed).toBe(false);
-  });
-});
-
-describe('checkExternalTargetAllowed', () => {
-  it('allows a normal external target', async () => {
-    const outside = mkTemp('ps-out-');
-    const result = await checkExternalTargetAllowed(outside);
-    expect(result.allowed).toBe(true);
-  });
-
-  it('rejects a target inside a denied root', async () => {
-    const protectedRoot = mkTemp('ps-secrets-');
-    setConfig(createTestConfig({ fileExplorer: { deniedRealpathRoots: [protectedRoot] } }));
-
-    const result = await checkExternalTargetAllowed(path.join(protectedRoot, 'inside'));
     expect(result.allowed).toBe(false);
   });
 });

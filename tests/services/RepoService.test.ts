@@ -265,6 +265,65 @@ describe('RepoService', () => {
     });
   });
 
+  describe('listWorktrees', () => {
+    it('parses porcelain worktree output, marking only the first entry as main', async () => {
+      const deps = createMocks();
+      (deps.gitExec as ReturnType<typeof vi.fn>).mockResolvedValue({
+        stdout: [
+          'worktree /repo',
+          'HEAD abc123',
+          'branch refs/heads/main',
+          '',
+          'worktree /repo/.kpm-worktrees/repo/feature-x',
+          'HEAD def456',
+          'branch refs/heads/feature-x',
+          '',
+        ].join('\n'),
+        stderr: '',
+      });
+      const service = createRepoService(deps);
+
+      const result = await service.listWorktrees('/repo');
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data).toEqual([
+          { path: '/repo', branch: 'main', isMain: true },
+          { path: '/repo/.kpm-worktrees/repo/feature-x', branch: 'feature-x', isMain: false },
+        ]);
+      }
+    });
+
+    it('reports a null branch for a detached worktree', async () => {
+      const deps = createMocks();
+      (deps.gitExec as ReturnType<typeof vi.fn>).mockResolvedValue({
+        stdout: [
+          'worktree /repo',
+          'HEAD abc123',
+          'branch refs/heads/main',
+          '',
+          'worktree /repo/.kpm-worktrees/repo/detached-x',
+          'HEAD def456',
+          'detached',
+          '',
+        ].join('\n'),
+        stderr: '',
+      });
+      const service = createRepoService(deps);
+
+      const result = await service.listWorktrees('/repo');
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data[1]).toEqual({
+          path: '/repo/.kpm-worktrees/repo/detached-x',
+          branch: null,
+          isMain: false,
+        });
+      }
+    });
+  });
+
   describe('listAllBranches', () => {
     it('returns local branches from git', async () => {
       const deps = createMocks();

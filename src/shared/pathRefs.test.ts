@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  isAbsolutePathRef,
   isPathLike,
   isWorkspaceLinkHref,
   parsePathRef,
@@ -122,6 +123,16 @@ describe('relativeToRoot', () => {
 
   it('returns null for the root itself, which is a directory not a file', () => {
     expect(relativeToRoot('/Users/me/repo', '/Users/me/repo')).toBeNull();
+  });
+});
+
+describe('isAbsolutePathRef', () => {
+  it('recognizes an absolute filesystem path', () => {
+    expect(isAbsolutePathRef('/Users/me/repo/src/foo.ts')).toBe(true);
+  });
+
+  it('rejects a workspace-relative path', () => {
+    expect(isAbsolutePathRef('src/foo.ts')).toBe(false);
   });
 });
 

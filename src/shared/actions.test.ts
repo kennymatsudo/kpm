@@ -105,6 +105,15 @@ describe('actionEditableSchema', () => {
     })).toEqual([]);
   });
 
+  it('rejects a triggered write_outputs grant with no project to write into', () => {
+    const issues = issuesFor({
+      projectId: null,
+      trigger: { kind: 'interval', minutes: 30 },
+      capabilities: ['read_project', 'write_outputs'],
+    });
+    expect(issues).toEqual(['Writing outputs on a trigger needs a project to write into.']);
+  });
+
   it('rejects a duplicated capability grant', () => {
     const issues = issuesFor({ capabilities: ['read_project', 'read_project'] });
     expect(issues).toEqual(['Capability "read_project" is granted more than once.']);

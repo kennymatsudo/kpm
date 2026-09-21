@@ -149,6 +149,13 @@ describe('playbook runtime', () => {
     });
   });
 
+  it('returns an empty record for absent or malformed pass-count storage', () => {
+    expect(parsePassCounts(null)).toEqual({});
+    expect(parsePassCounts(undefined)).toEqual({});
+    expect(parsePassCounts('not json')).toEqual({});
+    expect(parsePassCounts('[1,2,3]')).toEqual({});
+  });
+
   it('expands earlier output references and invokes native skills at message start', () => {
     const playbook: Playbook = {
       id: 'custom', name: 'Custom', builtIn: false,
@@ -156,5 +163,48 @@ describe('playbook runtime', () => {
     };
     expect(renderPlaybookDirective(playbook.steps[0], { plan: ['first', 'second'] }, { nativeSkills: true, taskContext: 'TASK' }))
       .toBe('/tdd Use Run 1:\nfirst\n\nRun 2:\nsecond\n\nTASK');
+  });
+
+  it('falls back to skill body prose when the provider has no native skill invocation', () => {
+    const playbook: Playbook = {
+      id: 'custom', name: 'Custom', builtIn: false,
+      steps: [{ id: 'implement', session: 'main', systemPromptKey: 'agents.implementation_system', directive: { kind: 'skill', name: 'tdd', args: 'Use {{output:plan}}' } }],
+    };
+    const rendered = renderPlaybookDirective(playbook.steps[0], { plan: ['first'] }, {
+      nativeSkills: false,
+      taskContext: 'TASK',
+      skillBody: 'Follow red-green-refactor.',
+    });
+    expect(rendered).toBe('TASK\n\nFollow this skill:\n\nFollow red-green-refactor.\n\nUse first');
+  });
+
+  it('resolves a prompt directive from a promptKey lookup and substitutes findings', () => {
+    const playbook: Playbook = {
+      id: 'custom', name: 'Custom', builtIn: false,
+      steps: [{ id: 'address', session: 'main', directive: { kind: 'prompt', promptKey: 'agents.review_assessment' } }],
+    };
+    const rendered = renderPlaybookDirective(playbook.steps[0], {}, {
+      nativeSkills: true,
+      taskContext: 'TASK',
+      promptContent: (key) => (key === 'agents.review_assessment' ? 'Findings:\n{{findings}}' : ''),
+      findings: 'Fix the typo.',
+    });
+    expect(rendered).toBe('TASK\n\nFindings:\nFix the typo.');
+  });
+
+  it('appends a resume note and a harness note after the directive body', () => {
+    const playbook: Playbook = {
+      id: 'custom', name: 'Custom', builtIn: false,
+      steps: [{ id: 'implement', session: 'main', systemPromptKey: 'agents.implementation_system', directive: { kind: 'prompt', text: 'Implement it.' } }],
+    };
+    const rendered = renderPlaybookDirective(playbook.steps[0], {}, {
+      nativeSkills: true,
+      taskContext: 'TASK',
+      resumeNote: '  Please double-check the migration.  ',
+      harnessNote: 'KPM harness policy: do not create commits.',
+    });
+    expect(rendered).toBe(
+      'TASK\n\nImplement it.\n\nUser note at resume:\nPlease double-check the migration.\n\nKPM harness policy: do not create commits.',
+    );
   });
 });

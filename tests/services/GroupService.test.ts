@@ -81,6 +81,37 @@ describe('GroupService', () => {
     });
   });
 
+  it('unassigns an item from its group without validating a group when groupId is null', () => {
+    const groups = {
+      getByProjectId: vi.fn(() => [group]),
+      getById: vi.fn(() => group),
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+      updatePosition: vi.fn(),
+      updateSize: vi.fn(),
+    };
+    const planItems = {
+      get: vi.fn(() => ({ ...item, group_id: group.id })),
+      update: vi.fn(),
+    };
+
+    const service = createGroupService({
+      groups: groups as never,
+      planItems: planItems as never,
+    });
+
+    const result = service.assignItem(item.id, null);
+
+    expect(result.ok).toBe(true);
+    expect(groups.getById).not.toHaveBeenCalled();
+    expect(planItems.update).toHaveBeenCalledWith(item.id, {
+      group_id: null,
+      position_x: null,
+      position_y: null,
+    });
+  });
+
   it('rejects cross-project group assignment', () => {
     const groups = {
       getByProjectId: vi.fn(() => [group]),

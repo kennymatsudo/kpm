@@ -83,7 +83,10 @@ function createMocks(overrides?: Partial<AttachmentServiceDeps>): AttachmentServ
 
   const path = {
     join: vi.fn((...paths: string[]) => paths.join('/')),
-    basename: vi.fn((p: string) => p.split('/').pop() || p),
+    basename: vi.fn((p: string, ext?: string) => {
+      const name = p.split('/').pop() || p;
+      return ext && name.endsWith(ext) ? name.slice(0, -ext.length) : name;
+    }),
     extname: vi.fn((p: string) => {
       const match = /\.[^.]+$/.exec(p);
       return match ? match[0] : '';
@@ -176,6 +179,36 @@ describe('AttachmentService', () => {
       if (!result.ok) {
         expect(result.error).toBe('Permission denied');
       }
+    });
+
+    it('renames the file to avoid overwriting an existing attachment with the same name', async () => {
+      const baseDeps = createMocks();
+      const deps: AttachmentServiceDeps = {
+        ...baseDeps,
+        fs: {
+          ...baseDeps.fs,
+          access: vi.fn(async (filePath: string) => {
+            // Attachments dir and the first candidate filename already exist;
+            // the "(1)" fallback candidate does not.
+            if (filePath === '/tmp/test-project/attachments/file.png') return undefined;
+            throw new Error('ENOENT');
+          }),
+        } as unknown as AttachmentServiceDeps['fs'],
+      };
+      const service = createAttachmentService(deps);
+
+      const result = await service.add('p1', '/source/file.png', 'file.png');
+
+      expect(result.ok).toBe(true);
+      expect(deps.fs.copyFile).toHaveBeenCalledWith(
+        '/source/file.png',
+        '/tmp/test-project/attachments/file (1).png'
+      );
+      expect(deps.attachments.add).toHaveBeenCalledWith(
+        'p1',
+        '/tmp/test-project/attachments/file (1).png',
+        'file (1).png'
+      );
     });
   });
 
