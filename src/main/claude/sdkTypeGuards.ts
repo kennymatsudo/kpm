@@ -200,6 +200,8 @@ export function describeAssistantError(error: SDKAssistantMessageError): string 
       return 'Your Claude account is on hold. Resolve it at claude.ai, then send another message.';
     case 'cloud_credential_error':
       return 'Claude could not use its cloud credentials. Re-authenticate your Claude Code session, then send another message.';
+    case 'verification_required':
+      return 'Your Claude account needs verification. Complete it at claude.ai, then send another message.';
     case 'unknown':
       return 'The response stopped due to an unexpected error. Send another message to retry.';
     case 'authentication_failed':

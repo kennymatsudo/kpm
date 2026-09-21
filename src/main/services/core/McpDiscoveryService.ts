@@ -284,10 +284,18 @@ export function createMcpDiscoveryService(deps: McpDiscoveryServiceDeps) {
 
     /**
      * Save managed server info from session init (so settings UI can show them).
+     *
+     * An init that reports no claude.ai servers means "not loaded", never "none
+     * configured": the Claude SDK starts MCP servers without blocking startup
+     * and defers their tools behind tool search, so a session can begin before
+     * any connector is known. Overwriting the cache on that would drop the tool
+     * lists the per-server disable preferences resolve against, silently
+     * re-enabling tools the user turned off.
      */
     saveManagedServers(servers: DiscoveredMcpServer[]): ServiceResult<void> {
       try {
         const managed = servers.filter(s => s.source === 'claude-ai');
+        if (managed.length === 0) return success(undefined);
         const existingRaw = deps.appSettings.get(MCP_MANAGED_SERVERS_KEY);
         const existing = existingRaw
           ? JSON.parse(existingRaw) as DiscoveredMcpServer[]

@@ -60,6 +60,26 @@ describe('McpDiscoveryService managed server cache', () => {
     ]));
   });
 
+  it('keeps the cached servers when an init reports no managed servers at all', () => {
+    const cachedServers = [
+      {
+        name: 'claude.ai Slack',
+        source: 'claude-ai' as const,
+        status: 'connected',
+        tools: ['mcp__slack__search'],
+      },
+    ];
+    const cached = JSON.stringify(cachedServers);
+    appSettings.get.mockImplementation((key: string) => key === 'mcp_managed_servers' ? cached : undefined);
+
+    const service = createMcpDiscoveryService({ appSettings });
+    const result = service.saveManagedServers([]);
+
+    expect(result.ok).toBe(true);
+    expect(appSettings.set).not.toHaveBeenCalled();
+    expect(service.getCachedManagedServers()).toEqual({ ok: true, data: cachedServers });
+  });
+
   it('returns disabled managed server names even when tools are not known yet', () => {
     appSettings.get.mockImplementation((key: string) => key === 'mcp_enabled_servers'
       ? JSON.stringify({ 'managed:claude.ai Slack': false })
