@@ -27,6 +27,7 @@ import type { SessionEndReason } from './BaseTurnQueueChatSession';
 import type { SegmentState } from './interpretSdkMessage';
 import { createFollowUpQueue, type FollowUpQueue } from './followUpQueue';
 import { createTurnLifecycle, type TurnLifecycle } from './turnLifecycle';
+import { createTurnReport, type TurnReport } from './turnReport';
 import type { McpElicitationDecision, McpElicitationRequest } from './mcpElicitation';
 import type { ModelType } from '../../claude/sdkOptionsBuilder';
 import type { PlanContext } from '../../chat/prompts';
@@ -69,6 +70,8 @@ export interface ManagedSession {
   hasStreamedResponseText: boolean; // True after this turn emitted text deltas, so complete blocks shouldn't re-render
   /** Single owner of "has this turn already ended" plus its timing (start/last-activity) for hang detection. */
   turn: TurnLifecycle;
+  /** The only way a turn ends: settlement plus the renderer events it implies. */
+  report: TurnReport;
   suppressLifecycleEventsOnEnd: boolean; // Suppress renderer lifecycle events when session ends
   /** Client ids for follow-ups sent while a turn is processing, and their acceptance/promotion state. */
   followUps: FollowUpQueue;
@@ -153,6 +156,11 @@ export interface ChatLaunchRequest {
   forceApprovalReview: boolean;
   titleSeed?: string;
   mainWindow: BrowserWindow | null;
+  /**
+   * Resolved at emit time, not at launch: the window a session reports to can
+   * be replaced while the session outlives it.
+   */
+  getMainWindow: () => BrowserWindow | null;
   /** Torn down by the caller, on launch failure or when the session ends. */
   unsubscribeToolProposals: () => void;
   buildClaudeSdkOptions: BuildClaudeSdkOptions;
@@ -257,6 +265,7 @@ export function buildChatSessionLaunch(
       });
 
   const now = Date.now();
+  const turn = createTurnLifecycle();
   return {
     session,
     managed: {
@@ -284,7 +293,13 @@ export function buildChatSessionLaunch(
       forceApprovalReview: request.forceApprovalReview,
       accumulatedResponse: '',
       hasStreamedResponseText: false,
-      turn: createTurnLifecycle(),
+      turn,
+      report: createTurnReport({
+        turn,
+        projectId,
+        getChatSessionId: () => chatSessionId,
+        getMainWindow: request.getMainWindow,
+      }),
       suppressLifecycleEventsOnEnd: false,
       followUps: createFollowUpQueue(),
       unsubscribeToolProposals: request.unsubscribeToolProposals,

@@ -1,5 +1,6 @@
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources';
 import type { IChatSession } from './IChatSession';
+import { userTurnEcho, type ProviderChatMessage } from './providerChatMessage';
 
 export type SessionEndReason = 'completed' | 'error' | 'closed';
 
@@ -29,11 +30,11 @@ export abstract class BaseTurnQueueChatSession<TTurn extends object> implements 
   protected turnPromise: Promise<void> | null = null;
   protected queue: TTurn[] = [];
 
-  private readonly onMessage: (msg: unknown) => void;
+  private readonly onMessage: (msg: ProviderChatMessage) => void;
   private readonly onSessionEnd?: (reason: SessionEndReason, error?: Error) => void;
 
   constructor(
-    onMessage: (msg: unknown) => void,
+    onMessage: (msg: ProviderChatMessage) => void,
     onSessionEnd?: (reason: SessionEndReason, error?: Error) => void,
   ) {
     this.onMessage = onMessage;
@@ -122,10 +123,7 @@ export abstract class BaseTurnQueueChatSession<TTurn extends object> implements 
     while (!this.closing && this.queue.length > 0) {
       const next = this.queue.shift();
       if (!next) return;
-      this.onMessage({
-        type: 'user',
-        message: { role: 'user', content: [] },
-      });
+      this.onMessage(userTurnEcho());
       await this.runTurn(next);
     }
   }

@@ -7,6 +7,15 @@ import { registerCodexMcpSession, type CodexMcpRegistration } from './KpmCodexMc
 import type { PlanContext } from '../chat/prompts';
 import { buildChatSystemPrompt } from '../chat/prompts';
 import { BaseTurnQueueChatSession, type SessionEndReason } from '../services/streaming/BaseTurnQueueChatSession';
+import {
+  assistantError,
+  assistantText,
+  assistantThinking,
+  textDelta,
+  toolUse,
+  turnResult,
+  type ProviderChatMessage,
+} from '../services/streaming/providerChatMessage';
 import { resolveEffectiveRepoPath } from '../../shared/repoPath';
 import type { WriteDecision } from '../chat/writeGrants';
 import { shellCommandNeedsWriteGrant } from '../chat/shellWritePolicy';
@@ -24,7 +33,7 @@ export interface CodexChatSessionConfig {
   resumeThreadId?: string;
   model?: string;
   modelReasoningEffort?: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
-  onMessage: (msg: unknown) => void;
+  onMessage: (msg: ProviderChatMessage) => void;
   onSessionEnd?: (reason: SessionEndReason, error?: Error) => void;
   onReady?: (threadId: string) => void;
   registerMcpSession?: () => Promise<CodexMcpRegistration>;
@@ -173,7 +182,7 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
   private handleNotification(method: string, params: JsonObject): void {
     if (method === 'thread/started') { const thread = isObject(params.thread) ? params.thread : null; const id = thread ? text(thread.id) : ''; if (id && id !== this.threadId) { this.threadId = id; this.config.onReady?.(id); } return; }
     if (method === 'item/started' || method === 'item/completed') { const item = isObject(params.item) ? params.item : null; if (item) this.handleItem(item, method === 'item/completed'); return; }
-    if (method === 'item/agentMessage/delta') { const delta = text(params.delta); if (delta) this.config.onMessage({ type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: delta } } }); return; }
+    if (method === 'item/agentMessage/delta') { const delta = text(params.delta); if (delta) this.config.onMessage(textDelta(delta)); return; }
     if (method === 'item/mcpToolCall/progress') { const item = this.items.get(text(params.itemId)); if (item) this.emitToolUse(item); return; }
     if (method === 'mcpServer/startupStatus/updated') {
       const status = text(params.status);
@@ -185,20 +194,23 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
       return;
     }
     if (method === 'thread/tokenUsage/updated') { const tokenUsage = isObject(params.tokenUsage) ? params.tokenUsage : {}; this.tokenUsage = isObject(tokenUsage.last) ? tokenUsage.last : {}; return; }
-    if (method === 'turn/completed') { const usage = this.tokenUsage; const turn = isObject(params.turn) ? params.turn : {}; const turnError = isObject(turn.error) ? text(turn.error.message) : ''; if (text(turn.status) === 'failed' && turnError) this.config.onMessage({ type: 'assistant', error: 'server_error', message: { content: [{ type: 'text', text: turnError }] } }); this.config.onMessage({ type: 'result', usage: { input_tokens: number(usage.inputTokens, usage.input_tokens), output_tokens: number(usage.outputTokens, usage.output_tokens), cache_read_input_tokens: number(usage.cachedInputTokens, usage.cached_input_tokens), cache_creation_input_tokens: number(usage.cacheWriteInputTokens, usage.cache_write_input_tokens) }, session_id: this.threadId }); this.finishTurn?.(); return; }
-    if (method === 'error') { const error = isObject(params.error) ? text(params.error.message) : text(params.error); this.config.onSessionEnd?.('error', new Error(error || 'Codex app-server error')); this.finishTurn?.(); }
+    if (method === 'turn/completed') { const usage = this.tokenUsage; const turn = isObject(params.turn) ? params.turn : {}; const turnError = isObject(turn.error) ? text(turn.error.message) : ''; if (text(turn.status) === 'failed' && turnError) this.config.onMessage(assistantError(turnError)); this.config.onMessage(turnResult({ usage: { input_tokens: number(usage.inputTokens, usage.input_tokens), output_tokens: number(usage.outputTokens, usage.output_tokens), cache_read_input_tokens: number(usage.cachedInputTokens, usage.cached_input_tokens), cache_creation_input_tokens: number(usage.cacheWriteInputTokens, usage.cache_write_input_tokens) }, sessionId: this.threadId ?? undefined })); this.finishTurn?.(); return; }
+    // The app-server must die with the session: while it lives it holds the
+    // thread's writer lock, and the next thread/resume is refused with
+    // "already has an active writer".
+    if (method === 'error') { const error = isObject(params.error) ? text(params.error.message) : text(params.error); this.disposeResources(); this.config.onSessionEnd?.('error', new Error(error || 'Codex app-server error')); this.finishTurn?.(); }
   }
   private handleItem(item: JsonObject, completed: boolean): void {
     const id = text(item.id); if (id) this.items.set(id, item); const type = text(item.type);
-    if (type === 'agentMessage' && completed) { const message = text(item.text); if (message) this.config.onMessage({ type: 'assistant', message: { content: [{ type: 'text', text: message }] } }); return; }
-    if (type === 'reasoning') { const summary = Array.isArray(item.summary) ? item.summary.filter((value): value is string => typeof value === 'string').join('\n') : ''; if (summary) this.config.onMessage({ type: 'assistant', message: { content: [{ type: 'thinking', thinking: summary }] } }); return; }
+    if (type === 'agentMessage' && completed) { const message = text(item.text); if (message) this.config.onMessage(assistantText(message)); return; }
+    if (type === 'reasoning') { const summary = Array.isArray(item.summary) ? item.summary.filter((value): value is string => typeof value === 'string').join('\n') : ''; if (summary) this.config.onMessage(assistantThinking(summary)); return; }
     if (!completed) this.emitToolUse(item);
-    if (type === 'mcpToolCall' && completed && isObject(item.error)) this.config.onMessage({ type: 'assistant', error: 'server_error', message: { content: [{ type: 'text', text: text(item.error.message) }] } });
+    if (type === 'mcpToolCall' && completed && isObject(item.error)) this.config.onMessage(assistantError(text(item.error.message)));
   }
   private emitToolUse(item: JsonObject): void {
     const type = text(item.type); const name = type === 'commandExecution' ? 'Bash' : type === 'fileChange' ? 'apply_patch' : type === 'mcpToolCall' ? `mcp__${text(item.server)}__${text(item.tool)}` : type === 'webSearch' ? 'WebSearch' : null;
     if (!name) return;
-    this.config.onMessage({ type: 'assistant', message: { content: [{ type: 'tool_use', id: text(item.id), name, input: type === 'commandExecution' ? { command: item.command } : type === 'mcpToolCall' ? { arguments: item.arguments } : { changes: item.changes } }] } });
+    this.config.onMessage(toolUse(text(item.id), name, type === 'commandExecution' ? { command: item.command } : type === 'mcpToolCall' ? { arguments: item.arguments } : { changes: item.changes }));
   }
 
   private async handleServerRequest(method: string, params: JsonObject): Promise<unknown> {

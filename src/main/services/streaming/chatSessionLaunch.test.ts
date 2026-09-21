@@ -76,6 +76,7 @@ function makeRequest(overrides: Partial<ChatLaunchRequest> = {}): ChatLaunchRequ
     persistHistory: true,
     forceApprovalReview: false,
     mainWindow: null,
+    getMainWindow: () => null,
     unsubscribeToolProposals: () => {},
     buildClaudeSdkOptions,
     host: makeHost(),

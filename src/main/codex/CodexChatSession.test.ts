@@ -28,7 +28,8 @@ class FakeAppServer {
     }
     return {};
   }
-  close(): void {}
+  closed = false;
+  close(): void { this.closed = true; }
   emit(method: string, params: Record<string, unknown>): void { this.notification?.(method, params); }
   ask(method: string, params: Record<string, unknown>): Promise<unknown> { return this.serverRequest?.(method, params) ?? Promise.resolve({}); }
 }
@@ -102,6 +103,20 @@ describe('CodexChatSession', () => {
     expect(client.requests).toContainEqual({ method: 'turn/interrupt', params: { threadId: 'thread-1', turnId: 'turn-1' } });
     client.emit('turn/completed', { threadId: 'thread-1', turn: { id: 'turn-1', usage: {} } });
     await session.close();
+  });
+
+  it('shuts the app-server down when it reports a session error', async () => {
+    const client = new FakeAppServer();
+    client.completeTurns = false;
+    const onSessionEnd = vi.fn();
+    const session = new CodexChatSession({ context: context(), onMessage: vi.fn(), onSessionEnd, registerMcpSession: async () => registration(), createAppServerClient: () => client as unknown as CodexAppServerClient });
+    await session.start('wait');
+    await vi.waitFor(() => expect(client.requests.some((request) => request.method === 'turn/start')).toBe(true));
+
+    client.emit('error', { error: { message: 'app-server exploded' } });
+
+    expect(onSessionEnd).toHaveBeenCalledWith('error', expect.objectContaining({ message: 'app-server exploded' }));
+    expect(client.closed).toBe(true);
   });
 
   it('sends base64 image attachments as local app-server images and removes the temporary file', async () => {

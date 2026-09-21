@@ -3,6 +3,7 @@ import type { BrowserWindow } from 'electron';
 import { finalizeTurnResult } from './StreamingSessionService';
 import { createFollowUpQueue, type FollowUpQueue } from './followUpQueue';
 import { createTurnLifecycle } from './turnLifecycle';
+import { createTurnReport } from './turnReport';
 
 /**
  * finalizeTurnResult was extracted out of the 700+ line SDK-message handler
@@ -19,7 +20,14 @@ function makeFollowUps(queuedClientMessageIds: string[] = []): FollowUpQueue {
   return queue;
 }
 
+/**
+ * The window a session reports to is resolved at emit time, so each test's
+ * `fakeWindow()` binds itself here and the managed session picks it up.
+ */
+const activeWindow: { current: BrowserWindow | null } = { current: null };
+
 function makeManaged(overrides: Partial<ManagedSessionArg> = {}): ManagedSessionArg {
+  const turn = overrides.turn ?? createTurnLifecycle();
   return {
     key: 'chat:project-1:session-1',
     projectId: 'project-1',
@@ -37,7 +45,13 @@ function makeManaged(overrides: Partial<ManagedSessionArg> = {}): ManagedSession
     forceApprovalReview: false,
     accumulatedResponse: 'Here is the answer.',
     hasStreamedResponseText: false,
-    turn: createTurnLifecycle(),
+    turn,
+    report: createTurnReport({
+      turn,
+      projectId: 'project-1',
+      getChatSessionId: () => 'session-1',
+      getMainWindow: () => activeWindow.current,
+    }),
     suppressLifecycleEventsOnEnd: false,
     followUps: makeFollowUps(),
     unsubscribeToolProposals: () => {},
@@ -68,6 +82,7 @@ function fakeWindow(): { sent: { channel: string; payload: unknown }[]; window: 
   const window = {
     webContents: { send: (channel: string, payload: unknown) => sent.push({ channel, payload }) },
   } as unknown as BrowserWindow;
+  activeWindow.current = window;
   return { sent, window };
 }
 
@@ -197,6 +212,42 @@ describe('finalizeTurnResult', () => {
       });
 
       expect(contextWindow).toBeUndefined();
+    });
+  });
+
+  describe('cost basis', () => {
+    it('records a Claude result as a cumulative snapshot to be differenced', () => {
+      const deps = makeDeps();
+      const { window } = fakeWindow();
+
+      finalizeTurnResult('key', 'project-1', 'session-1', makeManaged(), {
+        type: 'result',
+        usage: { input_tokens: 10, output_tokens: 20 },
+        total_cost_usd: 0.22,
+        session_id: 'sdk-session',
+      }, window, deps);
+
+      expect(deps.recordUsage).toHaveBeenCalledWith(expect.objectContaining({
+        totalCostUsd: 0.22,
+        isCumulativeCostSnapshot: true,
+      }));
+    });
+
+    it('records an adapter per-turn cost as-is, so it is not differenced against the last turn', () => {
+      const deps = makeDeps();
+      const { window } = fakeWindow();
+
+      finalizeTurnResult('key', 'project-1', 'session-1', makeManaged(), {
+        type: 'result',
+        usage: { input_tokens: 10, output_tokens: 20 },
+        cost: { usd: 0.12, basis: 'per-turn' },
+        session_id: 'pi-session',
+      }, window, deps);
+
+      expect(deps.recordUsage).toHaveBeenCalledWith(expect.objectContaining({
+        totalCostUsd: 0.12,
+        isCumulativeCostSnapshot: false,
+      }));
     });
   });
 

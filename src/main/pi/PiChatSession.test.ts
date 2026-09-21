@@ -186,6 +186,35 @@ describe('PiChatSession', () => {
     });
   });
 
+  it('labels its cost per-turn, because pi reports what this turn spent', async () => {
+    const fake = makeFakeSession(() => {
+      fake.emit({
+        type: 'agent_end',
+        messages: [{
+          role: 'assistant',
+          content: [],
+          usage: { input: 6, output: 2, cacheRead: 0, cacheWrite: 0, cost: { total: 0.12 } },
+        }],
+        willRetry: false,
+      });
+    });
+    const onMessage = vi.fn();
+    const session = new PiChatSession({
+      context: makeContext(),
+      onMessage,
+      createSession: async () => fake.handle,
+    });
+
+    await session.start('hi');
+    await waitFor(() => {
+      expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'result' }));
+    });
+
+    expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({
+      cost: { usd: 0.12, basis: 'per-turn' },
+    }));
+  });
+
   it('interrupt() calls session.abort()', async () => {
     const fake = makeFakeSession(() => {
       fake.emit({ type: 'agent_end', messages: [], willRetry: false });

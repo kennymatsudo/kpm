@@ -2,6 +2,15 @@ import type { ContentBlockParam } from '@anthropic-ai/sdk/resources';
 import type * as PiCodingAgent from '@earendil-works/pi-coding-agent';
 import type { ToolDefinition as PiSdkToolDefinition } from '@earendil-works/pi-coding-agent';
 import { BaseTurnQueueChatSession, type SessionEndReason } from '../services/streaming/BaseTurnQueueChatSession';
+import {
+  assistantError,
+  assistantText,
+  assistantThinking,
+  textDelta,
+  toolUse,
+  turnResult,
+  type ProviderChatMessage,
+} from '../services/streaming/providerChatMessage';
 import { getConfig } from '../config';
 import { buildPiKpmTools, type PiKpmToolDefinition, type PiToolImageContent } from './kpmToolAdapter';
 import type { PlanContext } from '../chat/prompts';
@@ -100,7 +109,7 @@ export interface PiChatSessionConfig {
   /** `"<provider>/<modelId>"` selection. */
   model?: string;
   thinkingLevel?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
-  onMessage: (msg: unknown) => void;
+  onMessage: (msg: ProviderChatMessage) => void;
   onSessionEnd?: (reason: SessionEndReason, error?: Error) => void;
   onReady?: (sessionId: string) => void;
   /** KPM tools adapted by the caller for this session. Defaults to building from context for tests/backcompat. */
@@ -613,11 +622,7 @@ export class PiChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
     if (!getConfig().claude.includePartialMessages) return;
     const delta = event.assistantMessageEvent;
     if (delta?.type !== 'text_delta' || typeof delta.delta !== 'string' || !delta.delta) return;
-    this.config.onMessage({
-      type: 'stream_event',
-      parent_tool_use_id: null,
-      event: { type: 'content_block_delta', delta: { type: 'text_delta', text: delta.delta } },
-    });
+    this.config.onMessage(textDelta(delta.delta));
   }
 
   private handleMessageEnd(event: { message?: unknown }): void {
@@ -631,10 +636,7 @@ export class PiChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
       .map((block) => block.thinking)
       .join('');
     if (thinkingText) {
-      this.config.onMessage({
-        type: 'assistant',
-        message: { content: [{ type: 'thinking', thinking: thinkingText }] },
-      });
+      this.config.onMessage(assistantThinking(thinkingText));
     }
 
     const text = message.content
@@ -642,19 +644,12 @@ export class PiChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
       .map((block) => block.text)
       .join('');
     if (text) {
-      this.config.onMessage({
-        type: 'assistant',
-        message: { content: [{ type: 'text', text }] },
-      });
+      this.config.onMessage(assistantText(text));
     }
 
     if (message.stopReason === 'error' && message.errorMessage) {
       console.error('[PiChatSession] pi turn error:', message.errorMessage);
-      this.config.onMessage({
-        type: 'assistant',
-        error: 'server_error',
-        message: { content: [{ type: 'text', text: message.errorMessage }] },
-      });
+      this.config.onMessage(assistantError(message.errorMessage));
     }
   }
 
@@ -674,17 +669,7 @@ export class PiChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
   private handleToolExecutionStart(event: { toolCallId?: unknown; toolName?: unknown; args?: unknown }): void {
     if (typeof event.toolCallId !== 'string' || typeof event.toolName !== 'string') return;
     const input = event.args && typeof event.args === 'object' ? event.args as Record<string, unknown> : {};
-    this.config.onMessage({
-      type: 'assistant',
-      message: {
-        content: [{
-          type: 'tool_use',
-          id: event.toolCallId,
-          name: event.toolName,
-          input,
-        }],
-      },
-    });
+    this.config.onMessage(toolUse(event.toolCallId, event.toolName, input));
   }
 
   private handleAgentEnd(event: { messages?: unknown[] }): void {
@@ -693,11 +678,15 @@ export class PiChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
 
   private emitTurnResult(): void {
     const totalCostUsd = this.latestUsage?.cost?.total;
-    this.config.onMessage({
-      type: 'result',
+    this.config.onMessage(turnResult({
       usage: usageToClaudeShape(this.latestUsage),
-      ...(typeof totalCostUsd === 'number' ? { total_cost_usd: totalCostUsd } : {}),
-      session_id: this.getSessionId(),
-    });
+      // pi reports what this turn spent, not the session's running total
+      // (`sessionStatsDelta`), so it must not be differenced against the
+      // previous turn the way a cumulative snapshot is.
+      ...(typeof totalCostUsd === 'number'
+        ? { cost: { usd: totalCostUsd, basis: 'per-turn' as const } }
+        : {}),
+      sessionId: this.getSessionId() ?? undefined,
+    }));
   }
 }

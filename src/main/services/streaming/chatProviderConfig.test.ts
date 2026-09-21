@@ -30,6 +30,7 @@ function makeManaged(): Parameters<typeof markSessionReady>[0] {
     accumulatedResponse: '',
     hasStreamedResponseText: false,
     turn: createTurnLifecycle(),
+    report: { endTurn: vi.fn() },
     suppressLifecycleEventsOnEnd: false,
     followUps: createFollowUpQueue(),
     unsubscribeToolProposals: () => {},

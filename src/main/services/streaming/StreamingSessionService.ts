@@ -53,7 +53,8 @@ import { selectVisibleSlashCommands } from '../core/SlashCommandService';
 import type { PollScheduler, PollTickResult } from '../core/PollScheduler';
 import { randomUUID } from 'crypto';
 import { emitAppEvent } from '../../../shared/ipc/appEvents';
-import { chatEvents, type TurnDoneEventData } from '../../../shared/ipc/chatEvents';
+import { chatEvents } from '../../../shared/ipc/chatEvents';
+import type { TurnCost } from './providerChatMessage';
 
 /**
  * Internal session-lifecycle race trace. Silent unless `claude.debug` is on —
@@ -187,20 +188,6 @@ function sendQueueCleared(
   reason: 'cancelled' | 'already_sent' | 'session_disconnected',
 ): void {
   emitAppEvent(mainWindow?.webContents, chatEvents.queueCleared, { projectId, chatSessionId, clientMessageId, reason });
-}
-
-/**
- * The only place that emits `chatEvents.done`. `outcome` carries the
- * turn-result fields (model, follow-up promotion, token counts, context
- * window); omitted for the abandonment paths, which send just the two ids.
- */
-function sendTurnDone(
-  mainWindow: BrowserWindow | null,
-  projectId: string,
-  chatSessionId: string | undefined,
-  outcome?: Omit<TurnDoneEventData, 'projectId' | 'chatSessionId'>,
-): void {
-  emitAppEvent(mainWindow?.webContents, chatEvents.done, { projectId, chatSessionId, ...outcome });
 }
 
 /**
@@ -663,10 +650,6 @@ export function finalizeTurnResult(
   };
   managed.toolUseActivities.clear();
 
-  const settled = managed.turn.settle('result');
-  if (!hasQueuedFollowUp) {
-    emitAppEvent(mainWindow?.webContents, chatEvents.sessionReady, { projectId, chatSessionId });
-  }
   // The aggregate sdkMsg.usage token counts are CUMULATIVE SUMS across all API
   // calls in the agent turn (one call per tool-use loop iteration). For the
   // context-window bar we want the occupancy of the FINAL API call, not the
@@ -680,10 +663,10 @@ export function finalizeTurnResult(
       : null;
   const ctxSource = lastIter ?? sdkMsg.usage;
 
-  // settled is always true here (this is the turn's own settlement) — the
-  // guard is defensive, matching the other three settlement paths.
-  if (settled) {
-    sendTurnDone(mainWindow, projectId, chatSessionId, {
+  managed.report.endTurn({
+    cause: 'result',
+    hasQueuedFollowUp,
+    outcome: {
       model: managed.resolvedModel ?? getManagedDisplayModel(managed),
       hasQueuedFollowUp,
       queuedClientMessageId: nextQueuedClientMessageId,
@@ -701,8 +684,8 @@ export function finalizeTurnResult(
       // divide it by lives only on modelUsage. Undefined keeps the renderer on
       // its model table.
       contextWindow: resolveTurnContextWindow(sdkMsg.modelUsage, managed.resolvedModel),
-    });
-  }
+    },
+  });
 
   // Clear the queued envelope now — the SDK has the message and is about
   // to feed it to Claude as the next turn. Any further sends on this
@@ -780,6 +763,8 @@ export function finalizeTurnResult(
     const resultMsg = sdkMsg as {
       usage?: typeof sdkMsg.usage;
       total_cost_usd?: number | null;
+      /** Set by adapters that build their own result (see providerChatMessage.ts). */
+      cost?: TurnCost;
       session_id?: string | null;
       uuid?: string | null;
       modelUsage?: Record<string, {
@@ -792,7 +777,11 @@ export function finalizeTurnResult(
     };
     if (sdkMsg.usage) {
       if (deps.recordUsage) {
-        const totalCostUsd = resultMsg.total_cost_usd;
+        // The Claude SDK's `total_cost_usd` is the session's running total; an
+        // adapter that reports its own spend says so on `cost.basis`, and a
+        // per-turn figure must not be differenced against the previous turn.
+        const totalCostUsd = resultMsg.cost?.usd ?? resultMsg.total_cost_usd;
+        const isCumulativeCostSnapshot = (resultMsg.cost?.basis ?? 'cumulative') === 'cumulative';
         const perModel = resultMsg.modelUsage && Object.keys(resultMsg.modelUsage).length > 0
           ? Object.entries(resultMsg.modelUsage)
           : null;
@@ -824,7 +813,7 @@ export function finalizeTurnResult(
             sdkSessionId: resultMsg.session_id ?? null,
             sdkResultUuid: resultMsg.uuid ?? null,
             sdkCostScope: '__total__',
-            isCumulativeCostSnapshot: true,
+            isCumulativeCostSnapshot,
             ttftMs,
             durationMs,
           });
@@ -1399,6 +1388,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         forceApprovalReview: config.forceApprovalReview,
         titleSeed: initialMessage.titleSeed,
         mainWindow,
+        getMainWindow: deps.getMainWindow,
         unsubscribeToolProposals,
         buildClaudeSdkOptions: deps.buildSdkOptions,
         host: buildChatSessionHost(config, mainWindow, launched),
@@ -1932,27 +1922,16 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     // close() didn't trigger the normal callback chain.
     if (sessions.has(key)) {
       sessions.delete(key);
-      // Bookkeeping only: this path emits unconditionally below regardless of
-      // whether the turn was already settled — an idle session's leftover
-      // activities still need to reach the renderer as a finalized bubble
-      // (see chatStreamReducer's finalize guard), so the return value is
-      // deliberately ignored here.
-      managed.turn.settle('disconnected');
-
-      if (!options.silent) {
-        const mainWindow = deps.getMainWindow();
-        emitAppEvent(mainWindow?.webContents, chatEvents.sessionDeactivated, {
-          projectId: managed.projectId,
-          chatSessionId: managed.chatSessionId,
-          reason: options.reason ?? 'disconnect_fallback',
-          source: options.source ?? 'disconnectSession',
-          previousState: stateBefore,
-        });
-        sendTurnDone(mainWindow, managed.projectId, managed.chatSessionId);
-        ssLog(`[StreamingSessionService] Disconnected session (events sent as fallback): ${key}`);
-      } else {
-        ssLog(`[StreamingSessionService] Disconnected session silently for reconnect: ${key}`);
-      }
+      managed.report.endTurn({
+        cause: 'disconnected',
+        silent: options.silent ?? false,
+        reason: options.reason ?? 'disconnect_fallback',
+        source: options.source ?? 'disconnectSession',
+        previousState: stateBefore,
+      });
+      ssLog(options.silent
+        ? `[StreamingSessionService] Disconnected session silently for reconnect: ${key}`
+        : `[StreamingSessionService] Disconnected session (events sent as fallback): ${key}`);
     } else {
       ssLog(`[StreamingSessionService] Disconnected session (events already sent by handleSessionEnd): ${key}`);
     }
@@ -2088,38 +2067,14 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
     sessions.delete(key);
 
-    const mainWindow = deps.getMainWindow();
-    // The turn was already settled (chat:done emitted from result handler) and
-    // this end callback is a post-turn teardown. Avoid emitting duplicate
-    // deactivation/done events that can flip renderer state mid-recovery.
-    const alreadySettled = !managed.turn.settle('session-ended');
-    const suppressRendererLifecycle =
-      managed.suppressLifecycleEventsOnEnd || (alreadySettled && stateBefore !== 'closing');
-
-    if (suppressRendererLifecycle) {
-      ssLog(`[StreamingSessionService] Session ended after finalized turn; suppressing redundant lifecycle events: ${key} (${reason})`);
-      return;
-    }
-
-    // Notify UI that session is deactivated (for multi-session UI updates)
-    emitAppEvent(mainWindow?.webContents, chatEvents.sessionDeactivated, {
-      projectId: managed.projectId,
-      chatSessionId: managed.chatSessionId,
+    managed.report.endTurn({
+      cause: 'session-ended',
       reason: `session_end_${reason}`,
       source: 'onSessionEnd',
       previousState: stateBefore,
+      suppressLifecycle: managed.suppressLifecycleEventsOnEnd,
+      ...(reason === 'error' && error ? { error: error.message } : {}),
     });
-
-    // Ensure renderer always clears any pending streaming state for this session.
-    sendTurnDone(mainWindow, managed.projectId, managed.chatSessionId);
-
-    if (reason === 'error' && error) {
-      emitAppEvent(mainWindow?.webContents, chatEvents.sessionError, {
-        projectId: managed.projectId,
-        chatSessionId: managed.chatSessionId,
-        error: error.message,
-      });
-    }
 
     console.log(`[StreamingSessionService] Session ended: ${key} (${reason})`);
   }
@@ -2242,12 +2197,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
             ? 'Response appears stuck. Please try again.'
             : `Response timed out after ${Math.round(sessionConfig.processingTimeoutMs / 60000)} minutes. Please try again.`;
           sendChatError(mainWindow, managed.projectId, managed.chatSessionId, errorMessage);
-          // Also send chat:done to ensure isStreaming clears in the renderer.
-          // A turn is in flight in this branch, so settle() returns true;
-          // the guard is defensive, matching the other three settlement paths.
-          if (managed.turn.settle('timed-out')) {
-            sendTurnDone(mainWindow, managed.projectId, managed.chatSessionId);
-          }
+          // Ends the turn so `isStreaming` clears in the renderer.
+          managed.report.endTurn({ cause: 'timed-out' });
         }
         continue; // Skip idle check for processing sessions
       }
