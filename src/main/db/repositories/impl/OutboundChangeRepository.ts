@@ -198,10 +198,6 @@ export class OutboundChangeRepository implements IOutboundChangeRepository {
     return row ? toOutboundChange(row) : undefined;
   }
 
-  getByItemId(planItemId: string): OutboundChange | undefined {
-    return this.getByPlanItem(planItemId);
-  }
-
   getByAssociation(associationId: string): OutboundChange[] {
     const rows = this.stmts.getByAssociation.all(associationId) as OutboundChangeRow[];
     return rows.map(toOutboundChange);

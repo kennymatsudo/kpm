@@ -29,7 +29,7 @@ export type { QueueTrackerUpdateIfNeeded } from './PlanItemService';
 export type { MoveSubtasksToPlan, PlanItemServiceDeps } from './PlanItemService';
 
 // Outbound-change decision policy (create vs update, association selection, dedup)
-export { resolveOperation, applyAutoQueue, queueForTracker } from './OutboundChangePolicy';
+export { resolveOperation, applyAutoQueue, admitExplicitQueue } from './OutboundChangePolicy';
 export type { OutboundChangePolicyDeps } from './OutboundChangePolicy';
 
 // Single owner of "remove a plan item" — stages tracker deletions and deletes

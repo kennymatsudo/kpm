@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   resolveOperation,
   applyAutoQueue,
-  queueForTracker,
+  admitExplicitQueue,
   queueTrackerDeletionIfNeeded,
 } from './OutboundChangePolicy';
 import type { TrackerAssociationWithScope } from '../../../shared/types';
@@ -37,9 +37,9 @@ describe('resolveOperation', () => {
 });
 
 describe('applyAutoQueue', () => {
-  function makeOutboundChanges(overrides: Partial<{ getByItemId: unknown; updateStatusCategory: unknown; add: unknown }> = {}) {
+  function makeOutboundChanges(overrides: Partial<{ getByPlanItem: unknown; updateStatusCategory: unknown; add: unknown }> = {}) {
     return {
-      getByItemId: vi.fn().mockReturnValue(undefined),
+      getByPlanItem: vi.fn().mockReturnValue(undefined),
       updateStatusCategory: vi.fn(),
       add: vi.fn(),
       ...overrides,
@@ -127,7 +127,7 @@ describe('applyAutoQueue', () => {
   });
 
   it('updates the queued status target when the item is already queued and a status is set', () => {
-    const outboundChanges = makeOutboundChanges({ getByItemId: vi.fn().mockReturnValue({ id: 'queue-1' }) });
+    const outboundChanges = makeOutboundChanges({ getByPlanItem: vi.fn().mockReturnValue({ id: 'queue-1' }) });
     const tracker = { getAssociationsByProject: vi.fn() };
 
     applyAutoQueue(
@@ -148,7 +148,7 @@ describe('applyAutoQueue', () => {
   });
 
   it('leaves an already-queued entry alone when no status is being set', () => {
-    const outboundChanges = makeOutboundChanges({ getByItemId: vi.fn().mockReturnValue({ id: 'queue-1' }) });
+    const outboundChanges = makeOutboundChanges({ getByPlanItem: vi.fn().mockReturnValue({ id: 'queue-1' }) });
     const tracker = { getAssociationsByProject: vi.fn() };
 
     applyAutoQueue(
@@ -169,108 +169,96 @@ describe('applyAutoQueue', () => {
   });
 });
 
-describe('queueForTracker', () => {
-  function makeItem(overrides: Partial<{ id: string; external_key: string | null; status_category: string | null }> = {}) {
+describe('admitExplicitQueue', () => {
+  function makeItem(overrides: Partial<{ id: string; parent_id: string | null; external_key: string | null; status_category: string | null }> = {}) {
     return {
       id: 'item-1',
+      parent_id: null,
       external_key: null,
       status_category: 'not_started',
       ...overrides,
     };
   }
 
-  it('uses the first association when multiple exist', () => {
-    const outboundChanges = { add: vi.fn(), updateStatusCategory: vi.fn() };
-    const associations = [makeAssociation('assoc-1'), makeAssociation('assoc-2')];
-
-    const result = queueForTracker({
-      projectId: 'project-1',
-      itemIds: ['item-1'],
-      queuedBy: 'claude',
-      associations,
-      alreadyQueuedItemIds: new Map(),
-      getItem: () => makeItem({ id: 'item-1' }),
+  function makeDeps(items: ReturnType<typeof makeItem>[], staged: { plan_item_id: string; id: string }[] = []) {
+    const outboundChanges = {
+      add: vi.fn(),
+      updateStatusCategory: vi.fn(),
+      getByProject: vi.fn(() => staged.map((entry) => ({ ...entry, operation: 'update' }))),
+    };
+    return {
       outboundChanges,
-    });
-
-    expect(outboundChanges.add).toHaveBeenCalledWith(
-      expect.objectContaining({ association_id: 'assoc-1' })
-    );
-    expect(result.queuedCount).toBe(1);
-  });
+      deps: { planItems: { getByProject: () => items }, outboundChanges } as never,
+    };
+  }
 
   it('derives create vs update per item from external_key', () => {
-    const outboundChanges = { add: vi.fn(), updateStatusCategory: vi.fn() };
-    const items = new Map([
-      ['item-1', makeItem({ id: 'item-1', external_key: null })],
-      ['item-2', makeItem({ id: 'item-2', external_key: 'PROJ-9' })],
+    const { outboundChanges, deps } = makeDeps([
+      makeItem({ id: 'item-1', external_key: null }),
+      makeItem({ id: 'item-2', external_key: 'PROJ-9' }),
     ]);
 
-    queueForTracker({
-      projectId: 'project-1',
-      itemIds: ['item-1', 'item-2'],
-      queuedBy: 'claude',
-      associations: [makeAssociation('assoc-1')],
-      alreadyQueuedItemIds: new Map(),
-      getItem: (id) => items.get(id),
-      outboundChanges,
+    admitExplicitQueue({
+      projectId: 'project-1', itemIds: ['item-1', 'item-2'], associationId: 'assoc-1', queuedBy: 'claude', deps,
     });
 
     expect(outboundChanges.add).toHaveBeenCalledWith(expect.objectContaining({ plan_item_id: 'item-1', operation: 'create' }));
     expect(outboundChanges.add).toHaveBeenCalledWith(expect.objectContaining({ plan_item_id: 'item-2', operation: 'update' }));
   });
 
-  it('adds one entry for an item that is not already queued', () => {
-    const outboundChanges = { add: vi.fn(), updateStatusCategory: vi.fn() };
+  it('refreshes the status target instead of dropping a repeat request', () => {
+    const { outboundChanges, deps } = makeDeps(
+      [makeItem({ id: 'item-1', status_category: 'done' })],
+      [{ plan_item_id: 'item-1', id: 'queue-1' }],
+    );
 
-    const result = queueForTracker({
-      projectId: 'project-1',
-      itemIds: ['item-1'],
-      queuedBy: 'claude',
-      associations: [makeAssociation('assoc-1')],
-      alreadyQueuedItemIds: new Map(),
-      getItem: () => makeItem({ id: 'item-1' }),
-      outboundChanges,
-    });
-
-    expect(outboundChanges.add).toHaveBeenCalledTimes(1);
-    expect(result.queuedCount).toBe(1);
-  });
-
-  it('refreshes the status target instead of skipping when the item is already queued', () => {
-    const outboundChanges = { add: vi.fn(), updateStatusCategory: vi.fn() };
-
-    const result = queueForTracker({
-      projectId: 'project-1',
-      itemIds: ['item-1'],
-      queuedBy: 'claude',
-      associations: [makeAssociation('assoc-1')],
-      alreadyQueuedItemIds: new Map([['item-1', 'queue-1']]),
-      getItem: () => makeItem({ id: 'item-1', status_category: 'done' }),
-      outboundChanges,
+    const outcome = admitExplicitQueue({
+      projectId: 'project-1', itemIds: ['item-1'], associationId: 'assoc-1', queuedBy: 'user', deps,
     });
 
     expect(outboundChanges.add).not.toHaveBeenCalled();
     expect(outboundChanges.updateStatusCategory).toHaveBeenCalledWith('queue-1', 'done');
-    expect(result.queuedCount).toBe(0);
+    expect(outcome).toEqual({ queued: [], refreshed: ['item-1'], skipped: [] });
   });
 
-  it('skips adding when no tracker association is configured for the project', () => {
-    const outboundChanges = { add: vi.fn(), updateStatusCategory: vi.fn() };
+  it('queues unsynced ancestors alongside the child, so the export has a parent to point at', () => {
+    const { outboundChanges, deps } = makeDeps([
+      makeItem({ id: 'epic', parent_id: null, external_key: null }),
+      makeItem({ id: 'story', parent_id: 'epic', external_key: null }),
+      makeItem({ id: 'task', parent_id: 'story', external_key: null }),
+    ]);
 
-    const result = queueForTracker({
-      projectId: 'project-1',
-      itemIds: ['item-1'],
-      queuedBy: 'claude',
-      associations: [],
-      alreadyQueuedItemIds: new Map(),
-      getItem: () => makeItem({ id: 'item-1' }),
-      outboundChanges,
+    const outcome = admitExplicitQueue({
+      projectId: 'project-1', itemIds: ['task'], associationId: 'assoc-1', queuedBy: 'claude', deps,
     });
 
-    expect(outboundChanges.add).not.toHaveBeenCalled();
-    expect(result.queuedCount).toBe(0);
-    expect(result.skippedReason).toBe('no_association');
+    expect(outcome.queued.sort()).toEqual(['epic', 'story', 'task']);
+    expect(outboundChanges.add).toHaveBeenCalledTimes(3);
+  });
+
+  it('leaves an already-exported ancestor alone', () => {
+    const { outboundChanges, deps } = makeDeps([
+      makeItem({ id: 'epic', external_key: 'PROJ-1' }),
+      makeItem({ id: 'task', parent_id: 'epic', external_key: null }),
+    ]);
+
+    const outcome = admitExplicitQueue({
+      projectId: 'project-1', itemIds: ['task'], associationId: 'assoc-1', queuedBy: 'user', deps,
+    });
+
+    expect(outcome.queued).toEqual(['task']);
+    expect(outboundChanges.add).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports a missing item the caller asked for, and stays quiet about ancestors', () => {
+    const { deps } = makeDeps([makeItem({ id: 'item-1' })]);
+
+    const outcome = admitExplicitQueue({
+      projectId: 'project-1', itemIds: ['item-1', 'ghost'], associationId: 'assoc-1', queuedBy: 'user', deps,
+    });
+
+    expect(outcome.queued).toEqual(['item-1']);
+    expect(outcome.skipped).toEqual([{ id: 'ghost', reason: 'Item not found' }]);
   });
 });
 

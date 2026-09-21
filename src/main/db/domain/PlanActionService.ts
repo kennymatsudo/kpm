@@ -1,7 +1,6 @@
 import type { Database } from 'better-sqlite3';
 import { randomUUID } from 'crypto';
 import type { PlanAction, PlanActionResult, PlanItem } from '../../../shared/types';
-import { isOutboundItemChange } from '../../../shared/types';
 import type {
   IPlanItemRepository,
   IPlanRelationRepository,
@@ -11,7 +10,7 @@ import type {
   IRepoRepository,
 } from '../interfaces';
 import type { QueueTrackerUpdateIfNeeded } from './PlanItemService';
-import { queueForTracker } from './OutboundChangePolicy';
+import { admitExplicitQueue } from './OutboundChangePolicy';
 import { removePlanItem } from './PlanItemRemoval';
 import { assignItemToGroup } from './GroupAssignmentService';
 import { getConfig } from '../../config';
@@ -309,35 +308,26 @@ function executeQueueForTracker(
   action: Extract<PlanAction, { type: 'queue_for_tracker' }>
 ): void {
   const associations = ctx.deps.tracker.getAssociationsByProject(ctx.projectId);
-
-  // Prefetch all queued items for this project once, then look up membership in
-  // memory — avoids an N+1 getByItemId query per item. Detached delete rows have
-  // no plan item, so they never participate in this create/update dedup map.
-  const alreadyQueuedItemIds = new Map(
-    ctx.deps.outboundChanges
-      .getByProject(ctx.projectId)
-      .filter(isOutboundItemChange)
-      .map((entry) => [entry.plan_item_id, entry.id])
-  );
-
-  const result = queueForTracker({
-    projectId: ctx.projectId,
-    itemIds: action.item_ids,
-    queuedBy: 'claude',
-    associations,
-    alreadyQueuedItemIds,
-    getItem: (itemId) => getItem(ctx, itemId),
-    outboundChanges: ctx.deps.outboundChanges,
-    onItemNotFound: (itemId) => ctx.logger.warn(`[PlanActionService] queue_for_tracker: Item not found: ${itemId}`),
-  });
-
-  if (result.skippedReason === 'no_association') {
+  if (associations.length === 0) {
     skip(ctx, 'queue_for_tracker', 'No tracker association configured for project');
     return;
   }
 
-  if (result.queuedCount > 0) {
-    ctx.logger.log(`[PlanActionService] Queued ${result.queuedCount} item(s) for tracker`);
+  // The action carries its own intent to queue, so an ambiguous project takes
+  // the first association rather than deferring the choice back to the user.
+  const outcome = admitExplicitQueue({
+    projectId: ctx.projectId,
+    itemIds: action.item_ids,
+    associationId: associations[0].id,
+    queuedBy: 'claude',
+    deps: { planItems: ctx.deps.planItems, outboundChanges: ctx.deps.outboundChanges },
+  });
+
+  for (const missing of outcome.skipped) {
+    ctx.logger.warn(`[PlanActionService] queue_for_tracker: Item not found: ${missing.id}`);
+  }
+  if (outcome.queued.length > 0) {
+    ctx.logger.log(`[PlanActionService] Queued ${outcome.queued.length} item(s) for tracker`);
   }
 }
 

@@ -4,7 +4,7 @@ import { queueTrackerUpdateIfNeeded } from './PlanItemService';
 describe('queueTrackerUpdateIfNeeded', () => {
   it('updates an existing queue entry when status changes', () => {
     const outboundChanges = {
-      getByItemId: vi.fn().mockReturnValue({ id: 'queue-1' }),
+      getByPlanItem: vi.fn().mockReturnValue({ id: 'queue-1' }),
       updateStatusCategory: vi.fn(),
       add: vi.fn(),
     };

@@ -1,4 +1,4 @@
-import { resolveOperation } from './OutboundChangePolicy';
+import { admitExplicitQueue } from './OutboundChangePolicy';
 import { getConfig } from '../../config';
 import type { CustomFieldValues, ExportPreview, ExportResult, SyncReviewData } from '../../../shared/types';
 import { inferCategoryWithMapping } from '../../trackers/statusTransitions';
@@ -57,67 +57,15 @@ export function createExportService(deps: ExportServiceDeps) {
       return { queued, skipped };
     }
 
-    const allItems = PlanItemRepository.getByProject(kpmProjectId);
-    const itemMap = new Map(allItems.map(item => [item.id, item]));
+    const outcome = admitExplicitQueue({
+      projectId: kpmProjectId,
+      itemIds,
+      associationId: association.id,
+      queuedBy,
+      deps: { planItems: PlanItemRepository, outboundChanges: OutboundChangeRepository },
+    });
 
-    // Walk up parent chains so an unsynced parent is queued alongside its child.
-    const itemsToQueue = new Set<string>(itemIds);
-    const processedParents = new Set<string>();
-
-    for (const itemId of itemIds) {
-      let currentId: string | null = itemMap.get(itemId)?.parent_id ?? null;
-
-      while (currentId && !processedParents.has(currentId)) {
-        processedParents.add(currentId);
-        const parent = itemMap.get(currentId);
-
-        if (parent) {
-          if (!parent.external_key) {
-            itemsToQueue.add(currentId);
-          }
-          currentId = parent.parent_id;
-        } else {
-          break;
-        }
-      }
-    }
-
-    for (const itemId of itemsToQueue) {
-      const item = itemMap.get(itemId);
-      if (!item) {
-        skipped.push({ id: itemId, reason: 'Item not found' });
-        continue;
-      }
-
-      const existing = OutboundChangeRepository.getByPlanItem(itemId);
-      if (existing) {
-        // An auto-added parent is not something the user asked for, so it is
-        // not reported back as skipped.
-        if (itemIds.includes(itemId)) {
-          skipped.push({ id: itemId, reason: 'Already queued' });
-        }
-        continue;
-      }
-
-      const entry = OutboundChangeRepository.add({
-        kpm_project_id: kpmProjectId,
-        plan_item_id: itemId,
-        association_id: association.id,
-        operation: resolveOperation(item),
-        queued_by: queuedBy,
-        target_issue_type_id: null,
-        target_issue_type_name: null,
-        target_parent_key: null,
-        target_status_category: item.status_category ?? null,
-        custom_field_overrides: null,
-      });
-
-      if (entry) {
-        queued.push(itemId);
-      }
-    }
-
-    return { queued, skipped };
+    return { queued: [...queued, ...outcome.queued], skipped: [...skipped, ...outcome.skipped] };
   },
 
   /**

@@ -66,7 +66,7 @@ function createMocks(overrides?: Partial<PlanServiceDeps>) {
   };
 
   const outboundChanges = {
-    getByItemId: vi.fn(() => undefined),
+    getByPlanItem: vi.fn(() => undefined),
     getByAssociation: vi.fn(() => []),
     add: vi.fn(),
     addDelete: vi.fn(),

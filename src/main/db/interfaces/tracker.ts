@@ -91,7 +91,6 @@ export interface IOutboundChangeRepository {
   get(id: string): OutboundChange | undefined;
   getByProject(projectId: string): OutboundChange[];
   getByPlanItem(planItemId: string): OutboundChange | undefined;
-  getByItemId(planItemId: string): OutboundChange | undefined;
   getByAssociation(associationId: string): OutboundChange[];
   add(entry: Omit<OutboundItemChange, 'id' | 'plan_item_id' | 'operation' | 'queued_at' | 'error_message' | 'custom_field_overrides' | 'external_key' | 'external_id' | 'tracker_type'> & { plan_item_id: string; operation: 'create' | 'update'; custom_field_overrides?: CustomFieldValues | null }): OutboundChange;
   add(projectId: string, planItemId: string, associationId: string, operation: 'create' | 'update', queuedBy: 'user' | 'claude'): OutboundChange | null;

@@ -1,4 +1,4 @@
-import type { StatusCategory, TrackerAssociationWithScope } from '../../../shared/types';
+import { isOutboundItemChange, type StatusCategory } from '../../../shared/types';
 import type { IOutboundChangeRepository, ITrackerRepository } from '../interfaces';
 import { getConfig } from '../../config';
 
@@ -48,7 +48,7 @@ export function applyAutoQueue(
     updates.description !== undefined ||
     updates.status_category !== undefined;
 
-  const existing = deps.outboundChanges.getByItemId(item.id);
+  const existing = deps.outboundChanges.getByPlanItem(item.id);
   if (existing) {
     if (updates.status_category !== undefined) {
       deps.outboundChanges.updateStatusCategory(existing.id, updates.status_category ?? null);
@@ -121,68 +121,103 @@ export function queueTrackerDeletionIfNeeded(
   });
 }
 
-interface QueueForTrackerItem {
+interface AdmissionItem {
   id: string;
+  parent_id?: string | null;
   external_key: string | null;
-  status_category: string | null;
+  status_category?: string | null;
 }
 
-interface QueueForTrackerInput {
-  projectId: string;
-  itemIds: string[];
-  queuedBy: QueueSource;
-  associations: TrackerAssociationWithScope[];
-  /** Preloaded item-id -> existing queue-entry-id map, to avoid an N+1 getByItemId query per item. */
-  alreadyQueuedItemIds: ReadonlyMap<string, string>;
-  getItem: (itemId: string) => QueueForTrackerItem | undefined;
-  outboundChanges: Pick<IOutboundChangeRepository, 'add' | 'updateStatusCategory'>;
-  onItemNotFound?: (itemId: string) => void;
+export interface ExplicitQueueDeps {
+  planItems: { getByProject(projectId: string): AdmissionItem[] };
+  outboundChanges: Pick<IOutboundChangeRepository, 'add' | 'updateStatusCategory' | 'getByProject'>;
 }
 
-interface QueueForTrackerResult {
-  queuedCount: number;
-  skippedReason?: 'no_association';
+export interface AdmissionOutcome {
+  /** Newly staged, in the order they were admitted. Includes ancestors. */
+  queued: string[];
+  /** Already staged; their status target was brought up to date instead. */
+  refreshed: string[];
+  /** Only ever names an id the caller asked for, never an ancestor. */
+  skipped: { id: string; reason: string }[];
 }
 
 /**
- * Explicit-queue path: Claude's `queue_for_tracker` plan action. Unlike the
- * auto path, it always uses the project's first tracker association even
- * when more than one exists — the action already carries explicit intent to
- * queue, so there is no ambiguity to defer to the user.
- *
- * Dedup matches the auto path: an item already in the queue gets its status
- * target refreshed (rather than being skipped outright) so a repeated
- * queue_for_tracker call with a newer status is not silently dropped.
+ * Walk up from each requested item, collecting ancestors that have never been
+ * exported. An unsynced parent has no key for the child's export to point at,
+ * so the export either refuses the child or silently reparents it under the
+ * association's epic.
  */
-export function queueForTracker(input: QueueForTrackerInput): QueueForTrackerResult {
-  const { projectId, itemIds, queuedBy, associations, alreadyQueuedItemIds, getItem, outboundChanges, onItemNotFound } = input;
-
-  if (associations.length === 0) {
-    return { queuedCount: 0, skippedReason: 'no_association' };
-  }
-
-  const association = associations[0];
-  let queuedCount = 0;
+function withUnsyncedAncestors(itemIds: string[], items: ReadonlyMap<string, AdmissionItem>): Set<string> {
+  const admitted = new Set(itemIds);
+  const walked = new Set<string>();
 
   for (const itemId of itemIds) {
-    const item = getItem(itemId);
+    let currentId = items.get(itemId)?.parent_id ?? null;
+    while (currentId && !walked.has(currentId)) {
+      walked.add(currentId);
+      const parent = items.get(currentId);
+      if (!parent) break;
+      if (!parent.external_key) admitted.add(currentId);
+      currentId = parent.parent_id ?? null;
+    }
+  }
+
+  return admitted;
+}
+
+/**
+ * The one way an item enters the outbound queue by explicit request — the
+ * user's Queue action and Claude's `queue_for_tracker` both come through here.
+ * They used to be separate loops that had drifted apart: one dropped a repeat
+ * request on the floor where the other refreshed its status target, and only
+ * one pulled in unsynced ancestors.
+ *
+ * Which association to stage against stays with the caller, because that rule
+ * genuinely differs: the user is asked when a project has more than one, and
+ * the plan action carries its own intent.
+ */
+export function admitExplicitQueue(input: {
+  projectId: string;
+  itemIds: string[];
+  associationId: string;
+  queuedBy: QueueSource;
+  deps: ExplicitQueueDeps;
+}): AdmissionOutcome {
+  const { projectId, itemIds, associationId, queuedBy, deps } = input;
+  const outcome: AdmissionOutcome = { queued: [], refreshed: [], skipped: [] };
+
+  const items = new Map(deps.planItems.getByProject(projectId).map((item) => [item.id, item]));
+  const requested = new Set(itemIds);
+  const staged = new Map(
+    deps.outboundChanges
+      .getByProject(projectId)
+      .filter(isOutboundItemChange)
+      .map((entry) => [entry.plan_item_id, entry.id]),
+  );
+
+  for (const itemId of withUnsyncedAncestors(itemIds, items)) {
+    const item = items.get(itemId);
     if (!item) {
-      onItemNotFound?.(itemId);
+      if (requested.has(itemId)) outcome.skipped.push({ id: itemId, reason: 'Item not found' });
       continue;
     }
 
-    const existingQueueEntryId = alreadyQueuedItemIds.get(itemId);
-    if (existingQueueEntryId) {
+    const stagedEntryId = staged.get(itemId);
+    if (stagedEntryId) {
+      // A second request with a newer status must not be dropped: the staged
+      // row is what gets exported, so its target moves to the current value.
       if (item.status_category) {
-        outboundChanges.updateStatusCategory(existingQueueEntryId, item.status_category);
+        deps.outboundChanges.updateStatusCategory(stagedEntryId, item.status_category);
       }
+      outcome.refreshed.push(itemId);
       continue;
     }
 
-    outboundChanges.add({
+    deps.outboundChanges.add({
       kpm_project_id: projectId,
       plan_item_id: itemId,
-      association_id: association.id,
+      association_id: associationId,
       operation: resolveOperation(item),
       queued_by: queuedBy,
       target_issue_type_id: null,
@@ -191,10 +226,10 @@ export function queueForTracker(input: QueueForTrackerInput): QueueForTrackerRes
       target_status_category: (item.status_category as StatusCategory | null) ?? null,
       custom_field_overrides: null,
     });
-    queuedCount++;
+    outcome.queued.push(itemId);
   }
 
-  return { queuedCount };
+  return outcome;
 }
 
 export type QueueTrackerUpdateIfNeeded = (
