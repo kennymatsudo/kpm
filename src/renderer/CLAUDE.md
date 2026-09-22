@@ -4,7 +4,7 @@ React 19 + TypeScript + Tailwind v4 + Zustand. Extract hooks not components. Use
 
 ## Component Organization
 
-Components organized by feature in `components/`. Key directories: `app/` (app-shell providers/boundaries), `layout/`, `planning/`, `board-view/`, `tree-view/`, `chat/`, `workspace/`, `welcome/` (no-project landing pane), `development/` (shared PR/review components used by the board), `tracker/`, `plan-ref/`, `keyboard-shortcuts/`, `sidebar/`, `command-palette/`, `ui/` (shared primitives). Browse the directory for the full list.
+Components organized by feature in `components/`. Key directories: `app/` (app-shell providers/boundaries), `layout/`, `planning/`, `board-view/`, `chat/`, `workspace/`, `welcome/` (no-project landing pane), `development/` (shared PR/review components used by the board), `tracker/`, `plan-ref/`, `keyboard-shortcuts/`, `sidebar/`, `command-palette/`, `ui/` (shared primitives). Browse the directory for the full list.
 
 ## Design Principles
 
@@ -53,9 +53,9 @@ Don't create abstractions until you have 3+ actual uses of a pattern. Wait until
 - **Layout hooks** in `components/layout/hooks/` — `usePanelResize`, `useLayoutShortcuts`, `usePersistedViewState`, `useTrackerTopBarIntegration`
 - **Planning hooks** in `components/planning/hooks/` — the logic behind `PlanView` (`components/planning/index.tsx`) lives in hooks exported from `components/planning/hooks/index.ts`: `usePlanItemSelection`, `usePlanContextMenu`, `usePlanTaskEdit`, `useCreateItemModal`, `useBulkActions`. Extract new plan-view concerns into hooks here rather than growing `index.tsx`.
 - **Chat** — `Chat` component receives `currentView?: 'plan' | 'workspace'` prop. Chat history shared across views via `useChatStore` (`stores/chat/`).
-- **Layout constants** in `constants/layout.ts` — `MAX_DEPTH` for plan nesting, and the resizable-panel size configs
+- **Layout constants** in `constants/layout.ts` — the resizable-panel size configs
 - **Stores** — See `stores/CLAUDE.md` for patterns. Use `useShallow` for multi-value selectors. Stores communicate via typed events.
-- **Default views** — Main view defaults to `'workspace'`; planning view mode defaults to `'board'`, with `'tree'` the only alternative. Both are persisted via `usePersistedViewState`.
+- **Default view** — Main view defaults to `'workspace'` and is persisted per project via `usePersistedViewState`. The planning view has one renderer, the board, so there is nothing to switch.
 - **Open documents are a list, not a field.** `workspaceStore` holds `openDocuments` + `activeDocumentId`; `DocumentTabStrip` renders them and `FileEditor` is keyed by document id, because the markdown editor keeps a live Monaco model and reusing one instance bleeds a file's undo history into the next tab. Autosave lives in `useDocumentAutosave`, mounted above the editor — put it back inside the editor and background tabs silently stop saving. Subscribe to the active *id* or *path*, never the document object, or typing re-renders the tree and the chat panel.
 - **WorkspaceHome** — `components/workspace/WorkspaceHome.tsx` is the landing screen shown inside the workspace view when no chat is active. Displays project context and quick-start prompts, plus a dismissible nudge (persisted per-project in localStorage) offering to generate the project's AGENTS.md context file via `RegenerateContextModal` when one is missing or still the placeholder.
 
@@ -80,14 +80,11 @@ Don't create abstractions until you have 3+ actual uses of a pattern. Wait until
 - **`status_category` is not edited from `TaskEditModal`.** Column placement is handled by the board and tracker sync. Drag on the board to move a card.
 - **Work Brief reconciliation is automatic.** Start and detail surfaces do not ask users to compare revisions. Reused sessions keep their worktree while the main process refreshes execution context to the latest approved Work Brief.
 
-## Plan Views
+## Plan View
 
-Two renderers over the same `plan_items`, switched by `components/planning/ViewSwitcher.tsx` and dispatched in `components/planning/index.tsx`:
+The board (`components/board-view/`) is the only renderer over `plan_items`, mounted by `components/planning/index.tsx`, which owns the shared modals, context menu, and selection. Kanban columns are fixed to the status categories; dragging a card between columns is the only way to set status in the UI, and a card's dev session opens in the detail pane. Cards size themselves to the column, so there is no layout math to keep in sync. Children nest under their parent card and `BoardView` builds that hierarchy itself.
 
-- **Board** (`components/board-view/`) — kanban columns fixed to the status categories, drag between columns to change status, and the detail pane for a card's dev session. Cards size themselves to the column; there is no layout math to keep in sync.
-- **Tree** (`components/tree-view/`) — the outline. Rows expose `role="treeitem"` with the item title as their accessible name, and hold the only click-to-set status control in the app (`ui/StatusSelector`).
-
-Both read `TreeNode` / `buildHierarchyTree` from `utils/planHierarchy.ts`, which does tree building only — no geometry.
+A Cards canvas and a Tree outline were removed (2026-09), so a proposal to "switch views" has nowhere to switch to. Hierarchy edits now come from chat tools; the board reads the hierarchy but cannot reparent.
 
 ## Z-Index Layers
 

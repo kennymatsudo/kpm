@@ -91,7 +91,7 @@ export const Layout = memo(function Layout({
 
   // Extracted hooks
   const { sidebarWidth, chatWidth, handleSidebarResizeStart, handleChatResizeStart } = usePanelResize();
-  const { mainView, viewMode, setMainView, setViewMode } = usePersistedViewState(currentProjectId);
+  const { mainView, setMainView } = usePersistedViewState(currentProjectId);
   const {
     chatCollapsed,
     workspaceChatCollapsed,
@@ -127,17 +127,6 @@ export const Layout = memo(function Layout({
     });
   }, [mainView, setMainView]);
 
-  const handleViewModeChange = useCallback((mode: typeof viewMode) => {
-    if (mode === viewMode) return;
-    const end = startPerfSpan('view.mode.switch', { from: viewMode, to: mode });
-    setViewMode(mode);
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => end());
-    });
-  }, [setViewMode, viewMode]);
-
-  const showBoardView = useCallback(() => handleViewModeChange('board'), [handleViewModeChange]);
-
   // Tool log subscription - lives at Layout level so it never unmounts during view switches
   useToolLog(currentProjectId);
 
@@ -170,7 +159,6 @@ export const Layout = memo(function Layout({
     hiddenStatusCategoriesRef,
     setHiddenStatusCategories,
     handleMainViewChange,
-    showBoardView,
     showWorkspaceChat,
     showChatForCurrentView,
     hideChatForCurrentView,
@@ -321,8 +309,6 @@ export const Layout = memo(function Layout({
           onResumeOnboardingTask={onResumeOnboardingTask}
           mainView={mainView}
           onMainViewChange={handleMainViewChange}
-          viewMode={viewMode}
-          onViewModeChange={handleViewModeChange}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           hiddenStatusCategories={hiddenStatusCategories}
@@ -387,7 +373,6 @@ export const Layout = memo(function Layout({
               <div className="flex-1 flex flex-col min-h-0">
                 <ErrorBoundary name="PlanView">
                   <PlanView
-                    viewMode={viewMode}
                     filteredPlannedItems={filteredPlannedItems}
                     searchQuery={debouncedSearchQuery}
                     onSearchChange={setSearchQuery}

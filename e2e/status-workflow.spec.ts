@@ -4,11 +4,9 @@ import {
   createPlanItem,
   deleteProject,
   setItemStatus,
-  setItemStatusInTree,
-  switchViewMode,
   expectItemCount,
   ensureAppReady,
-  treeRow,
+  planCard,
 } from './test-utils';
 
 test.describe.serial('Status workflow', () => {
@@ -28,30 +26,27 @@ test.describe.serial('Status workflow', () => {
   test.afterAll(async ({ electronApp }) => {
     const page = electronApp.context.pages()[0];
     try {
-      await switchViewMode(page, 'Board');
       await deleteProject(page, PROJECT_NAME);
     } catch {
       // Cleanup best-effort
     }
   });
 
-  test('change status Not Started to In Progress to Done', async ({ window }) => {
+  test('a status change moves the card to its new column', async ({ window }) => {
     await expectItemCount(window, 3);
-    await switchViewMode(window, 'Tree');
 
-    await expect(treeRow(window, 'Not Started Task')).toBeVisible();
+    const column = (label: string) => window.getByRole('group', { name: new RegExp(`^${label},`) });
+    await expect(column('Not Started').getByRole('group', { name: 'Not Started Task' })).toBeVisible();
 
-    await setItemStatusInTree(window, 'Not Started Task', 'In Progress');
-    await setItemStatusInTree(window, 'Not Started Task', 'Done');
+    await setItemStatus(window, 'Not Started Task', 'Done');
+    await expect(column('Done').getByRole('group', { name: 'Not Started Task' })).toBeVisible();
 
     // Reset status for subsequent tests
-    await setItemStatusInTree(window, 'Not Started Task', 'Not Started');
-    await switchViewMode(window, 'Board');
+    await setItemStatus(window, 'Not Started Task', 'Not Started');
+    await expect(planCard(window, 'Not Started Task')).toBeVisible();
   });
 
-  test('status changes reflect in Board view', async ({ window }) => {
-    await switchViewMode(window, 'Board');
-
+  test('every status category has a column', async ({ window }) => {
     // Board view shows "3 items" header and status columns
     await expect(window.getByText('3 items')).toBeVisible({ timeout: 10000 });
 

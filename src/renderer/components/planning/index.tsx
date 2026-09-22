@@ -3,7 +3,6 @@ import { BulkActionsMenu } from './BulkActionsMenu';
 import { PlanCardMenu } from './PlanCardMenu';
 import { BulkDeleteConfirmDialog } from './BulkDeleteConfirmDialog';
 import { CreateItemModal } from './CreateItemModal';
-import { TreeView } from '../tree-view';
 import { BoardView } from '../board-view';
 import { AgentStartModal } from '../board-view/AgentStartModal';
 import { LinkPrToItemDialog } from '../development/LinkPrToItemDialog';
@@ -24,7 +23,6 @@ import {
 } from '../../stores';
 import { useDevSessionsStore } from '../../stores/devSessions';
 import { createAndStartAgentSession } from '../../services/agentSessionService';
-import { buildHierarchyTree } from '../../utils/planHierarchy';
 import { resolveStatusCategory } from '../../constants/statusConfig';
 import { useShallow } from 'zustand/react/shallow';
 import {
@@ -34,7 +32,6 @@ import {
   usePlanContextMenu,
   usePlanItemSelection,
 } from './hooks';
-import type { ViewMode } from './ViewSwitcher';
 import type {
   PlanItem,
   StatusCategory,
@@ -42,7 +39,6 @@ import type {
 } from '../../../shared/types';
 
 interface PlanViewProps {
-  viewMode: ViewMode;
   filteredPlannedItems: PlanItem[];
   searchQuery: string;
   onSearchChange: (query: string) => void;
@@ -55,7 +51,6 @@ interface PlanViewProps {
 }
 
 export function PlanView({
-  viewMode,
   filteredPlannedItems,
   searchQuery,
   onSearchChange: _onSearchChange,
@@ -115,7 +110,6 @@ export function PlanView({
 
   const {
     createItemContext,
-    handleCreateItemFromTree,
     handleCreateItemFromBoard,
     closeCreateItemModal,
     handleCreateItemSubmit,
@@ -128,7 +122,7 @@ export function PlanView({
     handleQueueForTracker,
     handleAddToContext,
     handleAddItemToContext,
-    handleTreeContextMenu,
+    handleItemContextMenu,
   } = usePlanContextMenu({
     currentProjectId,
     selectedItemIds,
@@ -183,18 +177,6 @@ export function PlanView({
       trackerType: trackerTypes.size === 1 ? [...trackerTypes][0] : null,
     };
   }, [planItems, selectedItemIds, descendantIds]);
-
-  const handleReparent = useCallback(
-    async (itemIds: string[], newParentId: string | null) => {
-      const actions = itemIds.map((id) => ({
-        type: 'reparent' as const,
-        item_id: id,
-        new_parent_id: newParentId,
-      }));
-      await executePlanActions(actions);
-    },
-    [executePlanActions]
-  );
 
   const {
     showBulkDeleteDialog,
@@ -277,32 +259,22 @@ export function PlanView({
     }
   }, [planItems, currentProjectId, loadSessions, updateStatusCategory]);
 
-  useEffect(() => {
-    if (viewMode !== 'board' && boardDetailSessionId !== null) {
-      setBoardDetailSessionId(null);
-    }
-  }, [boardDetailSessionId, viewMode]);
-
   // A notification (or anything else) can ask for a session's detail pane before
   // this view is mounted, so the request waits on the store until we can honour it.
   const requestedDetailSessionId = useDevSessionsStore((state) => state.selectedSessionId);
   useEffect(() => {
-    if (!requestedDetailSessionId || viewMode !== 'board') return;
+    if (!requestedDetailSessionId) return;
     setBoardDetailSessionId(requestedDetailSessionId);
     useDevSessionsStore.getState().setSelectedSessionId(null);
-  }, [requestedDetailSessionId, viewMode]);
+  }, [requestedDetailSessionId]);
 
   // --- Derived data ---
-
-  // Build tree hierarchy for tree view (using filtered items)
-  const treeHierarchy = useMemo(() => buildHierarchyTree(filteredPlannedItems), [filteredPlannedItems]);
 
   // All filtered items for board view
   const leafItems = useMemo(
     () => filteredPlannedItems,
     [filteredPlannedItems]
   );
-
 
 
   // Initial fetch for this project: distinguish "still loading" from "empty plan"
@@ -348,44 +320,25 @@ export function PlanView({
           wider than <main>, whose overflow-hidden then clips the right-anchored
           detail pane (timestamps cut off). */}
       <div className="flex-1 flex flex-col relative min-w-0">
-        {/* View area - Tree or Board */}
         <div className="flex-1 overflow-hidden" onContextMenu={handleContextMenu}>
-          {viewMode === 'tree' ? (
-            <ErrorBoundary name="TreeView">
-              <TreeView
-                items={treeHierarchy}
-                selectedIds={selectedItemIds}
-                focusedItemId={focusedItemId}
-                searchQuery={searchQuery}
-                onSelectItem={handleSelectItem}
-                onSelectRange={handleSelectRange}
-                onEditItem={handleEditItem}
-                onPrepareEditItem={prefetchEditItem}
-                onContextMenu={handleTreeContextMenu}
-                onReparent={handleReparent}
-                onCreateItem={handleCreateItemFromTree}
-              />
-            </ErrorBoundary>
-          ) : (
-            <ErrorBoundary name="BoardView">
-              <BoardView
-                items={leafItems}
-                allItems={planItems}
-                selectedIds={selectedItemIds}
-                focusedItemId={focusedItemId}
-                searchQuery={searchQuery}
-                onSelectItem={handleSelectItem}
-                onSelectRange={handleSelectRange}
-                onEditItem={handleEditItem}
-                onPrepareEditItem={prefetchEditItem}
-                onContextMenu={handleTreeContextMenu}
-                onCreateItem={handleCreateItemFromBoard}
-                onStartAgent={handleStartAgent}
-                detailSessionId={boardDetailSessionId}
-                onDetailSessionChange={setBoardDetailSessionId}
-              />
-            </ErrorBoundary>
-          )}
+          <ErrorBoundary name="BoardView">
+            <BoardView
+              items={leafItems}
+              allItems={planItems}
+              selectedIds={selectedItemIds}
+              focusedItemId={focusedItemId}
+              searchQuery={searchQuery}
+              onSelectItem={handleSelectItem}
+              onSelectRange={handleSelectRange}
+              onEditItem={handleEditItem}
+              onPrepareEditItem={prefetchEditItem}
+              onContextMenu={handleItemContextMenu}
+              onCreateItem={handleCreateItemFromBoard}
+              onStartAgent={handleStartAgent}
+              detailSessionId={boardDetailSessionId}
+              onDetailSessionChange={setBoardDetailSessionId}
+            />
+          </ErrorBoundary>
         </div>
       </div>
 
@@ -404,7 +357,7 @@ export function PlanView({
           trackerType={activeTrackerType}
           onLinkPr={() => handleLinkPr(contextMenu.singleItemId!)}
           onStartAgent={handleStartAgent}
-          onOpenDetail={viewMode === 'board' ? setBoardDetailSessionId : undefined}
+          onOpenDetail={setBoardDetailSessionId}
         />
       ) : contextMenu ? (
         <BulkActionsMenu

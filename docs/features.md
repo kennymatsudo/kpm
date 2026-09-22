@@ -62,10 +62,9 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - Claude tools: `src/main/kpmTools/tools/plan-items.ts`, `src/main/kpmTools/tools/plan-changes.ts`
   - IPC handlers: `src/main/ipc/handlers/plan.ts`
   - Stores: `src/renderer/stores/project/planSlice.ts`
-  - Components: `src/renderer/components/board-view/BoardView.tsx`, `src/renderer/components/tree-view/TreeView.tsx`, `src/renderer/components/planning/CreateItemModal.tsx`
+  - Components: `src/renderer/components/board-view/BoardView.tsx`, `src/renderer/components/planning/CreateItemModal.tsx`
 - **Entry points / surfaces:**
-  - Board view: kanban columns by status category, right-click a card for CRUD
-  - Tree view: hierarchical list with expand/collapse
+  - Board view: kanban columns by status category, children nested under their parent card, right-click a card for CRUD
   - Create item modal: title-only quick create, with an expanded Work Brief, Repository Scope, and operational controls
   - Task edit modal: unified Work Brief and Repository Scope editing with revision-guarded atomic saves
 - **Dependencies / integrations:**
@@ -73,7 +72,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - Jira/Linear: plan items link to external tracker issues via external_key and `kpm_tracker_associations`
   - SQLite: `completed_at` is set/cleared by `PlanItemRepository` when items move to/from done; no feature currently reads it
   - Claude SDK: in-process tools for querying, creating, updating plan items (with user approval gate)
-- **Maturity signal:** Mature. Core to app. Full CRUD, multi-view rendering, performance optimized with perf logging.
+- **Maturity signal:** Mature. Core to app. Full CRUD, performance optimized with perf logging. Reparenting is no longer exposed in the UI — it goes through the chat tools or the API.
 
 ### 2. Work Brief and Repository Scope (Intent, Description, Acceptance Criteria, Repos)
 - **What it does:** Treats title, description, intent, and acceptance criteria as one revisioned Work Brief while keeping Repository Scope separate. Expanded create and edit forms use the same controlled editors; edits submit one atomic action batch with a revision guard for Work Brief changes. Description can sync to Jira/Linear, while intent and acceptance criteria guide execution. `source_document_id` remains a non-UI breadcrumb to discovery context.
@@ -110,35 +109,34 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 - **Maturity signal:** Mature. Read-heavy. Circular dependency checks in place. No dedicated UI for managing relations yet (only via Claude or API).
 
 ### 4. Plan Item Status Tracking (Status Categories: not_started, in_progress, in_review, done, blocked, canceled)
-- **What it does:** Each plan item has a status within one of six categories. Board and tree views filter and organize by status. Status transitions trigger tracker sync queuing and event notifications to listeners.
+- **What it does:** Each plan item has a status within one of six categories. The board filters and organizes by status. Status transitions trigger tracker sync queuing and event notifications to listeners.
 - **Key code locations:**
   - DB: `src/main/db/domain/PlanActionService.ts` (`executeUpdateItem`), `src/main/db/repositories/impl/PlanItemRepository.ts` (`updateStatusCategory`)
   - IPC handlers: `src/main/ipc/handlers/plan.ts` (updateItemStatus)
   - Stores: `src/renderer/stores/project/planSlice.ts` (statusChanged event)
-  - Components: `src/renderer/components/ui/StatusSelector.tsx` (renders both the dropdown and the status badge)
+  - Components: `src/renderer/components/board-view/BoardView.tsx` (column drop handling), `src/renderer/components/board-view/dropBehavior.ts`
   - Events: `src/renderer/stores/storeEvents.ts` (status-changed event)
 - **Entry points / surfaces:**
-  - Status selector dropdown on tree rows — the only click-to-set status control
-  - Board view: columns organized by status category; drag a card between columns to change its status
+  - Board view: columns organized by status category; dragging a card between columns is the only way a user sets status directly
+  - Agent execution and tracker sync move items on their own (start implementation → in_progress, review handoff → in_review)
 - **Dependencies / integrations:**
   - Tracker sync: `queueTrackerUpdateIfNeeded` called on status change
   - `completed_at`: stamped on transition to done and cleared on transition away (`PlanItemRepository`)
 - **Maturity signal:** Mature. Core feature, well-tested status flow.
 
-### 5. Plan Views (Board, Tree)
-- **What it does:** Two interchangeable views over the same plan-item data, switched via the planning view switcher — there's no per-view data model, just different renderers over `plan_items`. **Board** is the default: kanban columns fixed to the six status categories (not_started, in_progress, in_review, done, blocked, canceled); dragging a card between columns changes its status, and clicking a card opens a detail pane that — for plan items with an active or past dev session — also surfaces implementation activity, diffs, and PR info (see Agentic Task Execution). **Tree** is a traditional outline with expand/collapse, multi-select, and drag-to-reparent. A third view, a free-form spatial canvas, was removed along with Visual Groups and per-item positions.
+### 5. Plan View (Board)
+- **What it does:** One renderer over `plan_items`: kanban columns fixed to the six status categories (not_started, in_progress, in_review, done, blocked, canceled). Dragging a card between columns changes its status, children nest under their parent card behind a per-card toggle, and clicking a card opens a detail pane that — for plan items with an active or past dev session — also surfaces implementation activity, diffs, and PR info (see Agentic Task Execution). Two alternate views were removed: a free-form spatial canvas (with Visual Groups and per-item positions) and a Tree outline. With the outline went the view switcher, the click-to-set status dropdown, and drag-to-reparent.
 - **Key code locations:**
   - Board: `src/renderer/components/board-view/BoardView.tsx`, `BoardColumn.tsx`, `BoardCard.tsx`, `dropBehavior.ts`; detail-pane activity/diff tabs in `ActivityTab.tsx`, `ChangesTab.tsx`
-  - Tree: `src/renderer/components/tree-view/TreeView.tsx`
-  - Shared: `src/renderer/utils/planHierarchy.ts` (`buildHierarchyTree`), `src/renderer/stores/project/planSlice.ts` (hierarchy and status live here regardless of view)
+  - Host: `src/renderer/components/planning/index.tsx` (`PlanView` — shared modals, context menu, selection)
+  - Store: `src/renderer/stores/project/planSlice.ts` (hierarchy and status)
 - **Entry points / surfaces:**
-  - View switcher in the planning header
+  - Planning header: search, status filter, people filter, selection count
   - Board: drag between columns, right-click menu, double-click to edit, click card for detail pane (Activity/Changes/Review tabs for dev sessions)
-  - Tree: drag-to-reparent, multi-select, arrow-key navigation, status dropdown per row
 - **Dependencies / integrations:**
-  - Board: detail pane pulls in dev-session state (`dev_sessions.automation_phase`) and GitHub PR info for active work
-  - Multi-select (board, tree) coordinates with Bulk Plan Actions (feature 9)
-- **Maturity signal:** Mature. Board's automation-phase state machine is by far the more behaviorally complex of the two. Tree is the simpler, best-tested secondary view.
+  - Detail pane pulls in dev-session state (`dev_sessions.automation_phase`) and GitHub PR info for active work
+  - Multi-select coordinates with Bulk Plan Actions (feature 9)
+- **Maturity signal:** Mature. The automation-phase state machine behind the cards is the behaviorally complex part.
 
 ### 9. Bulk Plan Actions (Create Multiple Items, Reparent, Delete)
 - **What it does:** Multi-select plan items and perform batch operations: delete, reparent to a new parent, update status, apply labels. Actions flow through approval queue.
@@ -1117,7 +1115,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 
 | Retired | Folded into | Retired | Folded into |
 |---|---|---|---|
-| 6, 7 | 5 (Plan Views) | 44, 45 | 43 (Artifact Generation) |
+| 6, 7 | 5 (Plan View) | 44, 45 | 43 (Artifact Generation) |
 | 14 | 13 (System Prompts) | 54 | 53 (Confluence Integration) |
 | 15, 16, 103 | 11 (Main Chat Interface) | 55, 56 | removed |
 | 18, 20, 21, 108 | 19 (Plan-item Dev Sessions) | 58 | 57 (Board Agent Prompt Customization) |
@@ -1135,7 +1133,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 
 The standalone "Permissions & Security" group was folded into Settings & Configuration (feature 64). A second, verbatim-duplicate copy of the Cross-Cutting Infrastructure section (features 83–95) was also removed — it existed only as a condensed restatement and had already drifted from the primary copy.
 
-Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board Agent Prompts"; Feature 105 was reworked from "Workflow Mode" into "Execution Playbooks"; Features 98 and 100 were removed; Feature 102 "Plan References" was added.
+Earlier history: Feature 5 narrowed from three plan views to one — the Cards canvas went with Visual Groups, then the Tree outline was removed as the orphan this catalog had already flagged, leaving the board; Feature 57 was reworked from "Agent Team Prompts" into "Board Agent Prompts"; Feature 105 was reworked from "Workflow Mode" into "Execution Playbooks"; Features 98 and 100 were removed; Feature 102 "Plan References" was added.
 
 **Feature density by area:**
 - Planning & Plan Management (7)
@@ -1162,22 +1160,22 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
 ### layout/ Components
 - `Layout.tsx`: Overall app shell; hosts sidebar, main view, chat panel
   - Features: 52 (Sidebar Navigation), 74 (Toast Notifications)
-- `TopBar.tsx`: Header bar with project name, view switcher, search
+- `TopBar.tsx`: Header bar hosting the project section, plan filters, and status badges
   - Features: 52 (Sidebar Navigation), 50 (Global Search), 107 (Notification Bell), 110 (Cross-Project Concurrency)
-- `TopBarProjectSection.tsx`: Project name button + switcher submenu, with per-project activity dots
+- `TopBarProjectSection.tsx`: Project name button + switcher submenu with per-project activity dots, and the Workspace/Execute switcher
   - Features: 110 (Cross-Project Concurrency)
+- `TopBarPlanningControls.tsx`: Search, status filter, people filter, and selection count for the board
+  - Features: 5 (Plan View), 9 (Bulk Actions)
 - `Resize` hooks: Resizable panels
   - Features: 69 (Workspace View & File Editor)
 
 ### planning/ Components
-- `index.tsx`: `PlanView` — dispatches to the board or tree renderer and owns the shared modals, context menus, and selection
-  - Features: 5 (Plan Views), 9 (Bulk Actions)
+- `index.tsx`: `PlanView` — mounts the board and owns the shared modals, context menus, and selection
+  - Features: 5 (Plan View), 9 (Bulk Actions)
 - `CreateItemModal.tsx` / `TaskEditModal.tsx`: Quick create plus unified Work Brief, Repository Scope, and operational editing
   - Features: 1 (Plan Item Hierarchy), 2 (Work Brief and Repository Scope)
 - `WorkBriefEditor.tsx` / `RepositoryScopeEditor.tsx`: Reusable controlled editors shared by create, edit, and applicable approval paths
   - Features: 2 (Work Brief and Repository Scope)
-- `../ui/StatusSelector.tsx`: Dropdown for status changes
-  - Features: 4 (Plan Item Status Tracking)
 - `PendingActionsPanel.tsx`: Approval queue display for plan actions, including Work Brief diffs and editable Repository Scope
   - Features: 2 (Work Brief and Repository Scope), 10 (Plan Item Approval Flow), 40 (Document & Context-File Editing Tools)
 - `PlanCardMenu.tsx`: Card context menu
@@ -1185,11 +1183,11 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
 
 ### board-view/ Components
 - `BoardView.tsx`: Kanban board layout by status
-  - Features: 5 (Plan Views), 23 (Review Loop & Automated Addressing), 25 (GitHub PR Integration), 99 (Merge Queue)
+  - Features: 5 (Plan View), 23 (Review Loop & Automated Addressing), 25 (GitHub PR Integration), 99 (Merge Queue)
 - `BoardColumn.tsx`: Single status column
-  - Features: 5 (Plan Views)
+  - Features: 5 (Plan View)
 - `BoardCard.tsx`: Card in board column, with phase indicator badge
-  - Features: 5 (Plan Views), 19 (Plan-item Dev Sessions — phase indicators)
+  - Features: 5 (Plan View), 19 (Plan-item Dev Sessions — phase indicators)
 - `DetailPane.tsx`: Right-side detail panel (activity, changes, review)
   - Features: 19 (Plan-item Dev Sessions), 23 (Review Loop & Automated Addressing), 25 (GitHub PR Integration), 105 (Execution Playbooks)
 - `PhaseStepper.tsx`: Playbook step progress + paused-run actions in the detail pane
@@ -1202,10 +1200,6 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
   - Features: 99 (Merge Queue)
 - `AgentStartModal.tsx`: Start Implementation modal, including the current Work Brief, playbook picker, and resolved-plan preview
   - Features: 19 (Plan-item Dev Sessions), 105 (Execution Playbooks)
-
-### tree-view/ Components
-- `TreeView.tsx`: Hierarchical tree outline
-  - Features: 5 (Plan Views), 1 (Plan Item Hierarchy)
 
 ### chat/ Components
 - `MessageList.tsx`: Rendered chat history with streaming
@@ -1342,7 +1336,7 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
   - Features: 76 (Project Onboarding & Context Generation)
 
 ### ui/ Components (Shared primitives)
-- `Modal.tsx`, `StatusSelector.tsx`, `DiffViewer.tsx`, `DropdownMenu.tsx`: Reusable UI elements
+- `Modal.tsx`, `DiffViewer.tsx`, `DropdownMenu.tsx`, `Select.tsx`: Reusable UI elements
   - Used across: 10, 33, 40, etc. (all approval/diff workflows)
 
 ---
@@ -1361,7 +1355,7 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
 - **Low:** Notifications (74).
 
 ### By User Touchpoints
-- **High-frequency:** Main chat (11), plan views (5), workspace view & file editor (69).
+- **High-frequency:** Main chat (11), plan view (5), workspace view & file editor (69).
 - **Medium-frequency:** Settings (61, 62, 64, 65), Markdown focus reader (106).
 - **Low-frequency:** Onboarding (76), Confluence integration (53), actions (109).
 
@@ -1374,10 +1368,11 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
 
 ## Gaps & Orphaned Features
 
-- **Orphaned:** The Tree view (one of the two Plan Views, feature 5) is well-implemented but rarely used; the board is the default and the one people live in.
 - **Optional:** Confluence integration (53) depends on Jira/Atlassian credentials and linked pages, so it is mature in code but not always visible in day-to-day project work.
 - **Experimental:** Custom prompts (65) are lightweight; prompt editor UI is basic.
 - **Known limitations:**
+  - Status is set by dragging a card between board columns; the click-to-set status control went with the Tree view.
+  - Reparenting has no UI affordance any more; it goes through the chat tools or the API.
   - Image editing not supported; inline image paste in chat only.
   - Markdown documents use a dedicated markdown editor (Monaco-backed edit pane plus preview/toolbar) rather than raw Monaco.
   - No advanced IDE features (IntelliSense, debugging, git integration in editor).

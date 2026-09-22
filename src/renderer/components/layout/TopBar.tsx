@@ -13,7 +13,6 @@ import { JiraIcon, LinearIcon } from '../icons';
 import { Z_INDEX } from '../../constants/zIndex';
 import { TrackerConfigDialog, TrackerLinkProjectDialog, SyncReviewPanel, SyncReviewModal, TypeMappingDialog, TrackerSyncPanel } from '../tracker';
 import type { MainView } from './MainViewSwitcher';
-import type { ViewMode } from '../planning/ViewSwitcher';
 import type { StatusCategory, TrackerAssociationWithScope, TrackerCredentialInfo, TrackerType } from '../../../shared/types';
 import { TopBarPlanningControls } from './TopBarPlanningControls';
 import { TopBarProjectSection } from './TopBarProjectSection';
@@ -42,9 +41,6 @@ interface TopBarProps {
   // Main view controls (workspace vs planning)
   mainView: MainView;
   onMainViewChange: (view: MainView) => void;
-  // View controls (card/tree/board within planning)
-  viewMode: ViewMode;
-  onViewModeChange: (mode: ViewMode) => void;
   // Filter controls
   searchQuery: string;
   onSearchChange: (query: string) => void;
@@ -72,8 +68,6 @@ export function TopBar({
   onResumeOnboardingTask,
   mainView,
   onMainViewChange,
-  viewMode,
-  onViewModeChange,
   searchQuery,
   onSearchChange,
   hiddenStatusCategories,
@@ -213,14 +207,12 @@ export function TopBar({
         {/* Spacer */}
         <div className="flex-1" />
 
-        {/* Right section: View controls | Actions | Chat toggle (chrome) */}
+        {/* Right section: Plan filters | Actions | Chat toggle (chrome) */}
         <div className="flex items-center gap-2 pr-3 no-drag min-w-0">
           {currentProject && (
             <>
               <TopBarPlanningControls
                 isVisible={mainView === 'planning'}
-                viewMode={viewMode}
-                onViewModeChange={onViewModeChange}
                 selectedItemCount={selectedItemCount}
                 onClearSelection={onClearSelection}
                 searchQuery={searchQuery}

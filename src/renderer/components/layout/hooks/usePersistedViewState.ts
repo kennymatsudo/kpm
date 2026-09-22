@@ -1,19 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { ViewMode } from '../../planning/ViewSwitcher';
 import type { MainView } from '../MainViewSwitcher';
 
 export interface UsePersistedViewStateReturn {
   mainView: MainView;
-  viewMode: ViewMode;
   setMainView: (view: MainView) => void;
-  setViewMode: (mode: ViewMode) => void;
-}
-
-function readStoredViewMode(projectId: string | null): ViewMode {
-  if (!projectId) return 'board';
-  const saved = localStorage.getItem(`kpm-view-mode-${projectId}`);
-  // 'card' was the retired spatial canvas; anyone still holding it lands on the board.
-  return saved === 'tree' ? saved : 'board';
 }
 
 function readStoredMainView(projectId: string | null): MainView {
@@ -28,25 +18,6 @@ function readStoredMainView(projectId: string | null): MainView {
 }
 
 export function usePersistedViewState(projectId: string | null): UsePersistedViewStateReturn {
-  // View mode state - persisted per project in localStorage
-  const [viewMode, setViewModeState] = useState<ViewMode>(() => readStoredViewMode(projectId));
-
-  // Update view mode when project changes
-  useEffect(() => {
-    setViewModeState(readStoredViewMode(projectId));
-  }, [projectId]);
-
-  // Persist view mode changes
-  const setViewMode = useCallback(
-    (mode: ViewMode) => {
-      setViewModeState(mode);
-      if (projectId) {
-        localStorage.setItem(`kpm-view-mode-${projectId}`, mode);
-      }
-    },
-    [projectId]
-  );
-
   // Main view state (planning vs development vs workspace) - persisted per project
   // Default to 'workspace' for chat-first experience
   const [mainView, setMainViewState] = useState<MainView>(() => readStoredMainView(projectId));
@@ -69,8 +40,6 @@ export function usePersistedViewState(projectId: string | null): UsePersistedVie
 
   return {
     mainView,
-    viewMode,
     setMainView,
-    setViewMode,
   };
 }

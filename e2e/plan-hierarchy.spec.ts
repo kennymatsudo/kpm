@@ -3,7 +3,6 @@ import {
   createProject,
   createPlanItem,
   deleteProject,
-  switchViewMode,
   reparentItem,
   expectItemCount,
   ensureAppReady,
@@ -25,14 +24,13 @@ test.describe.serial('Plan hierarchy workflow', () => {
   test.afterAll(async ({ electronApp }) => {
     const page = electronApp.context.pages()[0];
     try {
-      await switchViewMode(page, 'Board');
       await deleteProject(page, PROJECT_NAME);
     } catch {
       // Cleanup best-effort
     }
   });
 
-  test('drag-drop creates parent-child hierarchy', async ({ window }) => {
+  test('reparenting nests a card under its parent', async ({ window }) => {
     await expectItemCount(window, 3);
 
     await reparentItem(window, 'Child Task 1', 'Parent Feature');
@@ -43,27 +41,15 @@ test.describe.serial('Plan hierarchy workflow', () => {
     ).toBeVisible();
   });
 
-  test('tree view shows hierarchy', async ({ window }) => {
-    await switchViewMode(window, 'Tree');
-
-    await expect(window.getByText('Parent Feature')).toBeVisible();
-    await expect(window.getByText('Child Task 1')).toBeVisible();
-    await expect(window.getByText('Child Task 2')).toBeVisible();
-
-    await switchViewMode(window, 'Board');
-  });
-
-  test('drag-drop creates multi-level nesting', async ({ window }) => {
+  test('nesting goes more than one level deep', async ({ window }) => {
     // Reparent Child Task 2 under Child Task 1 for 3-level hierarchy:
     // Parent Feature > Child Task 1 > Child Task 2
     await reparentItem(window, 'Child Task 2', 'Child Task 1');
 
-    await switchViewMode(window, 'Tree');
-
-    await expect(window.getByText('Parent Feature')).toBeVisible();
-    await expect(window.getByText('Child Task 1')).toBeVisible();
-    await expect(window.getByText('Child Task 2')).toBeVisible();
-
-    await switchViewMode(window, 'Board');
+    // Nested cards start collapsed, so open the parent to reach the second level
+    await planCard(window, 'Parent Feature').getByRole('button', { name: '1 sub' }).click();
+    await expect(
+      planCard(window, 'Child Task 1').getByRole('button', { name: '1 sub' })
+    ).toBeVisible();
   });
 });

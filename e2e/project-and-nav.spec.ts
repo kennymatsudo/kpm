@@ -8,8 +8,6 @@ import {
   expectItemCount,
   ensureAppReady,
   planCard,
-  switchViewMode,
-  treeRow,
 } from './test-utils';
 
 test.describe.serial('Project operations and navigation', () => {
@@ -141,17 +139,14 @@ test.describe.serial('Project operations and navigation', () => {
   });
 
   test('arrow keys work in dropdown menus', async ({ window }) => {
-    // The status control lives in Tree view; the board sets status by column.
-    await switchViewMode(window, 'Tree');
+    await openItemEditPanel(window, 'Test Item');
 
-    const statusButton = treeRow(window, 'Test Item').getByLabel(/^Status:/);
-    await statusButton.click();
-
-    await expect(window.getByRole('option', { name: 'In Progress' })).toBeVisible();
+    await window.getByLabel('Type').click();
+    await expect(window.getByRole('option', { name: 'Task' })).toBeVisible();
     await window.keyboard.press('ArrowDown');
     await window.keyboard.press('Escape');
 
-    await switchViewMode(window, 'Board');
+    await window.keyboard.press('Escape');
   });
 
   test('delete confirmation dialog appears for destructive actions', async ({ window }) => {

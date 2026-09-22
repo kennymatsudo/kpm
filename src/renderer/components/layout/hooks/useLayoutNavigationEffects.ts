@@ -19,7 +19,6 @@ interface UseLayoutNavigationEffectsParams {
   hiddenStatusCategoriesRef: MutableRefObject<Set<StatusCategory>>;
   setHiddenStatusCategories: (categories: Set<StatusCategory>) => void;
   handleMainViewChange: (view: 'planning' | 'workspace') => void;
-  showBoardView: () => void;
   showWorkspaceChat: () => void;
   showChatForCurrentView: () => void;
   hideChatForCurrentView: () => void;
@@ -34,7 +33,6 @@ export function useLayoutNavigationEffects({
   hiddenStatusCategoriesRef,
   setHiddenStatusCategories,
   handleMainViewChange,
-  showBoardView,
   showWorkspaceChat,
   showChatForCurrentView,
   hideChatForCurrentView,
@@ -74,10 +72,9 @@ export function useLayoutNavigationEffects({
         useChatStore.getState().setViewedSession(event.payload.chatSessionId);
       }
 
-      // The detail pane only exists in board mode, and PlanView may not be
-      // mounted yet, so park the request on the store for it to adopt on mount.
+      // PlanView may not be mounted yet, so park the detail-pane request on the
+      // store for it to adopt on mount.
       if (event.payload.view === 'planning' && event.payload.boardSessionId) {
-        showBoardView();
         useDevSessionsStore.getState().setSelectedSessionId(event.payload.boardSessionId);
       }
 
@@ -127,7 +124,7 @@ export function useLayoutNavigationEffects({
     });
 
     return unsubscribe;
-  }, [handleFileOpen, handleMainViewChange, hiddenStatusCategoriesRef, setHiddenStatusCategories, showBoardView, showChatForCurrentView, showWorkspaceChat]);
+  }, [handleFileOpen, handleMainViewChange, hiddenStatusCategoriesRef, setHiddenStatusCategories, showChatForCurrentView, showWorkspaceChat]);
 
   // The chat store deletes the tab; hiding the panel is the layout's call.
   useEffect(
