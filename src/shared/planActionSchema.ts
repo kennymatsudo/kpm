@@ -15,7 +15,7 @@
 
 import { z } from 'zod';
 import type { PlanActionRef, PlanActionRefKind } from './planActionRefs';
-import { canvasPosition, planItemUpdatesType } from './planItemFieldSchemas';
+import { planItemUpdatesType } from './planItemFieldSchemas';
 import { connectedRepoIdSchema, repositoryScopeSchema, WORK_BRIEF_LIMITS, workBriefDraftSchema } from './workBrief';
 
 const relationType = z.enum(['depends_on', 'blocks', 'relates_to']);
@@ -46,8 +46,6 @@ function action<Schema extends z.ZodObject<z.ZodRawShape>>(
 
 const itemRef = <Field extends string>(field: Field): PlanActionRef<Field> =>
   ({ field, kind: 'planItem', placeholders: 'allowed' });
-const groupRef = <Field extends string>(field: Field): PlanActionRef<Field> =>
-  ({ field, kind: 'group', placeholders: 'allowed' });
 
 /**
  * One entry per PlanAction type. Keyed by the literal `type` value so the
@@ -136,46 +134,13 @@ export const PLAN_ACTION_REGISTRY = {
   delete_item: action(z.object({
     type: z.literal('delete_item'),
     item_id: z.string(),
-    /** Absent means orphan the descendants, matching the canvas delete dialog's default button. */
+    /** Absent means orphan the descendants, matching the delete dialog's default button. */
     cascade: z.boolean().optional(),
-  }), { refs: [itemRef('item_id')] }),
-  set_position: action(z.object({
-    type: z.literal('set_position'),
-    item_id: z.string(),
-    x: canvasPosition,
-    y: canvasPosition,
   }), { refs: [itemRef('item_id')] }),
   queue_for_tracker: action(z.object({
     type: z.literal('queue_for_tracker'),
     item_ids: z.array(z.string()),
   }), { refs: [itemRef('item_ids')] }),
-  create_group: action(z.object({
-    type: z.literal('create_group'),
-    project_id: z.string(),
-    name: z.string(),
-    position_x: z.number(),
-    position_y: z.number(),
-    width: z.number(),
-    height: z.number(),
-  }), { creates: 'group' }),
-  update_group: action(z.object({
-    type: z.literal('update_group'),
-    group_id: z.string(),
-    updates: z.object({
-      name: z.string().optional(),
-      width: z.number().optional(),
-      height: z.number().optional(),
-    }),
-  }), { refs: [groupRef('group_id')] }),
-  delete_group: action(z.object({
-    type: z.literal('delete_group'),
-    group_id: z.string(),
-  }), { refs: [groupRef('group_id')] }),
-  assign_to_group: action(z.object({
-    type: z.literal('assign_to_group'),
-    item_id: z.string(),
-    group_id: z.string().nullable(),
-  }), { refs: [itemRef('item_id'), groupRef('group_id')] }),
 } as const;
 
 export type PlanActionType = keyof typeof PLAN_ACTION_REGISTRY;

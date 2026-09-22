@@ -45,7 +45,6 @@ function rowToPlanItem(row: Record<string, unknown>): PlanItem {
     source_document_id: (row.source_document_id as string | null) ?? null,
     work_brief_revision: (row.work_brief_revision as number | null) ?? 1,
     status: (row.status as 'backlog' | 'planned') || 'planned',
-    group_id: row.group_id as string | null ?? null,
     primary_repo_id: (row.primary_repo_id as string | null) ?? null,
     affected_repo_ids: parseStringArray((row.affected_repo_ids as string | null) ?? null) ?? [],
   } as PlanItem;
@@ -141,7 +140,6 @@ interface PreparedStatements {
   // Write operations
   insert: Statement;
   deleteById: Statement;
-  updatePosition: Statement;
   reparent: Statement;
   deleteRepositoryTargets: Statement;
   insertRepositoryTarget: Statement;
@@ -244,9 +242,6 @@ export class PlanItemRepository implements IPlanItemRepository {
         RETURNING *
       `),
       deleteById: db.prepare('DELETE FROM plan_items WHERE id = ?'),
-      updatePosition: db.prepare(`
-        UPDATE plan_items SET position_x = ?, position_y = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
-      `),
       reparent: db.prepare(`
         UPDATE plan_items SET parent_id = ?, status = 'planned', updated_at = CURRENT_TIMESTAMP WHERE id = ?
       `),
@@ -540,20 +535,6 @@ export class PlanItemRepository implements IPlanItemRepository {
   getChildCount(itemId: string): number {
     const result = this.stmts.getChildCount.get(itemId) as { count: number };
     return result.count;
-  }
-
-  updatePosition(itemId: string, x: number, y: number): void {
-    this.stmts.updatePosition.run(x, y, itemId);
-  }
-
-  batchUpdatePositions(updates: { id: string; x: number; y: number }[]): void {
-    if (updates.length === 0) return;
-    const transaction = this.db.transaction((entries: { id: string; x: number; y: number }[]) => {
-      for (const entry of entries) {
-        this.stmts.updatePosition.run(entry.x, entry.y, entry.id);
-      }
-    });
-    transaction(updates);
   }
 
   getNextOrder(projectId: string, parentId: string | null): number {

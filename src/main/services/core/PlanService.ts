@@ -13,25 +13,6 @@ export interface PlanServiceDeps {
 
 export function createPlanService(deps: PlanServiceDeps) {
   return {
-    updatePositions(updates: { id: string; x: number; y: number }[]): ServiceResult<void> {
-      if (updates.length === 0) {
-        return success(undefined);
-      }
-
-      try {
-        const ids = updates.map((update) => update.id);
-        const existingIds = deps.planItems.getExistingIds(ids);
-        const missingId = ids.find((id) => !existingIds.has(id));
-        if (missingId) {
-          return failure(`Item not found: ${missingId}`);
-        }
-        deps.planItems.batchUpdatePositions(updates);
-        return success(undefined);
-      } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
-      }
-    },
-
     updateItem(itemId: string, updates: PlanItemUpdates): ServiceResult<void> {
       const item = deps.planItems.get(itemId);
       if (!item) {

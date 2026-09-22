@@ -214,7 +214,6 @@ function warmRuntime(options: {
       },
       planItems: {},
       planRelations: {},
-      groups: {},
       repos: { getByProject: () => [] },
       devSessions: {},
       confluenceLinks: {},

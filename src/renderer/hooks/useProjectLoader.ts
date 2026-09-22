@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { emit, subscribe as subscribeToStoreEvent, useChatStore, useGroupStore, useProjectDomainStore, useResourceDomainStore, useWorkspaceStore, selectProjectSummary } from '../stores';
+import { emit, subscribe as subscribeToStoreEvent, useChatStore, useProjectDomainStore, useResourceDomainStore, useWorkspaceStore, selectProjectSummary } from '../stores';
 import { applyLoadedProjectData, setProjectSwitching } from '../stores/project/domainService';
 import { resetAllProjectScopedStores } from '../stores/projectScopedStores';
 import {
@@ -101,10 +101,7 @@ export function useProjectLoader(options: UseProjectLoaderOptions = {}) {
       let planItems: PlanItem[] = [];
 
       try {
-        const [resources] = await Promise.all([
-          loadProjectResources(projectId),
-          useGroupStore.getState().loadGroups(projectId),
-        ]);
+        const resources = await loadProjectResources(projectId);
         repos = resources.repos;
         attachments = resources.attachments;
         planItems = resources.planItems;

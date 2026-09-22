@@ -11,7 +11,7 @@
 import { z } from 'zod';
 import { resultOf, type EndpointDefinition } from './endpoints';
 import { planActionSchema } from '../planActionSchema';
-import { buildPlanItemUpdateShape, canvasPosition } from '../planItemFieldSchemas';
+import { buildPlanItemUpdateShape } from '../planItemFieldSchemas';
 import { uuid } from './sharedSchemas';
 import type { PlanActionResult, PlanRelation } from '../types';
 import type { PlanItem } from '../base-types';
@@ -67,18 +67,6 @@ export const planEndpoints = {
     channel: 'plan:get-relations',
     params: z.object({ projectId: uuid }),
     result: resultOf<RegistryResponse<{ relations: PlanRelation[] }>>(),
-  },
-  updatePosition: {
-    channel: 'plan:update-position',
-    params: z.object({ itemId: uuid, x: canvasPosition, y: canvasPosition }),
-    result: resultOf<RegistryResponse>(),
-  },
-  updatePositions: {
-    channel: 'plan:update-positions',
-    params: z.object({
-      updates: z.array(z.object({ id: uuid, x: canvasPosition, y: canvasPosition })).max(500),
-    }),
-    result: resultOf<RegistryResponse>(),
   },
   updateItem: {
     channel: 'plan:update-item',

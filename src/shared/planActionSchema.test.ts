@@ -26,12 +26,7 @@ const CANONICAL_ACTION_TYPES = [
   'revise_work_brief',
   'set_repo_targets',
   'delete_item',
-  'set_position',
   'queue_for_tracker',
-  'create_group',
-  'update_group',
-  'delete_group',
-  'assign_to_group',
 ] as const;
 
 type CanonicalType = (typeof CANONICAL_ACTION_TYPES)[number];

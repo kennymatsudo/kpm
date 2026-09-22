@@ -135,8 +135,6 @@ function createFakePlanItemRepo(db: Database): IPlanItemRepository {
       return rows.map((r) => r.id);
     },
     getChildCount: () => 0,
-    updatePosition: () => {},
-    batchUpdatePositions: () => {},
     getNextOrder: () => 0,
     getChildrenByParent: () => [],
     getSiblings: () => [],

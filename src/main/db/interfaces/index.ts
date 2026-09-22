@@ -17,8 +17,6 @@ export type {
   ImportedIssueFields,
 } from './plan';
 
-// Group domain
-export type { IGroupRepository, GroupUpdates } from './group';
 
 // Tracker domain
 export type { ITrackerRepository, ISyncRepository, SyncSnapshotWrite, IOutboundChangeRepository, ITypeMappingRepository } from './tracker';

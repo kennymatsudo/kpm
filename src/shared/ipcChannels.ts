@@ -19,7 +19,6 @@ import { toNestedChannels } from './ipc/endpoints';
 import { toNestedEventChannels } from './ipc/appEvents';
 import { terminalEvents } from './ipc/terminalEvents';
 import { planEndpoints } from './ipc/planEndpoints';
-import { groupEndpoints } from './ipc/groupEndpoints';
 import { exportEndpoints } from './ipc/exportEndpoints';
 import { confluenceEndpoints } from './ipc/confluenceEndpoints';
 import { linearDocumentsEndpoints } from './ipc/linearDocumentsEndpoints';
@@ -57,12 +56,11 @@ import { testingEndpoints } from './ipc/testingEndpoints';
 import { shellEndpoints } from './ipc/shellEndpoints';
 
 /**
- * Plan, group, export, confluence, and action channels are similarly derived
+ * Plan, export, confluence, and action channels are similarly derived
  * from their own endpoint registries in `shared/ipc/`.
  */
 const planChannels = toNestedChannels(planEndpoints);
 
-const groupChannels = toNestedChannels(groupEndpoints);
 
 const exportChannels = toNestedChannels(exportEndpoints);
 
@@ -164,12 +162,6 @@ export const IPC_CHANNELS = {
   // Plan Items
   // ===========================================================================
   plan: planChannels,
-
-  // ===========================================================================
-  // Groups (Visual Containers)
-  // ===========================================================================
-  group: groupChannels,
-
 
   // ===========================================================================
   // Chat (Main Claude Session)

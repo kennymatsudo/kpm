@@ -9,7 +9,6 @@ import { useExportStore } from './tracker/useExportStore';
 import { useTrackerConfigStore } from './tracker/useConfigStore';
 import { useSyncStore } from './tracker/useSyncStore';
 import { useSyncReviewStore } from './tracker/useSyncReviewStore';
-import { useGroupStore } from './groupStore';
 import { useDevSessionsStore } from './devSessions';
 import { useWorkspaceStore } from './workspaceStore';
 import { useProjectStore } from './projectStore';
@@ -33,9 +32,6 @@ function createPlanItem(id: string, projectId: string): PlanItem {
     code_refs: null,
     status: 'planned',
     release_tag: null,
-    position_x: 0,
-    position_y: 0,
-    group_id: null,
     association_id: null,
     external_id: null,
     external_status: null,
@@ -136,7 +132,7 @@ describe('resetAllProjectScopedStores', () => {
     installMockApi();
     for (const store of [
       useChatStore, useTrackerStore, useFileTreeStore, useExportStore, useTrackerConfigStore,
-      useSyncStore, useSyncReviewStore, useGroupStore, useDevSessionsStore, useWorkspaceStore,
+      useSyncStore, useSyncReviewStore, useDevSessionsStore, useWorkspaceStore,
       useProjectStore, useTaskPromptTemplateStore,
     ]) {
       store.getState().reset();
@@ -151,7 +147,7 @@ describe('resetAllProjectScopedStores', () => {
   it('registers every store that needs project-scoped cleanup', () => {
     expect(getRegisteredStoreNames()).toEqual([
       'chat', 'tracker', 'export', 'trackerConfig', 'sync', 'syncReview', 'fileTree',
-      'groups', 'devSessions', 'workspace', 'project', 'taskPromptTemplates',
+      'devSessions', 'workspace', 'project', 'taskPromptTemplates',
       'linearDocuments', 'proposedChanges', 'terminals',
     ]);
   });
@@ -211,14 +207,6 @@ describe('resetAllProjectScopedStores', () => {
       projectId: 'old-project',
       nodes: [{ name: 'src', path: 'src', isDirectory: true, isSymlink: false, modifiedAt: '2024-01-01T00:00:00.000Z', size: 0 }],
       selectedPaths: new Set(['src']),
-    });
-
-    useGroupStore.setState({
-      groups: [{
-        id: 'group-1', project_id: 'old-project', name: 'Old group', color: '#000',
-        position_x: 0, position_y: 0, width: 100, height: 100, is_collapsed: false,
-        created_at: '2024-01-01T00:00:00.000Z', updated_at: '2024-01-01T00:00:00.000Z',
-      }],
     });
 
     useDevSessionsStore.setState({
@@ -300,8 +288,6 @@ describe('resetAllProjectScopedStores', () => {
     expect(useFileTreeStore.getState().projectId).toBeNull();
     expect(useFileTreeStore.getState().nodes).toEqual([]);
     expect(useFileTreeStore.getState().selectedPaths.size).toBe(0);
-
-    expect(useGroupStore.getState().groups).toEqual([]);
 
     expect(useDevSessionsStore.getState().projectId).toBeNull();
     expect(useDevSessionsStore.getState().sessions).toEqual([]);

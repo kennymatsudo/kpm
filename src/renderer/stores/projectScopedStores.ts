@@ -30,7 +30,6 @@ import { useExportStore } from './tracker/useExportStore';
 import { useTrackerConfigStore } from './tracker/useConfigStore';
 import { useSyncStore } from './tracker/useSyncStore';
 import { useSyncReviewStore } from './tracker/useSyncReviewStore';
-import { useGroupStore } from './groupStore';
 import { useDevSessionsStore } from './devSessions';
 import { useWorkspaceStore } from './workspaceStore';
 import { useProjectStore } from './projectStore';
@@ -55,7 +54,6 @@ const PROJECT_SCOPED_STORES: ProjectScopedStore[] = [
   { name: 'sync', store: useSyncStore },
   { name: 'syncReview', store: useSyncReviewStore },
   { name: 'fileTree', store: useFileTreeStore },
-  { name: 'groups', store: useGroupStore },
   { name: 'devSessions', store: useDevSessionsStore },
   { name: 'workspace', store: useWorkspaceStore },
   { name: 'project', store: useProjectStore },

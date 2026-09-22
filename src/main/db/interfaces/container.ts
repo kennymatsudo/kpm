@@ -6,7 +6,6 @@
 
 import type { IProjectRepository, IRepoRepository, IAttachmentRepository } from './project';
 import type { IPlanItemRepository, IPlanRelationRepository, IExternalPlanItemRepository } from './plan';
-import type { IGroupRepository } from './group';
 import type { ITrackerRepository, ISyncRepository, IOutboundChangeRepository, ITypeMappingRepository } from './tracker';
 import type { IChatMessageRepository, IChatSessionRepository } from './chat';
 import type { IDevSessionRepository } from './dev';
@@ -27,7 +26,6 @@ export interface IRepositoryContainer {
   projects: IProjectRepository;
   planItems: IPlanItemRepository;
   planRelations: IPlanRelationRepository;
-  groups: IGroupRepository;
   repos: IRepoRepository;
   attachments: IAttachmentRepository;
   tracker: ITrackerRepository;

@@ -37,16 +37,6 @@ function buildPlanHandlers(
 
     getRelations: ({ projectId }) => ({ relations: planRelations.getByProject(projectId) }),
 
-    updatePosition: ({ itemId, x, y }) => {
-      requirePlanItem(planItems, itemId);
-      planItems.updatePosition(itemId, x, y);
-    },
-
-    updatePositions: ({ updates }) => {
-      const result = planService.updatePositions(updates);
-      if (!result.ok) throw new Error(result.error);
-    },
-
     updateItem: ({ itemId, updates }) => {
       const result = planService.updateItem(itemId, updates);
       if (!result.ok) throw new Error(result.error);

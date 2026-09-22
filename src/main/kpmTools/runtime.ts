@@ -55,7 +55,6 @@ export type KpmToolCapability =
   | 'plan_items.read'
   | 'plan_items.propose'
   | 'plan_relations.read'
-  | 'groups.read'
   | 'documents.read'
   | 'documents.propose'
   | 'project_context.propose'

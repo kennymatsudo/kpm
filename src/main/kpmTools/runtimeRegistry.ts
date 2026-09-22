@@ -29,7 +29,6 @@ import { createFileMoveTools } from './tools/file-move';
 import { createGitPushTools, type GitPushConsentRequest } from './tools/git-push';
 import { createGitReadTools } from './tools/git-read';
 import { createGitHubTools } from './tools/github';
-import { createGroupTools } from './tools/groups';
 import { createJiraTools } from './tools/jira';
 import { createListProjectFilesTools } from './tools/list-project-files';
 import { createPlanChangeTools } from './tools/plan-changes';
@@ -50,7 +49,6 @@ export interface KpmToolRuntimeDeps {
     | 'projects'
     | 'planItems'
     | 'planRelations'
-    | 'groups'
     | 'repos'
     | 'devSessions'
     | 'confluenceLinks'
@@ -268,13 +266,11 @@ function buildToolGroups(): KpmToolGroup[] {
   const projectRepo = container.projects;
   const planItemRepo = container.planItems;
   const planRelationRepo = container.planRelations;
-  const groupRepo = container.groups;
   const repoRepo = container.repos;
 
   return [
     ...planItemGroups(createPlanItemTools(planItemRepo, planRelationRepo, emitPlanActions)),
     group('plan-relations', MAIN_ONLY, ['plan_relations.read'], createRelationTools(planItemRepo)),
-    group('groups', MAIN_ONLY, ['groups.read'], createGroupTools(groupRepo)),
     group('plan-changes', MAIN_ONLY, ['plan_items.propose'], createPlanChangeTools(emitPlanActions, repoRepo, planItemRepo)),
     group('jira', MAIN_ONLY, ['integrations.read'], createJiraTools()),
     group('storybook', MAIN_ONLY, ['integrations.read'], createStorybookTools(projectRepo)),

@@ -28,7 +28,6 @@ import {
   RemoveDependencyDetail,
   SetLabelDetail,
   SetReleaseDetail,
-  SetPositionDetail,
   ReorderDetail,
   QueueForTrackerDetail,
 } from './action-details';
@@ -535,58 +534,8 @@ function ActionDetailView({
       return <RemoveDependencyDetail action={action} />;
     case 'reorder':
       return <ReorderDetail action={action} planItems={planItems} />;
-    case 'set_position':
-      return <SetPositionDetail action={action} planItems={planItems} />;
     case 'queue_for_tracker':
       return <QueueForTrackerDetail action={action} planItems={planItems} />;
-    case 'create_group':
-      return (
-        <div className="space-y-3">
-          <div className="p-3 rounded-lg bg-surface-1 border border-border-subtle">
-            <h4 className="text-xs font-medium text-text-primary mb-2">Create Group</h4>
-            <div className="space-y-1.5 text-xs">
-              <p><span className="text-text-muted">Name:</span> <span className="text-text-primary">{action.name}</span></p>
-              <p><span className="text-text-muted">Size:</span> <span className="text-text-primary">{action.width} x {action.height}</span></p>
-            </div>
-          </div>
-        </div>
-      );
-    case 'update_group':
-      return (
-        <div className="space-y-3">
-          <div className="p-3 rounded-lg bg-surface-1 border border-border-subtle">
-            <h4 className="text-xs font-medium text-text-primary mb-2">Update Group</h4>
-            <div className="space-y-1.5 text-xs">
-              {action.updates.name && <p><span className="text-text-muted">Name:</span> <span className="text-text-primary">{action.updates.name}</span></p>}
-              {(action.updates.width || action.updates.height) && <p><span className="text-text-muted">Size:</span> <span className="text-text-primary">{action.updates.width} x {action.updates.height}</span></p>}
-            </div>
-          </div>
-        </div>
-      );
-    case 'delete_group':
-      return (
-        <div className="space-y-3">
-          <div className="p-3 rounded-lg bg-danger/8 border border-danger/20">
-            <h4 className="text-xs font-medium text-danger mb-2">Delete Group</h4>
-            <p className="text-xs text-text-secondary">This group container will be removed. Items inside will remain in place.</p>
-          </div>
-        </div>
-      );
-    case 'assign_to_group': {
-      const item = planItemsById.get(action.item_id);
-      return (
-        <div className="space-y-3">
-          <div className="p-3 rounded-lg bg-surface-1 border border-border-subtle">
-            <h4 className="text-xs font-medium text-text-primary mb-2">{action.group_id ? 'Assign to Group' : 'Remove from Group'}</h4>
-            <p className="text-xs text-text-secondary">
-              {action.group_id
-                ? `Move "${item?.title || 'Item'}" into a group container.`
-                : `Remove "${item?.title || 'Item'}" from its current group.`}
-            </p>
-          </div>
-        </div>
-      );
-    }
     default: {
       const _exhaustive: never = action;
       void _exhaustive;
@@ -638,12 +587,7 @@ function getActionTypeLabel(type: PlanAction['type']): string {
     case 'add_dependency': return 'link';
     case 'remove_dependency': return 'unlink';
     case 'reorder': return 'reorder';
-    case 'set_position': return 'position';
     case 'queue_for_tracker': return 'queue';
-    case 'create_group': return 'group';
-    case 'update_group': return 'group';
-    case 'delete_group': return 'group';
-    case 'assign_to_group': return 'assign';
     default: {
       const _exhaustive: never = type;
       void _exhaustive;

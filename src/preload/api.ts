@@ -19,7 +19,6 @@ import { trackerEvents } from '../shared/ipc/trackerEvents';
 import { onboardingEvents } from '../shared/ipc/onboardingEvents';
 import { toolLogEvents } from '../shared/ipc/toolLogEvents';
 import { planEndpoints } from '../shared/ipc/planEndpoints';
-import { groupEndpoints } from '../shared/ipc/groupEndpoints';
 import { exportEndpoints } from '../shared/ipc/exportEndpoints';
 import { confluenceEndpoints } from '../shared/ipc/confluenceEndpoints';
 import { linearDocumentsEndpoints } from '../shared/ipc/linearDocumentsEndpoints';
@@ -101,7 +100,6 @@ import type {
   ChatSessionScope,
   ChatViewMode,
   FileNode,
-  Group,
   ConfluencePageLink,
   ConfluenceSyncPreview,
   SearchResult,
@@ -185,7 +183,6 @@ export type {
   DevSessionWithPlanItem,
   ClaudeModel,
   FileNode,
-  Group,
   ConfluencePageLink,
   ConfluenceSyncPreview,
   SearchResult,
@@ -417,10 +414,6 @@ const plan = {
     invokeFlat<void>(planEndpoints.removeRelation.channel, payload),
   getRelations: (payload: { projectId: string }): Promise<PlanRelation[]> =>
     invokeOrThrow<{ relations: PlanRelation[] }, PlanRelation[]>(planEndpoints.getRelations.channel, payload, ({ relations }) => relations),
-  updatePosition: (payload: { itemId: string; x: number; y: number }): Promise<{ success: boolean; error?: string }> =>
-    invokeFlat<void>(planEndpoints.updatePosition.channel, payload),
-  updatePositions: (payload: { updates: { id: string; x: number; y: number }[] }): Promise<{ success: boolean; error?: string }> =>
-    invokeFlat<void>(planEndpoints.updatePositions.channel, payload),
   updateItem: (payload: { itemId: string; updates: PlanItemUpdates }): Promise<{ success: boolean; error?: string }> =>
     invokeFlat<void>(planEndpoints.updateItem.channel, payload),
   deleteItem: (payload: { itemId: string }): Promise<{ success: boolean; error?: string }> =>
@@ -430,20 +423,6 @@ const plan = {
   getChildCount: (payload: { itemId: string }): Promise<number> =>
     invokeOrThrow<{ count: number }, number>(planEndpoints.getChildCount.channel, payload, ({ count }) => count),
   onRefreshRequested: planSubscriptions.refreshRequested,
-};
-
-const groupInvoke = deriveDomainApi(groupEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
-
-// Groups API (Visual containers - Figma-style frames)
-const groups = {
-  list: groupInvoke.list,
-  get: groupInvoke.get,
-  create: groupInvoke.create,
-  update: groupInvoke.update,
-  delete: groupInvoke.delete,
-  updatePosition: groupInvoke.updatePosition,
-  updateSize: groupInvoke.updateSize,
-  assignItem: groupInvoke.assignItem,
 };
 
 const trackerInvoke = deriveDomainApi(trackerEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
@@ -1089,7 +1068,6 @@ export const api = {
   repos,
   attachments,
   plan,
-  groups,
   tracker,
   contextFile,
   contextFiles,

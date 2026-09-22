@@ -39,8 +39,6 @@ export type { FocusModeDoc } from './focusModeStore';
 
 export { usePermissionStore } from './permissionStore';
 
-export { useGroupStore } from './groupStore';
-export type { GroupUpdates } from './groupStore';
 
 export { useStoreSubscriptions } from './useStoreSubscriptions';
 

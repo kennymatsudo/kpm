@@ -287,20 +287,4 @@ describe('PlanItemRepository', () => {
       expect(count).toBe(2);
     });
   });
-
-  describe('updatePosition', () => {
-    it('updates position coordinates', () => {
-      ctx.repos.planItems.add(createPlanItem({
-        id: 'item-1',
-        project_id: projectId,
-        title: 'Item',
-      }));
-
-      ctx.repos.planItems.updatePosition('item-1', 100, 200);
-
-      const item = ctx.repos.planItems.get('item-1');
-      expect(item?.position_x).toBe(100);
-      expect(item?.position_y).toBe(200);
-    });
-  });
 });

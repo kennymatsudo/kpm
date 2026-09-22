@@ -19,10 +19,10 @@ import { findRefs } from './planRefs';
 import type { PlanAction } from './types';
 
 /**
- * Entity an id-bearing field points at. Only `planItem` and `group` are minted
- * inside a batch, so a `$N` in a `relation` field can never resolve.
+ * Entity an id-bearing field points at. Only `planItem` is minted inside a
+ * batch, so a `$N` in a `relation` field can never resolve.
  */
-export type PlanActionRefKind = 'planItem' | 'group' | 'relation';
+export type PlanActionRefKind = 'planItem' | 'relation';
 
 export interface PlanActionRef<Field extends string = string> {
   field: Field;

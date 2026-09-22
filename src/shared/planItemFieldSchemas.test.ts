@@ -77,15 +77,6 @@ describe('buildPlanItemUpdateShape', () => {
     expect(schema.safeParse({ item_order: 0 }).success).toBe(true);
   });
 
-  it('position_x/position_y enforce the canvas bounds', () => {
-    const schema = z.object(buildPlanItemUpdateShape('ipc'));
-    expect(schema.safeParse({ position_x: -10000 }).success).toBe(true);
-    expect(schema.safeParse({ position_x: 100000 }).success).toBe(true);
-    expect(schema.safeParse({ position_x: -10001 }).success).toBe(false);
-    expect(schema.safeParse({ position_x: 100001 }).success).toBe(false);
-    expect(schema.safeParse({ position_y: null }).success).toBe(true);
-  });
-
   it('status only accepts the literal "planned"', () => {
     const schema = z.object(buildPlanItemUpdateShape('ipc'));
     expect(schema.safeParse({ status: 'planned' }).success).toBe(true);

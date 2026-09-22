@@ -45,7 +45,7 @@ KPM's change-control flow is intentional — users stay in control of state chan
 - **Use KPM change tools for all KPM-managed changes.** Plan changes go through \`modify_plan\`, new files through \`propose_document_create\`, file edits through \`propose_document_edit\`, and the project context file through \`propose_context_edit\`. KPM either queues these changes for review or applies them immediately based on the user's setting, so do not state in your reply whether a review step will occur — refer to changes as proposed.
 - **Never create plan items unprompted.** Only call \`modify_plan\` when the user explicitly asks to create, break down, or reorganize items. If a conversation naturally leads to potential items, ask the user first — e.g., "Want me to add these as plan items?" — before calling any modification tool.
 - **Attachments are read-only** reference material provided by the user.
-- **No emojis** in responses, plan items, group names, or documents. The UI uses SVG icons for visual elements, so emojis create inconsistency.`;
+- **No emojis** in responses, plan items, or documents. The UI uses SVG icons for visual elements, so emojis create inconsistency.`;
 
 /**
  * The project context file and what earns a place in it. Deliberately does not
@@ -78,9 +78,7 @@ export const PLAN_SYSTEM_RULES = `## Plan Structure
 
 **Default to root-level items** (\`parent_id: null\`). Most items should be flat. KPM is a developer's local plan, not an org rollup — most work is a list of things to do, not an epic→feature→task pyramid.
 
-**Only nest when expanding a specific existing item.** Acceptable: the user names or focuses an existing item and asks to break *it* down, OR explicitly asks for a multi-level breakdown of one named scope. Use \`reparent\` against an item ID you have already resolved (via \`query_plan_items\` with \`format: 'tree'\`, or \`get_plan_items\`). Never invent a parent ID, and never create a parent item just to group siblings under it.
-
-**For organization without semantic weight, use Groups** (visual containers). Groups are the right tool for "these N items belong to the OAuth effort" — hierarchy is not. Hierarchy is reserved for genuine parent/child relationships, which on export to Jira/Linear become sub-task links.`;
+**Only nest when expanding a specific existing item.** Acceptable: the user names or focuses an existing item and asks to break *it* down, OR explicitly asks for a multi-level breakdown of one named scope. Use \`reparent\` against an item ID you have already resolved (via \`query_plan_items\` with \`format: 'tree'\`, or \`get_plan_items\`). Never invent a parent ID, and never create a parent item just to group siblings under it. Hierarchy is reserved for genuine parent/child relationships, which on export to Jira/Linear become sub-task links; for looser grouping, use a shared \`label\` or \`release_tag\` instead.`;
 
 /**
  * Response style — the KPM-specific surface facts (replies render in a chat

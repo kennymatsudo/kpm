@@ -45,8 +45,6 @@ export interface IPlanItemRepository {
   /** All descendant ids reachable from `id` via `parent_id`, via a recursive CTE. */
   getDescendantIds(id: string): string[];
   getChildCount(itemId: string): number;
-  updatePosition(itemId: string, x: number, y: number): void;
-  batchUpdatePositions(updates: { id: string; x: number; y: number }[]): void;
   getNextOrder(projectId: string, parentId: string | null): number;
   /** Get children of a specific parent, optionally filtered by external issue types */
   getChildrenByParent(projectId: string, parentId: string, externalIssueTypes?: string[]): PlanItem[];

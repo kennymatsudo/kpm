@@ -1,6 +1,6 @@
 /**
  * SimpleFieldDetail - Detail view for simple field change actions.
- * Handles: set_label, set_release, set_position, reorder, queue_for_tracker
+ * Handles: set_label, set_release, reorder, queue_for_tracker
  */
 
 import type { PlanAction, PlanItem } from '../../../../shared/types';
@@ -61,51 +61,6 @@ export function SetReleaseDetail({ action, planItems }: SetReleaseDetailProps) {
           <span className="text-xs text-text-tertiary italic">none</span>
         )}
       />
-    </div>
-  );
-}
-
-interface SetPositionDetailProps {
-  action: Extract<PlanAction, { type: 'set_position' }>;
-  planItems: PlanItem[];
-}
-
-export function SetPositionDetail({ action, planItems }: SetPositionDetailProps) {
-  const item = planItems.find(i => i.id === action.item_id);
-
-  if (!item) {
-    return <MissingItemMessage />;
-  }
-
-  return (
-    <div className="space-y-4">
-      <HeaderBadge type="Position" color="bg-info/12 text-info" itemTitle={item.title} />
-
-      <div className="p-4 rounded-lg bg-surface-1 border border-border-subtle">
-        <div className="flex items-center gap-4">
-          {/* Old position */}
-          <div className="flex-1">
-            <div className="text-xxs font-medium text-danger/70 uppercase tracking-wide mb-2">From</div>
-            <div className="p-2 rounded-md bg-danger/5 border border-danger/15 font-mono text-xs">
-              {item.position_x !== null && item.position_y !== null ? (
-                <span>({item.position_x}, {item.position_y})</span>
-              ) : (
-                <span className="text-text-tertiary italic">not set</span>
-              )}
-            </div>
-          </div>
-
-          <div className="text-text-muted text-lg">{'\u2192'}</div>
-
-          {/* New position */}
-          <div className="flex-1">
-            <div className="text-xxs font-medium text-success/70 uppercase tracking-wide mb-2">To</div>
-            <div className="p-2 rounded-md bg-success/5 border border-success/15 font-mono text-xs">
-              <span>({action.x}, {action.y})</span>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

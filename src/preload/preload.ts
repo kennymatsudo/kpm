@@ -30,7 +30,6 @@ export type {
   ExportResult,
   SyncReviewData,
   ChatMessage,
-  Group,
   CustomTheme,
   ImportedCustomThemeResult,
 } from './api';

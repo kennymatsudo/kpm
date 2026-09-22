@@ -77,8 +77,6 @@ export interface CreatePlanItemOptions {
   code_refs?: string[] | null;
   status?: 'planned';
   release_tag?: string | null;
-  position_x?: number | null;
-  position_y?: number | null;
   // External tracker fields
   association_id?: string | null;
   external_key?: string | null;
@@ -99,7 +97,6 @@ export function createPlanItem(options: CreatePlanItemOptions = {}): PlanItem {
     id: options.id ?? randomUUID(),
     project_id: options.project_id,
     parent_id: options.parent_id ?? null,
-    group_id: null,
     title: options.title ?? 'Test Plan Item',
     description: options.description ?? null,
     label: options.label ?? null,
@@ -107,8 +104,6 @@ export function createPlanItem(options: CreatePlanItemOptions = {}): PlanItem {
     code_refs: options.code_refs ?? null,
     status: options.status ?? 'planned',
     release_tag: options.release_tag ?? null,
-    position_x: options.position_x ?? null,
-    position_y: options.position_y ?? null,
     association_id: options.association_id ?? null,
     external_key: options.external_key ?? null,
     external_id: options.external_id ?? null,

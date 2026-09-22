@@ -2,7 +2,6 @@ import { registerProjectHandlers } from '../handlers/projects';
 import { registerRepoHandlers } from '../handlers/repos';
 import { registerAttachmentHandlers } from '../handlers/attachments';
 import { registerPlanHandlers } from '../handlers/plan';
-import { registerGroupHandlers } from '../handlers/groups';
 import { registerChatHandlers } from '../handlers/chat';
 import { registerFileHandlers } from '../handlers/files';
 import { registerExportHandlers } from '../handlers/export';
@@ -25,7 +24,6 @@ export function registerWorkspaceHandlers({
   registerRepoHandlers(getMainWindow, services.repoService);
   registerAttachmentHandlers(getMainWindow, services.attachmentService);
   registerPlanHandlers(services.planService, services.planActionExecutor, services.container.planItems, services.container.planRelations);
-  registerGroupHandlers(services.groupService, services.container.groups);
   registerChatHandlers({
     chatService: chatRuntime.chatService,
     slashCommandService: services.slashCommandService,

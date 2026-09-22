@@ -1,5 +1,4 @@
 import type { PlanSlice, SliceCreator } from './types';
-import { useGroupStore } from '../groupStore';
 import { startPerfSpan } from '../../utils/perfLogger';
 
 export const createPlanSlice: SliceCreator<PlanSlice> = (deps) => (set, get) => ({
@@ -35,17 +34,6 @@ export const createPlanSlice: SliceCreator<PlanSlice> = (deps) => (set, get) => 
         const hasSkippedActions = skipped.length > 0;
         if (hasNonReparentActions || hasSkippedActions) {
           await refreshPlanItems();
-        }
-
-        // Refresh groups if any group-related actions were executed
-        const hasGroupActions = actions.some(a =>
-          a.type === 'create_group' ||
-          a.type === 'update_group' ||
-          a.type === 'delete_group' ||
-          a.type === 'assign_to_group'
-        );
-        if (hasGroupActions && currentProjectId) {
-          await useGroupStore.getState().loadGroups(currentProjectId);
         }
 
         const applied = actions.length - skipped.length;
@@ -105,79 +93,6 @@ export const createPlanSlice: SliceCreator<PlanSlice> = (deps) => (set, get) => 
     } catch (error) {
       const errorMessage = `Failed to remove relation: ${String(error)}`;
       console.error(errorMessage);
-      set({ error: errorMessage });
-    }
-  },
-
-  updateItemPosition: async (itemId, x, y) => {
-    // Round to integers - sub-pixel precision isn't meaningful for canvas positioning
-    const roundedX = Math.round(x);
-    const roundedY = Math.round(y);
-
-    // Update local state optimistically
-    set((state) => ({
-      planItems: state.planItems.map((item) =>
-        item.id === itemId ? { ...item, position_x: roundedX, position_y: roundedY } : item
-      ),
-      error: null,
-    }));
-    try {
-      const result = await deps.api.plan.updatePosition({ itemId, x: roundedX, y: roundedY });
-      if (!result.success) {
-        // Revert optimistic update on failure
-        const { refreshPlanItems } = get();
-        await refreshPlanItems();
-        set({ error: result.error || 'Failed to update item position' });
-      }
-    } catch (error) {
-      const errorMessage = `Failed to update item position: ${String(error)}`;
-      console.error(errorMessage);
-      // Revert optimistic update on failure
-      const { refreshPlanItems } = get();
-      await refreshPlanItems();
-      set({ error: errorMessage });
-    }
-  },
-
-  updateItemPositions: async (updates) => {
-    if (updates.length === 0) return;
-
-    // Round to integers and de-dupe by item id.
-    const updateMap = new Map<string, { x: number; y: number }>();
-    for (const update of updates) {
-      updateMap.set(update.id, {
-        x: Math.round(update.x),
-        y: Math.round(update.y),
-      });
-    }
-
-    // Update local state optimistically in a single pass.
-    set((state) => ({
-      planItems: state.planItems.map((item) => {
-        const position = updateMap.get(item.id);
-        return position ? { ...item, position_x: position.x, position_y: position.y } : item;
-      }),
-      error: null,
-    }));
-
-    const { refreshPlanItems } = get();
-    try {
-      const result = await deps.api.plan.updatePositions({
-        updates: Array.from(updateMap.entries()).map(([id, position]) => ({
-          id,
-          x: position.x,
-          y: position.y,
-        })),
-      });
-
-      if (!result.success) {
-        await refreshPlanItems();
-        set({ error: result.error || 'Failed to update item positions' });
-      }
-    } catch (error) {
-      const errorMessage = `Failed to update item positions: ${String(error)}`;
-      console.error(errorMessage);
-      await refreshPlanItems();
       set({ error: errorMessage });
     }
   },
@@ -347,8 +262,6 @@ export const createPlanSlice: SliceCreator<PlanSlice> = (deps) => (set, get) => 
           ...item,
           status: item.status || 'planned',
           release_tag: item.release_tag || null,
-          position_x: item.position_x ?? null,
-          position_y: item.position_y ?? null,
         })),
         relations,
       });

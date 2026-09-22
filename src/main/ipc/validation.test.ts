@@ -25,7 +25,6 @@ const ProjectSchemas = {
   update: projectEndpoints.update.params,
 };
 const PlanSchemas = {
-  updatePosition: planEndpoints.updatePosition.params,
   updateItem: planEndpoints.updateItem.params,
   executeActions: planEndpoints.executeActions.params,
   addRelation: planEndpoints.addRelation.params,
@@ -187,26 +186,6 @@ describe('ChatSchemas (model choice)', () => {
 });
 
 describe('PlanSchemas', () => {
-  describe('updatePosition', () => {
-    it('accepts ordinary and boundary canvas positions', () => {
-      for (const position of [
-        { x: 100, y: 200 },
-        { x: -10000, y: 100000 },
-      ]) {
-        expectValid(PlanSchemas.updatePosition, { itemId: randomUUID(), ...position });
-      }
-    });
-
-    it('rejects positions outside canvas bounds', () => {
-      for (const position of [
-        { x: 200000, y: 100 },
-        { x: -20000, y: 100 },
-      ]) {
-        expectInvalid(PlanSchemas.updatePosition, { itemId: randomUUID(), ...position });
-      }
-    });
-  });
-
   describe('updateItem', () => {
     it('accepts supported update fields', () => {
       for (const updates of [
@@ -238,14 +217,6 @@ describe('PlanSchemas', () => {
             label: 'feature',
             primary_repo_id: randomUUID(),
             affected_repo_ids: [randomUUID()],
-          },
-        ],
-        [
-          {
-            type: 'set_position',
-            item_id: randomUUID(),
-            x: 100,
-            y: 200,
           },
         ],
         [

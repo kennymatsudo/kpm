@@ -17,5 +17,5 @@ When asked to break down, create, or reorganize work:
 
 - If the request depends on current implementation, scan targeted files before \`modify_plan\`. When repos or files are focused (see per-message context), explore them first.
 
-For nesting, flat-by-default, and Groups, follow **Plan Structure**.`;
+For nesting and flat-by-default, follow **Plan Structure**.`;
 }

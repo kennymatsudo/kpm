@@ -11,12 +11,9 @@ const baseItem: PlanItem = {
   status: 'planned',
   status_category: null,
   parent_id: null,
-  group_id: null,
   item_order: 0,
   code_refs: null,
   release_tag: null,
-  position_x: null,
-  position_y: null,
   association_id: null,
   external_key: null,
   external_id: null,
@@ -120,28 +117,6 @@ describe('PlanService', () => {
     if (!result.ok) {
       expect(result.error).toContain('Item not found');
     }
-  });
-
-  it('batch updates item positions after validating all ids', () => {
-    const { deps, planItems } = createMocks();
-    const service = createPlanService(deps);
-    const updates = [{ id: '1', x: 12, y: 24 }];
-
-    const result = service.updatePositions(updates);
-
-    expect(result.ok).toBe(true);
-    expect(planItems.getExistingIds).toHaveBeenCalledWith(['1']);
-    expect(planItems.batchUpdatePositions).toHaveBeenCalledWith(updates);
-  });
-
-  it('does not batch update positions when any id is missing', () => {
-    const { deps, planItems } = createMocks();
-    const service = createPlanService(deps);
-
-    const result = service.updatePositions([{ id: 'missing-id', x: 12, y: 24 }]);
-
-    expect(result.ok).toBe(false);
-    expect(planItems.batchUpdatePositions).not.toHaveBeenCalled();
   });
 
   describe('deleteItem', () => {

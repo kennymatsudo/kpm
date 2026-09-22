@@ -159,8 +159,6 @@ const syncPreviewSchema = z.object({
       code_refs: z.array(z.string()).nullable(),
       status: z.literal('planned'),
       release_tag: z.string().nullable(),
-      position_x: z.number().nullable(),
-      position_y: z.number().nullable(),
       association_id: z.string().nullable().optional(),
       external_key: z.string().nullable().optional(),
       external_id: z.string().nullable().optional(),

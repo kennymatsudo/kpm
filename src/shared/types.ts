@@ -17,7 +17,6 @@ import type { FieldsEditableVia } from './planItemFields';
 export type {
   StatusCategory,
   PlanRelation,
-  Group,
   ChatProvider,
 } from './base-types';
 export { STATUS_CATEGORIES, CHAT_PROVIDERS } from './base-types';

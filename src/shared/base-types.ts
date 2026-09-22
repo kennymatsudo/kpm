@@ -68,10 +68,6 @@ export interface PlanItem {
   code_refs: string[] | null;
   status: 'planned';
   release_tag: string | null;
-  position_x: number | null;
-  position_y: number | null;
-  // Visual grouping (Figma-style frames)
-  group_id: string | null;
   // Connected repo targets (KPM-local; never exported to trackers)
   primary_repo_id?: string | null;
   affected_repo_ids?: string[];
@@ -106,24 +102,6 @@ export interface PlanRelation {
   to_item_id: string;
   relation_type: 'depends_on' | 'blocks' | 'relates_to';
   created_at?: string;
-}
-
-// =============================================================================
-// Group Types - Visual containers for organizing plan items
-// =============================================================================
-
-export interface Group {
-  id: string;
-  project_id: string;
-  name: string;
-  color: string;
-  position_x: number;
-  position_y: number;
-  width: number;
-  height: number;
-  is_collapsed: boolean;
-  created_at: string;
-  updated_at: string;
 }
 
 // =============================================================================

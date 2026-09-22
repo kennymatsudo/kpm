@@ -6,13 +6,11 @@ import type {
   IPlanRelationRepository,
   ITrackerRepository,
   IOutboundChangeRepository,
-  IGroupRepository,
   IRepoRepository,
 } from '../interfaces';
 import type { QueueTrackerUpdateIfNeeded } from './PlanItemService';
 import { admitExplicitQueue } from './OutboundChangePolicy';
 import { removePlanItem } from './PlanItemRemoval';
-import { assignItemToGroup } from './GroupAssignmentService';
 import { getConfig } from '../../config';
 import {
   collectRefIds,
@@ -34,7 +32,6 @@ export interface PlanActionExecutorDeps {
   database: Database;
   planItems: IPlanItemRepository;
   planRelations: IPlanRelationRepository;
-  groups: IGroupRepository;
   tracker: ITrackerRepository;
   outboundChanges: IOutboundChangeRepository;
   repos: Pick<IRepoRepository, 'getByProject'>;
@@ -295,14 +292,6 @@ function executeDeleteItem(
   invalidateItem(ctx, action.item_id);
 }
 
-function executeSetPosition(
-  ctx: ExecutorContext,
-  action: Extract<PlanAction, { type: 'set_position' }>
-): void {
-  ctx.deps.planItems.updatePosition(action.item_id, action.x, action.y);
-  invalidateItem(ctx, action.item_id);
-}
-
 function executeQueueForTracker(
   ctx: ExecutorContext,
   action: Extract<PlanAction, { type: 'queue_for_tracker' }>
@@ -331,72 +320,6 @@ function executeQueueForTracker(
   }
 }
 
-// =============================================================================
-// Group Action Executors
-// =============================================================================
-
-// Default color for groups (not exposed to Claude, just for DB compatibility)
-const DEFAULT_GROUP_COLOR = '#e0e7ff';
-
-function executeCreateGroup(
-  ctx: ExecutorContext,
-  action: Extract<PlanAction, { type: 'create_group' }>
-): void {
-  const id = takeMintedId(ctx);
-  ctx.deps.groups.create(
-    {
-      project_id: action.project_id,
-      name: action.name,
-      color: DEFAULT_GROUP_COLOR,
-      position_x: action.position_x,
-      position_y: action.position_y,
-      width: action.width,
-      height: action.height,
-      is_collapsed: false,
-    },
-    id
-  );
-}
-
-function executeUpdateGroup(
-  ctx: ExecutorContext,
-  action: Extract<PlanAction, { type: 'update_group' }>
-): void {
-  const group = ctx.deps.groups.getById(action.group_id);
-  if (!group) {
-    skip(ctx, 'update_group', `Group not found: ${action.group_id}`);
-    return;
-  }
-  ctx.deps.groups.update(action.group_id, action.updates);
-}
-
-function executeDeleteGroup(
-  ctx: ExecutorContext,
-  action: Extract<PlanAction, { type: 'delete_group' }>
-): void {
-  const group = ctx.deps.groups.getById(action.group_id);
-  if (!group) {
-    skip(ctx, 'delete_group', `Group not found: ${action.group_id}`);
-    return;
-  }
-  // Items in the group have their group_id set to NULL via ON DELETE SET NULL.
-  ctx.deps.groups.delete(action.group_id);
-}
-
-function executeAssignToGroup(
-  ctx: ExecutorContext,
-  action: Extract<PlanAction, { type: 'assign_to_group' }>
-): void {
-  const result = assignItemToGroup(action.item_id, action.group_id, {
-    groups: ctx.deps.groups,
-    planItems: ctx.deps.planItems,
-  });
-  if (!result.ok) {
-    skip(ctx, 'assign_to_group', result.error);
-    return;
-  }
-  invalidateItem(ctx, action.item_id);
-}
 
 type ReparentAction = Extract<PlanAction, { type: 'reparent' }>;
 interface ReparentUpdate { id: string; parentId: string | null }
@@ -459,12 +382,7 @@ const ACTION_EXECUTORS: { [T in PlanAction['type']]: ActionExecutor<T> } = {
   revise_work_brief: executeReviseWorkBrief,
   set_repo_targets: executeSetRepoTargets,
   delete_item: executeDeleteItem,
-  set_position: executeSetPosition,
   queue_for_tracker: executeQueueForTracker,
-  create_group: executeCreateGroup,
-  update_group: executeUpdateGroup,
-  delete_group: executeDeleteGroup,
-  assign_to_group: executeAssignToGroup,
   reparent: executeReparent,
 };
 

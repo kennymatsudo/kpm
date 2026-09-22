@@ -29,7 +29,6 @@ describe('PlanActionExecutor — create_item with spec fields', () => {
       database: ctx.db,
       planItems: ctx.repos.planItems,
       planRelations: ctx.repos.planRelations,
-      groups: ctx.repos.groups,
       tracker: ctx.repos.tracker,
       outboundChanges: ctx.repos.outboundChanges,
       repos: ctx.repos.repos,

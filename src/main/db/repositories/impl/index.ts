@@ -8,7 +8,6 @@
 export * from './ProjectRepository';
 export * from './PlanItemRepository';
 export * from './PlanRelationRepository';
-export * from './GroupRepository';
 export * from './RepoRepository';
 export * from './AttachmentRepository';
 export * from './TrackerRepository';

@@ -13,11 +13,10 @@
  *
  * Not every field here is reachable from both surfaces: `update_item`'s
  * PlanAction is deliberately narrower than the IPC call — structural fields
- * like `parent_id`/`item_order`/`position_x`/`position_y`/`group_id` are
- * written through dedicated PlanActions (`reparent`, `reorder`,
- * `set_position`, `assign_to_group`) that carry their own business rules
- * (Jira-subtask nesting checks, batch reparent, etc.), so they're
- * IPC-editable only. `editableVia` records that per field.
+ * like `parent_id`/`item_order` are written through dedicated PlanActions
+ * (`reparent`, `reorder`) that carry their own business rules (Jira-subtask
+ * nesting checks, batch reparent, etc.), so they're IPC-editable only.
+ * `editableVia` records that per field.
  *
  * Excluded entirely: tracker-sync fields (`external_key`, `sync_source`,
  * ...) are owned by SyncService/ImportService via PlanItemSyncUpdates, a
@@ -36,7 +35,7 @@ import type { PlanItem } from './base-types';
 /**
  * A closed set of field shapes. Every PlanItemUpdates field fits one of
  * these — a shape that doesn't fit is a signal the field needs a dedicated
- * PlanAction (like set_position) rather than a registry entry.
+ * PlanAction (like `reparent`) rather than a registry entry.
  *
  * `nullableJsonArray` is the only kind stored JSON-encoded (see DB CLAUDE.md's
  * JSON-array-column rule) — encoding is implied by the kind, not a separate
@@ -139,21 +138,6 @@ export const PLAN_ITEM_FIELDS = {
   code_refs: {
     sqlColumn: 'code_refs',
     fieldKind: { kind: 'nullableUnboundedStringArray' },
-    editableVia: IPC_ONLY,
-  },
-  position_x: {
-    sqlColumn: 'position_x',
-    fieldKind: { kind: 'nullableNumber', min: -10000, max: 100000, int: true },
-    editableVia: IPC_ONLY,
-  },
-  position_y: {
-    sqlColumn: 'position_y',
-    fieldKind: { kind: 'nullableNumber', min: -10000, max: 100000, int: true },
-    editableVia: IPC_ONLY,
-  },
-  group_id: {
-    sqlColumn: 'group_id',
-    fieldKind: { kind: 'nullableUnboundedText' },
     editableVia: IPC_ONLY,
   },
 } as const satisfies Partial<Record<keyof PlanItem, PlanItemFieldDescriptor>>;

@@ -135,13 +135,7 @@ Item actions:
 - reparent: { "type": "reparent", "item_id": "...", "new_parent_id": "..." }
 - add_dependency: { "type": "add_dependency", "from_id": "...", "to_id": "..." }
 
-Group actions (visual containers):
-- create_group: { "type": "create_group", "project_id": "...", "name": "Must Do", "position_x": 0, "position_y": 0, "width": 552, "height": 300 }
-- assign_to_group: { "type": "assign_to_group", "item_id": "existing-uuid", "group_id": "$1" }
-- update_group: { "type": "update_group", "group_id": "...", "updates": { "name": "New Name" } }
-- delete_group: { "type": "delete_group", "group_id": "..." }
-
-Placeholder references: $1, $2 etc. stand for the entities this batch creates, numbered by the order of the create_item/create_group actions. They are valid in every field that takes an item or group ID. A placeholder naming no create in the batch is reported back as a skipped action.
+Placeholder references: $1, $2 etc. stand for the items this batch creates, numbered by the order of the create_item actions. They are valid in every field that takes an item ID. A placeholder naming no create in the batch is reported back as a skipped action.
 
 Full create_item example (implementation item):
 {
@@ -169,7 +163,7 @@ Exploratory item example (no criteria yet):
   "parent_id": null
 }
 
-Hierarchy and Groups: follow **Plan Structure** in the system prompt. Every ID that is not a placeholder must be resolved from a query tool.`,
+Hierarchy: follow **Plan Structure** in the system prompt. Every ID that is not a placeholder must be resolved from a query tool.`,
       {
         message: z.string().describe('Brief description of the proposed changes'),
         actions: z.array(planActionSchema).describe('The plan actions to propose'),

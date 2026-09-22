@@ -41,9 +41,6 @@ describe('PlanItemRepository.add (registry-generated INSERT)', () => {
       status_category: 'in_progress',
       parent_id: null,
       code_refs: ['src/a.ts', 'src/b.ts'],
-      position_x: 10,
-      position_y: 20,
-      group_id: 'group-1',
       external_key: 'PROJ-123',
       external_type: 'jira',
       sync_source: 'jira',
@@ -60,9 +57,6 @@ describe('PlanItemRepository.add (registry-generated INSERT)', () => {
     expect(row?.status).toBe('planned');
     expect(row?.status_category).toBe('in_progress');
     expect(row?.code_refs).toEqual(['src/a.ts', 'src/b.ts']);
-    expect(row?.position_x).toBe(10);
-    expect(row?.position_y).toBe(20);
-    expect(row?.group_id).toBe('group-1');
     expect(row?.external_key).toBe('PROJ-123');
     expect(row?.external_type).toBe('jira');
     expect(row?.sync_source).toBe('jira');
@@ -88,9 +82,6 @@ describe('PlanItemRepository.add (registry-generated INSERT)', () => {
     expect(created.release_tag).toBeNull();
     expect(created.status_category).toBeNull();
     expect(created.code_refs).toBeNull();
-    expect(created.position_x).toBeNull();
-    expect(created.position_y).toBeNull();
-    expect(created.group_id).toBeNull();
     expect(created.external_key).toBeNull();
     expect(created.last_synced_at).toBeNull();
   });

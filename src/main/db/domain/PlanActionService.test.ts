@@ -46,7 +46,6 @@ function createHarness(
   trackerAssociations: { id: string }[] = [],
 ) {
   const store = new Map<string, PlanItem>(seed.map((item) => [item.id, item]));
-  const groupStore = new Map<string, { id: string; project_id: string }>();
 
   const add = vi.fn((item: PlanItem) => {
     store.set(item.id, makeItem(item));
@@ -78,7 +77,6 @@ function createHarness(
     store.set(id, item);
     return { status: 'updated' as const, item };
   });
-  const updatePosition = vi.fn();
   const setRepositoryTargets = vi.fn();
   const batchReparent = vi.fn((updates: { id: string; parentId: string | null }[]) => {
     for (const { id, parentId } of updates) {
@@ -87,11 +85,6 @@ function createHarness(
     }
   });
   const relationAdd = vi.fn((relation: unknown) => relation);
-  const groupCreate = vi.fn((group: { project_id: string }, id: string) => {
-    groupStore.set(id, { ...group, id });
-  });
-  const groupUpdate = vi.fn();
-  const groupDelete = vi.fn((id: string) => groupStore.delete(id));
   const outboundAdd = vi.fn();
   const queueTrackerUpdateIfNeeded = vi.fn();
   const getDescendantIds = vi.fn(() => [] as string[]);
@@ -115,7 +108,6 @@ function createHarness(
     delete: del,
     deleteWithDescendants,
     getDescendantIds,
-    updatePosition,
     batchReparent,
   };
 
@@ -129,12 +121,6 @@ function createHarness(
     database,
     planItems: planItems as unknown as PlanActionExecutorDeps['planItems'],
     planRelations: { add: relationAdd, remove: vi.fn() } as unknown as PlanActionExecutorDeps['planRelations'],
-    groups: {
-      create: groupCreate,
-      getById: (id: string) => groupStore.get(id),
-      update: groupUpdate,
-      delete: groupDelete,
-    } as unknown as PlanActionExecutorDeps['groups'],
     tracker: { getAssociationsByProject: vi.fn(() => trackerAssociations) } as unknown as PlanActionExecutorDeps['tracker'],
     outboundChanges: {
       getByProject: vi.fn(() => []),
@@ -155,8 +141,7 @@ function createHarness(
     store,
     spies: {
       add, setRepositoryTargets, compareAndReviseWorkBrief, update, del, deleteWithDescendants, getDescendantIds,
-      updatePosition, batchReparent, relationAdd, addDelete, queueTrackerUpdateIfNeeded,
-      groupCreate, groupUpdate, groupDelete, outboundAdd,
+      batchReparent, relationAdd, addDelete, queueTrackerUpdateIfNeeded, outboundAdd,
     },
   };
 }
@@ -179,11 +164,6 @@ interface PlaceholderCase {
 }
 
 const CREATE_ITEM: PlanAction = { type: 'create_item', title: 'Parent', parent_id: null };
-const CREATE_GROUP: PlanAction = {
-  type: 'create_group', project_id: PROJECT_ID, name: 'Must Do',
-  position_x: 0, position_y: 0, width: 552, height: 300,
-};
-
 const PLACEHOLDER_CASES: PlaceholderCase[] = [
   {
     name: 'create_item.parent_id',
@@ -279,14 +259,6 @@ const PLACEHOLDER_CASES: PlaceholderCase[] = [
     },
   },
   {
-    name: 'set_position.item_id',
-    creator: CREATE_ITEM,
-    action: (ref) => ({ type: 'set_position', item_id: ref, x: 12, y: 34 }),
-    expectResolved: (spies, createdId) => {
-      expect(spies.updatePosition).toHaveBeenCalledWith(createdId, 12, 34);
-    },
-  },
-  {
     name: 'queue_for_tracker.item_ids',
     creator: CREATE_ITEM,
     trackerAssociations: [{ id: 'assoc-1' }],
@@ -295,43 +267,6 @@ const PLACEHOLDER_CASES: PlaceholderCase[] = [
       expect(spies.outboundAdd).toHaveBeenCalledWith(
         expect.objectContaining({ plan_item_id: createdId, association_id: 'assoc-1' }),
       );
-    },
-  },
-  {
-    name: 'assign_to_group.item_id',
-    creator: CREATE_ITEM,
-    action: (ref) => ({ type: 'assign_to_group', item_id: ref, group_id: null }),
-    expectResolved: (spies, createdId) => {
-      expect(spies.update).toHaveBeenCalledWith(
-        createdId, { group_id: null, position_x: null, position_y: null },
-      );
-    },
-  },
-  {
-    name: 'assign_to_group.group_id',
-    creator: CREATE_GROUP,
-    seed: [makeItem({ id: 'a' })],
-    action: (ref) => ({ type: 'assign_to_group', item_id: 'a', group_id: ref }),
-    expectResolved: (spies, createdId) => {
-      expect(spies.update).toHaveBeenCalledWith(
-        'a', { group_id: createdId, position_x: null, position_y: null },
-      );
-    },
-  },
-  {
-    name: 'update_group.group_id',
-    creator: CREATE_GROUP,
-    action: (ref) => ({ type: 'update_group', group_id: ref, updates: { name: 'Renamed' } }),
-    expectResolved: (spies, createdId) => {
-      expect(spies.groupUpdate).toHaveBeenCalledWith(createdId, { name: 'Renamed' });
-    },
-  },
-  {
-    name: 'delete_group.group_id',
-    creator: CREATE_GROUP,
-    action: (ref) => ({ type: 'delete_group', group_id: ref }),
-    expectResolved: (spies, createdId) => {
-      expect(spies.groupDelete).toHaveBeenCalledWith(createdId);
     },
   },
 ];

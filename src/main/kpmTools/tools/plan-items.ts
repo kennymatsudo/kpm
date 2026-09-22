@@ -779,31 +779,5 @@ Action types:
       },
       { annotations: { destructiveHint: true } }
     ),
-
-    tool(
-      'clear_positions',
-      'Clear canvas positions for all items in the project. NOTE: This is a UI-only operation that executes immediately (no approval needed) since it only affects canvas layout, not plan structure. Use when user asks to "reset layout", "clear positions", "reset canvas".',
-      {
-        projectId: z.string().uuid().describe('The project UUID'),
-      },
-      async ({ projectId }) => {
-        toolLog('[KPM Tools] clear_positions called for project:', projectId);
-        try {
-          const result = db
-            .prepare(`UPDATE plan_items SET position_x = NULL, position_y = NULL, updated_at = CURRENT_TIMESTAMP WHERE project_id = ? AND (position_x IS NOT NULL OR position_y IS NOT NULL)`)
-            .run(projectId);
-
-          toolLog(`[KPM Tools] clear_positions cleared ${result.changes} items`);
-          return jsonResult({
-            message: `Cleared positions for ${result.changes} item(s)`,
-            count: result.changes,
-          });
-        } catch (error) {
-          console.error('[KPM Tools] clear_positions error:', error);
-          return toolError(`Failed to clear positions: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      },
-      { annotations: { idempotentHint: true } }
-    ),
   ];
 }

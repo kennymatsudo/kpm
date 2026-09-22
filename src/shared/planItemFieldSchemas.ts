@@ -23,15 +23,6 @@ import type { PlanItem } from './base-types';
 
 const uuid = z.string().uuid('Invalid ID format (expected UUID)');
 
-// The registry's position fields are nullable (an item need not be placed), but a
-// caller that sets a position must supply both coordinates — hence the non-nullable
-// schema, bounds still owned by the registry entry.
-export const canvasPosition = z
-  .number()
-  .int()
-  .min(PLAN_ITEM_FIELDS.position_x.fieldKind.min)
-  .max(PLAN_ITEM_FIELDS.position_x.fieldKind.max);
-
 function zodForKind(kind: PlanItemFieldKind): z.ZodTypeAny {
   switch (kind.kind) {
     case 'literal':

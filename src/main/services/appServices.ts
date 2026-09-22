@@ -28,7 +28,6 @@ import { createSettingsService } from './core/SettingsService';
 import { createCustomThemeService } from './core/CustomThemeService';
 import { createTaskPromptTemplateService } from './core/TaskPromptTemplateService';
 import { createAttachmentService } from './core/AttachmentService';
-import { createGroupService } from './core/GroupService';
 import { createSearchService } from './core/SearchService';
 import { createSlashCommandService } from './core/SlashCommandService';
 import { createPlaybookService } from './core/PlaybookService';
@@ -184,7 +183,6 @@ export function createAppServices(container: IRepositoryContainer) {
     database,
     planItems: container.planItems,
     planRelations: container.planRelations,
-    groups: container.groups,
     tracker: container.tracker,
     outboundChanges: container.outboundChanges,
     repos: container.repos,
@@ -225,11 +223,6 @@ export function createAppServices(container: IRepositoryContainer) {
 
   const taskPromptTemplateService = createTaskPromptTemplateService({
     taskPromptTemplates: container.taskPromptTemplates,
-  });
-
-  const groupService = createGroupService({
-    groups: container.groups,
-    planItems: container.planItems,
   });
 
   const attachmentService = createAttachmentService({
@@ -513,7 +506,6 @@ export function createAppServices(container: IRepositoryContainer) {
     taskPromptTemplateService,
     planService,
     planActionExecutor,
-    groupService,
     attachmentService,
     exportService,
     typeMappingService,

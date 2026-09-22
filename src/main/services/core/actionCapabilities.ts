@@ -19,7 +19,6 @@ const TOOL_CAPABILITIES_FOR_GRANT: Record<ActionCapability, readonly KpmToolCapa
   read_project: [
     'plan_items.read',
     'plan_relations.read',
-    'groups.read',
     'documents.read',
     'project_files.read',
     'plan_refs.read',

@@ -13,7 +13,6 @@ export { AddDependencyDetail, RemoveDependencyDetail } from './DependencyDetail'
 export {
   SetLabelDetail,
   SetReleaseDetail,
-  SetPositionDetail,
   ReorderDetail,
   QueueForTrackerDetail,
 } from './SimpleFieldDetail';
