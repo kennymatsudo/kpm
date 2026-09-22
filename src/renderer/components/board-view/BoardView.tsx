@@ -416,6 +416,7 @@ export const BoardView = memo(function BoardView({
   return (
     <div
       ref={boardRef}
+      data-testid="board-view"
       className="relative flex h-full overflow-hidden bg-surface-0"
       onKeyDown={handleBoardKeyDown}
     >
@@ -475,6 +476,23 @@ export const BoardView = memo(function BoardView({
       {/* Merge queue panel — between header and columns */}
       {showMergeQueue && hasOpenPrs && (
         <MergeQueuePanel onSelectSession={handleSelectQueueSession} />
+      )}
+
+      {/* Empty state — overlays the columns so the Add card buttons stay reachable */}
+      {items.length === 0 && (
+        <div className="absolute inset-0 top-10 flex items-center justify-center pointer-events-none">
+          <div className="text-center w-80">
+            <div className="w-14 h-14 rounded-2xl bg-surface-2 border border-border-subtle flex items-center justify-center mx-auto mb-5">
+              <svg className="w-7 h-7 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+            </div>
+            <p className="text-lg font-medium text-text-primary whitespace-nowrap">Start planning</p>
+            <p className="text-sm mt-2 text-text-muted leading-relaxed">
+              Ask Claude to break down your project into actionable work, or add a card to get started.
+            </p>
+          </div>
+        </div>
       )}
 
       {/* Columns container - horizontal scroll if needed */}

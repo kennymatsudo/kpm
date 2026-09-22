@@ -1,6 +1,6 @@
 import { memo } from 'react';
 
-export type ViewMode = 'card' | 'tree' | 'board';
+export type ViewMode = 'tree' | 'board';
 
 interface ViewSwitcherProps {
   value: ViewMode;
@@ -8,7 +8,7 @@ interface ViewSwitcherProps {
 }
 
 /**
- * ViewSwitcher - Toggle between Board, Card, and Tree views
+ * ViewSwitcher - Toggle between Board and Tree views
  *
  * Design: Pill-shaped toggle with subtle active state, matching KPM's
  * refined minimalism aesthetic.
@@ -40,29 +40,6 @@ export const ViewSwitcher = memo(function ViewSwitcher({
           />
         </svg>
         Board
-      </button>
-
-      {/* Card View */}
-      <button
-        onClick={() => onChange('card')}
-        className={`
-          flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium
-          transition-all duration-200
-          ${value === 'card'
-            ? 'bg-surface-1 text-text-primary shadow-sm'
-            : 'text-text-tertiary hover:text-text-secondary'}
-        `}
-        title="Card view (spatial canvas)"
-      >
-        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={1.5}
-            d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"
-          />
-        </svg>
-        Cards
       </button>
 
       {/* Tree View */}

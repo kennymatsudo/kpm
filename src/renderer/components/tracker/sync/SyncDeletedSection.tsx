@@ -68,7 +68,7 @@ export function SyncDeletedSection({ items, action, decisions, onActionChange, o
                 <span className="text-sm text-text-primary truncate">{item.title}</span>
                 {item.parent_id && (
                   <span className="text-xs text-text-muted ml-2">
-                    (in {item.status === 'planned' ? 'canvas' : 'backlog'})
+                    (in {item.status === 'planned' ? 'plan' : 'backlog'})
                   </span>
                 )}
               </div>

@@ -7,6 +7,7 @@ import {
   reparentItem,
   expectItemCount,
   ensureAppReady,
+  planCard,
 } from './test-utils';
 
 test.describe.serial('Plan hierarchy workflow', () => {
@@ -24,7 +25,7 @@ test.describe.serial('Plan hierarchy workflow', () => {
   test.afterAll(async ({ electronApp }) => {
     const page = electronApp.context.pages()[0];
     try {
-      await switchViewMode(page, 'Cards');
+      await switchViewMode(page, 'Board');
       await deleteProject(page, PROJECT_NAME);
     } catch {
       // Cleanup best-effort
@@ -36,9 +37,10 @@ test.describe.serial('Plan hierarchy workflow', () => {
 
     await reparentItem(window, 'Child Task 1', 'Parent Feature');
 
-    // After reparenting, the parent card shows a child count indicator
-    const parentCard = window.getByRole('article', { name: 'Parent Feature' }).first();
-    await expect(parentCard.getByText('(1)')).toBeVisible();
+    // After reparenting, the parent card exposes a child-count toggle
+    await expect(
+      planCard(window, 'Parent Feature').getByRole('button', { name: '1 sub' })
+    ).toBeVisible();
   });
 
   test('tree view shows hierarchy', async ({ window }) => {
@@ -48,7 +50,7 @@ test.describe.serial('Plan hierarchy workflow', () => {
     await expect(window.getByText('Child Task 1')).toBeVisible();
     await expect(window.getByText('Child Task 2')).toBeVisible();
 
-    await switchViewMode(window, 'Cards');
+    await switchViewMode(window, 'Board');
   });
 
   test('drag-drop creates multi-level nesting', async ({ window }) => {
@@ -62,6 +64,6 @@ test.describe.serial('Plan hierarchy workflow', () => {
     await expect(window.getByText('Child Task 1')).toBeVisible();
     await expect(window.getByText('Child Task 2')).toBeVisible();
 
-    await switchViewMode(window, 'Cards');
+    await switchViewMode(window, 'Board');
   });
 });

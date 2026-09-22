@@ -4,9 +4,11 @@ import {
   createPlanItem,
   deleteProject,
   setItemStatus,
+  setItemStatusInTree,
   switchViewMode,
   expectItemCount,
   ensureAppReady,
+  treeRow,
 } from './test-utils';
 
 test.describe.serial('Status workflow', () => {
@@ -26,7 +28,7 @@ test.describe.serial('Status workflow', () => {
   test.afterAll(async ({ electronApp }) => {
     const page = electronApp.context.pages()[0];
     try {
-      await switchViewMode(page, 'Cards');
+      await switchViewMode(page, 'Board');
       await deleteProject(page, PROJECT_NAME);
     } catch {
       // Cleanup best-effort
@@ -35,18 +37,16 @@ test.describe.serial('Status workflow', () => {
 
   test('change status Not Started to In Progress to Done', async ({ window }) => {
     await expectItemCount(window, 3);
+    await switchViewMode(window, 'Tree');
 
-    const planCard = window.getByRole('article', { name: 'Not Started Task' });
-    await expect(planCard).toBeVisible();
+    await expect(treeRow(window, 'Not Started Task')).toBeVisible();
 
-    await setItemStatus(window, 'Not Started Task', 'In Progress');
-    await expect(planCard.getByText('In Progress')).toBeVisible();
-
-    await setItemStatus(window, 'Not Started Task', 'Done');
-    await expect(planCard.getByText('Done')).toBeVisible();
+    await setItemStatusInTree(window, 'Not Started Task', 'In Progress');
+    await setItemStatusInTree(window, 'Not Started Task', 'Done');
 
     // Reset status for subsequent tests
-    await setItemStatus(window, 'Not Started Task', 'Not Started');
+    await setItemStatusInTree(window, 'Not Started Task', 'Not Started');
+    await switchViewMode(window, 'Board');
   });
 
   test('status changes reflect in Board view', async ({ window }) => {
@@ -63,7 +63,5 @@ test.describe.serial('Status workflow', () => {
     await expect(window.getByText('Not Started Task')).toBeVisible();
     await expect(window.getByText('In Progress Task')).toBeVisible();
     await expect(window.getByText('Done Task')).toBeVisible();
-
-    await switchViewMode(window, 'Cards');
   });
 });

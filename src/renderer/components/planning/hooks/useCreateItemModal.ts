@@ -8,7 +8,6 @@ interface CreateItemContext {
   isOpen: boolean;
   parentId: string | null;
   status: StatusCategory | null;
-  canvasPosition: { x: number; y: number } | null;
 }
 
 interface CreateItemModalDeps {
@@ -22,23 +21,12 @@ export function useCreateItemModal({
 }: CreateItemModalDeps) {
   const [createItemContext, setCreateItemContext] = useState<CreateItemContext | null>(null);
 
-  // Open from Canvas (with canvas position)
-  const handleCreateItemFromCanvas = useCallback((canvasPosition: { x: number; y: number }) => {
-    setCreateItemContext({
-      isOpen: true,
-      parentId: null,
-      status: null,
-      canvasPosition,
-    });
-  }, []);
-
   // Open from TreeView (with optional parent)
   const handleCreateItemFromTree = useCallback((parentId: string | null) => {
     setCreateItemContext({
       isOpen: true,
       parentId,
       status: null,
-      canvasPosition: null,
     });
   }, []);
 
@@ -48,7 +36,6 @@ export function useCreateItemModal({
       isOpen: true,
       parentId: null,
       status,
-      canvasPosition: null,
     });
   }, []);
 
@@ -58,7 +45,6 @@ export function useCreateItemModal({
       isOpen: true,
       parentId: null,
       status: null,
-      canvasPosition: null,
     });
   }, []);
 
@@ -73,11 +59,8 @@ export function useCreateItemModal({
   }, []);
 
   const handleCreateItemSubmit = useCallback(
-    async (
-      data: CreateItemData,
-      canvasPosition?: { x: number; y: number } | null
-    ) => {
-      const actions = buildCreateItemActions(data, canvasPosition);
+    async (data: CreateItemData) => {
+      const actions = buildCreateItemActions(data);
       await executePlanActions(actions);
     },
     [executePlanActions]
@@ -85,7 +68,6 @@ export function useCreateItemModal({
 
   return {
     createItemContext,
-    handleCreateItemFromCanvas,
     handleCreateItemFromTree,
     handleCreateItemFromBoard,
     closeCreateItemModal,

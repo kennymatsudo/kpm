@@ -1,5 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { Canvas } from './Canvas';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { BulkActionsMenu } from './BulkActionsMenu';
 import { PlanCardMenu } from './PlanCardMenu';
 import { BulkDeleteConfirmDialog } from './BulkDeleteConfirmDialog';
@@ -18,7 +17,6 @@ import {
   useProjectUiDomainStore,
   useTrackerStore,
   useExportStore,
-  useGroupStore,
   useResourceDomainStore,
   selectNormalizedPlanItems,
   selectFocusedPlanItemId,
@@ -31,8 +29,6 @@ import { resolveStatusCategory } from '../../constants/statusConfig';
 import { useShallow } from 'zustand/react/shallow';
 import {
   useBulkActions,
-  useAutoLayout,
-  useGroupCollisionResolution,
   usePlanTaskEdit,
   useCreateItemModal,
   usePlanContextMenu,
@@ -69,17 +65,10 @@ export function PlanView({
   setSelectedItemIds,
   registerCreateItemHandler,
 }: PlanViewProps) {
-  const {
-    planItems,
-    executePlanActions,
-    updateItemPosition,
-    updateItemPositions,
-  } = usePlanDomainStore(
+  const { planItems, executePlanActions } = usePlanDomainStore(
     useShallow((state) => ({
       planItems: state.planItems,
       executePlanActions: state.executePlanActions,
-      updateItemPosition: state.updateItemPosition,
-      updateItemPositions: state.updateItemPositions,
     }))
   );
   const currentProjectId = useProjectDomainStore((state) => state.currentProjectId);
@@ -99,7 +88,6 @@ export function PlanView({
 
   const normalizedPlanItems = useMemo(() => selectNormalizedPlanItems(planItems), [planItems]);
   const planItemsById = normalizedPlanItems.byId;
-  const plannedItems = normalizedPlanItems.plannedItems;
 
   // Derive focusedItemId from focusedResources for backward compatibility with child components
   const focusedItemId = useMemo(
@@ -115,15 +103,6 @@ export function PlanView({
   // Export store - for queue operations
   const addToQueue = useExportStore((state) => state.addToQueue);
 
-  // Group store - for groups and layout
-  const { groups, updateGroupPosition, updateGroupSize } = useGroupStore(
-    useShallow((state) => ({
-      groups: state.groups,
-      updateGroupPosition: state.updateGroupPosition,
-      updateGroupSize: state.updateGroupSize,
-    }))
-  );
-
   // --- Extracted hooks ---
 
   const {
@@ -136,7 +115,6 @@ export function PlanView({
 
   const {
     createItemContext,
-    handleCreateItemFromCanvas,
     handleCreateItemFromTree,
     handleCreateItemFromBoard,
     closeCreateItemModal,
@@ -314,143 +292,6 @@ export function PlanView({
     useDevSessionsStore.getState().setSelectedSessionId(null);
   }, [requestedDetailSessionId, viewMode]);
 
-  // --- Auto layout & collision resolution ---
-
-  const handleAutoLayout = useAutoLayout({
-    plannedItems: filteredPlannedItems, // Use filtered items so new items are placed near visible content
-    groups,
-    updateItemPosition,
-    updateGroupPosition,
-    updateGroupSize,
-  });
-
-  // Collision resolution for when items are added to groups
-  const resolveCollisionsForGroup = useGroupCollisionResolution({
-    plannedItems: filteredPlannedItems,
-    groups,
-    updateGroupPosition,
-    updateGroupSize,
-  });
-
-  const handleAssignToGroup = useCallback(
-    async (itemIds: string[], groupId: string | null) => {
-      const actions = itemIds.map((id) => ({
-        type: 'assign_to_group' as const,
-        item_id: id,
-        group_id: groupId,
-      }));
-      await executePlanActions(actions);
-    },
-    [executePlanActions]
-  );
-
-  // Track previous group assignments to detect changes (for MCP tool updates)
-  const prevGroupAssignmentsRef = useRef<Map<string, string | null>>(new Map());
-  const hasInitializedGroupAssignmentsRef = useRef(false);
-  const prevGroupCollapsedRef = useRef<Map<string, boolean>>(new Map());
-
-  // Reset assignment diff state when project changes to avoid cross-project drift.
-  useEffect(() => {
-    prevGroupAssignmentsRef.current = new Map();
-    hasInitializedGroupAssignmentsRef.current = false;
-  }, [currentProjectId]);
-
-  // Watch for group assignment changes (handles MCP tool updates)
-  useEffect(() => {
-    const previousAssignments = prevGroupAssignmentsRef.current;
-    const currentAssignments = new Map<string, string | null>();
-    const affectedGroupIds = new Set<string>();
-    const shouldDebug = typeof window !== 'undefined' &&
-      (window as unknown as { __DEBUG_GROUP_LAYOUT?: boolean }).__DEBUG_GROUP_LAYOUT === true;
-
-    // Build current assignments map and detect changes
-    for (const item of plannedItems) {
-      currentAssignments.set(item.id, item.group_id);
-
-      const prevGroupId = previousAssignments.get(item.id);
-      const currentGroupId = item.group_id;
-
-      // If group assignment changed
-      if (prevGroupId !== currentGroupId) {
-        if (currentGroupId) {
-          affectedGroupIds.add(currentGroupId);
-        }
-        if (prevGroupId) {
-          affectedGroupIds.add(prevGroupId);
-        }
-        if (shouldDebug) {
-          console.debug('[group-assignment]', {
-            itemId: item.id,
-            from: prevGroupId,
-            to: currentGroupId,
-          });
-        }
-      }
-    }
-
-    // Detect deleted/removed items to shrink/reflow their previous groups.
-    for (const [itemId, prevGroupId] of previousAssignments) {
-      if (!currentAssignments.has(itemId) && prevGroupId) {
-        affectedGroupIds.add(prevGroupId);
-        if (shouldDebug) {
-          console.debug('[group-assignment]', {
-            itemId,
-            from: prevGroupId,
-            to: null,
-          });
-        }
-      }
-    }
-
-    // Seed baseline on first render to avoid startup collision side-effects.
-    if (!hasInitializedGroupAssignmentsRef.current) {
-      prevGroupAssignmentsRef.current = currentAssignments;
-      hasInitializedGroupAssignmentsRef.current = true;
-      return;
-    }
-
-    // Update ref for next comparison
-    prevGroupAssignmentsRef.current = currentAssignments;
-
-    // Resolve collisions for affected groups (skip on initial render)
-    if (affectedGroupIds.size > 0 && groups.length > 0) {
-      // Resolve collisions for each affected group
-      for (const groupId of affectedGroupIds) {
-        // Check if group still exists
-        if (groups.some(g => g.id === groupId)) {
-          void resolveCollisionsForGroup(groupId);
-        }
-      }
-    }
-  }, [plannedItems, groups, resolveCollisionsForGroup]);
-
-  // When expanding a group, push overlapping groups out of the way
-  useEffect(() => {
-    const prevCollapsed = prevGroupCollapsedRef.current;
-    const currentIds = new Set(groups.map(group => group.id));
-
-    for (const group of groups) {
-      const wasCollapsed = prevCollapsed.get(group.id);
-      if (wasCollapsed === undefined) {
-        prevCollapsed.set(group.id, group.is_collapsed);
-        continue;
-      }
-
-      if (wasCollapsed && !group.is_collapsed) {
-        void resolveCollisionsForGroup(group.id);
-      }
-
-      prevCollapsed.set(group.id, group.is_collapsed);
-    }
-
-    // Cleanup removed groups
-    for (const id of prevCollapsed.keys()) {
-      if (!currentIds.has(id)) {
-        prevCollapsed.delete(id);
-      }
-    }
-  }, [groups, resolveCollisionsForGroup]);
-
   // --- Derived data ---
 
   // Build tree hierarchy for tree view (using filtered items)
@@ -465,7 +306,7 @@ export function PlanView({
 
 
   // Initial fetch for this project: distinguish "still loading" from "empty plan"
-  // so the view area doesn't render as a blank canvas while items load.
+  // so the view area doesn't render as an empty board while items load.
   if (currentProjectId && isLoading && planItems.length === 0) {
     return (
       <div className="flex items-center justify-center h-full w-full bg-surface-0">
@@ -507,33 +348,9 @@ export function PlanView({
           wider than <main>, whose overflow-hidden then clips the right-anchored
           detail pane (timestamps cut off). */}
       <div className="flex-1 flex flex-col relative min-w-0">
-        {/* View area - Canvas, Tree, or Board */}
+        {/* View area - Tree or Board */}
         <div className="flex-1 overflow-hidden" onContextMenu={handleContextMenu}>
-          {viewMode === 'card' ? (
-            <ErrorBoundary name="Canvas">
-              <div className="h-full canvas-bg">
-                <Canvas
-                  projectId={currentProjectId}
-                  items={filteredPlannedItems}
-                  hierarchyTree={treeHierarchy}
-                  selectedItemIds={selectedItemIds}
-                  focusedItemId={focusedItemId}
-                  searchQuery={searchQuery}
-                  onSelectItem={handleSelectItem}
-                  onSelectRange={handleSelectRange}
-                  onEditItem={handleEditItem}
-                  onPrepareEditItem={prefetchEditItem}
-                  onAddToContext={handleAddItemToContextWithToast}
-                  onCreateItem={handleCreateItemFromCanvas}
-                  onReparent={handleReparent}
-                  onUpdatePosition={updateItemPosition}
-                  onUpdatePositions={updateItemPositions}
-                  onAutoLayout={handleAutoLayout}
-                  onAssignToGroup={handleAssignToGroup}
-                />
-              </div>
-            </ErrorBoundary>
-          ) : viewMode === 'tree' ? (
+          {viewMode === 'tree' ? (
             <ErrorBoundary name="TreeView">
               <TreeView
                 items={treeHierarchy}
@@ -667,7 +484,6 @@ export function PlanView({
             projectId={currentProjectId}
             defaultParentId={createItemContext.parentId}
             defaultStatus={createItemContext.status}
-            canvasPosition={createItemContext.canvasPosition}
             planItems={planItems}
             repos={repos}
             onSubmit={handleCreateItemSubmit}

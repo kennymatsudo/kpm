@@ -51,12 +51,12 @@ export function DeleteConfirmDialog({
         onCancel={onCancel}
         dualActions={[
           {
-            label: 'Keep children on canvas',
+            label: 'Keep children in the plan',
             description: 'Delete this item only, children become root items',
             loadingText: 'Deleting...',
             variant: 'primary',
             onClick: onDeleteMoveToBacklog,
-            ariaLabel: 'Delete this item only and keep children on canvas',
+            ariaLabel: 'Delete this item only and keep children in the plan',
           },
           {
             label: 'Delete all',

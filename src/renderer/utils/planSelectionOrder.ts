@@ -1,15 +1,4 @@
-import type { PlanItem } from '../../shared/types';
 import type { TreeNode } from './planHierarchy';
-
-export function getCanvasSelectionOrder(items: readonly PlanItem[]): string[] {
-  return [...items]
-    .sort((a, b) => {
-      const yDiff = (a.position_y ?? 0) - (b.position_y ?? 0);
-      if (yDiff !== 0) return yDiff;
-      return (a.position_x ?? 0) - (b.position_x ?? 0);
-    })
-    .map((item) => item.id);
-}
 
 function treeNodeMatchesNormalizedQuery(node: TreeNode, query: string): boolean {
   if (node.title.toLowerCase().includes(query)) return true;

@@ -7,6 +7,9 @@ import {
   switchToProject,
   expectItemCount,
   ensureAppReady,
+  planCard,
+  switchViewMode,
+  treeRow,
 } from './test-utils';
 
 test.describe.serial('Project operations and navigation', () => {
@@ -21,7 +24,7 @@ test.describe.serial('Project operations and navigation', () => {
 
   test('create project', async ({ window }) => {
     await createProject(window, 'Nav Test Project');
-    await expect(window.getByTestId('canvas-viewport')).toBeVisible();
+    await expect(window.getByTestId('board-view')).toBeVisible();
     await expectItemCount(window, 0);
     await expect(window.getByText('Start planning')).toBeVisible();
     await expect(window.getByText('Ask Claude to break down your project')).toBeVisible();
@@ -120,7 +123,7 @@ test.describe.serial('Project operations and navigation', () => {
     // After deleting "Enter Key Test", app auto-switches to "Renamed Project"
     // Navigate to Plan view to see the items
     await window.getByRole('button', { name: 'Plan' }).click();
-    await expect(window.getByTestId('canvas-viewport')).toBeVisible();
+    await expect(window.getByTestId('board-view')).toBeVisible();
 
     await openItemEditPanel(window, 'Test Item');
     await expect(window.getByText('Edit Task')).toBeVisible();
@@ -138,18 +141,21 @@ test.describe.serial('Project operations and navigation', () => {
   });
 
   test('arrow keys work in dropdown menus', async ({ window }) => {
-    const planCard = window.getByRole('article', { name: 'Test Item' });
-    const statusButton = planCard.locator('button[aria-haspopup="listbox"]');
+    // The status control lives in Tree view; the board sets status by column.
+    await switchViewMode(window, 'Tree');
+
+    const statusButton = treeRow(window, 'Test Item').getByLabel(/^Status:/);
     await statusButton.click();
 
-    await expect(window.getByRole('listbox', { name: 'Status options' })).toBeVisible();
+    await expect(window.getByRole('option', { name: 'In Progress' })).toBeVisible();
     await window.keyboard.press('ArrowDown');
     await window.keyboard.press('Escape');
+
+    await switchViewMode(window, 'Board');
   });
 
   test('delete confirmation dialog appears for destructive actions', async ({ window }) => {
-    const planCard = window.getByRole('article', { name: 'Test Item' });
-    await planCard.click({ button: 'right' });
+    await planCard(window, 'Test Item').click({ button: 'right' });
 
     // The Delete button in the context menu is a plain <button> with class dropdown-item-danger
     await window.locator('.dropdown-item-danger').click();
@@ -159,22 +165,22 @@ test.describe.serial('Project operations and navigation', () => {
     await expect(window.getByRole('button', { name: /Cancel/ })).toBeVisible();
 
     await window.getByRole('button', { name: /Cancel/ }).click();
-    await expect(window.getByRole('article', { name: 'Test Item' })).toBeVisible();
+    await expect(planCard(window, 'Test Item')).toBeVisible();
   });
 
   test('multiple projects can be created and switched between', async ({ window }) => {
     await createProject(window, 'Project B');
-    await expect(window.getByTestId('canvas-viewport')).toBeVisible();
+    await expect(window.getByTestId('board-view')).toBeVisible();
 
     // Verify we can switch to the other project via the TopBar menu
     await switchToProject(window, 'Renamed Project');
     await window.getByRole('button', { name: 'Plan' }).click();
-    await expect(window.getByTestId('canvas-viewport')).toBeVisible();
+    await expect(window.getByTestId('board-view')).toBeVisible();
 
     // Switch back to Project B
     await switchToProject(window, 'Project B');
     await window.getByRole('button', { name: 'Plan' }).click();
-    await expect(window.getByTestId('canvas-viewport')).toBeVisible();
+    await expect(window.getByTestId('board-view')).toBeVisible();
 
     // Clean up — delete Project B first (currently active)
     await deleteProject(window, 'Project B');

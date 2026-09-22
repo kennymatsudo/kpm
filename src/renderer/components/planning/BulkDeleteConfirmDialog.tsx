@@ -60,7 +60,7 @@ export function BulkDeleteConfirmDialog({
         onCancel={onCancel}
         dualActions={[
           {
-            label: 'Keep children on canvas',
+            label: 'Keep children in the plan',
             description: `Delete ${itemCount} selected item${itemCount > 1 ? 's' : ''}, children become root items`,
             loadingText: 'Deleting...',
             variant: 'primary',

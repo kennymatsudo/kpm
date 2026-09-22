@@ -28,12 +28,22 @@ export async function createProject(window: Page, name: string): Promise<void> {
   await expect(window.getByText(name)).toBeVisible();
   // Navigate to the Execute view (app defaults to Workspace view)
   await window.getByRole('button', { name: 'Execute' }).click();
-  // Wait for the planning view to be ready (new projects default to Board view)
-  await expect(window.locator('button[title="Card view (spatial canvas)"]')).toBeVisible();
-  // Land on the canvas: specs written against the original helper contract
-  // expect canvas-viewport to be visible after createProject
-  await switchViewMode(window, 'Cards');
-  await expect(window.getByTestId('canvas-viewport')).toBeVisible();
+  // New projects default to Board view
+  await expect(window.getByTestId('board-view')).toBeVisible();
+}
+
+/**
+ * Locates a plan item's card in Board view by its title. Board cards expose an
+ * accessible name of "[external key, ]title, status", and Playwright matches
+ * role names by substring, so the title alone is enough.
+ */
+export function planCard(window: Page, title: string) {
+  return window.getByRole('group', { name: title });
+}
+
+/** Locates a plan item's row in Tree view by its title. */
+export function treeRow(window: Page, title: string) {
+  return window.getByRole('treeitem', { name: title });
 }
 
 /**
@@ -52,36 +62,28 @@ export async function createPlanItem(window: Page, title: string): Promise<void>
   await titleInput.fill(title);
   await titleInput.press('Enter');
 
-  // Wait for item to appear on canvas
-  await expect(window.getByRole('article', { name: title })).toBeVisible();
+  await expect(planCard(window, title)).toBeVisible();
 }
 
 /**
- * Creates a plan item via right-click context menu on the canvas.
+ * Creates a plan item via a board column's "Add card" button, which seeds the
+ * modal with that column's status.
  */
-export async function createPlanItemViaContextMenu(
+export async function createPlanItemInColumn(
   window: Page,
   title: string,
-  position: { x: number; y: number } = { x: 300, y: 200 }
+  columnLabel: string
 ): Promise<void> {
-  const canvas = window.getByTestId('canvas-viewport');
+  const column = window.getByRole('group', { name: new RegExp(`^${columnLabel},`) });
+  await column.getByRole('button', { name: 'Add card' }).click();
 
-  // Right-click on canvas to open context menu
-  await canvas.click({ button: 'right', position });
-
-  // Click "Create Item" in context menu
-  await window.getByRole('menuitem', { name: 'Create Item' }).click();
-
-  // Wait for modal to appear
   const titleInput = window.getByPlaceholder('What needs to be done?');
   await expect(titleInput).toBeVisible({ timeout: 5000 });
 
-  // Fill title and submit
   await titleInput.fill(title);
   await titleInput.press('Enter');
 
-  // Wait for item to appear on canvas
-  await expect(window.getByRole('article', { name: title })).toBeVisible();
+  await expect(planCard(window, title)).toBeVisible();
 }
 
 /**
@@ -124,12 +126,11 @@ export async function cleanupProject(window: Page, projectName: string): Promise
 }
 
 /**
- * Switches to a specific view mode (Cards, Tree, or Board).
+ * Switches to a specific view mode (Tree or Board).
  * Uses button title attributes for reliable matching.
  */
-export async function switchViewMode(window: Page, mode: 'Cards' | 'Tree' | 'Board'): Promise<void> {
+export async function switchViewMode(window: Page, mode: 'Tree' | 'Board'): Promise<void> {
   const titleMap = {
-    Cards: 'Card view (spatial canvas)',
     Tree: 'Tree view (outline)',
     Board: 'Board view (kanban)',
   };
@@ -167,26 +168,74 @@ export async function switchMainView(window: Page, view: 'Plan' | 'Develop'): Pr
   await window.getByRole('button', { name: view }).click();
 }
 
+export type StatusLabel = 'Not Started' | 'In Progress' | 'In Review' | 'Done' | 'Blocked' | 'Canceled';
+
+const STATUS_CATEGORY_BY_LABEL: Record<StatusLabel, string> = {
+  'Not Started': 'not_started',
+  'In Progress': 'in_progress',
+  'In Review': 'in_review',
+  Done: 'done',
+  Blocked: 'blocked',
+  Canceled: 'canceled',
+};
+
 /**
- * Opens the status dropdown for a plan card and selects a status.
- * Uses ARIA roles for behavioral selection.
+ * Sets an item's status through the IPC API, then reloads so the store picks it
+ * up. Board columns are the only drag target for status and HTML5 drag-and-drop
+ * is unreliable here, so setup goes through the API — `setItemStatusInTree`
+ * covers the status control itself.
  */
 export async function setItemStatus(
   window: Page,
   itemTitle: string,
-  status: 'Not Started' | 'In Progress' | 'Done' | 'Blocked' | 'Canceled'
+  status: StatusLabel
 ): Promise<void> {
-  // Find the plan card by its accessible name
-  const planCard = window.getByRole('article', { name: itemTitle });
+  await window.evaluate(async ({ title, statusCategory }) => {
+    const w = window as unknown as { api: {
+      projects: { list: () => Promise<{ id: string }[]> };
+      plan: {
+        listItems: (projectId: string) => Promise<{ id: string; title: string }[]>;
+        executeActions: (
+          projectId: string,
+          actions: { type: string; item_id: string; updates: { status_category: string } }[]
+        ) => Promise<unknown>;
+      };
+    } };
 
-  // Find the status button within the card (has aria-haspopup="listbox")
-  const statusButton = planCard.locator('button[aria-haspopup="listbox"]');
+    const projects = await w.api.projects.list();
+    if (projects.length === 0) throw new Error('No projects found');
+    const projectId = projects[0].id;
+
+    const items = await w.api.plan.listItems(projectId);
+    const item = items.find((i) => i.title === title);
+    if (!item) throw new Error(`Item "${title}" not found`);
+
+    await w.api.plan.executeActions(projectId, [{
+      type: 'update_item',
+      item_id: item.id,
+      updates: { status_category: statusCategory },
+    }]);
+  }, { title: itemTitle, statusCategory: STATUS_CATEGORY_BY_LABEL[status] });
+
+  await window.reload();
+  await window.waitForLoadState('domcontentloaded');
+  await waitForAppReady(window);
+  await window.getByRole('button', { name: 'Execute' }).click();
+  await window.waitForTimeout(500);
+}
+
+/**
+ * Changes an item's status through the Tree view's status control, the only
+ * click-to-set status affordance in the UI.
+ */
+export async function setItemStatusInTree(
+  window: Page,
+  itemTitle: string,
+  status: StatusLabel
+): Promise<void> {
+  const statusButton = treeRow(window, itemTitle).getByLabel(/^Status:/);
   await statusButton.click();
-
-  // Select the status option from the dropdown
   await window.getByRole('option', { name: status }).click();
-
-  // Verify the status was updated - the button's aria-label should reflect the new status
   await expect(statusButton).toHaveAttribute('aria-label', `Status: ${status}`);
 }
 
@@ -265,21 +314,15 @@ export async function ensureAppReady(window: Page): Promise<void> {
  * Opens the edit modal for a plan item by clicking the Edit button on the card.
  */
 export async function openItemEditPanel(window: Page, itemTitle: string): Promise<void> {
-  const planCard = window.getByRole('article', { name: itemTitle });
   // Click the Edit item button within the card
-  await planCard.getByRole('button', { name: 'Edit item' }).click();
+  await planCard(window, itemTitle).getByRole('button', { name: 'Edit item' }).click();
   // Wait for the modal to appear
   await expect(window.getByText('Edit Task')).toBeVisible();
 }
 
-/**
- * Opens the context menu for a plan card via right-click.
- * Right-click is more reliable than "More actions" button which can be
- * obscured by the zoom toolbar overlay.
- */
+/** Opens the context menu for a plan card via right-click. */
 export async function openCardContextMenu(window: Page, itemTitle: string): Promise<void> {
-  const planCard = window.getByRole('article', { name: itemTitle });
-  await planCard.click({ button: 'right' });
+  await planCard(window, itemTitle).click({ button: 'right' });
   // Wait for the dropdown menu to appear — the Delete button is rendered
   // via portal with class 'dropdown-item-danger'
   await expect(window.locator('.dropdown-item-danger')).toBeVisible();
@@ -297,21 +340,7 @@ export async function deletePlanItem(window: Page, itemTitle: string): Promise<v
   await expect(confirmButton).toBeVisible();
   await confirmButton.click();
   // Verify item is gone
-  await expect(window.getByRole('article', { name: itemTitle })).not.toBeVisible();
-}
-
-/**
- * Creates a group on the canvas via right-click context menu.
- */
-export async function createGroupOnCanvas(
-  window: Page,
-  position: { x: number; y: number } = { x: 500, y: 400 }
-): Promise<void> {
-  const canvas = window.getByTestId('canvas-viewport');
-  await canvas.click({ button: 'right', position });
-  await window.getByRole('menuitem', { name: 'Create Group' }).click();
-  // Wait for group to appear
-  await expect(window.locator('[data-group-container]').first()).toBeVisible({ timeout: 3000 });
+  await expect(planCard(window, itemTitle)).not.toBeVisible();
 }
 
 /**
@@ -356,7 +385,7 @@ export async function reparentItem(
   await window.reload();
   await window.waitForLoadState('domcontentloaded');
   await waitForAppReady(window);
-  // Navigate to Plan view since reload goes to default view
-  await window.getByRole('button', { name: 'Plan' }).click();
+  // Navigate to the Execute view since reload goes to the default view
+  await window.getByRole('button', { name: 'Execute' }).click();
   await window.waitForTimeout(500);
 }

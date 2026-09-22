@@ -421,16 +421,6 @@ export function generateThemeVariables(colors: ThemeColors): Record<string, stri
       : 'inset 1px 0 0 rgba(255, 255, 255, 0.7), -2px 0 8px rgba(0, 0, 0, 0.05)',
     '--shadow-card': 'none',
     '--shadow-card-hover': 'none',
-    '--shadow-card-lift': isDark
-      ? `0 1px 3px rgba(0, 0, 0, 0.08)`
-      : `0 1px 3px rgba(0, 0, 0, 0.03)`,
-    '--shadow-card-lift-hover': isDark
-      ? `0 2px 6px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.06)`
-      : `0 2px 6px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.02)`,
-
-    // Canvas dots — subtle orientation cues
-    '--canvas-dot-color': rgba(colors.textPrimary, 0.02),
-
     // Scrollbar — alpha raised to actually clear 3:1 against surface-1 (0.08/0.12 measured ~1.2:1, invisible)
     '--scrollbar-thumb': rgba(colors.textPrimary, isDark ? 0.4 : 0.5),
     '--scrollbar-thumb-hover': rgba(colors.textPrimary, isDark ? 0.55 : 0.62),

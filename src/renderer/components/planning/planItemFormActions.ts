@@ -65,10 +65,7 @@ export function buildPlanTaskEditActions(
   return actions;
 }
 
-export function buildCreateItemActions(
-  item: CreateItemActionData,
-  canvasPosition?: { x: number; y: number } | null,
-): PlanAction[] {
+export function buildCreateItemActions(item: CreateItemActionData): PlanAction[] {
   const actions: PlanAction[] = [
     {
       type: 'create_item',
@@ -88,15 +85,6 @@ export function buildCreateItemActions(
       type: 'update_item',
       item_id: '$1',
       updates: { status_category: item.status_category },
-    });
-  }
-
-  if (canvasPosition) {
-    actions.push({
-      type: 'set_position',
-      item_id: '$1',
-      x: canvasPosition.x,
-      y: canvasPosition.y,
     });
   }
 

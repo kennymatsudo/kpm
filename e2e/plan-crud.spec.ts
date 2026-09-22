@@ -7,6 +7,7 @@ import {
   openItemEditPanel,
   expectItemCount,
   ensureAppReady,
+  planCard,
 } from './test-utils';
 
 test.describe.serial('Plan CRUD operations', () => {
@@ -33,7 +34,7 @@ test.describe.serial('Plan CRUD operations', () => {
 
   test('create item via keyboard shortcut', async ({ window }) => {
     await createPlanItem(window, 'First Feature');
-    await expect(window.getByRole('article', { name: 'First Feature' })).toBeVisible();
+    await expect(planCard(window, 'First Feature')).toBeVisible();
     await expectItemCount(window, 1);
   });
 
@@ -44,9 +45,9 @@ test.describe.serial('Plan CRUD operations', () => {
     await createPlanItem(window, 'Third Task');
     await expectItemCount(window, 3);
 
-    await expect(window.getByRole('article', { name: 'First Feature' })).toBeVisible();
-    await expect(window.getByRole('article', { name: 'Second Task' })).toBeVisible();
-    await expect(window.getByRole('article', { name: 'Third Task' })).toBeVisible();
+    await expect(planCard(window, 'First Feature')).toBeVisible();
+    await expect(planCard(window, 'Second Task')).toBeVisible();
+    await expect(planCard(window, 'Third Task')).toBeVisible();
   });
 
   test('edit item title and description with persistence', async ({ window }) => {
@@ -63,7 +64,7 @@ test.describe.serial('Plan CRUD operations', () => {
 
     await window.getByRole('button', { name: 'Save Changes' }).click();
 
-    await expect(window.getByRole('article', { name: 'Updated Feature' })).toBeVisible();
+    await expect(planCard(window, 'Updated Feature')).toBeVisible();
     await expect(window.getByText('Edit Task')).not.toBeVisible();
 
     // Re-open to verify description persisted
@@ -90,7 +91,7 @@ test.describe.serial('Plan CRUD operations', () => {
 
     // Save the changes so state is clean for next test
     await window.getByRole('button', { name: 'Save Changes' }).click();
-    await expect(window.getByRole('article', { name: 'Modified Title' })).toBeVisible();
+    await expect(planCard(window, 'Modified Title')).toBeVisible();
   });
 
   test('unsaved changes dialog - discard', async ({ window }) => {
@@ -106,7 +107,7 @@ test.describe.serial('Plan CRUD operations', () => {
     await window.getByRole('button', { name: 'Discard' }).click();
 
     await expect(window.getByText('Edit Task')).not.toBeVisible();
-    await expect(window.getByRole('article', { name: 'Modified Title' })).toBeVisible();
+    await expect(planCard(window, 'Modified Title')).toBeVisible();
   });
 
   test('delete item updates count', async ({ window }) => {

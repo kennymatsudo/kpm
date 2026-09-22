@@ -27,7 +27,7 @@ const VIEW_BUTTONS: ViewButtonConfig[] = [
   {
     id: 'planning',
     label: 'Execute',
-    description: 'Plan board, cards, and agent runs',
+    description: 'Plan board, outline, and agent runs',
     Icon: BoardColumnsIcon,
   },
 ];
@@ -36,7 +36,7 @@ const VIEW_BUTTONS: ViewButtonConfig[] = [
  * MainViewSwitcher - Toggle between Workspace and Execute views.
  *
  * Workspace: Chat-first interface with file browser and editor
- * Execute: Plan hierarchy, cards, tree, board views (board includes agentic execution)
+ * Execute: Board and tree views over the plan (board includes agentic execution)
  */
 export const MainViewSwitcher = memo(function MainViewSwitcher({
   value,

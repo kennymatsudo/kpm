@@ -5,7 +5,7 @@ import { StatusSelector } from '../ui/StatusSelector';
 import { resolveStatusCategory } from '../../constants/statusConfig';
 import { usePlanDomainStore } from '../../stores';
 import { useLatestRef } from '../../hooks/useLatestRef';
-import { MAX_DEPTH } from '../../constants/planCardStyles';
+import { MAX_DEPTH } from '../../constants/layout';
 import { Z_INDEX } from '../../constants/zIndex';
 import {
   getVisibleTreeSelectionOrder,
@@ -171,6 +171,11 @@ const TreeRow = memo(function TreeRow({
       <div
         ref={rowRef}
         draggable
+        data-plan-item-id={node.id}
+        role="treeitem"
+        aria-label={node.title}
+        aria-selected={isSelected}
+        aria-expanded={hasChildren ? isExpanded : undefined}
         className={`
           group flex items-center gap-2 px-3 py-1.5 cursor-grab active:cursor-grabbing
           border-l-2 ${depthColors[clampedDepth]}
@@ -638,6 +643,8 @@ export const TreeView = memo(function TreeView({
 
       {/* Scrollable tree content */}
       <div
+        role="tree"
+        aria-label="Plan items"
         className="flex-1 overflow-y-auto py-1"
         onDragOver={handleContainerDragOver}
         onDrop={handleContainerDrop}

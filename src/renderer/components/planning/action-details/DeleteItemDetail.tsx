@@ -63,7 +63,7 @@ export function DeleteItemDetail({ action, planItems }: DeleteItemDetailProps) {
               <p className="text-xs font-medium text-warning">
                 {cascades
                   ? `This will also delete ${childCount} child item${plural}`
-                  : `${childCount} child item${plural} will stay on the canvas as root item${plural}`}
+                  : `${childCount} child item${plural} will stay in the plan as root item${plural}`}
               </p>
               <ul className="mt-2 space-y-1">
                 {descendants.slice(0, 5).map((child) => (

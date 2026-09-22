@@ -374,7 +374,7 @@ export const Layout = memo(function Layout({
               <div
                 onMouseDown={handleSidebarResizeStart}
                 className="absolute right-0 top-0 bottom-0 w-px cursor-col-resize bg-border-subtle hover:bg-accent/50 active:bg-accent/70 transition-colors"
-                style={{ zIndex: Z_INDEX.canvas.dragging }}
+                style={{ zIndex: Z_INDEX.resizeHandle }}
               >
                 <div className="absolute inset-y-0 -left-1 -right-1" />
               </div>

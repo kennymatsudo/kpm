@@ -12,7 +12,8 @@ export interface UsePersistedViewStateReturn {
 function readStoredViewMode(projectId: string | null): ViewMode {
   if (!projectId) return 'board';
   const saved = localStorage.getItem(`kpm-view-mode-${projectId}`);
-  return saved === 'tree' || saved === 'card' ? saved : 'board';
+  // 'card' was the retired spatial canvas; anyone still holding it lands on the board.
+  return saved === 'tree' ? saved : 'board';
 }
 
 function readStoredMainView(projectId: string | null): MainView {

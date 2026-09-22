@@ -169,7 +169,7 @@ describe('buildCreateItemActions', () => {
     ]);
   });
 
-  it('emits the compatible flat create payload and preserves status and position actions', () => {
+  it('emits the compatible flat create payload and preserves the status action', () => {
     expect(buildCreateItemActions({
       title: 'Create unified editor',
       description: 'Shared tracker context',
@@ -180,7 +180,7 @@ describe('buildCreateItemActions', () => {
       label: 'feature',
       parent_id: null,
       status_category: 'in_progress',
-    }, { x: 120, y: 240 })).toEqual([
+    })).toEqual([
       {
         type: 'create_item',
         title: 'Create unified editor',
@@ -196,12 +196,6 @@ describe('buildCreateItemActions', () => {
         type: 'update_item',
         item_id: '$1',
         updates: { status_category: 'in_progress' },
-      },
-      {
-        type: 'set_position',
-        item_id: '$1',
-        x: 120,
-        y: 240,
       },
     ]);
   });

@@ -317,21 +317,6 @@ textarea,
   caret-color: var(--color-accent);
 }
 
-/* ============================================
-   Canvas Background
-   ============================================ */
-
-.canvas-bg {
-  background-color: var(--color-surface-0);
-  background-image: radial-gradient(
-    circle at center,
-    var(--canvas-dot-color) 1px,
-    transparent 1px
-  );
-  background-size: 32px 32px;
-  transition: background-color var(--transition-theme);
-}
-
 /* Terminal grid pattern (forced dark theme) */
 .terminal-grid {
   background-image:
@@ -498,51 +483,6 @@ button:focus-visible {
   opacity: 0.5;
   cursor: not-allowed;
 }
-
-/* ============================================
-   Plan Card Depth Styles
-   ============================================ */
-
-.plan-card-depth-0 { --depth-color: var(--color-depth-0); }
-.plan-card-depth-1 { --depth-color: var(--color-depth-1); }
-.plan-card-depth-2 { --depth-color: var(--color-depth-2); }
-.plan-card-depth-3 { --depth-color: var(--color-depth-3); }
-.plan-card-depth-4 { --depth-color: var(--color-depth-4); }
-
-.plan-card {
-  position: relative;
-  background: var(--color-surface-elevated);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--color-border-default);
-  box-shadow: var(--shadow-card-lift);
-  transition: background var(--transition-default), border-color var(--transition-default), box-shadow var(--transition-default);
-  overflow: hidden;
-}
-
-.plan-card:hover {
-  background: var(--color-surface-elevated);
-  border-color: var(--color-border-strong);
-  box-shadow: var(--shadow-card-lift-hover);
-}
-
-.plan-card.selected {
-  background: var(--color-surface-elevated);
-  border-color: var(--color-border-strong);
-}
-
-/* Nested cards: keep the same surface tone as parent cards */
-.plan-card .plan-card {
-  border: 1px solid var(--color-border-subtle);
-  background: var(--color-surface-elevated);
-  box-shadow: none;
-}
-
-.plan-card .plan-card:hover {
-  background: var(--color-surface-elevated);
-  border-color: var(--color-border-strong);
-}
-
-/* Drop target indicator - moved to bottom of file with animation */
 
 /* ============================================
    Chat Styles
@@ -2285,42 +2225,3 @@ button:focus-visible {
   background: var(--color-surface-3);
 }
 
-/* ============================================
-   Enhanced Drop Target Indicator
-   ============================================ */
-
-.plan-card.drop-target {
-  background: var(--color-surface-elevated);
-  border: 2px solid var(--color-accent);
-  box-shadow: 0 0 0 3px var(--color-accent-muted);
-}
-
-/* Subtle pulse for drop target */
-@keyframes drop-target-pulse {
-  0%, 100% { opacity: 0.8; }
-  50% { opacity: 1; }
-}
-
-.plan-card.drop-target {
-  animation: drop-target-pulse 1s ease-in-out infinite;
-}
-
-/* ============================================
-   Plan Card State Indicators
-   ============================================ */
-
-/* Recently imported — border pulses 3 times */
-.plan-card.plan-card-imported {
-  animation: imported-border-pulse 1.5s ease-in-out 3;
-}
-
-@keyframes imported-border-pulse {
-  0%, 100% { border-color: var(--color-border-default); }
-  50% { border-color: var(--color-accent); }
-}
-
-/* Focused item — border highlight, neutral bg */
-.plan-card.focused {
-  background: var(--color-surface-elevated);
-  border-color: var(--color-accent);
-}

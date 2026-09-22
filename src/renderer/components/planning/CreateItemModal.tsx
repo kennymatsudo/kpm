@@ -62,14 +62,12 @@ export interface CreateItemModalProps {
   defaultParentId?: string | null;
   /** Pre-selected status category (e.g., from board column) */
   defaultStatus?: StatusCategory | null;
-  /** Canvas position to place the item at */
-  canvasPosition?: { x: number; y: number } | null;
   /** All plan items for parent selection */
   planItems: PlanItem[];
   /** Connected repositories available for execution scope */
   repos: Repo[];
   /** Callback when item is created */
-  onSubmit: (data: CreateItemData, canvasPosition?: { x: number; y: number } | null) => Promise<void>;
+  onSubmit: (data: CreateItemData) => Promise<void>;
 }
 
 export function CreateItemModal({
@@ -78,7 +76,6 @@ export function CreateItemModal({
   projectId: _projectId,
   defaultParentId = null,
   defaultStatus = null,
-  canvasPosition = null,
   planItems,
   repos,
   onSubmit,
@@ -175,20 +172,17 @@ export function CreateItemModal({
 
     setIsSubmitting(true);
     try {
-      await onSubmit(
-        {
-          title: title.trim(),
-          description: description.trim() || null,
-          intent: intent.trim() || null,
-          acceptance_criteria: sanitizedAcceptanceCriteria.length > 0 ? sanitizedAcceptanceCriteria : null,
-          primary_repo_id: primaryRepoId,
-          affected_repo_ids: affectedRepoIds,
-          label: label || null,
-          parent_id: parentId,
-          status_category: statusCategory || null,
-        },
-        canvasPosition
-      );
+      await onSubmit({
+        title: title.trim(),
+        description: description.trim() || null,
+        intent: intent.trim() || null,
+        acceptance_criteria: sanitizedAcceptanceCriteria.length > 0 ? sanitizedAcceptanceCriteria : null,
+        primary_repo_id: primaryRepoId,
+        affected_repo_ids: affectedRepoIds,
+        label: label || null,
+        parent_id: parentId,
+        status_category: statusCategory || null,
+      });
       onClose();
     } catch (error) {
       console.error('[CreateItemModal] Failed to create item:', error);
@@ -207,7 +201,6 @@ export function CreateItemModal({
     label,
     parentId,
     statusCategory,
-    canvasPosition,
     onSubmit,
     onClose,
   ]);
@@ -358,7 +351,7 @@ export function CreateItemModal({
 
           {/* Quick mode context indicator */}
           <AnimatePresence>
-            {!isFullMode && (defaultStatus || canvasPosition) && (
+            {!isFullMode && defaultStatus && (
               <m.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
@@ -371,15 +364,6 @@ export function CreateItemModal({
                       className={`w-1.5 h-1.5 rounded-full ${STATUS_CATEGORY_CONFIG[defaultStatus]?.bgClass ?? 'bg-surface-3'}`}
                     />
                     {STATUS_CATEGORY_CONFIG[defaultStatus]?.label ?? defaultStatus}
-                  </span>
-                )}
-                {canvasPosition && (
-                  <span className="flex items-center gap-1 px-2 py-1 rounded-md bg-surface-3">
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                    Canvas
                   </span>
                 )}
               </m.div>

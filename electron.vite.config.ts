@@ -159,8 +159,7 @@ export default defineConfig({
         'mermaid',
         'dompurify',
         'monaco-editor',
-        '@monaco-editor/react',
-        'elkjs/lib/elk.bundled.js'
+        '@monaco-editor/react'
       ]
     },
     plugins: [
