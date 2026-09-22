@@ -4517,6 +4517,38 @@ export const migrations: Migration[] = [
       `).run(implementOnly, implementOpposingReview, implementOnly, implementOpposingReview);
     },
   },
+  {
+    id: 1125,
+    name: '125_drop_canvas_positions_and_groups',
+    up: (db: BetterSqliteDatabase) => {
+      // The Cards view (a spatial canvas) and Visual Groups were removed, and
+      // with them the only readers and writers of these three columns and the
+      // groups table. Nothing in the app can reach them any more.
+      //
+      // The coordinates and group records are archived beside the database
+      // first, because a dropped column is unrecoverable from the schema and
+      // the rolling planner.db.bak is overwritten by the next migration.
+      archiveCanvasLayout(db);
+
+      // idx_plan_items_group has to go first. SQLite refuses to drop an
+      // indexed column and fails the whole statement with
+      // "error in index idx_plan_items_group after drop column".
+      //
+      // DROP COLUMN rather than the usual create/copy/rename dance on purpose:
+      // plan_items is the parent of several ON DELETE CASCADE children, so
+      // recreating it means turning foreign keys off and trusting a
+      // hand-maintained column list. Dropping in place touches neither.
+      // Verified against a copy of a real database: every other table and
+      // every surviving plan_items column came out byte-identical.
+      db.exec(`
+        DROP INDEX IF EXISTS idx_plan_items_group;
+        ALTER TABLE plan_items DROP COLUMN group_id;
+        ALTER TABLE plan_items DROP COLUMN position_x;
+        ALTER TABLE plan_items DROP COLUMN position_y;
+        DROP TABLE IF EXISTS groups;
+      `);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {
@@ -4553,6 +4585,53 @@ function recordMigration(db: BetterSqliteDatabase, id: number, name: string): vo
  * that may still hold data from a previous install. Best-effort — a failed
  * backup logs a warning but does not block migrations.
  */
+/**
+ * Write the canvas coordinates and group records to a JSON file beside the
+ * database, so migration 125's column drop destroys nothing unrecoverably.
+ *
+ * Best-effort by design: this is a courtesy copy of data the app already
+ * cannot read, so a failure here logs and lets the migration proceed rather
+ * than blocking startup.
+ */
+function archiveCanvasLayout(db: BetterSqliteDatabase): void {
+  try {
+    const positions = db
+      .prepare(
+        `SELECT id, project_id, title, position_x, position_y, group_id
+         FROM plan_items
+         WHERE position_x IS NOT NULL OR position_y IS NOT NULL OR group_id IS NOT NULL
+         ORDER BY project_id, id`
+      )
+      .all();
+    const groups = db.prepare('SELECT * FROM groups ORDER BY project_id, id').all();
+
+    if (positions.length === 0 && groups.length === 0) {
+      return;
+    }
+
+    const row = db.prepare('PRAGMA database_list').get() as { file?: string } | undefined;
+    const file = row?.file;
+    if (!file) {
+      return; // in-memory database
+    }
+
+    const archive = `${file}.canvas-archive.json`;
+    fs.writeFileSync(
+      archive,
+      JSON.stringify(
+        { archivedAt: new Date().toISOString(), planItemPositions: positions, groups },
+        null,
+        2
+      )
+    );
+    console.log(
+      `[Migrations] Archived ${positions.length} plan item position(s) and ${groups.length} group(s) to ${archive}`
+    );
+  } catch (err) {
+    console.warn('[Migrations] Canvas layout archive failed:', err);
+  }
+}
+
 function backupBeforeMigrations(db: BetterSqliteDatabase): void {
   const hasHistory = (
     db.prepare('SELECT EXISTS (SELECT 1 FROM schema_migrations LIMIT 1) AS has_history').get() as {

@@ -722,6 +722,103 @@ describe('actions migrations (115-118)', () => {
       expect(tables).toContain('actions');
       expect(tables).toContain('action_runs');
       expect(tables).not.toContain('scheduled_loops');
+      expect(tables).not.toContain('groups');
+    } finally {
+      db.close();
+    }
+  });
+});
+
+/**
+ * Migration 125 drops three columns in place rather than rebuilding
+ * plan_items, which is the whole reason it is safe around the table's
+ * ON DELETE CASCADE children. These cases pin both halves of that: the
+ * columns really go, and nothing else in the row moves.
+ */
+describe('125_drop_canvas_positions_and_groups', () => {
+  const DROP_MIGRATION_ID = 1125;
+
+  /** Applies every migration before 125, so data can be seeded as it was. */
+  function migrateToJustBefore(db: BetterSqlite3.Database): void {
+    for (const migration of migrations) {
+      if (migration.id >= DROP_MIGRATION_ID) break;
+      migration.up(db);
+    }
+  }
+
+  function migration125() {
+    const found = migrations.find((m) => m.id === DROP_MIGRATION_ID);
+    if (!found) throw new Error('migration 125 not found');
+    return found;
+  }
+
+  it('drops the canvas columns and the groups table', () => {
+    const db = new BetterSqlite3(':memory:');
+    try {
+      migrateToJustBefore(db);
+      expect(
+        (db.prepare('PRAGMA table_info(plan_items)').all() as { name: string }[]).map((c) => c.name)
+      ).toEqual(expect.arrayContaining(['position_x', 'position_y', 'group_id']));
+
+      migration125().up(db);
+
+      const columns = (db.prepare('PRAGMA table_info(plan_items)').all() as { name: string }[])
+        .map((c) => c.name);
+      expect(columns).not.toContain('position_x');
+      expect(columns).not.toContain('position_y');
+      expect(columns).not.toContain('group_id');
+      expect(db.prepare("SELECT name FROM sqlite_master WHERE name = 'groups'").get()).toBeUndefined();
+      expect(
+        db.prepare("SELECT name FROM sqlite_master WHERE name = 'idx_plan_items_group'").get()
+      ).toBeUndefined();
+    } finally {
+      db.close();
+    }
+  });
+
+  it('keeps every surviving plan item field, and its cascade children, intact', () => {
+    const db = new BetterSqlite3(':memory:');
+    try {
+      migrateToJustBefore(db);
+
+      db.prepare('INSERT INTO projects (id, name, folder_path) VALUES (?, ?, ?)')
+        .run('proj-1', 'Project One', '/tmp/proj-1');
+      db.prepare('INSERT INTO repos (id, project_id, path) VALUES (?, ?, ?)')
+        .run('repo-1', 'proj-1', '/tmp/repo-1');
+      db.prepare(`
+        INSERT INTO groups (id, project_id, name, color, position_x, position_y, width, height)
+        VALUES ('group-1', 'proj-1', 'Must Do', '#e0e7ff', 40, 80, 552, 300)
+      `).run();
+      db.prepare(`
+        INSERT INTO plan_items (
+          id, project_id, parent_id, title, description, label, item_order, code_refs,
+          status, status_category, release_tag, intent, acceptance_criteria,
+          source_document_id, external_key, external_type, work_brief_revision,
+          position_x, position_y, group_id
+        ) VALUES (
+          'item-1', 'proj-1', NULL, 'Ship the thing', 'Some rationale', 'task', 3,
+          '["src/a.ts"]', 'planned', 'in_progress', 'v1.2', 'One clear outcome',
+          '["Criterion A","Criterion B"]', 'doc-7', 'PROJ-9', 'jira', 4, 120, 240, 'group-1'
+        )
+      `).run();
+      db.prepare(`
+        INSERT INTO plan_item_repositories (plan_item_id, repo_id, role)
+        VALUES ('item-1', 'repo-1', 'primary')
+      `).run();
+
+      const survivingColumns = (db.prepare('PRAGMA table_info(plan_items)').all() as { name: string }[])
+        .map((c) => c.name)
+        .filter((name) => !['position_x', 'position_y', 'group_id'].includes(name));
+      const selectSurviving = `SELECT ${survivingColumns.join(', ')} FROM plan_items ORDER BY id`;
+      const before = db.prepare(selectSurviving).all();
+
+      migration125().up(db);
+
+      expect(db.prepare(selectSurviving).all()).toEqual(before);
+      expect(db.prepare('SELECT COUNT(*) AS c FROM plan_item_repositories').get()).toEqual({ c: 1 });
+      // The cascade children are the reason this migration drops in place
+      // instead of rebuilding the table, so assert they are still reachable.
+      expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
     } finally {
       db.close();
     }
