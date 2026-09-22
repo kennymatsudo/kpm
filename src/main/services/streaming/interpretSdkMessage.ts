@@ -147,10 +147,10 @@ export function interpretSdkMessage(
     // we surface their progress on the parent activity card instead.
     const isSubagentMessage = sdkMsg.parent_tool_use_id != null;
 
-    // Capture the SDK-resolved model ID (e.g. "claude-opus-4-8") so we can
+    // Capture the SDK-resolved full model ID so we can
     // display it accurately in the chat header instead of the short alias.
-    // Skip subagent messages — the explorer runs on Sonnet and would mislabel
-    // the header.
+    // Skip subagent messages — a subagent can run on a different model and
+    // would mislabel the header.
     if (!isSubagentMessage) {
       const msgModel = (sdkMsg.message as { model?: string } | undefined)?.model;
       if (msgModel) view.resolvedModel = msgModel;

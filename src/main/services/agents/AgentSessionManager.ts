@@ -124,7 +124,7 @@ export interface CreateSessionParams {
   role: AgentSessionRole;
   /** SDK options (for Claude sessions) */
   sdkOptions?: SDKOptions;
-  /** Model override for agent sessions (e.g. 'gpt-5.5' for Codex or 'openai/gpt-5.6-sol' for Pi) */
+  /** Model override for agent sessions (a Codex model id, or a '<provider>/<model>' selector for Pi) */
   model?: string;
   /** Provider-neutral role instructions used by Pi board sessions. */
   systemPrompt?: string;

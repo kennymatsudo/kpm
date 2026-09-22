@@ -180,8 +180,7 @@ export interface TaskPromptTemplate {
 
 /**
  * Effort level controlling how much thinking/reasoning Claude applies.
- * 'xhigh' requires Opus 4.7+ or Sonnet 5 (falls back to 'high' on older models).
- * 'max' is supported on Opus and Sonnet 5 (not Haiku).
+ * Which levels a model accepts varies by model; the SDK, not KPM, handles the fallback.
  */
 export type AgentEffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 

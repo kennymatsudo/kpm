@@ -122,7 +122,7 @@ function resolveCursorContextWindow(model: string): number | null {
 
 /**
  * Extract a context-window suffix from provider model ids such as
- * `cursor/opus-latest@1m`, `claude-sonnet-4-5-200k`, or `model:128k`.
+ * `cursor/<model>@1m`, `<model>-200k`, or `<model>:128k`.
  */
 function parseExplicitContextWindow(model: string): number | null {
   const match = EXPLICIT_CONTEXT_PATTERN.exec(model);
@@ -138,8 +138,8 @@ function parseExplicitContextWindow(model: string): number | null {
 /**
  * Resolve a model identifier to its context window size in tokens.
  * Accepts SDK aliases ("opus" / "sonnet"), full model IDs
- * ("claude-opus-4-8"), Codex/OpenAI selections ("gpt-5.6-terra"), and pi.dev
- * provider selectors ("cursor/opus-latest@1m", "openai-codex/gpt-5.4").
+ * ("claude-<family>-<version>"), Codex/OpenAI selections ("gpt-<version>"), and pi.dev
+ * provider selectors ("<provider>/<model>").
  */
 export function resolveModelContextWindow(model: string | null | undefined): number {
   const m = (model ?? '').toLowerCase();

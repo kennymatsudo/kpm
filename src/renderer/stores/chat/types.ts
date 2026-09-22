@@ -15,7 +15,7 @@ export interface Message {
   interrupted?: boolean;
   /** Wall-clock duration of the assistant turn that produced this message, in ms. */
   durationMs?: number;
-  /** Model that produced this assistant message (e.g. "claude-sonnet-4-6"). */
+  /** Model that produced this assistant message (a full SDK model id, not the short alias). */
   model?: string;
   /**
    * In-memory attachments rendered alongside this user message. Phase 2 only —

@@ -50,7 +50,7 @@ export function formatModel(model: string): string {
   if (MODEL_LABELS[model]) return MODEL_LABELS[model];
   const piSelectorLabel = formatPiSelector(model);
   if (piSelectorLabel) return piSelectorLabel;
-  // Compact a full model id like "claude-opus-5" → "Opus 5", "claude-opus-4-8" → "Opus 4.8"
+  // Compact a full model id like "claude-<family>-<major>-<minor>" to "<Family> <major>.<minor>"
   const lower = model.toLowerCase();
   if (lower.includes('opus')) return modelWithVersion('Opus', model);
   if (lower.includes('sonnet')) return modelWithVersion('Sonnet', model);

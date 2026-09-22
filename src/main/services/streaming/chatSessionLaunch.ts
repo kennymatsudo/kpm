@@ -75,7 +75,7 @@ export interface ManagedSession {
   suppressLifecycleEventsOnEnd: boolean; // Suppress renderer lifecycle events when session ends
   /** Client ids for follow-ups sent while a turn is processing, and their acceptance/promotion state. */
   followUps: FollowUpQueue;
-  /** Actual model ID returned by the SDK (e.g. "claude-opus-4-8"). Set from the first assistant message each turn. */
+  /** Full model ID the SDK resolved the alias to. Set from the first assistant message each turn. */
   resolvedModel?: string;
   /**
    * True once a specific error banner has been surfaced for the in-flight turn

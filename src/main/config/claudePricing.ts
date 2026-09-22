@@ -45,7 +45,7 @@ const HAIKU_PRICING: ModelPricing = {
 
 /**
  * Resolve a model identifier to its pricing tier. Accepts SDK aliases
- * ("opus" / "sonnet" / "haiku"), full model IDs ("claude-opus-4-8"), and
+ * ("opus" / "sonnet" / "haiku"), full model IDs ("claude-<family>-<version>"), and
  * unknown strings (falls back to Sonnet pricing as a reasonable middle).
  */
 export function resolveModelPricing(model: string | null | undefined): {

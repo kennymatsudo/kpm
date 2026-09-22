@@ -116,7 +116,7 @@ export interface AgentSessionConfig {
   terminalSessionTtlMs: number;
   /** Timeout for the initial SDK agent session startup (ms) */
   sessionStartTimeoutMs: number;
-  /** Model for Codex agent sessions (e.g. 'gpt-5.6-terra', 'gpt-5.6-sol'). If omitted, Codex uses its own default. */
+  /** Model for Codex agent sessions (a Codex model id). If omitted, Codex uses its own default. */
   codexModel?: string;
   /** Reasoning effort for Codex agent sessions KPM launches on its own (auto-review). */
   codexEffort?: AgentEffortLevel;
