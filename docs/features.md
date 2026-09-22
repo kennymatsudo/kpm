@@ -29,7 +29,7 @@ A feature that scores low on all four is a candidate for removal even if it is t
 
 Numbers have gaps where features were merged into a higher-level entry or removed — see "Summary" for the consolidation log. Don't reuse a retired number.
 
-1. [Planning & Plan Management](#planning--plan-management) (1–5, 8–10)
+1. [Planning & Plan Management](#planning--plan-management) (1–5, 9, 10)
 2. [Chat & Claude Integration](#chat--claude-integration) (11–13, 17)
 3. [Agentic Task Execution (Board)](#agentic-task-execution-board) (19, 23, 25, 105)
 4. [Tracker Integration](#tracker-integration-jiralinear) (27, 31, 33, 35)
@@ -1111,7 +1111,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 
 ## Summary
 
-**Total distinct features cataloged:** 61, after a consolidation pass that folded narrowly-scoped entries into their higher-level parent feature (below) so the catalog tracks capabilities rather than every implementation detail. Feature IDs are stable and not reused — a retired number's content lives at the target number shown.
+**Total distinct features cataloged:** 60, after a consolidation pass that folded narrowly-scoped entries into their higher-level parent feature (below) so the catalog tracks capabilities rather than every implementation detail. Feature IDs are stable and not reused — a retired number's content lives at the target number shown.
 
 **Consolidation log (this pass):**
 
@@ -1130,6 +1130,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 | 39 | 38 (Project Documents & Context File) | 75 | removed — dead feature, no longer tracked |
 | 41, 42 | 40 (Document & Context-File Editing Tools) | 78 | 77 (Debug & Performance Logging) |
 | | | 80–82 | removed |
+| 8 | removed — Visual Groups only ever rendered on the Cards canvas, and went with it | | |
 | 65, 104 | 109 (Actions) — Command+K custom prompts and scheduled loops merged into one object | | |
 
 The standalone "Permissions & Security" group was folded into Settings & Configuration (feature 64). A second, verbatim-duplicate copy of the Cross-Cutting Infrastructure section (features 83–95) was also removed — it existed only as a condensed restatement and had already drifted from the primary copy.
@@ -1137,7 +1138,7 @@ The standalone "Permissions & Security" group was folded into Settings & Configu
 Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board Agent Prompts"; Feature 105 was reworked from "Workflow Mode" into "Execution Playbooks"; Features 98 and 100 were removed; Feature 102 "Plan References" was added.
 
 **Feature density by area:**
-- Planning & Plan Management (8)
+- Planning & Plan Management (7)
 - Chat & Claude Integration (4)
 - Agentic Task Execution (Board) (4)
 - Tracker Integration (4)

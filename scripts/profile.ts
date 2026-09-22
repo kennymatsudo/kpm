@@ -218,10 +218,10 @@ async function runUserFlows(page: Page): Promise<string[]> {
     await page.getByText('Perf Test Project').waitFor({ state: 'visible' });
   });
 
-  // Flow 2: Navigate to Plan view
-  await timed('Navigate to Plan view', async () => {
-    await page.getByRole('button', { name: 'Plan' }).click();
-    await page.getByTestId('canvas-viewport').waitFor({ state: 'visible' });
+  // Flow 2: Navigate to the Execute view
+  await timed('Navigate to Execute view', async () => {
+    await page.getByRole('button', { name: 'Execute' }).click();
+    await page.getByTestId('board-view').waitFor({ state: 'visible' });
   });
 
   // Flow 3: Create multiple plan items
@@ -232,15 +232,14 @@ async function runUserFlows(page: Page): Promise<string[]> {
       await titleInput.waitFor({ state: 'visible', timeout: 5000 });
       await titleInput.fill(`Task ${i} - Performance test item`);
       await titleInput.press('Enter');
-      await page.getByRole('article', { name: `Task ${i} - Performance test item` })
+      await page.getByRole('group', { name: `Task ${i} - Performance test item` })
         .waitFor({ state: 'visible' });
     });
   }
 
   // Flow 4: Switch view modes
-  for (const mode of ['Board', 'Cards', 'Tree'] as const) {
+  for (const mode of ['Board', 'Tree'] as const) {
     const titleMap = {
-      Cards: 'Card view (spatial canvas)',
       Tree: 'Tree view (outline)',
       Board: 'Board view (kanban)',
     };
@@ -252,7 +251,7 @@ async function runUserFlows(page: Page): Promise<string[]> {
 
   // Flow 5: Open edit modal
   await timed('Open edit modal', async () => {
-    const card = page.getByRole('article', { name: 'Task 1 - Performance test item' });
+    const card = page.getByRole('group', { name: 'Task 1 - Performance test item' });
     await card.getByRole('button', { name: 'Edit item' }).click();
     await page.getByText('Edit Task').waitFor({ state: 'visible' });
   });
@@ -267,10 +266,10 @@ async function runUserFlows(page: Page): Promise<string[]> {
     await sleep(500);
   });
 
-  // Flow 7: Navigate back to Plan
-  await timed('Navigate back to Plan view', async () => {
-    await page.getByRole('button', { name: 'Plan' }).click();
-    await page.getByTestId('canvas-viewport').waitFor({ state: 'visible' });
+  // Flow 7: Navigate back to the Execute view
+  await timed('Navigate back to Execute view', async () => {
+    await page.getByRole('button', { name: 'Execute' }).click();
+    await page.getByTestId('board-view').waitFor({ state: 'visible' });
   });
 
   // Flow 8: Open command palette

@@ -19,9 +19,6 @@ describe('buildPlanItemUpdateShape', () => {
       parent_id: null,
       item_order: 0,
       code_refs: null,
-      position_x: 0,
-      position_y: 0,
-      group_id: null,
     });
     expect(parsed.title).toBe('A title');
   });
@@ -97,9 +94,8 @@ describe('buildPlanItemUpdateShape', () => {
     expect(schema.safeParse({ code_refs: null }).success).toBe(true);
   });
 
-  it('source_document_id and group_id accept unbounded strings (matches prior hand-written schema)', () => {
+  it('source_document_id accepts unbounded strings (matches prior hand-written schema)', () => {
     const schema = z.object(buildPlanItemUpdateShape('ipc'));
     expect(schema.safeParse({ source_document_id: 'x'.repeat(5000) }).success).toBe(true);
-    expect(schema.safeParse({ group_id: 'x'.repeat(5000) }).success).toBe(true);
   });
 });

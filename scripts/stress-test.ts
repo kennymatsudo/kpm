@@ -169,10 +169,10 @@ async function benchmarkAtCheckpoint(page: Page, cdp: CDPSession, itemCount: num
 }> {
   const measurements: Measurement[] = [];
 
-  // Ensure we're on Cards view
-  const cardsBtn = page.locator('button[title="Card view (spatial canvas)"]');
-  if (await cardsBtn.isVisible().catch(() => false)) {
-    await cardsBtn.click();
+  // Start from the Board, the default view
+  const boardBtn = page.locator('button[title="Board view (kanban)"]');
+  if (await boardBtn.isVisible().catch(() => false)) {
+    await boardBtn.click();
     await sleep(100);
   }
 
@@ -184,22 +184,15 @@ async function benchmarkAtCheckpoint(page: Page, cdp: CDPSession, itemCount: num
     await page.waitForLoadState('networkidle');
   }));
 
-  // Benchmark: Switch to Board view
+  // Benchmark: Switch back to Board view
   measurements.push(await measure('Switch to Board view', async () => {
     await page.locator('button[title="Board view (kanban)"]').click();
     await sleep(50);
     await page.waitForLoadState('networkidle');
   }));
 
-  // Benchmark: Switch back to Cards view
-  measurements.push(await measure('Switch to Cards view', async () => {
-    await page.locator('button[title="Card view (spatial canvas)"]').click();
-    await sleep(50);
-    await page.waitForLoadState('networkidle');
-  }));
-
   // Benchmark: Open and close edit modal
-  const firstCard = page.getByRole('article').first();
+  const firstCard = page.getByRole('group').first();
   if (await firstCard.isVisible().catch(() => false)) {
     measurements.push(await measure('Open edit modal', async () => {
       await firstCard.getByRole('button', { name: 'Edit item' }).click();
@@ -220,8 +213,8 @@ async function benchmarkAtCheckpoint(page: Page, cdp: CDPSession, itemCount: num
   }));
 
   measurements.push(await measure('Navigate back to Plan', async () => {
-    await page.getByRole('button', { name: 'Plan' }).click();
-    await page.getByTestId('canvas-viewport').waitFor({ state: 'visible' });
+    await page.getByRole('button', { name: 'Execute' }).click();
+    await page.getByTestId('board-view').waitFor({ state: 'visible' });
   }));
 
   // Benchmark: Open command palette
@@ -278,8 +271,8 @@ async function main(): Promise<void> {
   await input.fill('Stress Test Project');
   await input.press('Enter');
   await page.getByText('Stress Test Project').waitFor({ state: 'visible' });
-  await page.getByRole('button', { name: 'Plan' }).click();
-  await page.getByTestId('canvas-viewport').waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: 'Execute' }).click();
+  await page.getByTestId('board-view').waitFor({ state: 'visible' });
 
   log('Project created, starting item creation...\n');
 
@@ -308,7 +301,7 @@ async function main(): Promise<void> {
         await titleInput.fill(`Task ${itemsCreated}`);
         await titleInput.press('Enter');
         // Wait for the item to appear
-        await page.getByRole('article', { name: `Task ${itemsCreated}` })
+        await page.getByRole('group', { name: `Task ${itemsCreated}` })
           .waitFor({ state: 'visible', timeout: 5000 });
       });
       createTimes.push(m.durationMs);

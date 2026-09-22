@@ -36,7 +36,7 @@ describe('fieldsEditableVia', () => {
 
   it('planAction excludes structural fields with dedicated PlanActions', () => {
     const planActionFields = new Set(fieldsEditableVia('planAction'));
-    for (const structural of ['parent_id', 'item_order', 'position_x', 'position_y', 'group_id', 'status']) {
+    for (const structural of ['parent_id', 'item_order', 'status']) {
       expect(planActionFields.has(structural as never)).toBe(false);
     }
   });

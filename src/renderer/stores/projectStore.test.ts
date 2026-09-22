@@ -203,7 +203,7 @@ describe('projectStore slices', () => {
     api.plan.listItems.mockResolvedValue([{
       id: 'item-1', project_id: 'project-1', title: 'External item', description: null,
       label: 'task', status: 'planned', status_category: 'not_started', parent_id: null,
-      item_order: 0, code_refs: null, release_tag: null, position_x: null, position_y: null,
+      item_order: 0, code_refs: null, release_tag: null,
       association_id: 'assoc-1', external_key: 'EXT-123', external_id: 'ext-id',
       external_type: 'jira', external_issue_type: 'Story', external_status: 'To Do',
       external_url: 'https://example.com', external_parent_key: null, external_epic_key: null,

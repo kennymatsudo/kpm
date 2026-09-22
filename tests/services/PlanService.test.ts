@@ -56,8 +56,6 @@ function createMocks(overrides?: Partial<PlanServiceDeps>) {
       for (const descendantId of descendantsByParent.get(id) ?? []) itemStore.delete(descendantId);
     }),
     update: vi.fn(),
-    updatePosition: vi.fn(),
-    batchUpdatePositions: vi.fn(),
     batchReparent: vi.fn((updates: { id: string; parentId: string | null }[]) => updates.map(u => u.id)),
     batchUpdateStatus: vi.fn(),
   };

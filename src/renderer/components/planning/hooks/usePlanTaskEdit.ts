@@ -16,7 +16,7 @@ export function usePlanTaskEdit({ planItemsById, executePlanActions }: PlanTaskE
   const loadIssueTypes = useTrackerMetadataStore((state) => state.loadIssueTypes);
 
   // Keep refs so callbacks don't need to close over these Maps/arrays, avoiding handleEditItem
-  // recreation on every planItems change (which would defeat PlanCard.memo).
+  // recreation on every planItems change (which would defeat BoardCard.memo).
   const planItemsByIdRef = useRef(planItemsById);
   planItemsByIdRef.current = planItemsById;
   const associationsRef = useRef(associations);

@@ -116,7 +116,6 @@ export function createMockApi() {
       addRelation: vi.fn().mockResolvedValue({}),
       removeRelation: vi.fn().mockResolvedValue({ success: true }),
       getRelations: vi.fn().mockResolvedValue([] as PlanRelation[]),
-      updatePosition: vi.fn().mockResolvedValue({ success: true }),
       updateItem: vi.fn().mockResolvedValue({ success: true }),
       deleteItem: vi.fn().mockResolvedValue({ success: true }),
       deleteItemWithDescendants: vi.fn().mockResolvedValue({ success: true }),
