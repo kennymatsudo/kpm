@@ -4,7 +4,7 @@ React 19 + TypeScript + Tailwind v4 + Zustand. Extract hooks not components. Use
 
 ## Component Organization
 
-Components organized by feature in `components/`. Key directories: `app/` (app-shell providers/boundaries), `layout/`, `planning/`, `board-view/`, `chat/`, `workspace/`, `welcome/` (no-project landing pane), `development/` (shared PR/review components used by the board), `tracker/`, `plan-ref/`, `keyboard-shortcuts/`, `sidebar/`, `command-palette/`, `ui/` (shared primitives). Browse the directory for the full list.
+Components organized by feature in `components/`. Key directories: `app/` (app-shell providers/boundaries), `layout/`, `planning/`, `board-view/`, `tree-view/`, `chat/`, `workspace/`, `welcome/` (no-project landing pane), `development/` (shared PR/review components used by the board), `tracker/`, `plan-ref/`, `keyboard-shortcuts/`, `sidebar/`, `command-palette/`, `ui/` (shared primitives). Browse the directory for the full list.
 
 ## Design Principles
 
@@ -51,11 +51,11 @@ Don't create abstractions until you have 3+ actual uses of a pattern. Wait until
 ## Key Conventions
 
 - **Layout hooks** in `components/layout/hooks/` — `usePanelResize`, `useLayoutShortcuts`, `usePersistedViewState`, `useTrackerTopBarIntegration`
-- **Planning hooks** in `components/planning/hooks/` — the logic behind `Canvas.tsx` lives in hooks exported from `components/planning/hooks/index.ts`. Key ones: `useCanvasViewport` (pan/zoom), `useCanvasWheel` (scroll handling), `useCanvasHierarchy` (tree + height + group layout derivation), `useCanvasAutoLayoutTrigger` (runs auto-layout once when new items lack positions), `useCanvasDragHandlers` (drag-start/over/end logic), `useVisibleCanvasItems` (viewport culling). Extract new canvas concerns into hooks here rather than growing `Canvas.tsx`.
+- **Planning hooks** in `components/planning/hooks/` — the logic behind `PlanView` (`components/planning/index.tsx`) lives in hooks exported from `components/planning/hooks/index.ts`: `usePlanItemSelection`, `usePlanContextMenu`, `usePlanTaskEdit`, `useCreateItemModal`, `useBulkActions`. Extract new plan-view concerns into hooks here rather than growing `index.tsx`.
 - **Chat** — `Chat` component receives `currentView?: 'plan' | 'workspace'` prop. Chat history shared across views via `useChatStore` (`stores/chat/`).
-- **Canvas constants** in `constants/layout.ts` — card widths, grid spacing, zoom limits
+- **Layout constants** in `constants/layout.ts` — `MAX_DEPTH` for plan nesting, and the resizable-panel size configs
 - **Stores** — See `stores/CLAUDE.md` for patterns. Use `useShallow` for multi-value selectors. Stores communicate via typed events.
-- **Default views** — Main view defaults to `'workspace'`; planning view mode defaults to `'board'` (Board view). Both are persisted via `usePersistedViewState`.
+- **Default views** — Main view defaults to `'workspace'`; planning view mode defaults to `'board'`, with `'tree'` the only alternative. Both are persisted via `usePersistedViewState`.
 - **Open documents are a list, not a field.** `workspaceStore` holds `openDocuments` + `activeDocumentId`; `DocumentTabStrip` renders them and `FileEditor` is keyed by document id, because the markdown editor keeps a live Monaco model and reusing one instance bleeds a file's undo history into the next tab. Autosave lives in `useDocumentAutosave`, mounted above the editor — put it back inside the editor and background tabs silently stop saving. Subscribe to the active *id* or *path*, never the document object, or typing re-renders the tree and the chat panel.
 - **WorkspaceHome** — `components/workspace/WorkspaceHome.tsx` is the landing screen shown inside the workspace view when no chat is active. Displays project context and quick-start prompts, plus a dismissible nudge (persisted per-project in localStorage) offering to generate the project's AGENTS.md context file via `RegenerateContextModal` when one is missing or still the placeholder.
 
@@ -69,7 +69,7 @@ Don't create abstractions until you have 3+ actual uses of a pattern. Wait until
 
 `WorkBriefEditor` owns the controlled Intent, Description, and Acceptance Criteria controls. `RepositoryScopeEditor` owns the controlled primary/affected connected-repo controls. The full create modal, task edit modal, and applicable approval details reuse these editors; title stays with each modal so quick create remains title-only.
 
-**Card faces are editor-free; only the primary repo shows.** `components/board-view/BoardCard.tsx` renders one repo chip in its metadata row: the worktree's repo when a dev session has one, otherwise the item's `primary_repo_id` resolved through `connectedRepoName`. Affected repos, Intent, Description, and Acceptance Criteria stay off both card faces — users open the modal to view or edit them. Canvas `components/planning/PlanCard.tsx` shows no repo at all: adding a row there means extending the card box model in `constants/planCardStyles.ts` — see the next section.
+**Card faces are editor-free; only the primary repo shows.** `components/board-view/BoardCard.tsx` renders one repo chip in its metadata row: the worktree's repo when a dev session has one, otherwise the item's `primary_repo_id` resolved through `connectedRepoName`. Affected repos, Intent, Description, and Acceptance Criteria stay off the card face — users open the modal to view or edit them.
 
 **`source_document_id` is unwired in the renderer** — the field is on `PlanItem` and is populated by the `modify_plan` Claude tool (`src/main/kpmTools/tools/plan-changes.ts`) as an iteration-doc breadcrumb, but no UI here reads or displays it. Do not surface it without a clear use case; see `src/main/claude/CLAUDE.md` for the write side.
 
@@ -80,17 +80,15 @@ Don't create abstractions until you have 3+ actual uses of a pattern. Wait until
 - **`status_category` is not edited from `TaskEditModal`.** Column placement is handled by the board and tracker sync. Drag on the board to move a card.
 - **Work Brief reconciliation is automatic.** Start and detail surfaces do not ask users to compare revisions. Reused sessions keep their worktree while the main process refreshes execution context to the latest approved Work Brief.
 
-## Plan Card Layout & Height Sync
+## Plan Views
 
-Card heights are **calculated, not measured**: the canvas positions cards with masonry layout, where each card's Y = previous card bottom + `VERTICAL_GAP`. `constants/planCardStyles.ts` owns the box model (`CARD_BOX_MODEL`, `depthStyles`, `paddingPxForDepth`, `titleLineHeightPxForDepth`) as the single source of truth for both the rendered DOM and the height math.
+Two renderers over the same `plan_items`, switched by `components/planning/ViewSwitcher.tsx` and dispatched in `components/planning/index.tsx`:
 
-- `components/planning/PlanCard.tsx` and `PlanCardSections.tsx` read spacing classes off `CARD_BOX_MODEL` (e.g. `CARD_BOX_MODEL.description.marginTop.className`) rather than hardcoding Tailwind classes.
-- `utils/planHierarchy.ts` (`calculateCardHeight`, `buildHeightMapFromTree`) reads the same spec's `px` values through one shared per-card formula.
+- **Board** (`components/board-view/`) — kanban columns fixed to the status categories, drag between columns to change status, and the detail pane for a card's dev session. Cards size themselves to the column; there is no layout math to keep in sync.
+- **Tree** (`components/tree-view/`) — the outline. Rows expose `role="treeitem"` with the item title as their accessible name, and hold the only click-to-set status control in the app (`ui/StatusSelector`).
 
-Because both sides read the same object, there's nothing left to hand-sync — change a value in `planCardStyles.ts` and both the DOM and the height estimate move together. `constants/planCardStyles.test.ts` asserts the spec's `px` fields match the Tailwind scale for the classes in use.
-
-**Gap between cards in groups:** `GROUP_LAYOUT.VERTICAL_GAP` in `constants/layout.ts` (currently 16px), added on top of the calculated height.
+Both read `TreeNode` / `buildHierarchyTree` from `utils/planHierarchy.ts`, which does tree building only — no geometry.
 
 ## Z-Index Layers
 
-Use the `Z_INDEX` scale in `constants/zIndex.ts`, not raw Tailwind arbitrary values — most components already do. Low to high: `canvas` → `panel` → `dropdown` → `taskIndicator` → `palette` → `modal` → `toast`. Within a layer, offset in small increments (e.g. `Z_INDEX.dropdown + 10` for submenus).
+Use the `Z_INDEX` scale in `constants/zIndex.ts`, not raw Tailwind arbitrary values — most components already do. Low to high: `resizeHandle` → `panel` → `dropdown` → `taskIndicator` → `palette` → `modal` → `toast`. Within a layer, offset in small increments (e.g. `Z_INDEX.dropdown + 10` for submenus).

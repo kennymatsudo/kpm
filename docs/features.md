@@ -62,14 +62,12 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - Claude tools: `src/main/kpmTools/tools/plan-items.ts`, `src/main/kpmTools/tools/plan-changes.ts`
   - IPC handlers: `src/main/ipc/handlers/plan.ts`
   - Stores: `src/renderer/stores/project/planSlice.ts`
-  - Components: `src/renderer/components/planning/Canvas.tsx`, `src/renderer/components/planning/PlanCard.tsx`, `src/renderer/components/planning/CreateItemModal.tsx`
+  - Components: `src/renderer/components/board-view/BoardView.tsx`, `src/renderer/components/tree-view/TreeView.tsx`, `src/renderer/components/planning/CreateItemModal.tsx`
 - **Entry points / surfaces:**
-  - Canvas view: drag-to-place cards, right-click context menu for CRUD
+  - Board view: kanban columns by status category, right-click a card for CRUD
   - Tree view: hierarchical list with expand/collapse
-  - Board view: kanban columns by status category
   - Create item modal: title-only quick create, with an expanded Work Brief, Repository Scope, and operational controls
   - Task edit modal: unified Work Brief and Repository Scope editing with revision-guarded atomic saves
-  - Inline editing on cards: title, description fields
 - **Dependencies / integrations:**
   - SQLite: `plan_items` table with parent_id, label, status, external_key fields; `plan_item_repositories` stores primary/affected connected repo targets
   - Jira/Linear: plan items link to external tracker issues via external_key and `kpm_tracker_associations`
@@ -112,7 +110,7 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 - **Maturity signal:** Mature. Read-heavy. Circular dependency checks in place. No dedicated UI for managing relations yet (only via Claude or API).
 
 ### 4. Plan Item Status Tracking (Status Categories: not_started, in_progress, in_review, done, blocked, canceled)
-- **What it does:** Each plan item has a status within one of six categories. Canvas/tree/board views filter and organize by status. Status transitions trigger tracker sync queuing and event notifications to listeners.
+- **What it does:** Each plan item has a status within one of six categories. Board and tree views filter and organize by status. Status transitions trigger tracker sync queuing and event notifications to listeners.
 - **Key code locations:**
   - DB: `src/main/db/domain/PlanActionService.ts` (`executeUpdateItem`), `src/main/db/repositories/impl/PlanItemRepository.ts` (`updateStatusCategory`)
   - IPC handlers: `src/main/ipc/handlers/plan.ts` (updateItemStatus)
@@ -120,61 +118,37 @@ Numbers have gaps where features were merged into a higher-level entry or remove
   - Components: `src/renderer/components/ui/StatusSelector.tsx` (renders both the dropdown and the status badge)
   - Events: `src/renderer/stores/storeEvents.ts` (status-changed event)
 - **Entry points / surfaces:**
-  - Status selector dropdown on plan cards
-  - Context menu on cards: "Mark Done", "Mark In Progress"
-  - Canvas filtering by status category
-  - Board view: columns organized by status category
+  - Status selector dropdown on tree rows — the only click-to-set status control
+  - Board view: columns organized by status category; drag a card between columns to change its status
 - **Dependencies / integrations:**
   - Tracker sync: `queueTrackerUpdateIfNeeded` called on status change
   - `completed_at`: stamped on transition to done and cleared on transition away (`PlanItemRepository`)
 - **Maturity signal:** Mature. Core feature, well-tested status flow.
 
-### 5. Plan Views (Canvas, Tree, Board)
-- **What it does:** Three interchangeable views over the same plan-item data, switched via the planning view switcher — there's no per-view data model, just different renderers over `plan_items`. **Canvas** is a free-form 2D layout: drag cards to position, zoom/pan, right-click for context menu, performance-optimized with depth-based render bucketing for 100+ item scenes. **Tree** is a traditional outline with expand/collapse, multi-select, and drag-to-reparent. **Board** is kanban columns fixed to the six status categories (not_started, in_progress, in_review, done, blocked, canceled); dragging a card between columns changes its status, and clicking a card opens a detail pane that — for plan items with an active or past dev session — also surfaces implementation activity, diffs, and PR info (see Agentic Task Execution).
+### 5. Plan Views (Board, Tree)
+- **What it does:** Two interchangeable views over the same plan-item data, switched via the planning view switcher — there's no per-view data model, just different renderers over `plan_items`. **Board** is the default: kanban columns fixed to the six status categories (not_started, in_progress, in_review, done, blocked, canceled); dragging a card between columns changes its status, and clicking a card opens a detail pane that — for plan items with an active or past dev session — also surfaces implementation activity, diffs, and PR info (see Agentic Task Execution). **Tree** is a traditional outline with expand/collapse, multi-select, and drag-to-reparent. A third view, a free-form spatial canvas, was removed along with Visual Groups and per-item positions.
 - **Key code locations:**
-  - Canvas: `src/renderer/components/planning/Canvas.tsx` (layout + events), `PlanCard.tsx` (card + perf tracking), `CanvasContextMenu.tsx`; position persisted via `PlanService.updatePosition`; height/padding formulas in `src/renderer/utils/planHierarchy.ts` + `src/renderer/constants/planCardStyles.ts`
-  - Tree: `src/renderer/components/tree-view/TreeView.tsx`
   - Board: `src/renderer/components/board-view/BoardView.tsx`, `BoardColumn.tsx`, `BoardCard.tsx`, `dropBehavior.ts`; detail-pane activity/diff tabs in `ActivityTab.tsx`, `ChangesTab.tsx`
-  - Shared: `src/renderer/stores/project/planSlice.ts` (position, hierarchy, and status all live here regardless of view)
+  - Tree: `src/renderer/components/tree-view/TreeView.tsx`
+  - Shared: `src/renderer/utils/planHierarchy.ts` (`buildHierarchyTree`), `src/renderer/stores/project/planSlice.ts` (hierarchy and status live here regardless of view)
 - **Entry points / surfaces:**
   - View switcher in the planning header
-  - Canvas: drag to reposition, right-click menu, double-click to edit, arrow keys to pan, wheel to zoom
-  - Tree: drag-to-reparent, multi-select, arrow-key navigation
-  - Board: drag between columns, click card for detail pane (Activity/Changes/Review tabs for dev sessions)
+  - Board: drag between columns, right-click menu, double-click to edit, click card for detail pane (Activity/Changes/Review tabs for dev sessions)
+  - Tree: drag-to-reparent, multi-select, arrow-key navigation, status dropdown per row
 - **Dependencies / integrations:**
-  - Canvas: items can be assigned to Visual Group containers (feature 8), which render as background frames
   - Board: detail pane pulls in dev-session state (`dev_sessions.automation_phase`) and GitHub PR info for active work
-  - Multi-select (tree, canvas) coordinates with Bulk Plan Actions (feature 9)
-- **Maturity signal:** Mature. Canvas is the most heavily optimized (perf logging, render bucketing) and has no formal auto-layout — positioning is manual. Board's automation-phase state machine is the most behaviorally complex of the three. Tree is the simplest, best-tested secondary view.
-
-### 8. Visual Groups (Figma-Style Frame Containers)
-- **What it does:** Users can create rectangular group containers and assign plan items to them for visual organization (non-hierarchical). Groups have position, size, name, color. Purely visual—no effect on hierarchy or execution.
-- **Key code locations:**
-  - DB: `src/main/db/repositories/impl/GroupRepository.ts`
-  - Service: `src/main/services/core/GroupService.ts`
-  - Claude tools: `src/main/kpmTools/tools/groups.ts` (read and modify with PlanActions)
-  - IPC handlers: `src/main/ipc/handlers/groups.ts`
-  - Component: `src/renderer/components/planning/GroupContainer.tsx` (canvas rendering)
-  - Stores: `src/renderer/stores/groupStore.ts`
-- **Entry points / surfaces:**
-  - Canvas context menu: "Create Group"
-  - Drag items into/out of groups
-  - Group name/color editing via context menu
-  - Claude tool for creating groups as part of plan restructuring
-- **Dependencies / integrations:**
-  - SQLite: `groups` table (project_id, name, position_x/y, width/height)
-  - Canvas layout: groups render as background containers with rounded corners
-- **Maturity signal:** Mature. Lightweight feature, well-integrated with canvas.
+  - Multi-select (board, tree) coordinates with Bulk Plan Actions (feature 9)
+- **Maturity signal:** Mature. Board's automation-phase state machine is by far the more behaviorally complex of the two. Tree is the simpler, best-tested secondary view.
 
 ### 9. Bulk Plan Actions (Create Multiple Items, Reparent, Delete)
-- **What it does:** From canvas, multi-select plan items and perform batch operations: delete, reparent to a new parent, update status, apply labels. Actions flow through approval queue.
+- **What it does:** Multi-select plan items and perform batch operations: delete, reparent to a new parent, update status, apply labels. Actions flow through approval queue.
 - **Key code locations:**
   - Component: `src/renderer/components/planning/BulkActionsMenu.tsx`
   - Dialog: `src/renderer/components/planning/BulkDeleteConfirmDialog.tsx`
   - Service/approval: Handled by `PlanActionService` and `useProposedChangeDisposal`
   - Store: `src/renderer/stores/project/planSlice.ts` (multi-select state)
 - **Entry points / surfaces:**
-  - Canvas: Cmd+click (or Shift+click) to multi-select, right-click for bulk menu
+  - Cmd+click (or Shift+click) to multi-select, right-click for bulk menu
   - Confirmation dialogs before destructive operations
 - **Dependencies / integrations:**
   - Approval queue: bulk operations are submitted as plan actions for user confirmation
@@ -274,10 +248,10 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 - **Maturity signal:** Mature. Sophisticated multi-module approach with a straightforward override mechanism layered on top. Roadmap for phase 4 includes customer-facing prompt builder.
 
 ### 17. In-Process MCP Tools (Claude Tool Integration)
-- **What it does:** KPM provides Claude with direct function calls to query and modify plan items, manage documents, and more — roughly 20 tools spanning plan/relations/groups, Jira, documents, GitHub, Confluence, files, git, and Storybook. Tools are implemented as direct function calls (not a subprocess MCP server), reducing latency, and run in the main process with full database access. Modification tools go through the approval flow before executing. When a tool result exceeds the SDK's token budget, the SDK spills the full payload to a file under `~/.claude/projects/` instead of returning it inline; the `read_spill_file` tool lets Claude page through that file (up to 50,000 characters per chunk via `offset`/`length`) since the spill directory sits outside the sandboxed Read/Grep/Glob scope — it's the only path back to that content.
+- **What it does:** KPM provides Claude with direct function calls to query and modify plan items, manage documents, and more — roughly 20 tools spanning plan and relations, Jira, documents, GitHub, Confluence, files, git, and Storybook. Tools are implemented as direct function calls (not a subprocess MCP server), reducing latency, and run in the main process with full database access. Modification tools go through the approval flow before executing. When a tool result exceeds the SDK's token budget, the SDK spills the full payload to a file under `~/.claude/projects/` instead of returning it inline; the `read_spill_file` tool lets Claude page through that file (up to 50,000 characters per chunk via `offset`/`length`) since the spill directory sits outside the sandboxed Read/Grep/Glob scope — it's the only path back to that content.
 - **Key code locations:**
   - Factory: `src/main/kpmTools/createKpmServer.ts` (creates MCP server from tool functions; `runWithToolExecutionContext`)
-  - Tool modules: `src/main/kpmTools/tools/*.ts` (plan-items, plan-changes, jira, relations, document-read, document-update, document-edit, groups, confluence, github, storybook, context-file-update, file-move, file-delete, list-project-files, plan-refs, review-assessment, spill-read, git-read, git-push)
+  - Tool modules: `src/main/kpmTools/tools/*.ts` (plan-items, plan-changes, jira, relations, document-read, document-update, document-edit, confluence, github, storybook, context-file-update, file-move, file-delete, list-project-files, plan-refs, review-assessment, spill-read, git-read, git-push)
   - Spill recovery: `src/main/kpmTools/tools/spill-read.ts` (`read_spill_file`, validates the path stays under `~/.claude/projects/`); tool docs in `toolDocs.ts` instruct calling with just `file_path` first to get `totalChars`, then paging until `hasMore` is false
   - Tool logging: `src/main/services/toollog/ToolCallLogger.ts` (logs all tool calls)
   - Permission prompting: `src/main/claude/permissions.ts` (permission model via SDK)
@@ -884,10 +858,10 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 ## Debugging & Monitoring
 
 ### 77. Debug & Performance Logging (Tool Calls, Render/Latency Metrics)
-- **What it does:** Two debug-only introspection surfaces. Tool call logging records every Claude tool call — name, category, input parameters, referenced file paths, turn index, timestamp — viewable in a debug panel to understand what Claude did and troubleshoot duplicate reads or noisy tool usage. Performance logging is opt-in (via env var) and records plan-card render counts by depth, chat streaming latency, and sync-operation timing to help identify bottlenecks.
+- **What it does:** Two debug-only introspection surfaces. Tool call logging records every Claude tool call — name, category, input parameters, referenced file paths, turn index, timestamp — viewable in a debug panel to understand what Claude did and troubleshoot duplicate reads or noisy tool usage. Performance logging is opt-in (via env var) and records chat streaming latency, view-switch timing, and sync-operation timing to help identify bottlenecks.
 - **Key code locations:**
   - Tool logging: `src/main/services/toollog/ToolCallLogger.ts` (logs to memory + NDJSON temp file), `src/renderer/components/tool-log/ToolLogPanel.tsx`, `src/renderer/stores/toolLogStore.ts`, `src/main/ipc/handlers/toollog.ts`
-  - Perf logging: `src/renderer/utils/perfLogger.ts` (`isPerfLoggingEnabled()`), render tracking in `src/renderer/components/planning/PlanCard.tsx`
+  - Perf logging: `src/renderer/utils/perfLogger.ts` (`isPerfLoggingEnabled()`), spans started at the call sites that care (project load, view switch, plan refresh)
 - **Entry points / surfaces:**
   - Debug menu / developer tools: "Tool Call Log" panel — filter by tool name or date, click to expand
   - Perf metrics panel and console logs (only when enabled)
@@ -1195,24 +1169,18 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
   - Features: 69 (Workspace View & File Editor)
 
 ### planning/ Components
-- `Canvas.tsx`: Free-form 2D canvas for plan items
-  - Features: 5 (Canvas View), 8 (Visual Groups), 9 (Bulk Actions)
-- `PlanCard.tsx`: Individual card rendering with hierarchy awareness
-  - Features: 1 (Plan Item Hierarchy), 4 (Plan Item Status), 5 (Canvas View)
+- `index.tsx`: `PlanView` — dispatches to the board or tree renderer and owns the shared modals, context menus, and selection
+  - Features: 5 (Plan Views), 9 (Bulk Actions)
 - `CreateItemModal.tsx` / `TaskEditModal.tsx`: Quick create plus unified Work Brief, Repository Scope, and operational editing
   - Features: 1 (Plan Item Hierarchy), 2 (Work Brief and Repository Scope)
 - `WorkBriefEditor.tsx` / `RepositoryScopeEditor.tsx`: Reusable controlled editors shared by create, edit, and applicable approval paths
   - Features: 2 (Work Brief and Repository Scope)
-- `CanvasContextMenu.tsx`: Right-click menu on canvas
-  - Features: 1, 5, 8, 9 (Plan operations)
 - `../ui/StatusSelector.tsx`: Dropdown for status changes
   - Features: 4 (Plan Item Status Tracking)
 - `PendingActionsPanel.tsx`: Approval queue display for plan actions, including Work Brief diffs and editable Repository Scope
   - Features: 2 (Work Brief and Repository Scope), 10 (Plan Item Approval Flow), 40 (Document & Context-File Editing Tools)
 - `PlanCardMenu.tsx`: Card context menu
   - Features: 1, 4, 5, 9 (Plan item operations)
-- `PlanCardSections.tsx`: Card metadata display
-  - Features: 1, 3 (Hierarchy, relations)
 
 ### board-view/ Components
 - `BoardView.tsx`: Kanban board layout by status
@@ -1389,7 +1357,7 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
 ### By Complexity (Internal)
 - **High complexity:** Sync Pipeline (33), board execution state machine (23, 105), streaming session architecture (87), context building (94).
 - **Medium:** Plan action approval (10), dev sessions (19), tracker integration (27, 31, 33, 35), search (50), actions (109).
-- **Low:** Visual groups (8), notifications (74).
+- **Low:** Notifications (74).
 
 ### By User Touchpoints
 - **High-frequency:** Main chat (11), plan views (5), workspace view & file editor (69).
@@ -1405,11 +1373,10 @@ Earlier history: Feature 57 was reworked from "Agent Team Prompts" into "Board A
 
 ## Gaps & Orphaned Features
 
-- **Orphaned:** The Tree view (one of the three Plan Views, feature 5) is well-implemented but rarely used (canvas and board are preferred).
+- **Orphaned:** The Tree view (one of the two Plan Views, feature 5) is well-implemented but rarely used; the board is the default and the one people live in.
 - **Optional:** Confluence integration (53) depends on Jira/Atlassian credentials and linked pages, so it is mature in code but not always visible in day-to-day project work.
 - **Experimental:** Custom prompts (65) are lightweight; prompt editor UI is basic.
 - **Known limitations:**
-  - Canvas view (one of the three Plan Views, feature 5) has no auto-layout; manual positioning only.
   - Image editing not supported; inline image paste in chat only.
   - Markdown documents use a dedicated markdown editor (Monaco-backed edit pane plus preview/toolbar) rather than raw Monaco.
   - No advanced IDE features (IntelliSense, debugging, git integration in editor).

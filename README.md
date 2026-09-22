@@ -15,7 +15,7 @@ KPM keeps every plan in one place, visual and out of the repos it describes, so 
 
 ## What it does
 
-- Break a big idea into a structured plan of tasks and dependencies, and view it as a canvas, a tree, or a board.
+- Break a big idea into a structured plan of tasks and dependencies, and view it as a board or a tree.
 - Keep every plan local, so nothing leaks into the repos it describes.
 - Draft and rearrange tickets before you commit them to a tracker.
 - Ask an AI that already sees your plan and repos, so you're not re-pasting context.

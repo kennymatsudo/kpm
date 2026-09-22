@@ -16,7 +16,7 @@ UI state management with slice pattern, typed events for cross-store communicati
   - `useTrackerConfigStore` — Custom fields, status mapping, and issue browse/search for an association.
   - `useTrackerMetadataStore` — Cached tracker project/issue-type/status metadata, keyed by `trackerType:projectKey`.
   - `useSyncReviewStore` — Sync review state (project-scoped).
-- **Specialized stores** — One per feature domain (workspace, artifacts, groups, search, background tasks, Claude availability, etc.). Includes `backgroundTaskStore.ts`, `customPromptTaskStore.ts`, and `claudeAvailabilityStore.ts` in addition to the domain stores listed above.
+- **Specialized stores** — One per feature domain (workspace, artifacts, search, background tasks, Claude availability, etc.). Includes `backgroundTaskStore.ts`, `customPromptTaskStore.ts`, and `claudeAvailabilityStore.ts` in addition to the domain stores listed above.
 - **Infrastructure** — `storeEvents.ts` (typed event emitter), `projectScopedStores.ts` (lifecycle management — reset list includes `proposedChanges`, `syncReview`, and `devSessions`), `useStoreSubscriptions.ts` (event wiring)
 
 All stores exported from `index.ts`. See the directory for the full list.

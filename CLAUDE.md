@@ -97,12 +97,6 @@ Every invoke domain is on the endpoint registry: add one entry to `src/shared/ip
 
 Never bypass the export-boundary rewrite.
 
-**Change `PlanCard` layout**
-- `constants/planCardStyles.ts` (`CARD_BOX_MODEL`) is the single owner of the box model — change a value here.
-- `components/planning/PlanCard.tsx` (DOM) and `utils/planHierarchy.ts` (`calculateCardHeight`, `buildHeightMapFromTree`) both read `CARD_BOX_MODEL` directly, so there is nothing left to hand-sync between them.
-
-Heights are calculated, not measured. Drift causes uneven gaps. See [`src/renderer/CLAUDE.md`](src/renderer/CLAUDE.md).
-
 **Change a theme token**
 - `src/shared/theme.ts` is the single owner of theme colors: the `graphiteColors`/`fogColors` palettes, `SEMANTIC_COLOR_DEFAULTS`/`DEPTH_COLOR_DEFAULTS` + their `resolveSemanticColors`/`resolveDepthColors` resolvers, `withDerivedExtendedTokens`, and `generateThemeVariables`. Edit the value here — do **not** add it to `index.css`.
 - `index.css` holds no theme hex values: theme CSS variables are written to `document.documentElement` at runtime by `renderer/themeBoot.ts` (synchronously, pre-mount) and re-applied by `ThemeContext`. The `@theme` block only aliases the tokens for Tailwind utilities.

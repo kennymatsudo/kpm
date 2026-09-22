@@ -104,7 +104,6 @@ Do not create `.kpm/` folders or store plan hierarchy data inside connected repo
 | `custom_themes` | Imported VS Code/KPM theme definitions |
 | `confluence_page_links` | Document ↔ Confluence page links |
 | `chat_sessions` | Chat session metadata, native provider resume IDs, scope/focus metadata, and the versioned per-Chat model-choice aggregate |
-| `groups` | Visual group containers |
 | `task_prompt_templates` | Task prompt templates |
 | `tool_permissions` | Persisted per-project tool permission grants |
 | `review_tasks` | GitHub review threads normalized into KPM review tasks |
@@ -154,7 +153,7 @@ Repositories live in `src/main/db/repositories/impl/` — read the directory for
 1. **Domain Services** (`src/main/db/domain/`):
    - Tightly coupled to database
    - Handle multi-table transactions
-   - Services: `SyncService`, `ExportService`, `ImportService`, `PlanActionService`, `PlanItemService`, `SyncQueuePolicy`, `TypeMappingService`, `GroupAssignmentService`
+   - Services: `SyncService`, `ExportService`, `ImportService`, `PlanActionService`, `PlanItemService`, `SyncQueuePolicy`, `TypeMappingService`
 
 2. **Application Services** (`src/main/services/`):
    - Testable with dependency injection

@@ -16,7 +16,6 @@ src/main/kpmTools/runtimeRegistry.ts (provider-neutral KPM tool runtime)
 src/main/kpmTools/createKpmServer.ts (Claude MCP server adapter)
     ├─ plan-items.ts (query tools)
     ├─ plan-changes.ts (modification tool + callbacks)
-    ├─ groups.ts (read-only group query tools; group mutations go through modify_plan)
     ├─ jira.ts (Jira integration)
     ├─ relations.ts (dependency tools)
     ├─ storybook.ts (component discovery)
@@ -87,9 +86,6 @@ Claude calls modification tool (modify_plan, bulk_modify_plan, etc.)
 **Modification tools that emit actions for approval or auto-apply:**
 - `modify_plan` - General plan modifications
 - `bulk_modify_plan` - Bulk mutations (set_status, set_label, set_release, reparent, delete, clear_dependencies) against items selected by ID or filter
-
-**Exception (immediate execution):**
-- `clear_positions` - Only affects canvas layout, not plan structure
 
 ## Adding New Tools
 
