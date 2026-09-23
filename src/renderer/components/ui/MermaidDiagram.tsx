@@ -17,6 +17,9 @@ const MERMAID_CONFIG = {
   startOnLoad: false,
   securityLevel: 'strict' as const,
   theme: 'base' as const,
+  // Mermaid 12 defaults to the 'neo' look, which drops a shadow under every
+  // node; the flat look matches the rest of the app.
+  look: 'classic' as const,
   // Without this, a parse failure throws out of `render` *before* mermaid runs
   // its own cleanup, permanently leaking the temp <div> it appended to
   // document.body. We render our own fallback from the catch below, so the
@@ -27,7 +30,7 @@ const MERMAID_CONFIG = {
   fontSize: 14,
   // SVG <text> labels only: the default HTML labels render inside
   // <foreignObject>, which DOMPurify strips — nodes come out as empty boxes.
-  // Mermaid 11 reads the root-level flag for node labels; the deprecated
+  // Mermaid 11+ reads the root-level flag for node labels; the deprecated
   // flowchart-level flag still covers some edge-label paths.
   htmlLabels: false,
   flowchart: {
