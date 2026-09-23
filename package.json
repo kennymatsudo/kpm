@@ -121,7 +121,7 @@
     "@vitest/coverage-v8": "4.1.11",
     "@vitest/ui": "4.1.11",
     "cmdk": "^1.1.1",
-    "electron": "43.7.5",
+    "electron": "44.4.5",
     "electron-builder": "26.15.3",
     "electron-devtools-installer": "4.0.0",
     "electron-playwright-helpers": "2.1.0",
