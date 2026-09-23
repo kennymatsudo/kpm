@@ -1,10 +1,22 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { deleteLocalBranch, deleteRemoteBranch, publishBranch, type WriteAuthorization } from './gitWrites';
+import {
+  deleteLocalBranch,
+  deleteRemoteBranch,
+  describePushFailure,
+  publishBranch,
+  type WriteAuthorization,
+} from './gitWrites';
 
 const gitExecCaptured = vi.fn();
 const classifyPushTarget = vi.fn();
 const protectedBranchReason = vi.fn();
 const hasUpstream = vi.fn();
+const access = vi.fn();
+
+vi.mock('node:fs/promises', () => ({
+  access: (...args: unknown[]) => access(...args),
+  constants: { X_OK: 1 },
+}));
 
 vi.mock('./gitUtils', () => ({
   gitExecCaptured: (...args: unknown[]) => gitExecCaptured(...args),
@@ -32,6 +44,7 @@ beforeEach(() => {
   protectedBranchReason.mockResolvedValue(null);
   hasUpstream.mockResolvedValue(true);
   gitExecCaptured.mockResolvedValue({ stdout: '', stderr: 'Everything up-to-date', exitCode: 0 });
+  access.mockRejectedValue(new Error('ENOENT'));
 });
 
 describe('publishBranch', () => {
@@ -99,6 +112,24 @@ describe('publishBranch', () => {
     if (!outcome.ok) expect(outcome.reason).toMatch(/non-fast-forward/);
   });
 
+  it('leads with a headline when the pre-push hook stopped the push', async () => {
+    gitExecCaptured.mockImplementation(async (args: string[]) =>
+      args[0] === 'rev-parse'
+        ? { stdout: '.git/hooks/pre-push\n', stderr: '', exitCode: 0 }
+        : { stdout: '', stderr: HOOK_REJECTED_OUTPUT, exitCode: 1 }
+    );
+    access.mockResolvedValue(undefined);
+
+    const outcome = await publishBranch({ repoPath: REPO, remote: 'origin', branch: BRANCH, authorization: boardSession });
+
+    expect(access).toHaveBeenCalledWith('/repos/kpm/.git/hooks/pre-push', 1);
+    expect(outcome).toMatchObject({
+      ok: false,
+      kind: 'failed',
+      reason: `The repo's pre-push hook rejected the push. Nothing was sent to origin.\n\n${HOOK_REJECTED_OUTPUT}`,
+    });
+  });
+
   it.each(['--upload-pack=sh', '-o', '', 'has space', '$(whoami)'])(
     'refuses the remote name %s that git would read as a flag',
     async (remote) => {
@@ -115,6 +146,45 @@ describe('publishBranch', () => {
     const args = gitExecCaptured.mock.calls[0][0] as string[];
     expect(args.some((arg) => arg.startsWith('--force'))).toBe(false);
     expect(args).not.toContain('-f');
+  });
+});
+
+// Real git output shapes, captured from `git push` against a local bare remote.
+const HOOK_REJECTED_OUTPUT = "✕ black failed.\nerror: failed to push some refs to '/tmp/remote'";
+const NON_FAST_FORWARD_OUTPUT = [
+  'To /tmp/remote',
+  ' ! [rejected]        feat -> feat (non-fast-forward)',
+  "error: failed to push some refs to '/tmp/remote'",
+  'hint: Updates were rejected because the tip of your current branch is behind',
+].join('\n');
+
+describe('describePushFailure', () => {
+  it('names a pre-push hook rejection when a hook ran and the remote never answered', () => {
+    expect(describePushFailure(HOOK_REJECTED_OUTPUT, 'origin', true)).toBe(
+      "The repo's pre-push hook rejected the push. Nothing was sent to origin."
+    );
+  });
+
+  it('does not blame a hook when none is installed', () => {
+    expect(describePushFailure(HOOK_REJECTED_OUTPUT, 'origin', false)).toBeNull();
+  });
+
+  it('does not blame the hook for a connection failure', () => {
+    const output = "fatal: 'nowhere' does not appear to be a git repository\nfatal: Could not read from remote repository.";
+    expect(describePushFailure(output, 'origin', true)).toBeNull();
+  });
+
+  it('tells the user to integrate remote commits on a non-fast-forward', () => {
+    expect(describePushFailure(NON_FAST_FORWARD_OUTPUT, 'origin', true)).toBe(
+      "origin has commits this branch doesn't. Pull or rebase, then push again."
+    );
+  });
+
+  it("passes through the remote's own rejection reason", () => {
+    const output = 'To github.com:org/repo.git\n ! [remote rejected] feat -> feat (protected branch hook declined)\nerror: failed to push some refs';
+    expect(describePushFailure(output, 'origin', true)).toBe(
+      'origin rejected the push (protected branch hook declined).'
+    );
   });
 });
 

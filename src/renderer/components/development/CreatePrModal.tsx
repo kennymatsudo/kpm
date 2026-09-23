@@ -29,6 +29,7 @@ export function CreatePrModal({ isOpen, onClose, session, onPrCreated }: CreateP
   const [isLoadingContext, setIsLoadingContext] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [noCommits, setNoCommits] = useState(false);
   const [aiGenerated, setAiGenerated] = useState(false);
   const [hasGeneratedContext, setHasGeneratedContext] = useState(false);
@@ -131,6 +132,7 @@ export function CreatePrModal({ isOpen, onClose, session, onPrCreated }: CreateP
     }
 
     setIsCreating(true);
+    setCreateError(null);
     try {
       const result = await createPullRequest(session.id, title.trim(), body, draft);
       if (result.success) {
@@ -138,7 +140,8 @@ export function CreatePrModal({ isOpen, onClose, session, onPrCreated }: CreateP
         onPrCreated();
         onClose();
       } else {
-        toast.error(`Failed to create PR: ${result.error || 'Unknown error'}`);
+        // Shown in the modal, which stays open, so the output can be read in full.
+        setCreateError(result.error || 'Unknown error');
       }
     } catch {
       toast.error('Failed to create PR');
@@ -270,6 +273,7 @@ export function CreatePrModal({ isOpen, onClose, session, onPrCreated }: CreateP
               />
               <span className="text-xs text-text-secondary">Create as draft</span>
             </label>
+            {createError && <CreatePrError error={createError} />}
           </>
         )}
       </ModalBody>
@@ -312,5 +316,25 @@ export function CreatePrModal({ isOpen, onClose, session, onPrCreated }: CreateP
         </MotionButton>
       </ModalFooter>
     </Modal>
+  );
+}
+
+/** The first line says what went wrong; any remaining lines are the raw output behind it. */
+function CreatePrError({ error }: { error: string }) {
+  const [summary, ...rest] = error.split('\n');
+  const details = rest.join('\n').trim();
+
+  return (
+    <InlineAlert variant="error" title="Could not create the pull request">
+      <span className="block break-words">{summary}</span>
+      {details && (
+        <details className="mt-2">
+          <summary className="cursor-pointer text-text-secondary hover:text-text-primary">Show output</summary>
+          <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-tiny text-text-secondary">
+            {details}
+          </pre>
+        </details>
+      )}
+    </InlineAlert>
   );
 }

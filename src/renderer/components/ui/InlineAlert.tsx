@@ -28,9 +28,9 @@ export function InlineAlert({ variant, title, children, compact = false, classNa
     >
       <AlertCircleIcon className={`${compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} ${styles.accent} flex-shrink-0 mt-0.5`} />
       {title ? (
-        <div>
+        <div className="min-w-0 flex-1">
           <p className={`text-xs font-medium ${styles.accent}`}>{title}</p>
-          <p className="text-xs text-text-muted mt-1">{children}</p>
+          <div className="text-xs text-text-muted mt-1">{children}</div>
         </div>
       ) : (
         <p className={`text-xs ${styles.accent}`}>{children}</p>
