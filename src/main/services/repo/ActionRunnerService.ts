@@ -160,16 +160,14 @@ export function createActionRunnerService(deps: ActionRunnerDeps) {
   // for the same action.
   const running = new Set<string>();
 
-  /** Assemble the user's enabled MCP plugins/servers, mirroring the chat path. */
+  /** Assemble the user's enabled MCP plugins and disabled tools, mirroring the chat path. */
   function mcpConfigs() {
     const plugins = deps.mcpDiscoveryService.getEnabledPluginPaths();
-    const userConfigs = deps.mcpDiscoveryService.getEnabledUserMcpConfigs();
     const managed = deps.mcpDiscoveryService.getCachedManagedServers();
     const disabledTools = managed.ok ? deps.mcpDiscoveryService.getDisabledMcpTools(managed.data) : null;
     const disabledNames = managed.ok ? deps.mcpDiscoveryService.getDisabledMcpServerNames(managed.data) : null;
     return {
       enabledPluginPaths: plugins.ok ? plugins.data : [],
-      enabledUserMcpConfigs: userConfigs.ok ? userConfigs.data : {},
       disabledMcpTools: disabledTools?.ok ? disabledTools.data : [],
       disabledMcpServerNames: disabledNames?.ok ? disabledNames.data : [],
     };

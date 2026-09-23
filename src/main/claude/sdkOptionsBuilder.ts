@@ -41,8 +41,6 @@ export interface BuildSdkOptionsParams {
   peekPendingFile?: (relativeFilePath: string) => string | undefined;
   /** External plugin paths to load (for non-managed MCP servers) */
   enabledPluginPaths?: string[];
-  /** User MCP server configs to load (from ~/.claude.json) */
-  enabledUserMcpConfigs?: Record<string, Record<string, unknown>>;
   /** Tool names to disallow (for disabled managed MCP servers) */
   disabledMcpTools?: string[];
   /** Server names to deny in canUseTool (for disabled managed MCP servers) */
@@ -61,7 +59,7 @@ export interface BuildSdkOptionsParams {
  * Build SDK options for a Claude session.
  */
 export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
-  const { context, model, effort, resumeSessionId, mainWindow, chatSessionId, onContextFileEdit, onProjectFileWrite, peekPendingFile, enabledPluginPaths, enabledUserMcpConfigs, disabledMcpTools, disabledMcpServerNames, onElicitation, grantedCapabilities } = params;
+  const { context, model, effort, resumeSessionId, mainWindow, chatSessionId, onContextFileEdit, onProjectFileWrite, peekPendingFile, enabledPluginPaths, disabledMcpTools, disabledMcpServerNames, onElicitation, grantedCapabilities } = params;
   // Resume restores conversation history only — the SDK applies whatever
   // systemPrompt we pass now and discards the one persisted in the transcript.
   // So always send the full prompt; slimming it on resume silently drops
@@ -177,10 +175,11 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
     // Load user settings so claude.ai managed MCP servers (Whimsical, Glean, etc.) connect.
     // KPM's canUseTool handler takes precedence over any permission grants in settings.json.
     settingSources: ['user'],
+    // Only KPM's own server. settingSources already loads ~/.claude.json
+    // servers; passing them here too makes the CLI hold `init` until every
+    // claude.ai connector connects, which can outrun the session start timeout.
     mcpServers: {
       kpm: kpmServer,
-      // Merge in user-configured MCP servers (from ~/.claude.json)
-      ...(!isFocusSession ? (enabledUserMcpConfigs ?? {}) : {}),
     },
     // Load user-enabled external MCP plugins (Slack, GitHub, etc.)
     ...(!isFocusSession && enabledPluginPaths && enabledPluginPaths.length > 0 && {

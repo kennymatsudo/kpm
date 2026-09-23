@@ -75,7 +75,6 @@ function harness(stored: ActionDefinition = action()) {
     eventBus: eventBus as never,
     mcpDiscoveryService: {
       getEnabledPluginPaths: () => ({ ok: true, data: [] }),
-      getEnabledUserMcpConfigs: () => ({ ok: true, data: {} }),
       getCachedManagedServers: () => ({ ok: false }),
     } as never,
     getDefaultClaudeModel: () => 'sonnet',

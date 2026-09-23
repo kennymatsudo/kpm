@@ -117,9 +117,6 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
       const pluginPathsResult = services.mcpDiscoveryService.getEnabledPluginPaths();
       const enabledPluginPaths = pluginPathsResult.ok ? pluginPathsResult.data : [];
 
-      const userConfigsResult = services.mcpDiscoveryService.getEnabledUserMcpConfigs();
-      const enabledUserMcpConfigs = userConfigsResult.ok ? userConfigsResult.data : {};
-
       const managedServersResult = services.mcpDiscoveryService.getCachedManagedServers();
       const disabledToolsResult = managedServersResult.ok
         ? services.mcpDiscoveryService.getDisabledMcpTools(managedServersResult.data)
@@ -142,7 +139,6 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
         peekPendingFile: options.peekPendingFile,
         onElicitation: options.onElicitation,
         enabledPluginPaths,
-        enabledUserMcpConfigs,
         disabledMcpTools,
         disabledMcpServerNames,
       });

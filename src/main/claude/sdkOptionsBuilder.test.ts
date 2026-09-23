@@ -55,13 +55,10 @@ const context = {
 
 describe('buildSdkOptions', () => {
   it('keeps default tools and explicitly enables native repo search tools', () => {
-    const externalMcp = { type: 'stdio', command: 'example-mcp' };
-
     const options = buildSdkOptions({
       context,
       model: 'sonnet',
       mainWindow: null,
-      enabledUserMcpConfigs: { external: externalMcp },
     });
 
     // 'default' must be the sole `tools` value so the native binary expands it
@@ -70,7 +67,7 @@ describe('buildSdkOptions', () => {
     // would collapse the preset to only those two tools.
     expect(options.tools).toEqual(['default']);
     expect(options.allowedTools).toEqual(['Grep', 'Glob']);
-    expect(options.mcpServers).toMatchObject({ external: externalMcp });
+    expect(Object.keys(options.mcpServers ?? {})).toEqual(['kpm']);
     expect(options.sandbox).toEqual({
       enabled: true,
       failIfUnavailable: true,
