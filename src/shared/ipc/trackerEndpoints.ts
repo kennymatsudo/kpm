@@ -83,6 +83,13 @@ export const jiraProjectKey = z
  */
 export const trackerProjectKey = jiraProjectKey;
 
+/** What the tracker said at preview time; becomes the new sync snapshot on apply. */
+const trackerAgreementStateSchema = z.object({
+  title: z.string(),
+  description: z.string().nullable(),
+  updatedAt: z.string(),
+});
+
 const syncPreviewSchema = z.object({
   tracker_type: z.enum(['jira', 'linear']),
   link_id: z.string(),
@@ -90,8 +97,10 @@ const syncPreviewSchema = z.object({
   new_items: z.array(
     z.object({
       external_key: z.string(),
+      external_id: z.string(),
       title: z.string(),
       description: z.string().nullable(),
+      tracker_state: trackerAgreementStateSchema,
       label: z.string().nullable().optional(),
       external_issue_type: z.string(),
       external_status: z.string(),
@@ -112,6 +121,7 @@ const syncPreviewSchema = z.object({
       plan_item_id: z.string(),
       external_key: z.string(),
       title: z.string(),
+      tracker_state: trackerAgreementStateSchema,
       changes: z.array(
         z.object({
           field: z.enum([
@@ -139,6 +149,7 @@ const syncPreviewSchema = z.object({
       plan_item_id: z.string(),
       external_key: z.string(),
       title: z.string(),
+      tracker_state: trackerAgreementStateSchema,
       fields: z.array(
         z.object({
           field: z.enum(['title', 'description', 'label', 'release_tag']),

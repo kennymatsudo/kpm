@@ -194,7 +194,13 @@ function buildTrackerHandlers(
           deletedAction,
           new Map<string, 'keep' | 'delete'>(Object.entries(deletedDecisions ?? {}))
         );
-        return { success: result.success, result };
+        if (!result.success) {
+          // The transaction rolled back; surface why instead of a bare "Sync failed".
+          const error = result.errors.map((e) => e.error).join('; ');
+          console.error('[tracker:sync:apply] failed:', error);
+          return { success: false, result, error };
+        }
+        return { success: true, result };
       } catch (e) {
         return { success: false, error: e instanceof Error ? e.message : 'Failed to apply sync changes. Your local data is unchanged.' };
       }
