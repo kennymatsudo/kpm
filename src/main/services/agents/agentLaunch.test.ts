@@ -60,6 +60,12 @@ describe('createBoardAgentSession', () => {
     expect(mocks.create.mock.calls[0][0].readOnly).toBe(false);
   });
 
+  it('loads the repo\'s own CLAUDE.md files from the worktree on a Claude launch', async () => {
+    await launch();
+
+    expect(mocks.create.mock.calls[0][0].sdkOptions.settingSources).toContain('project');
+  });
+
   it('gives every launch the repo environment, not just the implementation run', async () => {
     mocks.captureRepoEnvironment.mockResolvedValue({ vars: { DATABASE_URL: 'postgres://local' } });
 

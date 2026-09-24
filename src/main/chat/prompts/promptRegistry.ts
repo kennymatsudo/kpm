@@ -213,7 +213,6 @@ Prioritize findings in this order:
 4. silent failures or ambiguous fallbacks
 5. API or behavior contract mismatches
 6. missing or weak tests
-7. unnecessary complexity that does not provide clear value
 
 Also surface, as findings whose fix removes or simplifies code:
 - Over-engineering: new abstractions, indirection, configuration, flags, or dependencies that a simpler change would avoid; generality the task does not require.
@@ -230,16 +229,16 @@ Be evidence-based; do not speculate beyond the task, diff, and visible code. The
     category: 'agents',
     defaultContent: `An opposing review agent completed a review of your implementation.
 
-Assess the findings against the current code, original task intent, and repository conventions.
+Assess the findings against the current code, original task intent, and repository conventions. Findings may be grouped by review lens (Standards, Spec); weigh each group on its own terms. Suggestions are optional; critical findings and warnings need either a fix or a stated reason for declining.
 - Address findings that are real, important, and worth fixing now.
 - Ignore findings that are incorrect, redundant, or not worth addressing for this task.
 - Do not ask for human confirmation.
 - If you decide to address a finding, make the code changes directly.
 - If no findings are worth addressing, do not change code unnecessarily.
 
-In your final summary, include three short sections:
+For this turn, your final response is these three short sections, in place of the usual final response:
 1. Addressed findings
-2. Ignored findings
+2. Ignored findings, each with the reason it was declined
 3. Verification after addressing findings (include exact commands, or "not run" with reason)
 
 Review findings:
@@ -295,7 +294,7 @@ Final response must include:
     category: 'agents',
     defaultContent: `You are reviewing a completed implementation along the STANDARDS axis only — does the code follow this repository's conventions and avoid code smells? Do not evaluate whether it satisfies the task; another reviewer owns that.
 
-First read the repository's documented standards in the worktree (CLAUDE.md, CONTRIBUTING.md, and any docs the diff touches). A documented repository standard always wins: where it endorses something the baseline below would flag, suppress the finding.
+First read the repository's documented standards in the worktree (CLAUDE.md, AGENTS.md, CONTRIBUTING.md, and any docs the diff touches). A documented repository standard always wins: where it endorses something the baseline below would flag, suppress the finding.
 
 Then judge the diff against this code-smell baseline. Each is a judgement call ("possible X"), never a hard rule — name the smell and quote the hunk:
 - Mysterious Name — a name that doesn't reveal what it does or holds → rename it.
@@ -311,7 +310,7 @@ Then judge the diff against this code-smell baseline. Each is a judgement call (
 - Middle Man — a class or function that mostly delegates onward → cut it, call the target directly.
 - Refused Bequest — a subclass or implementer that ignores most of what it inherits → prefer composition.
 
-Distinguish hard violations (a documented repository standard the diff breaks) from judgement-call smells. Skip anything the project's own tooling (linter, formatter, type-checker) already enforces. The diff omits lockfiles and generated artifacts and shows limited context — read the surrounding files in the worktree when a hunk is not enough to judge. Report only meaningful findings — do not praise, narrate, or rewrite.`,
+Report a hard violation (a documented repository standard the diff breaks) as a warning, and a judgement-call smell as a suggestion. Skip anything the project's own tooling (linter, formatter, type-checker) already enforces. The diff omits lockfiles and generated artifacts and shows limited context — read the surrounding files in the worktree when a hunk is not enough to judge. Report only meaningful findings — do not praise, narrate, or rewrite.`,
   },
   {
     key: 'agents.code_review_spec',
@@ -320,12 +319,14 @@ Distinguish hard violations (a documented repository standard the diff breaks) f
     category: 'agents',
     defaultContent: `You are reviewing a completed implementation along the SPEC axis only — does the code do what the task asked? Do not evaluate style or conventions; another reviewer owns that.
 
-The task's Intent and Acceptance Criteria in the task context above are the spec. Treat the Acceptance Criteria as the completion contract.
+The task's Intent and Acceptance Criteria in the task context are the spec. Treat the Acceptance Criteria as the completion contract.
 
 Report, quoting the specific acceptance criterion or intent line for each finding:
 - Requirements the spec asked for that are missing or only partially implemented.
 - Behavior in the diff that the spec did not ask for (scope creep).
 - Requirements that look implemented but where the implementation is wrong or would not satisfy the criterion.
+
+A missing or wrong acceptance criterion is at least a warning; scope creep is a warning only when it changes behavior the task did not ask to change.
 
 Be evidence-based; trust the diff and the code over the implementation agent's stated claims. If a criterion cannot be judged from the diff alone, read the surrounding files in the worktree before deciding. Report only meaningful findings — do not praise, narrate, or rewrite.`,
   },

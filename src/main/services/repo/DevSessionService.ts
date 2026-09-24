@@ -298,6 +298,8 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
       }
 
       const agentSessionManager = deps.agentSessionManager;
+      const taskContext = await service.buildSubagentTaskContext(sessionId);
+      if (!taskContext.ok) return taskContext;
       const adHocStep = resolveHarnessStep(playbookForSession(session), 'ad-hoc-review');
       const launched = await requestHarnessReview(harnessTurnDeps(), {
         sessionId,
@@ -307,7 +309,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           implementationAgentType: session.agent_type,
           worktreePath: session.worktree_path,
           baseBranch: session.base_branch,
-          taskDescription: session.initial_instructions,
+          taskDescription: taskContext.data,
           projectId: session.project_id,
           agentSessionManager,
           getPromptContent: deps.getPromptContent,
@@ -463,6 +465,22 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
       if (!content) return '';
       const items = deps.planItems.getByProject(projectId);
       return formatPlanRefSection(content, items);
+    },
+
+    /**
+     * The task context a reviewer or other subagent reads: the stored Work
+     * Brief with the same project context file and resolved plan refs the
+     * implementer launched with, so a reviewer does not call scope creep on
+     * what a plan ref asked for. Files attached at launch are not stored, so
+     * they are the one part of the implementer's context left out.
+     */
+    async buildSubagentTaskContext(sessionId: string): AsyncResult<string> {
+      const session = deps.devSessions.get(sessionId);
+      if (!session) return failure(`Session not found: ${sessionId}`);
+      const projectContextResult = await deps.readProjectContextFile(session.project_id);
+      const base = buildProjectContextPrefix(projectContextResult.ok ? projectContextResult.data : null)
+        + session.initial_instructions;
+      return success(service.buildPlanRefSection(session.project_id, base) + base);
     },
 
     /**

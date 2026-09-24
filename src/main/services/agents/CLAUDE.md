@@ -140,6 +140,8 @@ When a findings-producing review session completes:
 
 The built-in `Implement + review` playbook runs one review pass and one address pass. The deeper built-in code-review playbook can run more review/address rounds, bounded by its configured pass limit.
 
+Only critical and warning findings keep a loop going. A round that raises only suggestions still goes to the address step once, but that address turn exits the loop instead of re-reviewing (`RoundOutcome.closesLoop`, carried across restarts by a harness key in `step_outputs`), and a suggestion-only round past the pass limit proceeds rather than pausing. A re-review sees the previous address turn's output, so the reviewer can tell a declined finding from an unaddressed one. A fan-out step fails with `some-runs-failed` when any run fails: settling on the survivors would pass a round that one lens never reviewed.
+
 Commit-hook repair is also bounded to one automated pass. If the commit still
 fails after the repair turn, the session moves to `needs_attention`.
 
@@ -176,6 +178,12 @@ Review results are persisted in `agent_review_runs` / `agent_review_findings`, k
 ### Review diff
 
 `launchAutoReview` now accepts an optional `baseBranch` parameter. When provided, it diffs `${baseBranch}..HEAD` to capture both committed and uncommitted changes. Without a base branch it falls back to `git diff HEAD` (uncommitted only). `BoardAgentOrchestrator` passes `session.base_branch` automatically for all automated review launches.
+
+A diff over 100k characters is cut by `capReviewDiff`, which lists every file the cut hid so the reviewer opens them in the worktree.
+
+Reviewers and other subagents read `DevSessionService.buildSubagentTaskContext`: the stored Work Brief plus the same project context file and resolved `<plan-refs>` the implementer launched with. Files attached at launch are not stored, so reviewers do not see them. The built-in review steps also pass `{{output:implement}}`, the implementer's final report, as claims to check against the diff.
+
+Board agents read the repo's own instructions from the worktree: Claude through `settingSources: ['user', 'project']` (which also brings the repo's committed `.claude/settings.json` hooks and permissions), pi through its context files, Codex natively.
 
 ## Completion Detection
 

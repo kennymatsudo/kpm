@@ -309,7 +309,11 @@ function interruptedAction(reason: DevSessionAttentionReason): NextAction {
       primary: { label: 'Review changes', action: 'view_changes' },
     };
   }
-  if (reason === 'opposing-review-errored' || reason?.startsWith('all-runs-failed:')) {
+  if (
+    reason === 'opposing-review-errored'
+    || reason?.startsWith('all-runs-failed:')
+    || reason?.startsWith('some-runs-failed:')
+  ) {
     return {
       tone: 'warning',
       text: 'Automated review failed',

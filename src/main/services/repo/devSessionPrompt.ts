@@ -54,7 +54,9 @@ export function buildBoardProviderPrompt(
 /**
  * Build agent context from plan item data.
  * The worktree's own CLAUDE.md/AGENTS.md (the repo's, not KPM's project-level
- * one) is auto-read by the SDK, so it is not included here. KPM's project-level
+ * one) is read natively by each provider (Claude via the `project` setting
+ * source in `agentLaunch.ts`, pi via its context files), so it is not included
+ * here. KPM's project-level
  * context file is injected separately in `createAndStartFromBoard`, since the
  * worktree never contains it.
  *

@@ -80,8 +80,16 @@ export type PlaybookAdvance =
 export interface RoundOutcome {
   /** The review that just completed raised findings. */
   hasFindings: boolean;
+  /** At least one of those findings is critical or a warning. Suggestions alone never buy a re-review. */
+  hasBlockingFindings: boolean;
   /** The step that just completed changed code (a commit was captured). */
   madeProgress: boolean;
+  /**
+   * The main step that just completed addressed a review round that raised only
+   * suggestions. The implementer has seen them once; re-reviewing would only
+   * re-derive optional findings, so the loop exits instead.
+   */
+  closesLoop?: boolean;
 }
 
 function defaultNext(playbook: Playbook, step: PlaybookStep): string | undefined {
@@ -89,23 +97,17 @@ function defaultNext(playbook: Playbook, step: PlaybookStep): string | undefined
   return step.next ?? playbook.steps[index + 1]?.id;
 }
 
-/**
- * A back-edge into a findings loop head whose round changed nothing is a
- * stalemate: the diff is unchanged, so the reviewer would only re-derive the
- * same findings. Returns that loop head when its onStall route should apply.
- */
-function stalledLoopHead(
+/** The findings loop head a back-edge from `completed` to `nextId` re-enters, if any. */
+function loopHeadBehind(
   playbook: Playbook,
   completed: PlaybookStep,
   nextId: string,
-  outcome: RoundOutcome,
 ): PlaybookStep | undefined {
-  if (outcome.madeProgress) return undefined;
   const sourceIndex = playbook.steps.findIndex((entry) => entry.id === completed.id);
   const targetIndex = playbook.steps.findIndex((entry) => entry.id === nextId);
   if (targetIndex < 0 || targetIndex > sourceIndex) return undefined;
   const target = playbook.steps[targetIndex];
-  return target.onFindings?.onStall ? target : undefined;
+  return target.onFindings ? target : undefined;
 }
 
 /** Pure cursor transition used by the persisted interpreter. */
@@ -123,7 +125,7 @@ export function advancePlaybook(
   if (outcome.hasFindings && step.onFindings) {
     const spent = passCounts[step.id] ?? 0;
     if (spent >= step.onFindings.maxPasses) {
-      if (step.onFindings.onMaxPasses === 'pause') {
+      if (step.onFindings.onMaxPasses === 'pause' && outcome.hasBlockingFindings) {
         return { kind: 'pause', stepId: step.id, reason: 'max_passes', passCounts };
       }
       nextId = step.next;
@@ -135,15 +137,15 @@ export function advancePlaybook(
     nextId = undefined;
   } else {
     nextId = defaultNext(playbook, step);
-    if (nextId) {
-      const head = stalledLoopHead(playbook, step, nextId, outcome);
-      const onStall = head?.onFindings?.onStall;
-      if (head && onStall) {
-        if (onStall === 'pause') {
-          return { kind: 'pause', stepId: head.id, reason: 'stalled', passCounts: nextCounts };
-        }
-        nextId = head.next;
+    const head = nextId ? loopHeadBehind(playbook, step, nextId) : undefined;
+    if (head && outcome.closesLoop) {
+      nextId = head.next;
+    } else if (head?.onFindings?.onStall && !outcome.madeProgress) {
+      // An unchanged diff would only make the reviewer re-derive the same findings.
+      if (head.onFindings.onStall === 'pause') {
+        return { kind: 'pause', stepId: head.id, reason: 'stalled', passCounts: nextCounts };
       }
+      nextId = head.next;
     }
   }
 

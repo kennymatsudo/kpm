@@ -402,6 +402,10 @@ export const PR_REVIEW_FOLLOWUP_STEP: PlaybookStep = {
   directive: { kind: 'prompt' },
 };
 
+const IMPLEMENTER_REPORT_DIRECTIVE = `The implementation agent's final report follows. Its acceptance-criteria status, verification, and assumptions are claims to check against the diff, not facts.
+
+{{output:implement}}`;
+
 export const BUILT_IN_PLAYBOOKS = {
   implementOnly: parsePlaybook({
     id: 'builtin.implement_only',
@@ -434,7 +438,7 @@ export const BUILT_IN_PLAYBOOKS = {
         session: 'subagent',
         agents: [{ provider: 'codex' }, { provider: 'gemini' }],
         systemPromptKey: 'agents.review_system',
-        directive: { kind: 'prompt' },
+        directive: { kind: 'prompt', text: IMPLEMENTER_REPORT_DIRECTIVE },
         verdict: 'findings',
         onFindings: { goto: 'address', maxPasses: 1, onMaxPasses: 'proceed' },
       },
@@ -469,7 +473,7 @@ export const BUILT_IN_PLAYBOOKS = {
           { axis: 'standards' },
           { axis: 'spec', systemPromptKey: 'agents.code_review_spec' },
         ],
-        directive: { kind: 'prompt' },
+        directive: { kind: 'prompt', text: IMPLEMENTER_REPORT_DIRECTIVE },
         verdict: 'findings',
         onFindings: { goto: 'address', maxPasses: 3, onMaxPasses: 'pause', onStall: 'pause' },
       },

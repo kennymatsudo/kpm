@@ -6,7 +6,7 @@ import type * as AutoReviewModule from './autoReview';
 import type { DevSession } from '../../../shared/types';
 import type { DevSessionAutomationService } from './BoardAgentOrchestrator';
 import { BUILT_IN_PLAYBOOKS } from '../../../shared/playbooks';
-import { toReviewSessionId } from '../../../shared/agent-types';
+import { toReviewSessionId, type ReviewFinding } from '../../../shared/agent-types';
 
 vi.mock('electron', () => ({
   BrowserWindow: { getAllWindows: () => [] },
@@ -60,6 +60,7 @@ function devSessionDouble(overrides: Partial<DevSessionAutomationService> = {}):
     // Mirrors the real snapshot sync: it hands back the session it refreshed.
     syncWorkBriefSnapshot: vi.fn((sessionId: string) => ({ ok: true as const, data: { session: get(sessionId)! } })),
     startAgentSession: vi.fn().mockResolvedValue({ ok: true, data: {} }),
+    buildSubagentTaskContext: vi.fn(async (sessionId: string) => ({ ok: true as const, data: get(sessionId)?.initial_instructions ?? '' })),
     ...overrides,
     get,
   } as DevSessionAutomationService;
@@ -1015,6 +1016,128 @@ describe('BoardAgentOrchestrator', () => {
     expect(launchPlaybookSubagent).not.toHaveBeenCalled();
     expect(updateItem).toHaveBeenCalledWith('plan-1', { status_category: 'in_review' });
     expect(session.automation_phase).toBe('ready_for_review');
+  });
+});
+
+describe('BoardAgentOrchestrator two-axis review loop', () => {
+  const deepPlaybook = BUILT_IN_PLAYBOOKS.implementCodeReview;
+  const suggestion = { severity: 'suggestion' as const, description: 'Possible Mysterious Name', agent: 'codex' as const, source: 'agent' as const };
+  const warning = { severity: 'warning' as const, description: 'Error is swallowed', agent: 'codex' as const, source: 'agent' as const };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(launchPlaybookSubagent).mockResolvedValue('review-runtime');
+  });
+
+  function createDeepReviewHarness(
+    session: DevSession,
+    overrides: Partial<DevSessionAutomationService> = {},
+  ) {
+    const sendAgentFollowUp = vi.fn().mockResolvedValue({ ok: true, data: { restarted: false } });
+    const updateItem = vi.fn().mockReturnValue({ ok: true, data: undefined });
+    const callbacks = createBoardAgentOrchestrator({
+      agentReviews: {
+        persistStartedReview: vi.fn(), persistCompletedReview: vi.fn(), persistFailedReview: vi.fn(),
+        getByReviewSessionIds: vi.fn(() => []),
+      },
+      planService: { updateItem },
+      phaseMachine: createTestPhaseMachine(session),
+      getDevSessionService: () => devSessionDouble({ get: vi.fn(() => session), sendAgentFollowUp, ...overrides }),
+      getReviewService: () => null,
+      getAgentSessionManager: () => ({ isSessionBusy: vi.fn(() => false) } as never),
+      getPromptContent: vi.fn((key: string) => (key === 'agents.review_assessment' ? 'Assess:\n{{findings}}' : key)),
+      claudeUsageService: { recordUsage: vi.fn() },
+      requestPlanRefresh: vi.fn(),
+      listBoardProviders: async () => [
+        { id: 'claude', name: 'Claude', available: true, models: [{ id: 'sonnet', name: 'Sonnet', isDefault: true }], capabilities: { nativeSkills: true, reviewSandbox: false } },
+        { id: 'codex', name: 'Codex', available: true, models: [{ id: 'codex', name: 'Codex', isDefault: true }], capabilities: { nativeSkills: false, reviewSandbox: true } },
+      ],
+    });
+    const completeReviewRun = (runIndex: number, findings: ReviewFinding[] | undefined) => callbacks.onSessionComplete?.({
+      devSessionId: `review-${runIndex}`, implementationSessionId: session.id, stepId: 'review', runIndex,
+      role: 'review', summary: { filesChanged: 0, additions: 0, deletions: 0 }, findings,
+    });
+    const completeMainTurn = (finalText?: string) => callbacks.onSessionComplete?.({
+      devSessionId: session.id, implementationSessionId: session.id, role: 'implement',
+      summary: { filesChanged: 0, additions: 0, deletions: 0 }, finalText,
+    });
+    return { sendAgentFollowUp, updateItem, completeReviewRun, completeMainTurn };
+  }
+
+  function createDeepReviewSession(overrides: Partial<DevSession> = {}): DevSession {
+    return createSession({
+      playbook_id: deepPlaybook.id,
+      playbook_snapshot: JSON.stringify(deepPlaybook),
+      current_step_id: 'review',
+      automation_phase: 'reviewing',
+      ...overrides,
+    });
+  }
+
+  it('addresses a suggestion-only round once, then moves to review without re-reviewing', async () => {
+    const session = createDeepReviewSession();
+    const harness = createDeepReviewHarness(session, {
+      commitSessionChanges: vi.fn().mockResolvedValue({ ok: false, error: 'nothing to commit, working tree clean' }),
+    });
+
+    await harness.completeReviewRun(0, [suggestion]);
+    await harness.completeReviewRun(1, []);
+    expect(harness.sendAgentFollowUp).toHaveBeenCalledWith(session.id, expect.stringContaining('Possible Mysterious Name'), expect.anything());
+
+    // The implementer declined the suggestion and committed nothing: not a stalemate.
+    await harness.completeMainTurn('Ignored: the name matches the module convention.');
+
+    expect(launchPlaybookSubagent).not.toHaveBeenCalled();
+    expect(harness.updateItem).toHaveBeenCalledWith('plan-1', { status_category: 'in_review' });
+    expect(session.automation_phase).toBe('ready_for_review');
+  });
+
+  it('gives a re-review the implementer\'s assessment of the previous round', async () => {
+    const session = createDeepReviewSession({
+      current_step_id: 'address',
+      automation_phase: 'addressing_review',
+      step_pass_counts: '{"review":1}',
+    });
+    const harness = createDeepReviewHarness(session);
+
+    await harness.completeMainTurn('Ignored findings: 2, out of scope for this task.');
+
+    expect(launchPlaybookSubagent).toHaveBeenCalledTimes(2);
+    expect(launchPlaybookSubagent).toHaveBeenCalledWith(expect.objectContaining({
+      attempt: 1,
+      directive: expect.stringContaining('Ignored findings: 2, out of scope for this task.'),
+    }));
+  });
+
+  it('gives reviewers the implementer\'s report and the full subagent task context', async () => {
+    const session = createDeepReviewSession({
+      current_step_id: 'implement',
+      automation_phase: 'idle',
+    });
+    const harness = createDeepReviewHarness(session, {
+      buildSubagentTaskContext: vi.fn(async () => ({ ok: true as const, data: '<context-file path="AGENTS.md">Ship behind a flag.</context-file>' })),
+    });
+
+    await harness.completeMainTurn('Acceptance criteria: all met. Verification: npm test passed.');
+
+    expect(launchPlaybookSubagent).toHaveBeenCalledTimes(2);
+    expect(launchPlaybookSubagent).toHaveBeenCalledWith(expect.objectContaining({
+      directive: expect.stringContaining('Verification: npm test passed.'),
+      taskContext: expect.stringContaining('Ship behind a flag.'),
+    }));
+  });
+
+  it('needs attention instead of settling when one review lens fails', async () => {
+    const session = createDeepReviewSession();
+    const harness = createDeepReviewHarness(session);
+
+    await harness.completeReviewRun(0, [warning]);
+    await harness.completeReviewRun(1, undefined);
+
+    expect(session.automation_phase).toBe('needs_attention');
+    expect(session.attention_reason).toBe('some-runs-failed:review');
+    expect(harness.sendAgentFollowUp).not.toHaveBeenCalled();
+    expect(harness.updateItem).not.toHaveBeenCalled();
   });
 });
 

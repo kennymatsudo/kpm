@@ -382,7 +382,7 @@ describe('ReviewService', () => {
     expect(session.automation_phase).toBe('idle');
 
     const cursor = resolveRunStep(playbook, session.current_step_id)!;
-    expect(advancePlaybook(playbook, cursor.id, { hasFindings: false, madeProgress: true }, {})).toMatchObject({
+    expect(advancePlaybook(playbook, cursor.id, { hasFindings: false, hasBlockingFindings: false, madeProgress: true }, {})).toMatchObject({
       kind: 'step',
       stepId: 'review',
     });

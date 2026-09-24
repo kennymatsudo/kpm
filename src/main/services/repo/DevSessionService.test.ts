@@ -121,6 +121,26 @@ describe('DevSessionService playbook migration boundary', () => {
   });
 });
 
+describe('DevSessionService.buildSubagentTaskContext', () => {
+  it('gives a reviewer the project context file and resolved plan refs around the stored Work Brief', async () => {
+    const refId = '11111111-1111-4111-8111-111111111111';
+    const service = createDevSessionService({
+      devSessions: {
+        get: vi.fn(() => ({ id: 'session-1', project_id: 'project-1', initial_instructions: `Build it as @plan/${refId} describes.` })),
+      },
+      planItems: { getByProject: vi.fn(() => [{ id: refId, project_id: 'project-1', title: 'Export format decision' }]) },
+      readProjectContextFile: vi.fn(async () => ({ ok: true, data: { content: 'Ship behind a flag.', filename: 'AGENTS.md' } })),
+    } as never);
+
+    const result = await service.buildSubagentTaskContext('session-1');
+
+    if (!result.ok) throw new Error(result.error);
+    expect(result.data).toContain('<context-file path="AGENTS.md">\nShip behind a flag.');
+    expect(result.data).toContain('Export format decision');
+    expect(result.data).toContain(`Build it as @plan/${refId} describes.`);
+  });
+});
+
 describe('DevSessionService.sendAgentFollowUp', () => {
   it('defers instead of restarting when the live session rejects with FollowUpNotAllowedError and restartIfBusy is false', async () => {
     const followUp = vi.fn().mockRejectedValue(new FollowUpNotAllowedError('working'));

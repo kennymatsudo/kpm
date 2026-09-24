@@ -11,6 +11,7 @@ import type { DevSessionService } from '../repo/DevSessionService';
 import type { ReviewService } from '../repo/ReviewService';
 import type { AgentSessionManager, AgentSessionManagerDeps } from './AgentSessionManager';
 import { launchPlaybookSubagent, toPlaybookSubagentSessionId } from './autoReview';
+import { isBlockingFinding } from './reviewOutputContract';
 import { createPlaybookRoundStore, type RunGroup } from './playbookRoundStore';
 import { listBoardProviders as detectBoardProviders } from './boardProviderRegistry';
 import { failure, type ServiceResult } from '../result';
@@ -22,6 +23,10 @@ import { runMainStep, type TurnReentry } from './mainStepTurn';
 const LOG_PREFIX = '[BoardAgentOrchestrator]';
 const WORKTREE_MODIFIED_NOTICE_KEY = '__harness_worktree_modified';
 const WORKTREE_MODIFIED_NOTE = 'Harness note: Another agent modified the worktree in the previous playbook step. Inspect and preserve those changes before continuing.';
+// Persisted rather than held in memory: the address turn it closes can outlive
+// a main-process restart.
+const SUGGESTIONS_ONLY_ROUND_KEY = '__harness_suggestions_only_round';
+const PRIOR_ASSESSMENT_NOTE = 'Harness note: This is a re-review. The implementer assessed the previous round\'s findings and replied below. Do not re-raise a finding the implementer declined unless you dispute the stated reason; if you do, say why in the finding.';
 
 /**
  * Everything the interpreter drives on a dev session. Nothing here is
@@ -41,6 +46,7 @@ export type DevSessionAutomationService = Pick<
   | 'reconcileWorkBrief'
   | 'syncWorkBriefSnapshot'
   | 'startAgentSession'
+  | 'buildSubagentTaskContext'
 >;
 type ReviewQueueService = Pick<ReviewService, 'flushQueuedReviewTasks'>;
 
@@ -269,6 +275,11 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
     if (syncResult?.ok) {
       subagentSession = syncResult.data.session;
     }
+    const taskContext = await deps.getDevSessionService()?.buildSubagentTaskContext(session.id);
+    if (taskContext && !taskContext.ok) {
+      deps.phaseMachine.transition(session.id, { type: 'automationFailed', reason: 'follow-up-send-failed' });
+      return;
+    }
 
     const group = rounds.reconstructRunGroup(session, step, resolved.runs.length);
     rounds.setGroup(session.id, step.id, group);
@@ -276,6 +287,15 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
       await finalizeSubagentGroup(session, playbook, step, group);
       return;
     }
+    // A stateless reviewer re-raises every finding the implementer declined, so
+    // the loop never converges unless it sees the previous round's assessment.
+    const priorAssessment = step.onFindings && group.attempt > 0
+      ? sessionOutputs[step.onFindings.goto]?.join('\n\n').trim()
+      : undefined;
+    const harnessNote = [
+      step.writes ? BOARD_AGENT_WRITE_POLICY : null,
+      priorAssessment ? `${PRIOR_ASSESSMENT_NOTE}\n\nImplementer's assessment of the previous round:\n${priorAssessment}` : null,
+    ].filter(Boolean).join('\n\n');
     const starts = resolved.runs.map(async (agent, runIndex) => {
       if (group.succeeded.has(runIndex)) return null;
       group.failed.delete(runIndex);
@@ -290,7 +310,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
         promptContent: deps.getPromptContent,
         skillBody: skill?.ok ? skill.data : null,
         resumeNote,
-        harnessNote: step.writes ? BOARD_AGENT_WRITE_POLICY : null,
+        harnessNote,
       });
       return launchPlaybookSubagent({
         implementationSessionId: subagentSession.id,
@@ -300,7 +320,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
         agent: agent!,
         worktreePath: subagentSession.worktree_path,
         baseBranch: subagentSession.base_branch,
-        taskContext: subagentSession.initial_instructions,
+        taskContext: taskContext?.data ?? subagentSession.initial_instructions,
         directive,
         systemPrompt: deps.getPromptContent(step.runOverrides?.[runIndex]?.systemPromptKey ?? step.systemPromptKey!),
         verdict: step.verdict === 'findings',
@@ -336,6 +356,12 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
       deps.phaseMachine.transition(session.id, { type: 'automationFailed', reason: `all-runs-failed:${step.id}` });
       return;
     }
+    // Settling on the surviving runs would pass a round that one lens (say,
+    // Spec) never actually reviewed.
+    if (group.failed.size > 0) {
+      deps.phaseMachine.transition(session.id, { type: 'automationFailed', reason: `some-runs-failed:${step.id}` });
+      return;
+    }
     const sessionOutputs = rounds.outputsFor(session);
     sessionOutputs[step.id] = [...group.output.entries()].sort(([a], [b]) => a - b).map(([, value]) => value);
     rounds.persistOutputs(session, sessionOutputs);
@@ -348,6 +374,12 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
       // Persist before advancing the cursor so a restart between the writing
       // subagent and the next main turn cannot lose this harness-owned notice.
       sessionOutputs[WORKTREE_MODIFIED_NOTICE_KEY] = [step.id];
+      rounds.persistOutputs(session, sessionOutputs);
+    }
+    if (step.onFindings) {
+      const suggestionsOnly = group.findings.length > 0 && !group.findings.some(isBlockingFinding);
+      if (suggestionsOnly) sessionOutputs[SUGGESTIONS_ONLY_ROUND_KEY] = [step.id];
+      else delete sessionOutputs[SUGGESTIONS_ONLY_ROUND_KEY];
       rounds.persistOutputs(session, sessionOutputs);
     }
     await stepRunner.settle({ session, playbook, step, findings: group.findings });
@@ -511,12 +543,12 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
           return;
         }
         const completed = resolveRunStep(playbook, session.current_step_id) ?? playbook.steps[0];
-        if (finalText) {
-          const sessionOutputs = rounds.outputsFor(session);
-          sessionOutputs[completed.id] = [finalText];
-          rounds.persistOutputs(session, sessionOutputs);
-        }
-        await stepRunner.settle({ session, playbook, step: completed, findings: [], madeProgress });
+        const sessionOutputs = rounds.outputsFor(session);
+        const closesLoop = Boolean(sessionOutputs[SUGGESTIONS_ONLY_ROUND_KEY]?.length);
+        delete sessionOutputs[SUGGESTIONS_ONLY_ROUND_KEY];
+        if (finalText) sessionOutputs[completed.id] = [finalText];
+        if (finalText || closesLoop) rounds.persistOutputs(session, sessionOutputs);
+        await stepRunner.settle({ session, playbook, step: completed, findings: [], madeProgress, closesLoop });
         return;
       }
       const completed = resolveRunStep(playbook, stepId ?? session.current_step_id ?? 'review');

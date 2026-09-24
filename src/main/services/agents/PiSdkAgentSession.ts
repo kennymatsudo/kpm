@@ -163,12 +163,13 @@ async function createRealPiBoardSession(
     systemPromptOverride: () => options.systemPrompt,
     appendSystemPromptOverride: () => [],
     // User extensions still register configured model providers. Project-local
-    // resources stay excluded because KPM supplies the task context itself.
+    // resources stay excluded because KPM supplies the task context itself,
+    // except the repo's AGENTS.md/CLAUDE.md files, which KPM never sends.
     noExtensions: false,
     noSkills: true,
     noPromptTemplates: true,
     noThemes: true,
-    noContextFiles: true,
+    noContextFiles: false,
   });
   await resourceLoader.reload({ resolveProjectTrust: resolvePiProjectTrust });
 

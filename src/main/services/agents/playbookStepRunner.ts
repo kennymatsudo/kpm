@@ -5,6 +5,7 @@ import type { DevSession } from '../../../shared/types';
 import type { PlanService } from '../core/PlanService';
 import type { ReviewService } from '../repo/ReviewService';
 import type { AutomationPhaseMachine } from './automationPhaseMachine';
+import { isBlockingFinding } from './reviewOutputContract';
 import { phaseForPlaybookStep, stepById } from './sessionPlaybook';
 
 interface DevSessionLookup {
@@ -70,12 +71,18 @@ export function createPlaybookStepRunner(deps: PlaybookStepRunnerDeps) {
     step: PlaybookStep;
     findings: ReviewFinding[];
     madeProgress?: boolean;
+    closesLoop?: boolean;
   }): Promise<void> {
-    const { session, playbook, step, findings, madeProgress = true } = params;
+    const { session, playbook, step, findings, madeProgress = true, closesLoop = false } = params;
     const advance = advancePlaybook(
       playbook,
       step.id,
-      { hasFindings: findings.length > 0, madeProgress },
+      {
+        hasFindings: findings.length > 0,
+        hasBlockingFindings: findings.some(isBlockingFinding),
+        madeProgress,
+        closesLoop,
+      },
       parsePassCounts(session.step_pass_counts),
     );
     if (advance.kind === 'complete') {

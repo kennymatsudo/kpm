@@ -123,7 +123,10 @@ export async function createBoardAgentSession(
           : getConfig().agentSession.subagentMaxTurns,
         permissionMode: getConfig().claude.defaultPermissionMode,
         disallowedTools: BOARD_DISALLOWED_TOOLS,
-        settingSources: ['user'],
+        // 'project' is what loads the repo's CLAUDE.md files from the worktree;
+        // with a custom system prompt nothing else does. It also brings the
+        // repo's committed .claude/settings.json hooks and permissions.
+        settingSources: ['user', 'project'],
         settings: buildBoardSdkSettings(),
         env: { ...getAgentEnv(), ...environment.vars, CLAUDE_AGENT_SDK_CLIENT_APP: 'kpm' },
         thinking: { type: 'adaptive' as const, display: 'summarized' as const },
