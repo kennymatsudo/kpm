@@ -129,6 +129,7 @@ export const PER_SESSION_STATE = {
   completionBySessionId: { kind: 'map', keying: 'runtime' },
   reviewFindingsBySessionId: { kind: 'map', keying: 'runtime' },
   stepCostsBySessionId: { kind: 'map', keying: 'runtime' },
+  reviewHistoryBySessionId: { kind: 'map', keying: 'impl' },
   reviewRunsByImplementationId: { kind: 'map', keying: 'impl' },
 } as const satisfies Record<
   Exclude<PerSessionKey, 'mergeOrderBySessionId' | 'sessionById' | 'sessionsByPlanItemId'>,

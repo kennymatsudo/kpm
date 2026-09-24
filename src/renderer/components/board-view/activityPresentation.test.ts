@@ -29,6 +29,15 @@ describe('presentActivities', () => {
     expect(groups[0].entries[0]).toMatchObject({ kind: 'activity', label: 'Running tests' });
   });
 
+  it('drops the worktree cd prefix from command labels and still hides exploration behind it', () => {
+    const groups = presentActivities([
+      activity({ toolName: 'exec_command', summary: 'Run cd /repo/.kpm-worktrees/task && rg creator_id src', toolInput: 'cd /repo/.kpm-worktrees/task && rg creator_id src' }),
+      activity({ timestamp: 2, toolName: 'exec_command', summary: 'Run cd "/repo/with space" && cat a.ts', toolInput: 'cd "/repo/with space" && cat a.ts' }),
+    ]);
+
+    expect(groups[0].entries).toEqual([expect.objectContaining({ label: 'Run rg creator_id src' })]);
+  });
+
   it('keeps errors while omitting exploratory reads', () => {
     const groups = presentActivities([
       activity({ kind: 'read', toolName: 'read', summary: 'Read src/file.ts' }),

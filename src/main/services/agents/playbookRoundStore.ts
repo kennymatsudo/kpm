@@ -7,12 +7,21 @@ import type { DevSession } from '../../../shared/types';
 import type { IAgentReviewRepository } from '../../db/interfaces/review';
 import { toPlaybookSubagentSessionId } from './autoReview';
 
+/** Where a round's finding is saved, so the implementer's reply can be written back to it. */
+export interface FindingRef {
+  reviewSessionId: string;
+  order: number;
+}
+
+/** `ref` is absent only for a finding that never came from a saved review run. */
+export type RoundFinding = ReviewFinding & { ref?: FindingRef };
+
 export interface RunGroup {
   expected: number;
   attempt: number;
   succeeded: Set<number>;
   failed: Set<number>;
-  findings: ReviewFinding[];
+  findings: RoundFinding[];
   output: Map<number, string>;
 }
 
@@ -49,7 +58,10 @@ export function createPlaybookRoundStore(deps: PlaybookRoundStoreDeps) {
       if (run.run_index == null || run.run_index < 0 || run.run_index >= expected) continue;
       if (run.status === 'complete') {
         group.succeeded.add(run.run_index);
-        group.findings.push(...run.findings);
+        group.findings.push(...run.findings.map((finding) => ({
+          ...finding,
+          ref: { reviewSessionId: run.review_session_id, order: finding.order },
+        })));
         if (run.raw_output) group.output.set(run.run_index, run.raw_output);
       } else if (run.status === 'failed') {
         group.failed.add(run.run_index);

@@ -12,13 +12,19 @@ import type { ReviewService } from '../repo/ReviewService';
 import type { AgentSessionManager, AgentSessionManagerDeps } from './AgentSessionManager';
 import { launchPlaybookSubagent, toPlaybookSubagentSessionId } from './autoReview';
 import { isBlockingFinding } from './reviewOutputContract';
-import { createPlaybookRoundStore, type RunGroup } from './playbookRoundStore';
+import { createPlaybookRoundStore, type FindingRef, type RoundFinding, type RunGroup } from './playbookRoundStore';
 import { listBoardProviders as detectBoardProviders } from './boardProviderRegistry';
 import { failure, type ServiceResult } from '../result';
 import type { AutomationPhaseMachine } from './automationPhaseMachine';
 import { playbookForSession, phaseForPlaybookStep, readSessionRun, resolveHarnessStep, resolveRunStep, stepById } from './sessionPlaybook';
 import { createPlaybookStepRunner } from './playbookStepRunner';
 import { runMainStep, type TurnReentry } from './mainStepTurn';
+import {
+  CRITERIA_STATUS_OUTPUT_KEY,
+  HARNESS_OUTPUT_PREFIX,
+  parseCriteriaStatus,
+  parseFindingReplies,
+} from '../../../shared/agentReportBlocks';
 
 const LOG_PREFIX = '[BoardAgentOrchestrator]';
 const WORKTREE_MODIFIED_NOTICE_KEY = '__harness_worktree_modified';
@@ -26,6 +32,9 @@ const WORKTREE_MODIFIED_NOTE = 'Harness note: Another agent modified the worktre
 // Persisted rather than held in memory: the address turn it closes can outlive
 // a main-process restart.
 const SUGGESTIONS_ONLY_ROUND_KEY = '__harness_suggestions_only_round';
+// The findings a main turn was given, in the order it was told to number them,
+// so its `finding-replies` block can be written back to the saved findings.
+const ADDRESSED_FINDINGS_KEY = `${HARNESS_OUTPUT_PREFIX}addressed_findings`;
 const PRIOR_ASSESSMENT_NOTE = 'Harness note: This is a re-review. The implementer assessed the previous round\'s findings and replied below. Do not re-raise a finding the implementer declined unless you dispute the stated reason; if you do, say why in the finding.';
 
 /**
@@ -54,7 +63,7 @@ interface BoardAgentOrchestratorDeps {
   agentReviews: Pick<
     IAgentReviewRepository,
     'persistStartedReview' | 'persistCompletedReview' | 'persistFailedReview'
-  > & Pick<IAgentReviewRepository, 'getByReviewSessionIds'>;
+  > & Pick<IAgentReviewRepository, 'getByReviewSessionIds' | 'recordFindingDispositions'>;
   planService: Pick<PlanService, 'updateItem'>;
   phaseMachine: Pick<AutomationPhaseMachine, 'transition'>;
   getDevSessionService: () => DevSessionAutomationService | null;
@@ -78,10 +87,10 @@ type AgentManagerCallbacks = Pick<
   | 'onSessionUsage'
 >;
 
-function formatFindingLines(findings: ReviewFinding[]): string {
+function formatFindingLines(findings: ReviewFinding[], firstNumber: number): string {
   return findings.map((finding, index) => {
     const location = finding.file ? `${finding.file}${finding.line ? `:${finding.line}` : ''}` : '—';
-    return `${index + 1}. [${finding.severity}] ${location}\n   ${finding.description}`;
+    return `${firstNumber + index}. [${finding.severity}] ${location}\n   ${finding.description}`;
   }).join('\n');
 }
 
@@ -92,22 +101,41 @@ const AXIS_SECTIONS: { axis: ReviewAxis | null; title: string }[] = [
 ];
 
 /**
- * Render findings for the address turn. When a two-axis review tagged them,
- * group by axis under headings and keep each axis's findings in their own order
- * — never merged or reranked across axes, so one lens can't mask another.
+ * The address turn's sections. When a two-axis review tagged the findings,
+ * they are grouped by axis and keep each axis's own order — never merged or
+ * reranked across axes, so one lens can't mask another.
+ */
+function addressSections<T extends ReviewFinding>(findings: T[]): { title: string | null; findings: T[] }[] {
+  const tagged = findings.some((finding) => finding.axis === 'standards' || finding.axis === 'spec');
+  if (!tagged) return findings.length ? [{ title: null, findings }] : [];
+  return AXIS_SECTIONS
+    .map(({ axis, title }) => ({
+      title,
+      findings: findings.filter((finding) => (
+        axis === null ? finding.axis == null || finding.axis === 'general' : finding.axis === axis
+      )),
+    }))
+    .filter((section) => section.findings.length > 0);
+}
+
+/**
+ * Render findings for the address turn, numbered once across every section:
+ * the agent's `finding-replies` block refers back to these numbers.
  */
 export function formatFindings(findings: ReviewFinding[]): string {
-  const tagged = findings.some((finding) => finding.axis === 'standards' || finding.axis === 'spec');
-  if (!tagged) return formatFindingLines(findings);
-  return AXIS_SECTIONS
-    .map(({ axis, title }) => {
-      const group = findings.filter((finding) => (
-        axis === null ? finding.axis == null || finding.axis === 'general' : finding.axis === axis
-      ));
-      return group.length ? `${title}\n${formatFindingLines(group)}` : null;
+  let next = 1;
+  return addressSections(findings)
+    .map((section) => {
+      const lines = formatFindingLines(section.findings, next);
+      next += section.findings.length;
+      return section.title ? `${section.title}\n${lines}` : lines;
     })
-    .filter((section): section is string => section !== null)
     .join('\n\n');
+}
+
+/** Findings in the order `formatFindings` numbers them. */
+function inAddressOrder(findings: RoundFinding[]): RoundFinding[] {
+  return addressSections(findings).flatMap((section) => section.findings);
 }
 
 
@@ -175,6 +203,16 @@ async function captureWorkOnBranch(
   return 'failed';
 }
 
+function parseFindingRef(raw: string | undefined): FindingRef | null {
+  if (!raw) return null;
+  try {
+    const ref = JSON.parse(raw) as FindingRef | null;
+    return ref && typeof ref.reviewSessionId === 'string' && Number.isInteger(ref.order) ? ref : null;
+  } catch {
+    return null;
+  }
+}
+
 export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): AgentManagerCallbacks & {
   resumePlaybook: (sessionId: string, options?: { note?: string; action?: 'resume' | 'proceed' | 'one_more_pass' }) => Promise<boolean>;
   startPlaybookReviewPass: (sessionId: string) => Promise<string | null>;
@@ -205,7 +243,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
     session: DevSession,
     playbook: Playbook,
     step: PlaybookStep,
-    findings: ReviewFinding[] = [],
+    findings: RoundFinding[] = [],
     resumeNote?: string,
   ): Promise<void> {
     if (step.pauseBefore && session.automation_phase !== 'paused') {
@@ -239,6 +277,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
         return;
       }
       const hasWorktreeNotice = Boolean(sessionOutputs[WORKTREE_MODIFIED_NOTICE_KEY]?.length);
+      rememberAddressedFindings(session, sessionOutputs, findings);
       const result = await runMainStep(mainStepTurnDeps, {
         session,
         step,
@@ -336,6 +375,45 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
     }
   }
 
+  /** Persisted before the turn starts, so a reply that arrives after a restart still finds its findings. */
+  function rememberAddressedFindings(session: DevSession, sessionOutputs: Record<string, string[]>, findings: RoundFinding[]): void {
+    const hadFindings = ADDRESSED_FINDINGS_KEY in sessionOutputs;
+    if (findings.length === 0 && !hadFindings) return;
+    if (findings.length === 0) delete sessionOutputs[ADDRESSED_FINDINGS_KEY];
+    else sessionOutputs[ADDRESSED_FINDINGS_KEY] = inAddressOrder(findings).map((finding) => JSON.stringify(finding.ref ?? null));
+    rounds.persistOutputs(session, sessionOutputs);
+  }
+
+  /**
+   * Save what a main turn's report says about the work: its reply to each
+   * finding it was given, and its acceptance-criteria status. Both are the
+   * agent's claims, kept as data so the board can show them per finding and
+   * per criterion.
+   */
+  function recordReportedOutcome(session: DevSession, finalText: string | null | undefined): void {
+    const sessionOutputs = rounds.outputsFor(session);
+    let changed = false;
+    const addressed = sessionOutputs[ADDRESSED_FINDINGS_KEY];
+    if (addressed) {
+      const replies = parseFindingReplies(finalText) ?? [];
+      const updates = replies.flatMap((reply) => {
+        const ref = parseFindingRef(addressed[reply.finding - 1]);
+        return ref
+          ? [{ review_session_id: ref.reviewSessionId, order: ref.order, disposition: reply.disposition, reason: reply.reason }]
+          : [];
+      });
+      deps.agentReviews.recordFindingDispositions(updates);
+      delete sessionOutputs[ADDRESSED_FINDINGS_KEY];
+      changed = true;
+    }
+    const criteria = parseCriteriaStatus(finalText);
+    if (criteria) {
+      sessionOutputs[CRITERIA_STATUS_OUTPUT_KEY] = [JSON.stringify(criteria)];
+      changed = true;
+    }
+    if (changed) rounds.persistOutputs(session, sessionOutputs);
+  }
+
   const stepRunner = createPlaybookStepRunner({
     phaseMachine: deps.phaseMachine,
     planService: deps.planService,
@@ -402,9 +480,12 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
       if (!group.succeeded.has(params.runIndex)) {
         group.succeeded.add(params.runIndex);
         const axis = params.step.runOverrides?.[params.runIndex]?.axis;
-        group.findings.push(...(params.findings ?? []).map((finding) => (
-          axis ? { ...finding, axis: finding.axis ?? axis } : finding
-        )));
+        const reviewSessionId = toPlaybookSubagentSessionId(params.session.id, params.step.id, group.attempt, params.runIndex);
+        group.findings.push(...(params.findings ?? []).map((finding, order) => ({
+          ...finding,
+          ...(axis ? { axis: finding.axis ?? axis } : {}),
+          ref: { reviewSessionId, order },
+        })));
       }
       if (params.finalText) group.output.set(params.runIndex, params.finalText);
     }
@@ -529,6 +610,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
 
       const playbook = playbookForSession(session);
       if (role === 'implement') {
+        recordReportedOutcome(session, finalText);
         const capture = await captureWorkOnBranch(devSessionService, deps.phaseMachine, session);
         if (!isCaptured(capture)) return;
         const madeProgress = capture === 'committed';

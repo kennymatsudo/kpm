@@ -4718,6 +4718,20 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    id: 1128,
+    name: '128_agent_review_finding_dispositions',
+    up: (db: BetterSqliteDatabase) => {
+      // The implementer's reply to each finding (fixed, or declined with a
+      // reason), parsed from the address turn's report so the board can show
+      // what became of every finding.
+      db.exec(`
+        ALTER TABLE agent_review_findings
+          ADD COLUMN disposition TEXT CHECK(disposition IN ('fixed', 'declined'));
+        ALTER TABLE agent_review_findings ADD COLUMN disposition_reason TEXT;
+      `);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

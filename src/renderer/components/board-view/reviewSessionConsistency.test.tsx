@@ -123,9 +123,11 @@ const fakeState = {
   commitStateBySessionId: new Map(),
   diffBySessionId: new Map(),
   stepCostsBySessionId: new Map(),
+  reviewHistoryBySessionId: new Map(),
   setCommitState: vi.fn(),
   loadDiff: vi.fn(),
   loadStepCosts: vi.fn(),
+  loadReviewHistory: vi.fn(),
   hydrateAgentSnapshot: vi.fn(),
 };
 

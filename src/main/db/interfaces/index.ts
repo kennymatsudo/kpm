@@ -50,6 +50,7 @@ export type {
 
 // Review workflow domain
 export type {
+  FindingDispositionUpdate,
   IAgentReviewRepository,
   IReviewTaskRepository,
   IReviewOwnershipRepository,

@@ -120,6 +120,7 @@ describe('BoardAgentOrchestrator', () => {
         persistCompletedReview: vi.fn(),
         persistFailedReview: vi.fn(),
         getByReviewSessionIds: vi.fn(() => []),
+        recordFindingDispositions: vi.fn(),
       },
       planService: { updateItem },
       phaseMachine: createTestPhaseMachine(session),
@@ -181,6 +182,7 @@ describe('BoardAgentOrchestrator', () => {
         persistCompletedReview: vi.fn(),
         persistFailedReview: vi.fn(),
         getByReviewSessionIds: vi.fn(() => []),
+        recordFindingDispositions: vi.fn(),
       },
       planService: { updateItem },
       phaseMachine: createTestPhaseMachine(session),
@@ -231,6 +233,7 @@ describe('BoardAgentOrchestrator', () => {
         persistCompletedReview: vi.fn(),
         persistFailedReview: vi.fn(),
         getByReviewSessionIds: vi.fn(() => []),
+        recordFindingDispositions: vi.fn(),
       },
       planService: { updateItem },
       phaseMachine: createTestPhaseMachine(session),
@@ -282,6 +285,7 @@ describe('BoardAgentOrchestrator', () => {
         persistCompletedReview: vi.fn(),
         persistFailedReview: vi.fn(),
         getByReviewSessionIds: vi.fn(() => []),
+        recordFindingDispositions: vi.fn(),
       },
       planService: { updateItem },
       phaseMachine: createTestPhaseMachine(session),
@@ -336,6 +340,7 @@ describe('BoardAgentOrchestrator', () => {
         persistCompletedReview: vi.fn(),
         persistFailedReview: vi.fn(),
         getByReviewSessionIds: vi.fn(() => []),
+        recordFindingDispositions: vi.fn(),
       },
       planService: { updateItem },
       phaseMachine: createTestPhaseMachine(session),
@@ -380,6 +385,7 @@ describe('BoardAgentOrchestrator', () => {
         persistCompletedReview: vi.fn(),
         persistFailedReview: vi.fn(),
         getByReviewSessionIds: vi.fn(() => []),
+        recordFindingDispositions: vi.fn(),
       },
       planService: { updateItem },
       phaseMachine: createTestPhaseMachine(session),
@@ -428,6 +434,7 @@ describe('BoardAgentOrchestrator', () => {
         persistCompletedReview: vi.fn(),
         persistFailedReview: vi.fn(),
         getByReviewSessionIds: vi.fn(() => []),
+        recordFindingDispositions: vi.fn(),
       },
       planService: { updateItem },
       phaseMachine: createTestPhaseMachine(session),
@@ -478,6 +485,7 @@ describe('BoardAgentOrchestrator', () => {
         persistCompletedReview: vi.fn(),
         persistFailedReview: vi.fn(),
         getByReviewSessionIds: vi.fn(() => []),
+        recordFindingDispositions: vi.fn(),
       },
       planService: { updateItem },
       phaseMachine: createTestPhaseMachine(session),
@@ -525,6 +533,7 @@ describe('BoardAgentOrchestrator', () => {
         persistCompletedReview: vi.fn(),
         persistFailedReview: vi.fn(),
         getByReviewSessionIds: vi.fn(() => []),
+        recordFindingDispositions: vi.fn(),
       },
       planService: { updateItem: vi.fn() },
       phaseMachine: createTestPhaseMachine(session),
@@ -591,6 +600,7 @@ describe('BoardAgentOrchestrator', () => {
       agentReviews: {
         persistStartedReview: vi.fn(), persistCompletedReview: vi.fn(), persistFailedReview: vi.fn(),
         getByReviewSessionIds: vi.fn(() => []),
+        recordFindingDispositions: vi.fn(),
       },
       planService: { updateItem }, phaseMachine: createTestPhaseMachine(session),
       getDevSessionService: () => devSessionDouble({
@@ -634,6 +644,7 @@ describe('BoardAgentOrchestrator', () => {
       agentReviews: {
         persistStartedReview: vi.fn(), persistCompletedReview: vi.fn(), persistFailedReview: vi.fn(),
         getByReviewSessionIds: vi.fn(() => []),
+        recordFindingDispositions: vi.fn(),
       },
       planService: { updateItem }, phaseMachine: createTestPhaseMachine(session),
       getDevSessionService: () => devSessionDouble({
@@ -679,6 +690,7 @@ describe('BoardAgentOrchestrator', () => {
       agentReviews: {
         persistStartedReview: vi.fn(), persistCompletedReview: vi.fn(), persistFailedReview: vi.fn(),
         getByReviewSessionIds: vi.fn(() => []),
+        recordFindingDispositions: vi.fn(),
       },
       planService: { updateItem: vi.fn() },
       phaseMachine: createTestPhaseMachine(session),
@@ -740,7 +752,7 @@ describe('BoardAgentOrchestrator', () => {
     ] as never);
     const callbacks = createBoardAgentOrchestrator({
       agentReviews: {
-        persistStartedReview: vi.fn(), persistCompletedReview: vi.fn(), persistFailedReview: vi.fn(), getByReviewSessionIds,
+        persistStartedReview: vi.fn(), persistCompletedReview: vi.fn(), persistFailedReview: vi.fn(), getByReviewSessionIds, recordFindingDispositions: vi.fn(),
       },
       planService: { updateItem: vi.fn() }, phaseMachine: createTestPhaseMachine(session),
       getDevSessionService: () => devSessionDouble({
@@ -787,6 +799,7 @@ describe('BoardAgentOrchestrator', () => {
       agentReviews: {
         persistStartedReview: vi.fn(), persistCompletedReview: vi.fn(), persistFailedReview: vi.fn(),
         getByReviewSessionIds: vi.fn(() => [] as never),
+        recordFindingDispositions: vi.fn(),
       },
       planService: { updateItem: vi.fn() }, phaseMachine: createTestPhaseMachine(session),
       getDevSessionService: () => devSessionDouble({
@@ -831,6 +844,7 @@ describe('BoardAgentOrchestrator', () => {
       agentReviews: {
         persistStartedReview: vi.fn(), persistCompletedReview: vi.fn(), persistFailedReview: vi.fn(),
         getByReviewSessionIds,
+        recordFindingDispositions: vi.fn(),
       },
       planService: { updateItem: vi.fn() }, phaseMachine: createTestPhaseMachine(session),
       getDevSessionService: () => devSessionDouble({
@@ -896,6 +910,7 @@ describe('BoardAgentOrchestrator', () => {
       agentReviews: {
         persistStartedReview: vi.fn(), persistCompletedReview: vi.fn(), persistFailedReview: vi.fn(),
         getByReviewSessionIds: vi.fn(() => []),
+        recordFindingDispositions: vi.fn(),
       },
       planService: { updateItem }, phaseMachine: createTestPhaseMachine(session),
       getDevSessionService: () => devSessionDouble({
@@ -949,6 +964,7 @@ describe('BoardAgentOrchestrator', () => {
       agentReviews: {
         persistStartedReview: vi.fn(), persistCompletedReview: vi.fn(), persistFailedReview: vi.fn(),
         getByReviewSessionIds: vi.fn(() => []),
+        recordFindingDispositions: vi.fn(),
       },
       planService: { updateItem },
       phaseMachine,
@@ -993,6 +1009,7 @@ describe('BoardAgentOrchestrator', () => {
       agentReviews: {
         persistStartedReview: vi.fn(), persistCompletedReview: vi.fn(), persistFailedReview: vi.fn(),
         getByReviewSessionIds: vi.fn(() => []),
+        recordFindingDispositions: vi.fn(),
       },
       planService: { updateItem },
       phaseMachine: createTestPhaseMachine(session),
@@ -1035,10 +1052,12 @@ describe('BoardAgentOrchestrator two-axis review loop', () => {
   ) {
     const sendAgentFollowUp = vi.fn().mockResolvedValue({ ok: true, data: { restarted: false } });
     const updateItem = vi.fn().mockReturnValue({ ok: true, data: undefined });
+    const recordFindingDispositions = vi.fn();
     const callbacks = createBoardAgentOrchestrator({
       agentReviews: {
         persistStartedReview: vi.fn(), persistCompletedReview: vi.fn(), persistFailedReview: vi.fn(),
         getByReviewSessionIds: vi.fn(() => []),
+        recordFindingDispositions,
       },
       planService: { updateItem },
       phaseMachine: createTestPhaseMachine(session),
@@ -1061,7 +1080,7 @@ describe('BoardAgentOrchestrator two-axis review loop', () => {
       devSessionId: session.id, implementationSessionId: session.id, role: 'implement',
       summary: { filesChanged: 0, additions: 0, deletions: 0 }, finalText,
     });
-    return { sendAgentFollowUp, updateItem, completeReviewRun, completeMainTurn };
+    return { sendAgentFollowUp, updateItem, recordFindingDispositions, completeReviewRun, completeMainTurn };
   }
 
   function createDeepReviewSession(overrides: Partial<DevSession> = {}): DevSession {
@@ -1127,6 +1146,43 @@ describe('BoardAgentOrchestrator two-axis review loop', () => {
     }));
   });
 
+  it('writes the implementer\'s reply to each finding back to the review run that raised it', async () => {
+    const session = createDeepReviewSession();
+    const harness = createDeepReviewHarness(session);
+    const standards = (description: string) => ({ ...warning, description });
+
+    await harness.completeReviewRun(0, [standards('Standards one'), { ...suggestion, description: 'Standards two' }]);
+    await harness.completeReviewRun(1, [standards('Spec one')]);
+    const addressPrompt = harness.sendAgentFollowUp.mock.calls[0][1] as string;
+    expect(addressPrompt).toContain('## Spec\n3. [warning]');
+    expect(addressPrompt).toContain('finding-replies');
+
+    await harness.completeMainTurn([
+      'Fixed the swallowed errors.',
+      '```finding-replies',
+      '{"replies":[{"finding":1,"status":"fixed"},{"finding":2,"status":"declined","reason":"Matches the module convention."},{"finding":3,"status":"fixed"}]}',
+      '```',
+    ].join('\n'));
+
+    expect(harness.recordFindingDispositions).toHaveBeenCalledWith([
+      { review_session_id: 'session-1-playbook-review-0-0', order: 0, disposition: 'fixed', reason: null },
+      { review_session_id: 'session-1-playbook-review-0-0', order: 1, disposition: 'declined', reason: 'Matches the module convention.' },
+      { review_session_id: 'session-1-playbook-review-0-1', order: 0, disposition: 'fixed', reason: null },
+    ]);
+  });
+
+  it('keeps the latest criteria status a main turn reports', async () => {
+    const savePlaybookOutputs = vi.fn();
+    const session = createDeepReviewSession({ current_step_id: 'implement', automation_phase: 'addressing_review' });
+    const harness = createDeepReviewHarness(session, { savePlaybookOutputs });
+
+    await harness.completeMainTurn('Done.\n```criteria-status\n{"criteria":[{"criterion":1,"status":"unverified","note":"Needs the Support branch."}]}\n```');
+
+    expect(savePlaybookOutputs).toHaveBeenCalledWith(session.id, expect.objectContaining({
+      __harness_criteria_status: [JSON.stringify([{ criterion: 1, state: 'unverified', note: 'Needs the Support branch.' }])],
+    }));
+  });
+
   it('needs attention instead of settling when one review lens fails', async () => {
     const session = createDeepReviewSession();
     const harness = createDeepReviewHarness(session);
@@ -1155,14 +1211,14 @@ describe('formatFindings', () => {
       .toBe('1. [warning] —\n   a\n2. [warning] —\n   b');
   });
 
-  it('groups two-axis findings under headings, preserving within-axis order and never reranking', () => {
+  it('groups two-axis findings under headings, numbered once across groups and never reranked', () => {
     expect(formatFindings([
       finding('spec one', 'spec'),
       finding('standards one', 'standards'),
       finding('spec two', 'spec'),
     ])).toBe(
       '## Standards\n1. [warning] —\n   standards one\n\n'
-      + '## Spec\n1. [warning] —\n   spec one\n2. [warning] —\n   spec two',
+      + '## Spec\n2. [warning] —\n   spec one\n3. [warning] —\n   spec two',
     );
   });
 });

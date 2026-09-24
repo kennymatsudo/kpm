@@ -290,6 +290,39 @@ describe('GitHubService PR generation', () => {
     }
   });
 
+  it('uses the primary checkout for a linked-PR session with no worktree path', async () => {
+    const unrelatedCheckout = mkdtempSync(join(tmpdir(), 'kpm-unrelated-checkout-'));
+    const originalCwd = process.cwd();
+    try {
+      mkdirSync(join(unrelatedCheckout, '.git'));
+      process.chdir(unrelatedCheckout);
+      ghMocks.probePrReviewState.mockResolvedValue({ digest: 'unchanged' });
+      const session = {
+        id: 'session-1',
+        project_id: 'project-1',
+        plan_item_id: 'plan-1',
+        repo_id: 'repo-1',
+        worktree_path: '',
+        branch_name: '',
+        base_branch: '',
+        pr_number: 42,
+      };
+      const { service } = buildService({
+        devSessions: {
+          get: vi.fn(() => session),
+          updatePrInfo: vi.fn(),
+        } as unknown as IDevSessionRepository,
+      });
+
+      await service.probePrReviewState('session-1');
+
+      expect(ghMocks.probePrReviewState).toHaveBeenCalledWith('/repo', 42);
+    } finally {
+      process.chdir(originalCwd);
+      rmSync(unrelatedCheckout, { recursive: true, force: true });
+    }
+  });
+
   it('keeps repository template guidance when a custom system prompt omits the variable', async () => {
     const { service } = buildService({
       getPromptContent: (key: string) => {

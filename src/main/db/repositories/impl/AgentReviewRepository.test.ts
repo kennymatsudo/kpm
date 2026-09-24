@@ -119,3 +119,45 @@ describe('AgentReviewRepository', () => {
     }
   });
 });
+
+describe('AgentReviewRepository review history', () => {
+  it('lists every pass of a session with each finding\'s reply, after the diff moved on', () => {
+    const db = createTestDb();
+    try {
+      seedDevSession(db);
+      const repo = new AgentReviewRepository(db);
+      const finding = (description: string) => ({ severity: 'warning' as const, description, agent: 'codex' as const, source: 'agent' as const });
+      for (const [attempt, descriptions] of [[0, ['Swallowed error', 'Wrong column']], [1, ['Missing test']]] as const) {
+        repo.persistCompletedReview({
+          implementation_session_id: 'session-1',
+          review_session_id: `session-1-playbook-review-${attempt}-0`,
+          reviewer_agent: 'codex',
+          step_id: 'review',
+          run_index: 0,
+          findings: descriptions.map(finding),
+        });
+      }
+      // The address turn's commit marks earlier reviews stale before its replies are saved.
+      repo.markLatestCompletedStale('session-1');
+
+      repo.recordFindingDispositions([
+        { review_session_id: 'session-1-playbook-review-0-0', order: 0, disposition: 'fixed', reason: null },
+        { review_session_id: 'session-1-playbook-review-0-0', order: 1, disposition: 'declined', reason: 'Column is correct.' },
+        { review_session_id: 'session-1-playbook-review-9-0', order: 0, disposition: 'fixed', reason: null },
+      ]);
+
+      const history = repo.listByImplementationSessionId('session-1');
+      expect(history.map((run) => run.review_session_id)).toEqual([
+        'session-1-playbook-review-0-0',
+        'session-1-playbook-review-1-0',
+      ]);
+      expect(history[0].findings.map(({ description, disposition, disposition_reason }) => ({ description, disposition, disposition_reason }))).toEqual([
+        { description: 'Swallowed error', disposition: 'fixed', disposition_reason: null },
+        { description: 'Wrong column', disposition: 'declined', disposition_reason: 'Column is correct.' },
+      ]);
+      expect(history[1].findings[0].disposition).toBeNull();
+    } finally {
+      db.close();
+    }
+  });
+});

@@ -789,6 +789,8 @@ const agentSessions = {
 
   getActivities: agentSessionInvoke.getActivities,
 
+  listReviewHistory: agentSessionInvoke.listReviewHistory,
+
   getState: agentSessionInvoke.getState,
 
   getAvailableAgents: agentSessionInvoke.getAvailableAgents,

@@ -8,6 +8,7 @@ import { runGeneration } from '../../generation';
 import type { AgentSessionManager } from '../../services/agents/AgentSessionManager';
 import type { DevSessionService } from '../../services/repo/DevSessionService';
 import type { PromptOverrideService } from '../../services/core/PromptOverrideService';
+import type { IAgentReviewRepository } from '../../db/interfaces';
 import { getAvailableAgents } from '../../services/agents/agentCatalog';
 import { readSessionRun } from '../../services/agents/sessionPlaybook';
 import { unwrapOrThrow } from '../../services/result';
@@ -54,6 +55,7 @@ function buildAgentSessionHandlers(
   agentSessionManager: AgentSessionManager,
   devSessionService: DevSessionService,
   promptOverrideService: PromptOverrideService,
+  agentReviews: Pick<IAgentReviewRepository, 'listByImplementationSessionId'>,
 ): AgentSessionHandlers {
   return {
     // Create pending session + start agent in one atomic call.
@@ -123,6 +125,10 @@ function buildAgentSessionHandlers(
       }
       return { activities: session.activities };
     },
+
+    listReviewHistory: ({ devSessionId }) => ({
+      reviews: agentReviews.listByImplementationSessionId(devSessionId),
+    }),
 
     getState: ({ devSessionId }) => {
       const session = agentSessionManager.getByDevSession(devSessionId);
@@ -251,10 +257,11 @@ export function registerAgentSessionHandlers(
   agentSessionManager: AgentSessionManager,
   devSessionService: DevSessionService,
   promptOverrideService: PromptOverrideService,
+  agentReviews: Pick<IAgentReviewRepository, 'listByImplementationSessionId'>,
 ): void {
   createRegistryIpcHandlers(
     agentSessionEndpoints,
-    buildAgentSessionHandlers(agentSessionManager, devSessionService, promptOverrideService),
+    buildAgentSessionHandlers(agentSessionManager, devSessionService, promptOverrideService, agentReviews),
     'Agent session operation failed'
   );
 }

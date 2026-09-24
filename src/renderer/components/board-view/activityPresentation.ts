@@ -16,13 +16,16 @@ export interface ActivityPresentationGroup {
 
 const BASH_EXPLORATION_RE = /^(ls|find|cat|head|tail|wc|tree|echo|pwd|which)(\s|$)/;
 const POLLING_COMMAND_RE = /\bsleep\s+\d+\s*;/;
+// Every board command already runs in the task's worktree, so a leading
+// `cd <path> &&` only pushes the real command off the end of the row.
+const LEADING_CD_RE = /^((?:Run|Running)\s+)?cd\s+(?:"[^"]*"|'[^']*'|\S+)\s*(?:&&|;)\s*/;
 const VERIFICATION_COMMAND_RE = /\b(pytest|vitest|npm\s+test|make\s+test|jest|lint|eslint|py_compile|tsc\s+--noemit|typecheck|git\s+(diff|status))\b/;
 
 function isSignificant(activity: AgentActivity): boolean {
   if (activity.type === 'error' || activity.type === 'system') return true;
   if (activity.type !== 'tool_use') return false;
   if (activity.kind === 'read') return false;
-  return !(activity.kind === 'run' && BASH_EXPLORATION_RE.test(activity.toolInput?.trimStart() ?? ''));
+  return !(activity.kind === 'run' && BASH_EXPLORATION_RE.test((activity.toolInput?.trimStart() ?? '').replace(LEADING_CD_RE, '')));
 }
 
 function commandLabel(command: string | undefined): string | null {
@@ -44,8 +47,8 @@ function commandLabel(command: string | undefined): string | null {
 
 function labelFor(activity: AgentActivity): string {
   if (activity.type === 'error' || activity.type === 'system') return activity.summary;
-  const command = activity.kind === 'run' ? commandLabel(activity.toolInput) : null;
-  return command ?? activity.summary;
+  if (activity.kind !== 'run') return activity.summary;
+  return commandLabel(activity.toolInput) ?? activity.summary.replace(LEADING_CD_RE, '$1');
 }
 
 /** Whether a `run` activity's command reads as a check worth a Passed/Failed/Running badge. */

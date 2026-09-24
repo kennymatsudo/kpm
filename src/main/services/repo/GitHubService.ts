@@ -157,8 +157,9 @@ export function createGitHubService(deps: GitHubServiceDeps) {
 
     // PR operations need the session branch's HEAD, which lives in the worktree.
     // A leftover directory is not a worktree: gh resolves its repository through
-    // git and otherwise fails before it can query the PR.
-    const repoPath = existsSync(join(session.worktree_path, '.git'))
+    // git and otherwise fails before it can query the PR. Linked-PR stubs store
+    // an empty path, which `join` would resolve against the app's own cwd.
+    const repoPath = session.worktree_path && existsSync(join(session.worktree_path, '.git'))
       ? session.worktree_path
       : repo.path;
     return { repoPath, primaryRepoPath: repo.path, session };

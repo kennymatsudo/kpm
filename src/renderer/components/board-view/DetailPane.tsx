@@ -13,7 +13,8 @@ import { DetailPaneHeader } from './DetailPaneHeader';
 import { PhaseStepper } from './PhaseStepper';
 import { SessionNextActionBar } from './SessionNextActionBar';
 import { LiveProgressFooter } from './LiveProgressFooter';
-import { ActivityTab } from './ActivityTab';
+import { ActivityTab, type StepScrollRequest } from './ActivityTab';
+import { deriveRunOutline } from './runOutline';
 import { ChangesTab } from './ChangesTab';
 import { DetailChatInput, type DetailChatInputHandle } from './DetailChatInput';
 import { usePanelStatus } from './usePanelStatus';
@@ -59,16 +60,20 @@ export const DetailPane = memo(function DetailPane({
   const [commitTransitionsToReview, setCommitTransitionsToReview] = useState(false);
   const chatInputRef = useRef<DetailChatInputHandle>(null);
 
-  const { commitState, diff, stepCosts } = useDevSessionsStore(
+  const [stepScrollRequest, setStepScrollRequest] = useState<StepScrollRequest | null>(null);
+
+  const { commitState, diff, stepCosts, reviewHistory } = useDevSessionsStore(
     useShallow((s) => ({
       commitState: s.commitStateBySessionId.get(session.id),
       diff: s.diffBySessionId.get(session.id),
       stepCosts: s.stepCostsBySessionId.get(session.id),
+      reviewHistory: s.reviewHistoryBySessionId.get(session.id),
     }))
   );
   const setCommitState = useDevSessionsStore((s) => s.setCommitState);
   const loadDiff = useDevSessionsStore((s) => s.loadDiff);
   const loadStepCosts = useDevSessionsStore((s) => s.loadStepCosts);
+  const loadReviewHistory = useDevSessionsStore((s) => s.loadReviewHistory);
 
   const status = usePanelStatus(session);
 
@@ -81,12 +86,41 @@ export const DetailPane = memo(function DetailPane({
 
   useEffect(() => {
     void loadStepCosts(session.id);
-  }, [effectiveAgentState, loadStepCosts, session.current_step_id, session.id]);
+    void loadReviewHistory(session.id);
+  }, [effectiveAgentState, loadStepCosts, loadReviewHistory, session.current_step_id, session.automation_phase, session.id]);
 
   const updateStatusCategory = usePlanDomainStore((s) => s.updateStatusCategory);
   const planItem = usePlanDomainStore((s) =>
     session.plan_item_id ? s.planItems.find((p) => p.id === session.plan_item_id) : undefined
   );
+  const outline = useMemo(() => deriveRunOutline({
+    playbookSnapshot: session.playbook_snapshot,
+    currentStepId: session.current_step_id,
+    automationPhase: session.automation_phase,
+    stepOutputs: session.step_outputs,
+    stepCosts,
+    reviews: reviewHistory,
+    implementationAgent: session.agent_type,
+    acceptanceCriteria: planItem?.acceptance_criteria,
+  }), [
+    session.playbook_snapshot,
+    session.current_step_id,
+    session.automation_phase,
+    session.step_outputs,
+    session.agent_type,
+    stepCosts,
+    reviewHistory,
+    planItem?.acceptance_criteria,
+  ]);
+  const stepOutcomes = useMemo(
+    () => Object.fromEntries(outline.steps.flatMap((step) => (step.outcome ? [[step.stepId, step.outcome]] : []))),
+    [outline.steps],
+  );
+  const selectableStepIds = useMemo(() => outline.steps.map((step) => step.stepId), [outline.steps]);
+  const handleSelectStep = useCallback((stepId: string) => {
+    setActiveTab('activity');
+    setStepScrollRequest((previous) => ({ stepId, nonce: (previous?.nonce ?? 0) + 1 }));
+  }, []);
   const implIsTerminal =
     implementationSession.agentState === 'complete'
     || implementationSession.agentState === 'failed'
@@ -433,6 +467,9 @@ export const DetailPane = memo(function DetailPane({
         currentStepId={session.current_step_id}
         stepPassCounts={session.step_pass_counts}
         stepCosts={stepCosts}
+        stepOutcomes={stepOutcomes}
+        onSelectStep={handleSelectStep}
+        selectableStepIds={selectableStepIds}
       />
 
       {/* Tab bar — kept directly under the stepper so its position never shifts;
@@ -472,6 +509,8 @@ export const DetailPane = memo(function DetailPane({
             agentState={effectiveAgentState}
             sessionLabel={showReviewSession ? 'Auto-review' : undefined}
             emptyActiveLabel={status.progress?.label ?? status.nextAction?.text}
+            outline={outline}
+            scrollToStep={stepScrollRequest}
           />
         )}
         {activeTab === 'changes' && (

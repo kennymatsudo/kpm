@@ -163,10 +163,10 @@ A project document can be linked to a Confluence page (push or pull) or publishe
 ## Board execution
 
 ### Dev sessions
-Starting a plan item (Play, or drag to In Progress) runs an implementation agent in an isolated git worktree on its own branch. The Start modal shows the current Work Brief, the repo (defaulting to the item's primary repo), the environment capture mode, the playbook, and optional extra instructions. Starting again reuses the latest session and worktree for that repo. Agents always work from the latest approved Work Brief. The detail pane has Activity (narrated tool activity), Changes (diff, commits, and an inline commit composer with a generated message), and Review tabs, plus a follow-up input and an overflow menu (open in editor, copy worktree path, Create PR, Run Review, PR content, link existing PR). Card badges show the automation phase.
+Starting a plan item (Play, or drag to In Progress) runs an implementation agent in an isolated git worktree on its own branch. The Start modal shows the current Work Brief, the repo (defaulting to the item's primary repo), the environment capture mode, the playbook, and optional extra instructions. Starting again reuses the latest session and worktree for that repo. Agents always work from the latest approved Work Brief. The detail pane has Activity (a card per step that ran, showing what it concluded: the agent's report, each review pass's findings with the implementer's reply, cost, and reported acceptance-criteria status, above the collapsible agent log), Changes (diff, commits, and an inline commit composer with a generated message), and Review tabs, plus a follow-up input and an overflow menu (open in editor, copy worktree path, Create PR, Run Review, PR content, link existing PR). Card badges show the automation phase.
 - `src/main/services/repo/DevSessionService.ts`, `worktreeScaffold.ts`; `src/main/services/agents/` (`AgentSessionManager.ts`, `BoardAgentOrchestrator.ts`, `automationPhaseMachine.ts`)
 - Agent backends: Claude, Codex, and pi SDK sessions, plus Gemini through its CLI (`CliAgentSession.ts`)
-- `src/renderer/components/board-view/` (`AgentStartModal.tsx`, `DetailPane.tsx`, `ActivityTab.tsx`, `ChangesTab.tsx`, `CommitComposer.tsx`, `DetailChatInput.tsx`)
+- `src/renderer/components/board-view/` (`AgentStartModal.tsx`, `DetailPane.tsx`, `ActivityTab.tsx`, `runOutline.ts`, `RunOutlineView.tsx`, `ChangesTab.tsx`, `CommitComposer.tsx`, `DetailChatInput.tsx`)
 - Automation state is persisted in `dev_sessions.automation_phase` (see `src/main/services/agents/CLAUDE.md`)
 
 ### Execution playbooks
@@ -179,7 +179,7 @@ Main chat can create or change a playbook on request ("create a playbook that im
 - `src/shared/configKinds.ts`, `src/main/kpmTools/tools/config.ts`, `src/renderer/components/settings/PendingConfigPanel.tsx`, `src/renderer/stores/proposedChangeDisposal.ts` (`config` adapter)
 
 ### Automated review loop
-When the playbook includes review, a reviewer agent inspects the diff and its findings go back to the implementer. Only critical and warning findings force another round; suggestions are addressed once. The reviewer sees what the implementer declined last round, the loop stops when a pass changes nothing or the pass limit is reached, and a failed review lens puts the run in needs-attention. Run Review in the detail pane triggers a review on demand.
+When the playbook includes review, a reviewer agent inspects the diff and its findings go back to the implementer. Only critical and warning findings force another round; suggestions are addressed once. Every turn given findings replies to each one (fixed, or declined with a reason) in a block KPM saves against the finding. The reviewer sees what the implementer declined last round, the loop stops when a pass changes nothing or the pass limit is reached, and a failed review lens puts the run in needs-attention. Run Review in the detail pane triggers a review on demand.
 - `src/main/services/agents/autoReview.ts`, `reviewOutputContract.ts`, `BoardAgentOrchestrator.ts`
 
 ### Pull requests

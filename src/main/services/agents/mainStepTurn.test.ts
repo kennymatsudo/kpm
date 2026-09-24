@@ -3,7 +3,7 @@ import type { DevSession } from '../../../shared/types';
 import type { PlaybookStep } from '../../../shared/playbooks';
 import { BUILT_IN_PLAYBOOKS } from '../../../shared/playbooks';
 import { success } from '../result';
-import { runMainStep } from './mainStepTurn';
+import { CRITERIA_STATUS_FORMAT, FINDING_REPLIES_FORMAT, runMainStep } from './mainStepTurn';
 
 const PROVIDER = { capabilities: { nativeSkills: false, reviewSandbox: false } };
 
@@ -97,6 +97,24 @@ describe('runMainStep', () => {
       systemPromptKey: 'agents.implementation_tdd_system',
     }));
     expect(deps.startAgentSession.mock.calls[0][1].prompt).toContain('Do not create commits');
+  });
+
+  it.each([
+    { name: 'a turn given findings', findings: '1. [warning] src/app.ts:1', instructions: 'Implement task', expected: [FINDING_REPLIES_FORMAT], absent: [CRITERIA_STATUS_FORMAT] },
+    { name: 'a task with acceptance criteria', findings: undefined, instructions: '# Task: x\n\n## Acceptance Criteria\n\n- [ ] Works', expected: [CRITERIA_STATUS_FORMAT], absent: [FINDING_REPLIES_FORMAT] },
+  ])('asks for the report block KPM reads back on $name', async ({ findings, instructions, expected, absent }) => {
+    const deps = createDeps();
+
+    await runMainStep(deps, {
+      session: { ...createSession(), initial_instructions: instructions },
+      step: ADDRESS_STEP,
+      provider: PROVIDER,
+      findings,
+    });
+
+    const prompt = deps.sendAgentFollowUp.mock.calls[0][1] as string;
+    for (const block of expected) expect(prompt).toContain(block);
+    for (const block of absent) expect(prompt).not.toContain(block);
   });
 
   it('blocks the step when a skill the provider cannot invoke natively is missing', async () => {

@@ -5,6 +5,8 @@
  * Used across main process (agent sessions) and renderer (activity feed, board cards).
  */
 
+import type { FindingDisposition } from './agentReportBlocks';
+
 // =============================================================================
 // Agent Types
 // =============================================================================
@@ -132,6 +134,17 @@ export interface ReviewFinding {
 }
 
 /**
+ * A saved finding from one review run, with the implementer's reply once a
+ * later turn addressed it. `order` is the finding's position in its run.
+ */
+export interface PersistedReviewFinding extends ReviewFinding {
+  id: string;
+  order: number;
+  disposition: FindingDisposition | null;
+  disposition_reason: string | null;
+}
+
+/**
  * Outcome of a review-role turn, already classified against the shared
  * review-output contract (see `main/services/agents/reviewOutputContract.ts`).
  * Absent entirely for implement-role turns.
@@ -167,7 +180,7 @@ export interface PersistedAgentReview {
   error: string | null;
   step_id: string | null;
   run_index: number | null;
-  findings: ReviewFinding[];
+  findings: PersistedReviewFinding[];
   created_at: string;
   updated_at: string;
   completed_at: string | null;

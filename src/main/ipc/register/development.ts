@@ -21,5 +21,6 @@ export function registerDevelopmentHandlers({
     services.agentSessionManager,
     services.devSessionService,
     services.promptOverrideService,
+    services.container.agentReviews,
   );
 }

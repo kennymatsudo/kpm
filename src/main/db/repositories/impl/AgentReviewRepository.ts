@@ -7,7 +7,9 @@
 import { randomUUID } from 'crypto';
 import type { Database, Statement } from 'better-sqlite3';
 import type { AgentType, PersistedAgentReview, ReviewFinding } from '../../../../shared/agent-types';
+import type { FindingDisposition } from '../../../../shared/agentReportBlocks';
 import type {
+  FindingDispositionUpdate,
   IAgentReviewRepository,
   PersistedAgentReviewFailure,
   PersistedAgentReviewStart,
@@ -40,6 +42,8 @@ interface AgentReviewFindingRow {
   description: string;
   agent: ReviewFinding['agent'];
   source: ReviewFinding['source'];
+  disposition: FindingDisposition | null;
+  disposition_reason: string | null;
 }
 
 interface PreparedStatements {
@@ -55,6 +59,8 @@ interface PreparedStatements {
   getByReviewSessionIds: (placeholders: string) => Statement;
   getReviewerAgentsByImplementationSessionIds: (placeholders: string) => Statement;
   getFindingsByRunIds: (placeholders: string) => Statement;
+  listByImplementationSessionId: Statement;
+  recordFindingDisposition: Statement;
   markLatestCompletedStale: Statement;
   markCompletedByReviewSessionStale: Statement;
 }
@@ -66,6 +72,10 @@ function hydrateReview(
   return {
     ...run,
     findings: (findings ?? []).map((finding) => ({
+      id: finding.id,
+      order: finding.finding_order,
+      disposition: finding.disposition,
+      disposition_reason: finding.disposition_reason,
       severity: finding.severity,
       file: finding.file ?? undefined,
       line: finding.line ?? undefined,
@@ -246,10 +256,56 @@ export class AgentReviewRepository implements IAgentReviewRepository {
           line,
           description,
           agent,
-          source
+          source,
+          disposition,
+          disposition_reason
         FROM agent_review_findings
         WHERE review_run_id IN (${placeholders})
         ORDER BY review_run_id, finding_order ASC
+      `),
+      listByImplementationSessionId: db.prepare(`
+        SELECT
+          id,
+          implementation_session_id,
+          review_session_id,
+          reviewer_agent,
+          status,
+          diff_fingerprint,
+          raw_output,
+          error,
+          step_id,
+          run_index,
+          created_at,
+          updated_at,
+          completed_at
+        FROM (
+          SELECT
+            arr.*,
+            arr.rowid AS insertion_order,
+            ROW_NUMBER() OVER (
+              PARTITION BY arr.review_session_id
+              ORDER BY datetime(COALESCE(arr.completed_at, arr.updated_at, arr.created_at)) DESC, id DESC
+            ) AS row_num
+          FROM agent_review_runs arr
+          WHERE arr.implementation_session_id = ?
+        )
+        WHERE row_num = 1
+        -- Timestamps have one-second resolution; runs of one pass often share it.
+        ORDER BY datetime(created_at) ASC, insertion_order ASC
+      `),
+      recordFindingDisposition: db.prepare(`
+        UPDATE agent_review_findings
+        SET disposition = ?,
+            disposition_reason = ?
+        WHERE finding_order = ?
+          AND review_run_id = (
+            SELECT id
+            FROM agent_review_runs
+            WHERE review_session_id = ?
+              AND status IN ('complete', 'stale')
+            ORDER BY datetime(COALESCE(completed_at, updated_at, created_at)) DESC, id DESC
+            LIMIT 1
+          )
       `),
       markLatestCompletedStale: db.prepare(`
         UPDATE agent_review_runs
@@ -419,6 +475,25 @@ export class AgentReviewRepository implements IAgentReviewRepository {
     if (reviewSessionIds.length === 0) return [];
     const placeholders = reviewSessionIds.map(() => '?').join(', ');
     const runs = this.stmts.getByReviewSessionIds(placeholders).all(...reviewSessionIds) as AgentReviewRunRow[];
+    return this.withFindings(runs);
+  }
+
+  listByImplementationSessionId(implementationSessionId: string): PersistedAgentReview[] {
+    const runs = this.stmts.listByImplementationSessionId.all(implementationSessionId) as AgentReviewRunRow[];
+    return this.withFindings(runs);
+  }
+
+  recordFindingDispositions(updates: FindingDispositionUpdate[]): void {
+    if (updates.length === 0) return;
+    const tx = this.db.transaction(() => {
+      for (const update of updates) {
+        this.stmts.recordFindingDisposition.run(update.disposition, update.reason, update.order, update.review_session_id);
+      }
+    });
+    tx();
+  }
+
+  private withFindings(runs: AgentReviewRunRow[]): PersistedAgentReview[] {
     if (runs.length === 0) return [];
     const runIds = runs.map((run) => run.id);
     const findingPlaceholders = runIds.map(() => '?').join(', ');

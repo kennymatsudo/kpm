@@ -14,7 +14,8 @@ import type {
   ReviewTaskSource,
   ReviewTaskStatus,
 } from '../../../shared/types';
-import type { AgentType, PersistedAgentReview } from '../../../shared/agent-types';
+import type { AgentType, PersistedAgentReview, ReviewFinding } from '../../../shared/agent-types';
+import type { FindingDisposition } from '../../../shared/agentReportBlocks';
 
 export interface ReviewTaskUpsert {
   id?: string;
@@ -73,7 +74,7 @@ export interface PersistedAgentReviewUpsert {
   reviewer_agent: PersistedAgentReview['reviewer_agent'];
   diff_fingerprint?: string | null;
   raw_output?: string | null;
-  findings: PersistedAgentReview['findings'];
+  findings: ReviewFinding[];
   step_id?: string | null;
   run_index?: number | null;
 }
@@ -96,6 +97,14 @@ export interface PersistedAgentReviewFailure {
   error: string;
   step_id?: string | null;
   run_index?: number | null;
+}
+
+/** The implementer's reply to one finding, addressed by the review run it came from and its order there. */
+export interface FindingDispositionUpdate {
+  review_session_id: string;
+  order: number;
+  disposition: FindingDisposition;
+  reason: string | null;
 }
 
 export interface IReviewTaskRepository {
@@ -132,4 +141,8 @@ export interface IAgentReviewRepository {
    */
   getReviewerAgentsByImplementationSessionIds(sessionIds: string[]): Map<string, AgentType[]>;
   markLatestCompletedStale(implementationSessionId: string): void;
+  /** Every review run of a session, one row per review runtime id (its latest attempt), oldest first. */
+  listByImplementationSessionId(implementationSessionId: string): PersistedAgentReview[];
+  /** Applies to the latest completed run of each review session; unknown findings are ignored. */
+  recordFindingDispositions(updates: FindingDispositionUpdate[]): void;
 }
