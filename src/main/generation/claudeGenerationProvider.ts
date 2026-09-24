@@ -27,6 +27,11 @@ function buildClaudeSdkOptions(request: ResolvedGenerationRequest): SDKOptions {
     model: request.model,
     // One-shot generation never touches tools.
     tools: [],
+    // No MCP servers either. `tools: []` also removes tool search, so Claude
+    // Code cannot defer connector tools and sends every claude.ai connector's
+    // full tool list instead: ~110K tokens on a call whose content is ~4K.
+    strictMcpConfig: true,
+    mcpServers: {},
     persistSession: false,
     ...getClaudeSdkSpawnOptions(),
     env: { ...getAgentEnv(), CLAUDE_AGENT_SDK_CLIENT_APP: 'kpm' },

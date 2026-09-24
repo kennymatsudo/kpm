@@ -92,6 +92,13 @@ describe('runGeneration', () => {
     expect(result.text).toBe('result');
   });
 
+  it('keeps every MCP server out of a Claude one-shot call', async () => {
+    // With tools off, Claude Code cannot defer connector tools and would send all of them.
+    await runGeneration({ purpose: 'file_summary', tier: 'cheap', prompt: 'hi' });
+    const [{ sdkOptions }] = runClaudeQueryMock.mock.calls[0] as [{ sdkOptions: unknown }];
+    expect(sdkOptions).toMatchObject({ tools: [], strictMcpConfig: true, mcpServers: {} });
+  });
+
   it('routes to Codex when the purpose is overridden', async () => {
     configFor({ pr_description: 'codex' });
     const result = await runGeneration({ purpose: 'pr_description', tier: 'fast', prompt: 'hi' });
