@@ -45,7 +45,7 @@ Each is tied to a principle. Breaking one breaks the cockpit's safety guarantees
 - **Single user (P1).** No seats, no permissions, no shared state, no conflict-resolution UI.
 - **Sync is on-demand (P10).** No live feeds. Inbound queues for triage; outbound drafts for review.
 - **Board automation state is persisted (P9).** Use `dev_sessions.automation_phase`. Never hold it only in renderer state.
-- **Migrations are immutable once deployed.** Create a new one; never edit a shipped migration. Migrations run inside a transaction, where `PRAGMA foreign_keys = OFF` is ignored, so rebuilding a parent table cascade-deletes its children; prefer in-place `ALTER TABLE`. See [`src/main/db/CLAUDE.md`](src/main/db/CLAUDE.md).
+- **Migrations are immutable once deployed.** Create a new one; never edit a shipped migration. Prefer in-place `ALTER TABLE`; a migration that rebuilds a parent table must set `foreignKeysOff: true`, or dropping the old table cascade-deletes its children. See [`src/main/db/CLAUDE.md`](src/main/db/CLAUDE.md).
 - **No `ANTHROPIC_API_KEY` required.** The Claude Agent SDK uses the user's Claude Code session. Don't debug SDK problems as auth problems.
 
 ## Code conventions

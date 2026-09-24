@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import BetterSqlite3 from 'better-sqlite3';
-import { migrations, runMigrations } from './migrations';
+import { applyMigration, migrations, runMigrations } from './migrations';
 import { sqliteHasFts5 } from './testing/createTestDb';
 import { ActionRepository } from './repositories/impl/ActionRepository';
 import { getActionValidationIssues, toEditable } from '../../shared/actions';
@@ -819,6 +819,255 @@ describe('125_drop_canvas_positions_and_groups', () => {
       // The cascade children are the reason this migration drops in place
       // instead of rebuilding the table, so assert they are still reachable.
       expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
+});
+
+describe('applyMigration with foreignKeysOff', () => {
+  function parentWithCascadeChild(): BetterSqlite3.Database {
+    const db = new BetterSqlite3(':memory:');
+    db.exec(`
+      CREATE TABLE schema_migrations (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, applied_at DATETIME);
+      CREATE TABLE parent (id TEXT PRIMARY KEY, kind TEXT CHECK(kind IN ('a')));
+      CREATE TABLE child (id TEXT PRIMARY KEY, parent_id TEXT NOT NULL REFERENCES parent(id) ON DELETE CASCADE);
+      INSERT INTO parent VALUES ('p1', 'a');
+      INSERT INTO child VALUES ('c1', 'p1');
+    `);
+    db.pragma('foreign_keys = ON');
+    return db;
+  }
+
+  const rebuildParent = `
+    CREATE TABLE parent_new (id TEXT PRIMARY KEY, kind TEXT CHECK(kind IN ('a', 'b')));
+    INSERT INTO parent_new (id, kind) SELECT id, kind FROM parent;
+    DROP TABLE parent;
+    ALTER TABLE parent_new RENAME TO parent;
+  `;
+
+  it('keeps cascade children when a parent table is rebuilt, then turns foreign keys back on', () => {
+    const db = parentWithCascadeChild();
+    try {
+      applyMigration(db, { id: 1, name: 'rebuild', foreignKeysOff: true, up: (d) => d.exec(rebuildParent) });
+
+      expect(db.prepare('SELECT id FROM child').all()).toEqual([{ id: 'c1' }]);
+      expect(db.prepare('PRAGMA foreign_keys').get()).toEqual({ foreign_keys: 1 });
+      expect(db.prepare("SELECT name FROM schema_migrations").all()).toEqual([{ name: 'rebuild' }]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('loses the children without the flag, which is why rebuilds must set it', () => {
+    const db = parentWithCascadeChild();
+    try {
+      applyMigration(db, {
+        id: 1,
+        name: 'rebuild',
+        up: (d) => d.exec(`PRAGMA foreign_keys = OFF; ${rebuildParent}`),
+      });
+
+      expect(db.prepare('SELECT id FROM child').all()).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('rolls back and records nothing when the migration leaves a dangling reference', () => {
+    const db = parentWithCascadeChild();
+    try {
+      expect(() => applyMigration(db, {
+        id: 1,
+        name: 'orphaning',
+        foreignKeysOff: true,
+        up: (d) => d.exec("DELETE FROM parent"),
+      })).toThrow(/foreign key violation/);
+
+      expect(db.prepare('SELECT id FROM parent').all()).toEqual([{ id: 'p1' }]);
+      expect(db.prepare('SELECT name FROM schema_migrations').all()).toEqual([]);
+      expect(db.prepare('PRAGMA foreign_keys').get()).toEqual({ foreign_keys: 1 });
+    } finally {
+      db.close();
+    }
+  });
+});
+
+describe('126_widen_dev_session_paused_reason', () => {
+  const MIGRATION_ID = 1126;
+
+  function migrateToJustBefore(db: BetterSqlite3.Database): void {
+    for (const migration of migrations) {
+      if (migration.id >= MIGRATION_ID) break;
+      migration.up(db);
+    }
+  }
+
+  function migration126() {
+    const found = migrations.find((m) => m.id === MIGRATION_ID);
+    if (!found) throw new Error('migration 126 not found');
+    return found;
+  }
+
+  function seedSessionWithReviewHistory(db: BetterSqlite3.Database): void {
+    db.exec(`
+      INSERT INTO projects (id, name, folder_path) VALUES ('proj-1', 'Project One', '/tmp/proj-1');
+      INSERT INTO repos (id, project_id, path) VALUES ('repo-1', 'proj-1', '/tmp/repo-1');
+      INSERT INTO dev_sessions (
+        id, project_id, repo_id, worktree_path, branch_name, status, automation_phase,
+        playbook_id, current_step_id, step_pass_counts, paused_reason, step_outputs,
+        work_brief_revision, attention_reason, auto_address_pr_reviews, pr_is_draft
+      ) VALUES (
+        'sess-1', 'proj-1', 'repo-1', '/tmp/wt', 'feature/x', 'active', 'paused',
+        'builtin.implement_opposing_review', 'review', '{"review":2}', 'max_passes', '{}',
+        3, NULL, 1, 1
+      );
+      INSERT INTO review_tasks (
+        id, project_id, repo_id, session_id, pr_number, thread_id, thread_url, source,
+        status, priority, title, last_seen_updated_at
+      ) VALUES (
+        'task-1', 'proj-1', 'repo-1', 'sess-1', 7, 'thread-1', 'https://example.test/t/1', 'human',
+        'needs_review', 'high', 'Rename the flag', '2026-09-24T00:00:00.000Z'
+      );
+      INSERT INTO review_ownership (repo_id, pr_number, session_id) VALUES ('repo-1', 7, 'sess-1');
+      INSERT INTO agent_review_runs (id, implementation_session_id, review_session_id, reviewer_agent, status)
+        VALUES ('run-1', 'sess-1', 'review-sess-1', 'codex', 'complete');
+    `);
+  }
+
+  it('accepts the stopped and stalled reasons and still rejects unknown ones', () => {
+    const db = new BetterSqlite3(':memory:');
+    try {
+      migrateToJustBefore(db);
+      db.pragma('foreign_keys = ON');
+      seedSessionWithReviewHistory(db);
+
+      applyMigration(db, migration126());
+
+      const setReason = db.prepare("UPDATE dev_sessions SET paused_reason = ? WHERE id = 'sess-1'");
+      expect(() => setReason.run('stopped')).not.toThrow();
+      expect(() => setReason.run('stalled')).not.toThrow();
+      expect(() => setReason.run('bogus')).toThrow(/CHECK/);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('keeps every session field and all review history under it', () => {
+    const db = new BetterSqlite3(':memory:');
+    try {
+      migrateToJustBefore(db);
+      db.pragma('foreign_keys = ON');
+      seedSessionWithReviewHistory(db);
+      const sessionBefore = db.prepare("SELECT * FROM dev_sessions WHERE id = 'sess-1'").get();
+
+      applyMigration(db, migration126());
+
+      expect(db.prepare("SELECT * FROM dev_sessions WHERE id = 'sess-1'").get()).toEqual(sessionBefore);
+      expect(db.prepare('SELECT id FROM review_tasks').all()).toEqual([{ id: 'task-1' }]);
+      expect(db.prepare('SELECT session_id FROM review_ownership').all()).toEqual([{ session_id: 'sess-1' }]);
+      expect(db.prepare('SELECT id FROM agent_review_runs').all()).toEqual([{ id: 'run-1' }]);
+      expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+      expect(
+        (db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'dev_sessions' AND sql IS NOT NULL ORDER BY name").all() as { name: string }[])
+          .map((row) => row.name)
+      ).toEqual(['idx_dev_sessions_plan_item', 'idx_dev_sessions_project', 'idx_dev_sessions_status']);
+    } finally {
+      db.close();
+    }
+  });
+});
+
+describe('127_allow_pi_review_runs', () => {
+  const MIGRATION_ID = 1127;
+
+  function migrateToJustBefore(db: BetterSqlite3.Database): void {
+    for (const migration of migrations) {
+      if (migration.id >= MIGRATION_ID) break;
+      migration.up(db);
+    }
+  }
+
+  function migration127() {
+    const found = migrations.find((m) => m.id === MIGRATION_ID);
+    if (!found) throw new Error('migration 127 not found');
+    return found;
+  }
+
+  function reviewIndexes(db: BetterSqlite3.Database): unknown[] {
+    return db.prepare(`
+      SELECT name, sql FROM sqlite_master
+      WHERE type = 'index' AND tbl_name IN ('agent_review_runs', 'agent_review_findings') AND sql IS NOT NULL
+      ORDER BY name
+    `).all();
+  }
+
+  function seedReviewWithFindings(db: BetterSqlite3.Database): void {
+    db.exec(`
+      INSERT INTO projects (id, name, folder_path) VALUES ('proj-1', 'Project One', '/tmp/proj-1');
+      INSERT INTO repos (id, project_id, path) VALUES ('repo-1', 'proj-1', '/tmp/repo-1');
+      INSERT INTO dev_sessions (id, project_id, repo_id, worktree_path, branch_name)
+        VALUES ('sess-1', 'proj-1', 'repo-1', '/tmp/wt', 'feature/x');
+      INSERT INTO agent_review_runs (
+        id, implementation_session_id, review_session_id, reviewer_agent, status,
+        diff_fingerprint, raw_output, error, created_at, updated_at, completed_at, step_id, run_index
+      ) VALUES (
+        'run-1', 'sess-1', 'review-sess-1', 'codex', 'complete',
+        'abc123', '{"findings":[]}', NULL, '2026-09-20 10:00:00', '2026-09-20 10:05:00',
+        '2026-09-20 10:05:00', 'review', 1
+      );
+      INSERT INTO agent_review_findings (
+        id, review_run_id, finding_order, severity, file, line, description, agent, source
+      ) VALUES
+        ('finding-1', 'run-1', 0, 'critical', 'src/a.ts', 12, 'Null check missing', 'codex', 'agent'),
+        ('finding-2', 'run-1', 1, 'suggestion', NULL, NULL, 'Rename for clarity', 'codex', 'pr');
+    `);
+  }
+
+  it('keeps every review run and finding, and the indexes, unchanged', () => {
+    const db = new BetterSqlite3(':memory:');
+    try {
+      migrateToJustBefore(db);
+      db.pragma('foreign_keys = ON');
+      seedReviewWithFindings(db);
+      const runsBefore = db.prepare('SELECT * FROM agent_review_runs ORDER BY id').all();
+      const findingsBefore = db.prepare('SELECT * FROM agent_review_findings ORDER BY id').all();
+      const indexesBefore = reviewIndexes(db);
+
+      applyMigration(db, migration127());
+
+      expect(db.prepare('SELECT * FROM agent_review_runs ORDER BY id').all()).toEqual(runsBefore);
+      expect(db.prepare('SELECT * FROM agent_review_findings ORDER BY id').all()).toEqual(findingsBefore);
+      expect(reviewIndexes(db)).toEqual(indexesBefore);
+      expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('saves a pi review and its findings, still rejects unknown agents, and cascades on session delete', () => {
+    const db = new BetterSqlite3(':memory:');
+    try {
+      migrateToJustBefore(db);
+      db.pragma('foreign_keys = ON');
+      seedReviewWithFindings(db);
+
+      applyMigration(db, migration127());
+
+      db.exec(`
+        INSERT INTO agent_review_runs (id, implementation_session_id, review_session_id, reviewer_agent, status)
+          VALUES ('run-pi', 'sess-1', 'review-sess-pi', 'pi', 'complete');
+        INSERT INTO agent_review_findings (id, review_run_id, finding_order, severity, description, agent, source)
+          VALUES ('finding-pi', 'run-pi', 0, 'warning', 'Unhandled rejection', 'pi', 'agent');
+      `);
+      expect(() => db.exec(`
+        INSERT INTO agent_review_runs (id, implementation_session_id, review_session_id, reviewer_agent, status)
+          VALUES ('run-bad', 'sess-1', 'review-sess-bad', 'bogus', 'complete')
+      `)).toThrow(/CHECK/);
+
+      db.exec("DELETE FROM dev_sessions WHERE id = 'sess-1'");
+      expect(db.prepare('SELECT count(*) AS n FROM agent_review_runs').get()).toEqual({ n: 0 });
+      expect(db.prepare('SELECT count(*) AS n FROM agent_review_findings').get()).toEqual({ n: 0 });
     } finally {
       db.close();
     }

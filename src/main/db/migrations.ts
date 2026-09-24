@@ -11,9 +11,18 @@ import type { Database as BetterSqliteDatabase } from 'better-sqlite3';
  * Create a new migration instead.
  */
 
-interface Migration {
+export interface Migration {
   id: number;
   name: string;
+  /**
+   * Run with foreign keys off. A migration that rebuilds a parent table
+   * (create, copy, drop, rename) needs this: SQLite ignores
+   * `PRAGMA foreign_keys` inside a transaction, so with foreign keys on,
+   * dropping the old table cascade-deletes every ON DELETE CASCADE child row.
+   * The runner switches them off outside the transaction and refuses to
+   * commit if the migration left a dangling reference.
+   */
+  foreignKeysOff?: true;
   up: (db: BetterSqliteDatabase) => void;
 }
 
@@ -4549,6 +4558,166 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    id: 1126,
+    name: '126_widen_dev_session_paused_reason',
+    foreignKeysOff: true,
+    up: (db: BetterSqliteDatabase) => {
+      // Migration 103 allowed only 'gate' and 'max_passes', but the phase
+      // machine also parks a session as 'stopped' (the user pressed Stop) and
+      // 'stalled' (a review pass changed nothing). Both writes failed the
+      // CHECK, so Stop never persisted and a stalled review loop never parked.
+      //
+      // Widening a CHECK needs a rebuild. dev_sessions is the parent of
+      // review_tasks, review_ownership, and agent_review_runs (all ON DELETE
+      // CASCADE), hence foreignKeysOff: dropping the old table with foreign
+      // keys on would delete every one of those rows.
+      db.exec(`
+        CREATE TABLE dev_sessions_new (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          plan_item_id TEXT REFERENCES plan_items(id) ON DELETE CASCADE,
+          repo_id TEXT NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+          worktree_path TEXT NOT NULL,
+          branch_name TEXT NOT NULL,
+          base_branch TEXT NOT NULL DEFAULT 'main',
+          base_sha TEXT,
+          status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'active', 'inactive')),
+          initial_instructions TEXT NOT NULL DEFAULT '',
+          pr_number INTEGER,
+          pr_url TEXT,
+          pr_state TEXT,
+          review_state TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          completed_at DATETIME,
+          name TEXT,
+          agent_type TEXT NOT NULL DEFAULT 'claude',
+          agent_state TEXT NOT NULL DEFAULT 'inactive',
+          automation_phase TEXT CHECK(automation_phase IN (
+            'idle',
+            'reviewing',
+            'addressing_review',
+            'fixing_commit_hooks',
+            'paused',
+            'ready_for_review',
+            'needs_attention'
+          )),
+          merge_order INTEGER,
+          execution_mode TEXT NOT NULL DEFAULT 'standard'
+            CHECK(execution_mode IN ('standard', 'workflow')),
+          review_policy TEXT NOT NULL DEFAULT 'auto'
+            CHECK(review_policy IN ('auto', 'skip')),
+          playbook_id TEXT,
+          playbook_snapshot TEXT,
+          current_step_id TEXT,
+          step_pass_counts TEXT,
+          paused_reason TEXT CHECK(paused_reason IN ('gate', 'max_passes', 'stalled', 'stopped')),
+          step_outputs TEXT,
+          work_brief_revision INTEGER
+            CHECK(work_brief_revision IS NULL OR work_brief_revision >= 1),
+          attention_reason TEXT,
+          auto_address_pr_reviews INTEGER NOT NULL DEFAULT 0,
+          pr_is_draft INTEGER NOT NULL DEFAULT 0
+        );
+
+        INSERT INTO dev_sessions_new (
+          id, project_id, plan_item_id, repo_id, worktree_path, branch_name, base_branch, base_sha,
+          status, initial_instructions, pr_number, pr_url, pr_state, review_state, created_at,
+          updated_at, completed_at, name, agent_type, agent_state, automation_phase, merge_order,
+          execution_mode, review_policy, playbook_id, playbook_snapshot, current_step_id,
+          step_pass_counts, paused_reason, step_outputs, work_brief_revision, attention_reason,
+          auto_address_pr_reviews, pr_is_draft
+        )
+        SELECT
+          id, project_id, plan_item_id, repo_id, worktree_path, branch_name, base_branch, base_sha,
+          status, initial_instructions, pr_number, pr_url, pr_state, review_state, created_at,
+          updated_at, completed_at, name, agent_type, agent_state, automation_phase, merge_order,
+          execution_mode, review_policy, playbook_id, playbook_snapshot, current_step_id,
+          step_pass_counts, paused_reason, step_outputs, work_brief_revision, attention_reason,
+          auto_address_pr_reviews, pr_is_draft
+        FROM dev_sessions;
+
+        DROP TABLE dev_sessions;
+        ALTER TABLE dev_sessions_new RENAME TO dev_sessions;
+
+        CREATE INDEX idx_dev_sessions_project ON dev_sessions(project_id);
+        CREATE INDEX idx_dev_sessions_plan_item ON dev_sessions(plan_item_id);
+        CREATE INDEX idx_dev_sessions_status ON dev_sessions(status);
+      `);
+    },
+  },
+  {
+    id: 1127,
+    name: '127_allow_pi_review_runs',
+    foreignKeysOff: true,
+    up: (db: BetterSqliteDatabase) => {
+      // pi became a board provider, so a playbook review step can run on it,
+      // but both tables still allowed only claude, codex, and gemini as the
+      // reviewing agent. A pi review's run and findings failed to save.
+      //
+      // Both tables are rebuilt to widen the CHECK. Findings cascade from runs,
+      // hence foreignKeysOff: dropping the old runs table with foreign keys on
+      // would delete every finding.
+      db.exec(`
+        CREATE TABLE agent_review_runs_new (
+          id TEXT PRIMARY KEY,
+          implementation_session_id TEXT NOT NULL REFERENCES dev_sessions(id) ON DELETE CASCADE,
+          review_session_id TEXT NOT NULL,
+          reviewer_agent TEXT NOT NULL CHECK(reviewer_agent IN ('claude', 'codex', 'gemini', 'pi')),
+          status TEXT NOT NULL CHECK(status IN ('running', 'complete', 'failed', 'stale')),
+          diff_fingerprint TEXT,
+          raw_output TEXT,
+          error TEXT,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          completed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          step_id TEXT,
+          run_index INTEGER
+        );
+
+        INSERT INTO agent_review_runs_new (
+          id, implementation_session_id, review_session_id, reviewer_agent, status, diff_fingerprint,
+          raw_output, error, created_at, updated_at, completed_at, step_id, run_index
+        )
+        SELECT
+          id, implementation_session_id, review_session_id, reviewer_agent, status, diff_fingerprint,
+          raw_output, error, created_at, updated_at, completed_at, step_id, run_index
+        FROM agent_review_runs;
+
+        CREATE TABLE agent_review_findings_new (
+          id TEXT PRIMARY KEY,
+          review_run_id TEXT NOT NULL REFERENCES agent_review_runs(id) ON DELETE CASCADE,
+          finding_order INTEGER NOT NULL,
+          severity TEXT NOT NULL CHECK(severity IN ('critical', 'warning', 'suggestion')),
+          file TEXT,
+          line INTEGER,
+          description TEXT NOT NULL,
+          agent TEXT NOT NULL CHECK(agent IN ('claude', 'codex', 'gemini', 'pi')),
+          source TEXT NOT NULL CHECK(source IN ('agent', 'pr')),
+          UNIQUE(review_run_id, finding_order)
+        );
+
+        INSERT INTO agent_review_findings_new (id, review_run_id, finding_order, severity, file, line, description, agent, source)
+        SELECT id, review_run_id, finding_order, severity, file, line, description, agent, source
+        FROM agent_review_findings;
+
+        DROP TABLE agent_review_findings;
+        DROP TABLE agent_review_runs;
+        ALTER TABLE agent_review_runs_new RENAME TO agent_review_runs;
+        ALTER TABLE agent_review_findings_new RENAME TO agent_review_findings;
+
+        CREATE INDEX idx_agent_review_runs_implementation
+          ON agent_review_runs(implementation_session_id, completed_at DESC, created_at DESC);
+        CREATE INDEX idx_agent_review_runs_status
+          ON agent_review_runs(implementation_session_id, status);
+        CREATE INDEX idx_agent_review_runs_review_session
+          ON agent_review_runs(review_session_id, completed_at DESC, created_at DESC);
+        CREATE INDEX idx_agent_review_findings_run_order
+          ON agent_review_findings(review_run_id, finding_order);
+      `);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {
@@ -4572,6 +4741,31 @@ function isMigrationApplied(db: BetterSqliteDatabase, name: string): boolean {
 /**
  * Record a migration as applied.
  */
+/** Applies one migration and records it, atomically. */
+export function applyMigration(db: BetterSqliteDatabase, migration: Migration): void {
+  const foreignKeysWereOn = migration.foreignKeysOff === true
+    && (db.prepare('PRAGMA foreign_keys').get() as { foreign_keys: number } | undefined)?.foreign_keys === 1;
+  // Must happen before BEGIN; inside the transaction SQLite ignores it.
+  if (migration.foreignKeysOff) db.pragma('foreign_keys = OFF');
+
+  try {
+    db.transaction(() => {
+      migration.up(db);
+      if (migration.foreignKeysOff) {
+        const violations = db.prepare('PRAGMA foreign_key_check').all();
+        if (violations.length > 0) {
+          throw new Error(
+            `[Migrations] ${migration.name} left ${violations.length} foreign key violation(s); rolled back`
+          );
+        }
+      }
+      recordMigration(db, migration.id, migration.name);
+    })();
+  } finally {
+    if (foreignKeysWereOn) db.pragma('foreign_keys = ON');
+  }
+}
+
 function recordMigration(db: BetterSqliteDatabase, id: number, name: string): void {
   db.prepare('INSERT INTO schema_migrations (id, name) VALUES (?, ?)').run(id, name);
 }
@@ -4676,14 +4870,7 @@ export function runMigrations(db: BetterSqliteDatabase): void {
 
   for (const migration of pending) {
     console.log(`[Migrations] Applying migration: ${migration.name}`);
-
-    // Run migration in a transaction for safety
-    const transaction = db.transaction(() => {
-      migration.up(db);
-      recordMigration(db, migration.id, migration.name);
-    });
-
-    transaction();
+    applyMigration(db, migration);
   }
 
   console.log(`[Migrations] Applied ${pending.length} migration(s).`);
