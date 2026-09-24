@@ -263,6 +263,7 @@ const chat = {
   onFileUpdate: chatSubscriptions.fileUpdate,
   onFileMove: chatSubscriptions.fileMove,
   onFileDelete: chatSubscriptions.fileDelete,
+  onConfigChange: chatSubscriptions.configChange,
 
   // ─── Streaming Session Methods ───
 

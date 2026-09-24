@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { PlanAction, ReviewInboxSnapshot } from '../../shared/types';
+import type { ConfigChange, ConfigKind } from '../../shared/configKinds';
 import type { ApplyPlanActionsResult } from './project/types';
 import { usePlanDomainStore } from './projectDomains';
 import { useGeneralSettingsStore } from './generalSettingsStore';
@@ -9,6 +10,7 @@ import { writeContextFile } from '../services/contextFileService';
 import { deleteProjectFile, writeProjectFile } from '../services/workspaceFileService';
 import { renameProjectEntry } from '../services/projectFileService';
 import { replyToSessionReviewThread } from '../services/reviewService';
+import { createPlaybook, updatePlaybook } from '../services/playbookService';
 
 export type DisposalPolicy = 'follow_global_mode' | 'review_required';
 export type DisposalOutcome =
@@ -29,6 +31,7 @@ export type ProposedChange =
   | (ProposedChangeBase & { type: 'document'; filePath: string; content: string; oldContent: string | null })
   | (ProposedChangeBase & { type: 'move'; sourcePath: string; targetPath: string })
   | (ProposedChangeBase & { type: 'delete'; filePath: string; isDirectory: boolean })
+  | (ProposedChangeBase & { type: 'config'; change: ConfigChange })
   | (ProposedChangeBase & {
       type: 'review-reply'; sessionId: string; threadId: string; threadUrl: string;
       threadTitle: string; threadLocation: string; latestCommentPreview: string | null;
@@ -120,6 +123,15 @@ function mergePlanActions(current: Extract<ProposedChange, { type: 'plan-actions
   return { ...current, actions: merged, error: undefined };
 }
 
+/** How an approved change reaches each kind's existing save path. */
+const CONFIG_APPLIERS: { [K in ConfigKind]: (change: Extract<ConfigChange, { kind: K }>) => Promise<{ success: boolean; error?: string }> } = {
+  playbook: (change) => {
+    return change.op === 'update' && change.targetId
+      ? updatePlaybook({ id: change.targetId, ...change.after, baseVersion: change.baseVersion })
+      : createPlaybook(change.after);
+  },
+};
+
 const adapters = {
   'plan-actions': {
     defaultPolicy: 'follow_global_mode',
@@ -200,6 +212,17 @@ const adapters = {
     }),
     presentation: { label: 'Review Reply', editable: true },
   } satisfies ProposedChangeAdapter<Extract<ProposedChange, { type: 'review-reply' }>>,
+  config: {
+    // Configuration decides which agents run and whether they write, so it is
+    // never auto-applied, whatever the global setting (P8).
+    defaultPolicy: 'review_required',
+    identity: (change) => compoundIdentity(change.change.kind, change.change.targetId ?? `new:${change.change.after.name}`),
+    merge: (current, incoming) => ({ ...current, change: incoming.change, error: undefined }),
+    applyEdits: (change, edits) => edits ? invalidEdits(change, edits) : change,
+    execute: (change) => resultOutcome(() => CONFIG_APPLIERS[change.change.kind](change.change)),
+    projectSuccess: () => {},
+    presentation: { label: 'Configuration Change', editable: false },
+  } satisfies ProposedChangeAdapter<Extract<ProposedChange, { type: 'config' }>>,
 } satisfies { [Kind in ProposedChange['type']]: ProposedChangeAdapter<Extract<ProposedChange, { type: Kind }>> };
 
 function adapterFor(change: ProposedChange): ProposedChangeAdapter {

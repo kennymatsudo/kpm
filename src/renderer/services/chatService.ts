@@ -11,6 +11,7 @@ import type {
   FileUpdateEventData,
   FileMoveEventData,
   FileDeleteEventData,
+  ConfigChangeEventData,
   TurnDoneEventData,
   SessionLifecycleEventData,
   QueuedEventData,
@@ -32,6 +33,7 @@ export type {
   FileUpdateEventData,
   FileMoveEventData,
   FileDeleteEventData,
+  ConfigChangeEventData,
   TurnDoneEventData,
   SessionLifecycleEventData,
   QueuedEventData,
@@ -161,6 +163,7 @@ export function subscribeToChatEvents(handlers: {
   onFileUpdate?: (data: FileUpdateEventData) => void;
   onFileMove?: (data: FileMoveEventData) => void;
   onFileDelete?: (data: FileDeleteEventData) => void;
+  onConfigChange?: (data: ConfigChangeEventData) => void;
   onDone?: (data: TurnDoneEventData) => void;
   onError?: (data: ErrorEventData) => void;
   onActivity?: (data: ActivityEventData) => void;
@@ -183,6 +186,7 @@ export function subscribeToChatEvents(handlers: {
     handlers.onFileUpdate ? window.api.chat.onFileUpdate(handlers.onFileUpdate) : null,
     handlers.onFileMove ? window.api.chat.onFileMove(handlers.onFileMove) : null,
     handlers.onFileDelete ? window.api.chat.onFileDelete(handlers.onFileDelete) : null,
+    handlers.onConfigChange ? window.api.chat.onConfigChange(handlers.onConfigChange) : null,
     handlers.onDone ? window.api.chat.onDone(handlers.onDone) : null,
     handlers.onError ? window.api.chat.onError(handlers.onError) : null,
     handlers.onActivity ? window.api.chat.onActivity(handlers.onActivity) : null,

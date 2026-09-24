@@ -5,6 +5,12 @@ import { useProposedChangeDisposal } from './proposedChangeDisposal';
 import type { ProposedChangeInput } from './proposedChangeDisposal';
 import { usePlanDomainStore } from './projectDomains';
 
+const updatePlaybook = vi.fn();
+vi.mock('../services/playbookService', () => ({
+  updatePlaybook: (...args: unknown[]) => updatePlaybook(...args),
+  createPlaybook: vi.fn(),
+}));
+
 describe('Proposed Change disposal', () => {
   beforeEach(() => {
     installMockApi();
@@ -44,6 +50,37 @@ describe('Proposed Change disposal', () => {
     }, { policy: 'follow_global_mode' });
 
     expect(useProposedChangeDisposal.getState().pending).toHaveLength(1);
+  });
+
+  describe('config proposals', () => {
+    const change = {
+      kind: 'playbook' as const,
+      op: 'update' as const,
+      targetId: 'custom-1',
+      baseVersion: 'v1',
+      before: { name: 'Mine', steps: [] },
+      after: { name: 'Mine', steps: [{ id: 'implement', session: 'main' as const, directive: { kind: 'prompt' as const } }] },
+    };
+
+    it('always queue for review even when global auto-apply is enabled', () => {
+      useGeneralSettingsStore.setState({ approvalMode: 'auto_apply', approvalModeLoaded: true });
+
+      useProposedChangeDisposal.getState().propose({ type: 'config', projectId: 'project-1', change });
+
+      expect(useProposedChangeDisposal.getState().pending).toMatchObject([{ type: 'config', policy: 'review_required' }]);
+    });
+
+    it('save through the playbook endpoint with the base version, and stay pending if it was stale', async () => {
+      updatePlaybook.mockResolvedValue({ success: false, error: 'Playbook changed since proposed. Ask chat to propose the change again.' });
+      useProposedChangeDisposal.getState().propose({ type: 'config', projectId: 'project-1', change });
+      const id = useProposedChangeDisposal.getState().pending[0].id;
+
+      const outcome = await useProposedChangeDisposal.getState().approve(id);
+
+      expect(updatePlaybook).toHaveBeenCalledWith({ id: 'custom-1', name: 'Mine', steps: change.after.steps, baseVersion: 'v1' });
+      expect(outcome).toEqual({ kind: 'failed', error: expect.stringContaining('changed since proposed') });
+      expect(useProposedChangeDisposal.getState().pending).toMatchObject([{ type: 'config', error: expect.stringContaining('changed since proposed') }]);
+    });
   });
 
   it('executes edited plan actions through the same disposal attempt', async () => {

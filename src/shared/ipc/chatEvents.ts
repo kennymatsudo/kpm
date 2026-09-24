@@ -15,6 +15,7 @@
 import { payloadOf, type EventDefinition } from './appEvents';
 import type { Activity, AgentBackgroundTask, PlanAction, SlashCommandInfo } from '../types';
 import type { ModelCatalog } from '../modelCatalog';
+import type { ConfigChange } from '../configKinds';
 
 export interface ChunkEventData {
   projectId: string;
@@ -44,6 +45,13 @@ export interface FileMoveEventData {
   chatSessionId?: string;
   sourcePath: string;
   targetPath: string;
+}
+
+/** A chat-proposed configuration change; always queued for review. */
+export interface ConfigChangeEventData {
+  projectId: string;
+  chatSessionId?: string;
+  change: ConfigChange;
 }
 
 export interface FileDeleteEventData {
@@ -189,6 +197,7 @@ export const chatEvents = {
   fileUpdate: { channel: 'chat:file-update', payload: payloadOf<FileUpdateEventData>() },
   fileMove: { channel: 'chat:file-move', payload: payloadOf<FileMoveEventData>() },
   fileDelete: { channel: 'chat:file-delete', payload: payloadOf<FileDeleteEventData>() },
+  configChange: { channel: 'chat:config-change', payload: payloadOf<ConfigChangeEventData>() },
   sessionConnecting: { channel: 'chat:session-connecting', payload: payloadOf<SessionLifecycleEventData>() },
   sessionReady: { channel: 'chat:session-ready', payload: payloadOf<SessionReadyEventData>() },
   sessionTitle: { channel: 'chat:session-title', payload: payloadOf<SessionTitleEventData>() },

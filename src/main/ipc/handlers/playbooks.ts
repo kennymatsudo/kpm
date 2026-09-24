@@ -18,7 +18,7 @@ export function buildPlaybookHandlers(
       defaultId: unwrapOrThrow(service.getDefault()),
     }),
     create: (input) => ({ playbook: unwrapOrThrow(service.create(input)) }),
-    update: ({ id, ...input }) => ({ playbook: unwrapOrThrow(service.update(id, input)) }),
+    update: ({ id, baseVersion, ...input }) => ({ playbook: unwrapOrThrow(service.update(id, input, { baseVersion })) }),
     delete: ({ id }) => { unwrapOrThrow(service.delete(id)); },
     duplicate: ({ id }) => ({ playbook: unwrapOrThrow(service.duplicate(id)) }),
     setDefault: ({ id }) => { unwrapOrThrow(service.setDefault(id)); },

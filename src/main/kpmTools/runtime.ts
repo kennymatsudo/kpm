@@ -64,7 +64,10 @@ export type KpmToolCapability =
   | 'repo.push'
   | 'integrations.read'
   | 'file_changes.propose'
-  | 'spill.read';
+  | 'spill.read'
+  // Deliberately absent from the action grant map (actionCapabilities.ts):
+  // an action run must never create actions or rewrite playbooks.
+  | 'config.propose';
 
 export type KpmToolAvailability = Record<ChatSessionScope, boolean>;
 

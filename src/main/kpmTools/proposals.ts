@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events';
 import type { PlanAction } from '../../shared/types';
+import type { ConfigChange } from '../../shared/configKinds';
 
 export interface PlanActionsEvent {
   projectId: string;
@@ -45,8 +46,16 @@ export interface FileDeleteProposal {
   isDirectory: boolean;
 }
 
+export interface ConfigChangeProposal {
+  type: 'config-change';
+  projectId: string;
+  chatSessionId?: string;
+  change: ConfigChange;
+}
+
 export type KpmToolProposal =
   | PlanActionsProposal
+  | ConfigChangeProposal
   | ProjectContextUpdateProposal
   | DocumentUpdateProposal
   | FileMoveProposal

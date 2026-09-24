@@ -1204,6 +1204,15 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         return;
       }
 
+      if (proposal.type === 'config-change') {
+        emitAppEvent(mainWindow?.webContents, chatEvents.configChange, {
+          projectId,
+          chatSessionId,
+          change: proposal.change,
+        });
+        return;
+      }
+
       const _exhaustive: never = proposal;
       void _exhaustive;
     });

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BUILT_IN_PLAYBOOKS, type Playbook } from '../../../shared/playbooks';
 import { createPlaybookService } from './PlaybookService';
+import { CONFIG_KIND_REGISTRY } from '../../../shared/configKinds';
 import { unwrapOrThrow } from '../result';
 
 const custom = { ...BUILT_IN_PLAYBOOKS.implementOnly, id: 'custom-1', name: 'Custom', builtIn: false as const };
@@ -64,6 +65,23 @@ describe('PlaybookService', () => {
 
     expect(updated).toMatchObject({ id: source.id, name: 'My default run', builtIn: false });
     expect(create).toHaveBeenCalledWith(updated);
+  });
+
+  it('refuses an update whose base version no longer matches the stored playbook', () => {
+    const update = vi.fn();
+    const service = createPlaybookService({
+      playbooks: { list: () => [custom], get: (id: string) => id === custom.id ? custom : undefined, create: vi.fn(), update, delete: vi.fn() },
+      appSettings: { get: () => custom.id, set: vi.fn() },
+      listSkills: () => ({ ok: true, data: [] }),
+    });
+    const edit = { name: 'Renamed', steps: custom.steps };
+
+    const stale = service.update(custom.id, edit, { baseVersion: 'drafted-against-an-older-copy' });
+    expect(stale).toEqual({ ok: false, error: expect.stringContaining('changed since proposed') });
+    expect(update).not.toHaveBeenCalled();
+
+    service.update(custom.id, edit, { baseVersion: CONFIG_KIND_REGISTRY.playbook.version(custom) });
+    expect(update).toHaveBeenCalledOnce();
   });
 
   it('deleting a built-in customization restores the built-in without changing the default id', () => {

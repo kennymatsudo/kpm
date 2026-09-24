@@ -79,6 +79,23 @@ describe('capability filtering in the tool runtime', () => {
     expect(names).not.toContain('modify_plan');
   });
 
+  it('never lets an action run reach the configuration tools, whatever it is granted', () => {
+    const names = getKpmToolRuntime()
+      .listTools({ scope: 'main', grantedCapabilities: toolCapabilitiesFor(ACTION_CAPABILITIES) })
+      .map((tool) => tool.name);
+
+    expect(names).toContain('modify_plan');
+    expect(names).not.toContain('read_config');
+    expect(names).not.toContain('propose_config_change');
+  });
+
+  it('offers the configuration tools to main chat only', () => {
+    const runtime = getKpmToolRuntime();
+
+    expect(runtime.listTools({ scope: 'main' }).map((tool) => tool.name)).toContain('propose_config_change');
+    expect(runtime.listTools({ scope: 'focus_document' }).map((tool) => tool.name)).not.toContain('propose_config_change');
+  });
+
   it('leaves the tool set unfiltered when no grant is passed', () => {
     const runtime = getKpmToolRuntime();
     const granted = runtime.listTools({ scope: 'main', grantedCapabilities: toolCapabilitiesFor(['read_project']) });

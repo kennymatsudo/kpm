@@ -2,11 +2,13 @@ import type { BrowserWindow } from 'electron';
 import fs from 'fs';
 import { CONTEXT_FILE_NAMES, CONTEXT_FILE_PENDING_CACHE_KEY } from '../../shared/contextFile';
 import type { ChatSessionScope, PlanAction } from '../../shared/types';
+import type { ConfigChange } from '../../shared/configKinds';
 import type { IRepositoryContainer } from '../db/interfaces';
 import { projectWriteGrants, type WriteDecision } from '../chat/writeGrants';
 import { resolveScopedPath } from '../services/files/scopedFs';
 import { promptUser } from '../services/core/PermissionPromptService';
 import type { AppServices } from '../services/appServices';
+import { listBoardProviders } from '../services/agents/boardProviderRegistry';
 import { processKpmToolProposalSink } from './proposals';
 import { assertKpmToolInputSchemas } from './toolInputSchema';
 import {
@@ -19,6 +21,7 @@ import {
   type KpmToolExecutionResult,
   type KpmToolGroup,
 } from './runtime';
+import { createConfigTools } from './tools/config';
 import { createContextFileEditTools, type ContextFileUpdatePayload } from './tools/context-file-update';
 import { createConfluenceTools } from './tools/confluence';
 import { createDocumentEditTools } from './tools/document-edit';
@@ -53,7 +56,7 @@ export interface KpmToolRuntimeDeps {
     | 'devSessions'
     | 'confluenceLinks'
   >;
-  services: Pick<AppServices, 'fileExplorerService'>;
+  services: Pick<AppServices, 'fileExplorerService' | 'playbookService' | 'promptOverrideService'>;
   getMainWindow: () => BrowserWindow | null;
 }
 
@@ -152,6 +155,21 @@ function emitPlanActions(actions: PlanAction[]): void {
     projectId: context.projectId,
     chatSessionId: context.chatSessionId,
     actions,
+  });
+}
+
+function emitConfigChange(change: ConfigChange): void {
+  const context = getCurrentToolExecutionContext();
+  if (!context?.projectId || !context?.chatSessionId) {
+    console.warn('[KPM Tools] Skipping unscoped config change');
+    return;
+  }
+
+  context.proposalSink?.propose({
+    type: 'config-change',
+    projectId: context.projectId,
+    chatSessionId: context.chatSessionId,
+    change,
   });
 }
 
@@ -289,6 +307,19 @@ function buildToolGroups(): KpmToolGroup[] {
     group('git-push', MAIN_ONLY, ['repo.push'], createGitPushTools({
       repos: repoRepo,
       requestWriteAccess: requestGitPushWriteAccess,
+    })),
+    // Services are read per call, not captured, so test fixtures that never
+    // run these tools can omit them.
+    group('kpm-config', MAIN_ONLY, ['config.propose'], createConfigTools({
+      playbooks: {
+        list: () => services.playbookService.list(),
+        get: (id) => services.playbookService.get(id),
+        getDefault: () => services.playbookService.getDefault(),
+      },
+      listProviders: () => listBoardProviders(),
+      listStepPrompts: () => services.promptOverrideService.listByCategory('agents'),
+      getPromptContent: (key) => services.promptOverrideService.getContent(key),
+      onConfigChange: emitConfigChange,
     })),
   ];
 }

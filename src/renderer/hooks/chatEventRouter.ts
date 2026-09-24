@@ -5,6 +5,7 @@ import type { ChatState } from '../stores/chat/types';
 import { isStreamStale } from '../stores/chat/chatStreamReducer';
 import type { StoreEvent } from '../stores/storeEvents';
 import type {
+  ConfigChangeEventData,
   FileDeleteEventData,
   FileMoveEventData,
   FileUpdateEventData,
@@ -32,6 +33,7 @@ export interface ChatEventHandlers {
   onFileUpdate: (data: FileUpdateEventData) => void;
   onFileMove: (data: FileMoveEventData) => void;
   onFileDelete: (data: FileDeleteEventData) => void;
+  onConfigChange: (data: ConfigChangeEventData) => void;
   onDone: (data: TurnDoneEventData) => void;
   onQueued: (data: QueuedEventData) => void;
   onQueueCleared: (data: QueueClearedEventData) => void;
@@ -116,7 +118,8 @@ export type BufferedApprovalEvent =
   | { type: 'plan-actions'; data: PlanActionsEventData }
   | { type: 'file-update'; data: FileUpdateEventData }
   | { type: 'file-move'; data: FileMoveEventData }
-  | { type: 'file-delete'; data: FileDeleteEventData };
+  | { type: 'file-delete'; data: FileDeleteEventData }
+  | { type: 'config-change'; data: ConfigChangeEventData };
 
 /**
  * Approval events (plan actions, file updates/deletes) must never be dropped,
@@ -184,6 +187,10 @@ export function createChatEventRouter(deps: ChatEventRouterDeps): ChatEventRoute
     getApprovalQueue().propose({ type: 'delete', projectId: data.projectId, filePath: data.path, isDirectory: data.isDirectory });
   };
 
+  const processConfigChangeEvent = (data: ConfigChangeEventData) => {
+    getApprovalQueue().propose({ type: 'config', projectId: data.projectId, change: data.change });
+  };
+
   const flushBufferedApprovalEvents = (): void => {
     const bufferedApprovalEvents = approvalEventBuffer.get(projectId);
     if (!bufferedApprovalEvents || bufferedApprovalEvents.length === 0) return;
@@ -194,6 +201,7 @@ export function createChatEventRouter(deps: ChatEventRouterDeps): ChatEventRoute
       if (event.type === 'file-update') processFileUpdateEvent(event.data);
       if (event.type === 'file-move') processFileMoveEvent(event.data);
       if (event.type === 'file-delete') processFileDeleteEvent(event.data);
+      if (event.type === 'config-change') processConfigChangeEvent(event.data);
     }
   };
 
@@ -307,6 +315,14 @@ export function createChatEventRouter(deps: ChatEventRouterDeps): ChatEventRoute
         return;
       }
       processFileDeleteEvent(data);
+    },
+    onConfigChange: (data) => {
+      if (!active) return;
+      if (!isActiveForProject(data.projectId)) {
+        bufferApprovalEvent(data.projectId, { type: 'config-change', data });
+        return;
+      }
+      processConfigChangeEvent(data);
     },
     onDone: (data) => {
       void (async () => {

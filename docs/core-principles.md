@@ -13,7 +13,7 @@ The commitments a contributor — human or agent — should consult when a featu
 | P5 | Extend the dev setup | Inherit the user's MCP tools; don't replace their env. |
 | P6 | Internal stays internal | Translate at every export boundary; refs and spec fields are local-only. |
 | P7 | Reads by default, writes by consent | Chat reads freely; changing a repo needs the user's unlock for the project. Agent writes stay scoped to worktrees. |
-| P8 | Claude proposes, user configures disposal | Plan mutations go through the `PlanAction` approval flow unless the user explicitly enables auto-apply. |
+| P8 | Claude proposes, user configures disposal | Plan mutations go through the `PlanAction` approval flow unless the user explicitly enables auto-apply. Configuration changes proposed by chat (playbooks, actions, prompts) always require review. |
 | P9 | Agent execution is a lifecycle | A bounded, persisted run driven by a chosen playbook (fresh-install default: implement only) — never a one-shot prompt. |
 | P10 | Sync on your terms | No live feeds. Inbound queues; outbound drafts. |
 
@@ -95,6 +95,8 @@ The same honesty applies to reads. Claude denies reads of credential and secret 
 By default, every Claude action that mutates the plan emits a `PlanAction[]` that surfaces in an approval modal before anything is written. The user is the last reviewer unless they explicitly choose the global auto-apply setting.
 
 When auto-apply is enabled, Claude still uses the same structured KPM change paths (`PlanAction[]`, document update events, context update events, deletion events); KPM applies them immediately instead of showing an approval modal. Tools must not bypass those paths or write directly to the database.
+
+Configuration changes proposed by chat (playbooks, actions, prompts) always require review. The global auto-apply setting does not cover them. A playbook decides which agents run and whether they may write, and an action can run unattended on a timer, so an auto-applied change could let text planted in a document or ticket install behavior that keeps running after the chat ends.
 
 The plan is the developer's mental model externalized. Approval remains the safe default, but a single-user cockpit can let the user trade review friction for speed when they deliberately opt in.
 
