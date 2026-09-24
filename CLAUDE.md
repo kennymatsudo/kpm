@@ -17,6 +17,7 @@ KPM is a single-user developer cockpit: planning, chat, and agentic execution ag
 | State management | [`src/renderer/stores/CLAUDE.md`](src/renderer/stores/CLAUDE.md) |
 | What features exist | [`docs/features.md`](docs/features.md) |
 | Architectural map | [`docs/architecture.md`](docs/architecture.md) |
+| Domain vocabulary (Work Brief, write grant, Action, Outbound Change…) | [`CONTEXT.md`](CONTEXT.md) |
 
 ## Commands
 
@@ -44,15 +45,15 @@ Each is tied to a principle. Breaking one breaks the cockpit's safety guarantees
 - **Single user (P1).** No seats, no permissions, no shared state, no conflict-resolution UI.
 - **Sync is on-demand (P10).** No live feeds. Inbound queues for triage; outbound drafts for review.
 - **Board automation state is persisted (P9).** Use `dev_sessions.automation_phase`. Never hold it only in renderer state.
-- **Migrations are immutable once deployed.** Create a new one; never edit a shipped migration. See [`src/main/db/CLAUDE.md`](src/main/db/CLAUDE.md).
+- **Migrations are immutable once deployed.** Create a new one; never edit a shipped migration. Migrations run inside a transaction, where `PRAGMA foreign_keys = OFF` is ignored, so rebuilding a parent table cascade-deletes its children; prefer in-place `ALTER TABLE`. See [`src/main/db/CLAUDE.md`](src/main/db/CLAUDE.md).
 - **No `ANTHROPIC_API_KEY` required.** The Claude Agent SDK uses the user's Claude Code session. Don't debug SDK problems as auth problems.
 
 ## Code conventions
 
 - **Handlers delegate to a module with behaviour.** IPC handlers validate with Zod and delegate — to a domain/application service for business logic, or directly to a repository for plain reads and simple writes. Do not create a pass-through service whose methods just forward to another service or repository with a try/catch wrapper; call the underlying module directly instead.
 - **Return `ServiceResult<T>`** from services; do not throw. See `src/main/services/result.ts`.
-- **Stores communicate via typed events** in `src/renderer/stores/storeEvents.ts` for cross-store side effects. Direct cross-store imports exist for simple reads (e.g. `approvalQueueStore` reads `generalSettingsStore`/`fileTreeStore`/`toastStore`) — prefer events for side effects, direct imports are fine for reads.
-- **Extract hooks, not wrapper components.** Use Zustand selectors (`useShallow`) over React Context.
+- **Stores communicate via typed events** in `src/renderer/stores/storeEvents.ts` for cross-store side effects. Direct cross-store imports are fine for simple reads (e.g. `proposedChangeDisposal.ts` reads `generalSettingsStore`, `usePlanDomainStore`, and `toastStore`).
+- **Extract hooks, not wrapper components.** Use Zustand selectors (`useShallow`) for app state; React Context is reserved for the few narrow, rarely changing providers (theme, modal layer, tooltips).
 - **Use `getConfig()`** from `src/main/config/index.ts` — no hardcoded configuration values.
 - **Register IPC handlers** under `src/main/ipc/register/` (`workspace.ts`, `development.ts`, or `platform.ts`) — not directly in `index.ts`.
 
@@ -71,7 +72,7 @@ When you touch one of these, every file listed must stay in sync.
 2. `src/shared/planItemFields.ts` — new `PLAN_ITEM_FIELDS` entry. Derives the IPC Zod schema, the PlanAction Zod schema, `PlanItemRepository`'s INSERT column, its single-field UPDATE fast path, its dynamic UPDATE slow path, and the `PlanItemUpdates` type — one entry wires the whole update path. A field that must also be settable at create time through the `create_item` PlanAction still needs that action's schema + `executeCreateItem`.
 3. `src/main/db/migrations.ts` — new migration
 
-Then conditionally: the **`PlanAction` recipe** below if writable via tool; `DevSessionService.buildAgentContext` + the `modify_plan` tool prompt if the field should reach the implementation agent; `components/planning/TaskEditModal.tsx` if user-visible.
+Then conditionally: the **`PlanAction` recipe** below if writable via tool; `buildAgentContext` (`src/main/services/repo/devSessionPrompt.ts`) + the `modify_plan` tool prompt if the field should reach the implementation agent; `components/planning/TaskEditModal.tsx` if user-visible.
 
 **Add a `PlanAction` type**
 1. `PLAN_ACTION_REGISTRY` entry in `src/shared/planActionSchema.ts` — this alone derives both `PlanAction` (`shared/types.ts`) and `planActionSchema` (IPC validation)
@@ -83,26 +84,36 @@ A missing executor is a compile error (`ACTION_EXECUTORS` is typed against every
 1. Implement in `src/main/kpmTools/tools/`
 2. Register the tool group in `src/main/kpmTools/runtimeRegistry.ts`
 3. Document usage in `prompts/toolDocs.ts`
-4. If it should be hidden in a mode or disabled state, enforce that in `permissions.ts` / `canUseTool`; do not use SDK `allowedTools` because it hides external MCP tools
+4. Scope where it appears through its group's availability (chat modes) and capability in `runtimeRegistry.ts`, and map any new capability in `src/main/services/core/actionCapabilities.ts` or action runs can never reach it. Do not hide it via `canUseTool` (it passes every KPM tool, and Codex/pi never call it) or SDK `allowedTools` (it hides external MCP tools)
 5. If it mutates the plan: emit `PlanAction[]` via `onPlanActions` — do **not** write to the DB.
 
 **Add an IPC handler**
-Every invoke domain is on the endpoint registry: add one entry to `src/shared/ipc/{domain}Endpoints.ts` (channel + Zod params schema) and one handler to the typed binding in `src/main/ipc/handlers/{domain}.ts`. See "Adding a New Domain Registry" in [`src/main/ipc/CLAUDE.md`](src/main/ipc/CLAUDE.md).
+Every invoke domain is on the endpoint registry: add one entry to `src/shared/ipc/{domain}Endpoints.ts` (channel + Zod params schema), one handler to the typed binding in `src/main/ipc/handlers/{domain}.ts`, the preload method if that domain lists its methods by hand in `src/preload/api.ts`, and a wrapper in `src/renderer/services/`. See the recipes in [`src/main/ipc/CLAUDE.md`](src/main/ipc/CLAUDE.md).
 
 **Touch `@plan/<uuid>` flow**
 - Parser: `src/shared/planRefs.ts`
-- Export boundary: `src/main/documents/exportBoundary.ts` (`toExternalMarkdown`, called by every external export site; wraps the pure resolver in `planRefResolver.ts`, which only the on-disk `shared-doc` form calls directly)
+- Export boundary: `src/main/documents/exportBoundary.ts` (`toExternalMarkdown`, called by every external export site; wraps the pure resolver in `planRefResolver.ts`, which a few non-export readers call directly)
 - Agent-context expansion: `src/main/claude/contextRefs.ts`
 - `PlanActionService` rejects unresolved refs
 
 Never bypass the export-boundary rewrite.
 
 **Change a theme token**
-- `src/shared/theme.ts` is the single owner of theme colors: the `graphiteColors`/`fogColors` palettes, `SEMANTIC_COLOR_DEFAULTS`/`DEPTH_COLOR_DEFAULTS` + their `resolveSemanticColors`/`resolveDepthColors` resolvers, `withDerivedExtendedTokens`, and `generateThemeVariables`. Edit the value here — do **not** add it to `index.css`.
-- `index.css` holds no theme hex values: theme CSS variables are written to `document.documentElement` at runtime by `renderer/themeBoot.ts` (synchronously, pre-mount) and re-applied by `ThemeContext`. The `@theme` block only aliases the tokens for Tailwind utilities.
-- Changing a built-in `surface0` also changes the launch window background: the renderer reports it via the `theme:report-resolved` IPC, `main/bootstrap/themeAppearance.ts` persists it to a `userData` sidecar, and `windowManager.ts` reads it to set `BrowserWindow.backgroundColor`. No action needed — it flows automatically.
+- Edit the value in `src/shared/theme.ts`, the single owner of every palette and of `generateThemeVariables`. Never put theme hex values in `index.css`; its `@theme` block only aliases tokens for Tailwind, so a brand-new token needs an alias there too.
+- Theme variables are applied at runtime (`renderer/themeBoot.ts` before mount, `ThemeContext` on change), not generated per theme. A built-in `surface0` change also reaches the launch window background automatically via `main/bootstrap/themeAppearance.ts`.
 
-Runtime projection, no per-theme codegen.
+## Building a feature end to end
+
+Most features touch every layer. Work inside out, so each layer compiles against the one below it:
+
+1. **Check the principles.** Read the matching section of `docs/core-principles.md` and the Anti-patterns below. If the feature needs a principle bent, stop and raise it.
+2. **Shared contract.** Types, Zod schemas, and registries in `src/shared/` (plan item fields, `PlanAction`s, settings in `settingsRegistry.ts`, provider capabilities). Registries derive downstream types, so one entry often wires several layers.
+3. **Schema.** A new migration at the end of `src/main/db/migrations.ts`, then a repository or a domain service if the data has multi-table invariants (`src/main/db/CLAUDE.md`).
+4. **Behaviour.** An application service returning `ServiceResult<T>`, wired in `src/main/services/appServices.ts` (`src/main/services/CLAUDE.md`). Chat-facing capability goes in a KPM tool; board-facing behaviour goes through the playbook runtime.
+5. **IPC.** A registry entry, handler, preload method if needed, and renderer service wrapper (recipe above).
+6. **UI.** A store (decide if it is project-scoped) and components under the owning feature folder (`src/renderer/CLAUDE.md`, `src/renderer/stores/CLAUDE.md`).
+7. **Verify.** Co-located unit tests beside the code (`*.test.ts`), plus `tests/` at the repo root. Run `npm run check`. For UI, run the app with `make dev` and look at it.
+8. **Docs.** Add or edit the entry in `docs/features.md`, and update the subsystem guide in place if you changed a recipe, seam, or invariant. Don't record history in these docs; git log already does.
 
 ## Anti-patterns
 

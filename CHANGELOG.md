@@ -5,7 +5,7 @@ KPM ships continuously — releases are version tags on `main`, and updating an 
 ## Format
 
 - **Releases** are tagged from `main` via `make release:patch|minor|major`.
-- **Release notes** for the most recent (unpublished) cut live in [`release-notes.md`](release-notes.md). They're regenerated from commits with `make release-notes`.
+- **Release notes** are generated from the commits since the last tag by `make release-notes`, which writes `release-notes.md`; the release targets run it and commit the result.
 - **Versioning** follows [SemVer](https://semver.org/): patch = fixes only, minor = additive features, major = breaking changes to data formats or user-facing flows.
 
 ## Categories
@@ -15,9 +15,10 @@ Each release groups changes into:
 - **New** — net-new user-facing features
 - **Improved** — enhancements to existing features
 - **Fixed** — bug fixes
+- **Removed** — features taken out
 
 Internal-only changes (refactors, dependency bumps, CI, docs) are intentionally excluded from release notes — see the [git log](https://github.com/kennymatsudo/kpm/commits/main) for the full history.
 
 ## Unreleased
 
-See [`release-notes.md`](release-notes.md) for changes staged for the next release.
+No release has been tagged yet. Until one is, the [git log](https://github.com/kennymatsudo/kpm/commits/main) is the change history.

@@ -4,14 +4,14 @@ The ubiquitous language for KPM. Use these terms exactly in code, comments, and 
 
 ## Generation
 
-A **one-shot generation** is a single, non-conversational AI call: a prompt in, text out. Onboarding context, PR descriptions, commit messages, PR review assessment, custom prompts, and file summaries are generations. They are distinct from **chat** (a steered, multi-turn streaming session) and from **board agent execution** (a worktree-scoped agent that writes code).
+A **one-shot generation** is a single, non-conversational AI call with no tools: a prompt in, text out. PR descriptions, commit messages, and file summaries are generations; `GenerationPurpose` (`src/main/generation/types.ts`) is the list. They are distinct from **chat** (a steered, multi-turn streaming session) and from **board agent execution** (a worktree-scoped agent that writes code).
 
-- The **generation seam** is `runGeneration` (`src/main/generation/`). Every genuinely one-shot generation site calls it; call sites pass intent — **purpose**, **tier**, prompt — never provider SDK options.
+- The **generation seam** is `runGeneration` (`src/main/generation/`). Every generation site calls it; call sites pass intent — **purpose**, **tier**, prompt — never provider SDK options.
 - A **generation provider** is a backend that can serve a generation (`claude`, `codex`). Each has a **generation adapter** behind the seam that translates the neutral request into that provider's SDK call and its result back into a neutral `GenerationResult`.
 - A **tier** (`fast` | `deep` | `cheap`) is a quality/cost band; the seam resolves it to a concrete provider model via `getConfig().generation`.
 - A **purpose** names the calling site; it keys usage attribution and per-purpose provider routing.
 
-Tool-using or multi-turn work is **not** a generation even when it feels one-shot: scheduled loops run as headless chat turns on the chat/agent path, not the generation seam.
+Tool-using or multi-turn work is **not** a generation even when it feels one-shot: onboarding context investigates repos with read tools (`OnboardingService`, Claude-only), and **actions** run as grounded agent turns (`ActionRunnerService`), not through the generation seam.
 
 ## Model selection
 
@@ -21,13 +21,13 @@ A **Chat model choice** is the provider+model assigned to one user-visible Chat,
 
 A **Chat effort** is the reasoning-effort choice assigned to one Chat for a provider. A new Chat inherits the applicable default effort once; later changes belong only to that Chat. Each Chat remembers its last effort for each provider, and the available levels are determined by the active provider and model. When a model does not support the remembered effort, the Chat adopts and displays that model's default effort rather than approximating another level.
 
-A **Default candidate** is a playbook `AgentCandidate` marked `useDefault: true` instead of naming a concrete provider+model. It follows the default model, resolved live at execution time — so a playbook step tracks whatever model the user later switches to. Resolution happens in the one seam every candidate already resolves through (`resolveCandidateChain`); a Default candidate that resolves to a provider board execution can't run (e.g. `pi`) is skipped, falling through to the next candidate in its chain exactly like an unavailable concrete provider.
+A **Default candidate** is a playbook `AgentCandidate` marked `useDefault: true` instead of naming a concrete provider+model. It follows the default model, resolved live at execution time — so a playbook step tracks whatever model the user later switches to. Resolution happens in the one seam every candidate already resolves through (`resolveCandidateChain`); a Default candidate whose provider is unavailable to the board is skipped, falling through to the next candidate in its chain exactly like an unavailable concrete provider.
 
 ## Connected repos
 
 A **connected repo** is a git repository attached to a project (the `Repo` type / `repos` table). Chat reads its files freely; direct writes need a **write grant**. Agents write only in isolated worktrees during board execution.
 
-- A **write grant** enables the selected provider's native writable mode for one conversation (P7). It is requested on the first attempted write and held in memory per chat session, so it survives an idle reconnect but not an app restart. Revoking it from the chat header ends the grant. KPM-controlled file tools continue to deny protected credential and secret roots.
+- A **write grant** enables the selected provider's native writable mode for a whole project (P7). It is requested on the first attempted write, persisted in `project_write_grants`, and covers every chat in the project plus background action runs until the user turns it off in Settings, Writes. `src/main/chat/writeGrants.ts` owns it. KPM-controlled file tools continue to deny protected credential and secret roots.
 
 - The **main checkout** is the repo's canonical clone (`repos.path`) — the working tree at the primary checkout.
 - The **active worktree** is a linked git worktree the user has switched the connected repo to (`repos.active_worktree_path`, null when none), set via the "Switch worktree" menu.
@@ -35,7 +35,7 @@ A **connected repo** is a git repository attached to a project (the `Repo` type 
 
 **Branch facts** are the git questions KPM asks a checkout repeatedly, each with exactly one resolver in `src/main/services/repo/branchFacts.ts`: which branch is checked out (`resolveCurrentBranch`), which branch is the repo's default (`resolveDefaultBranch`), which base branch to compare against (`resolveBaseBranch`), whether a branch is off limits to an agent (`protectedBranchReason` / `classifyPushTarget`), and whether a branch has an upstream (`hasUpstream`). "No branch" is always `null`. The one irreducible difference: on an unborn branch `.git/HEAD` names the branch while `rev-parse` fails, so the pure `normalizeHeadRef` the watcher uses answers where `resolveCurrentBranch` returns `null`.
 
-A **git write** is an invocation that moves a branch ref, locally or on a remote. All of them go through `src/main/services/repo/gitWrites.ts` (`publishBranch`, `deleteRemoteBranch`, `deleteLocalBranch`), which owns the policy, the argv, and the invocation. Each takes a **write authorization** saying why the caller may move the ref: `chatWriteGrant` (chat, which must request the conversation's write grant) or `boardSession` (the user's own action on a session they started). Reads are not git writes and keep their own paths.
+A **git write** is an invocation that moves a branch ref, locally or on a remote. All of them go through `src/main/services/repo/gitWrites.ts` (`publishBranch`, `deleteRemoteBranch`, `deleteLocalBranch`), which owns the policy, the argv, and the invocation. Each takes a **write authorization** saying why the caller may move the ref: `projectWriteGrant` (chat, which must hold or request the project's write grant) or `boardSession` (the user's own action on a session they started). Reads are not git writes and keep their own paths.
 
 Distinct from a **session worktree** (`dev_sessions.worktree_path`): a throwaway worktree scaffolded per board agent execution for isolated writes. The two never cross — switching a connected repo's active worktree does not touch session worktrees, and board execution does not read `active_worktree_path`.
 
@@ -62,6 +62,12 @@ Staging and draining are two adjacent owners, and nothing else drives a deletion
 - The **deletion drain** (`db/domain/TrackerDeletionDrain.ts`) **describes and drains**: `describeDeletions` attaches each row's current tracker state for review, `drainDeletions` deletes the approved rows and clears them from the queue. A row that fails keeps its place with the error recorded, so the next drain retries it.
 
 A deletion needs no issue type, plan item, parent, or status mapping, so it is deliberately independent of everything the create/update export path resolves — a failure there cannot take the staged deletions with it.
+
+## Action
+
+An **Action** is a saved prompt plus how it starts and what it may do (`src/shared/actions.ts`, the `actions` table). Its **trigger** is `manual`, `interval`, or `event` (an `ActionTriggerEvent` such as `pr_changed`); manual invocation stays available under every trigger. Its **capability grant** (`ActionCapability`) is the whole of what a run may touch, and delivery follows from it: `report_finding` becomes a notification, `write_outputs` writes to the project folder's `outputs/actions/`, and `propose_*` grants go through the normal review flow. The tool runtime enforces the grant, so a prompt cannot talk its way past it.
+
+An **action run** is one execution, recorded in `action_runs`. Manual runs happen either in a real chat (proposals reach the usual review UI) or headless; automatic runs are always headless and happen only while the app is open (`ActionRunnerService`). An automatic trigger requires at least one output capability, or it would run and leave no trace.
 
 ## Terminal session
 

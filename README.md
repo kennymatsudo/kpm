@@ -50,6 +50,7 @@ On first launch, macOS asks to allow keychain access. That's KPM storing your tr
 | Design principles | [`docs/core-principles.md`](docs/core-principles.md) |
 | Feature catalog   | [`docs/features.md`](docs/features.md)               |
 | Architecture      | [`docs/architecture.md`](docs/architecture.md)       |
+| Domain glossary   | [`CONTEXT.md`](CONTEXT.md)                           |
 | Changelog         | [`CHANGELOG.md`](CHANGELOG.md)                       |
 
 ## Contributing

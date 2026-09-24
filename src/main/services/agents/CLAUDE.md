@@ -1,264 +1,115 @@
-# Agent Sessions
+# Board Agent Execution
+
+The board runs a plan item as an agent session in an isolated git worktree and drives it through the session's playbook until the run completes, pauses, or needs attention. The user has two controls, `Play` and `Stop`; everything between is automated. A playbook is a small state machine of steps (`src/shared/playbooks.ts`). The fresh-install default (`DEFAULT_PLAYBOOK`) is implement only; the built-ins add one opposing review, or a two-lens review loop.
+
+Read [`../CLAUDE.md`](../CLAUDE.md) for service conventions first.
+
+## How a run flows
 
-Board-driven agent execution for plan items. The board starts implementation work inside an isolated worktree and advances the selected playbook until it reaches a terminal state. The fresh-install default playbook is implementation only; heavier playbooks can run opposing review after implementation and send findings back to the implementation agent before the task moves to `In Review`.
+1. **Start.** `Play` calls `agent-session:create-and-start`, which runs `DevSessionService.createAndStartFromBoard`. It reuses the plan item's latest session when it is on the same repo and `inactive` or `pending` (same worktree, same playbook snapshot, refreshed Work Brief); otherwise `createPendingSession` makes a new one and snapshots the selected playbook into `dev_sessions.playbook_snapshot`. If the reused session is resumable (live cursor, parked at `paused` or `needs_attention`), it resumes the cursor through `resumePlaybook` instead of starting over.
+2. **First turn.** `resolvePlaybookPlan` (`src/shared/playbookRuntime.ts`) resolves each step's candidate chain against `listBoardProviders()` and the user's default model. The first main step runs through `runMainStep` into `startAgentSession`, which scaffolds the worktree, pins `base_sha`, and builds the provider session through `createBoardAgentSession` (`agentLaunch.ts`) and `AgentSessionManager.create`.
+3. **Turn ends.** `AgentSessionManager` calls the orchestrator's `onSessionComplete`. For a main step, `BoardAgentOrchestrator` commits the worktree onto the task branch (agents are told never to commit; see Commit capture), reconciles a changed Work Brief, and hands the step to `playbookStepRunner.settle`, which calls the pure `advancePlaybook` and then dispatches the next step, pauses, or completes.
+4. **Subagent steps** (reviewers, or a writing helper) launch one session per entry in `runs` through `launchPlaybookSubagent`. Their results collect in a run group (`playbookRoundStore.ts`) and settle once every run has reported.
+5. **Completion.** When the playbook completes, the step runner first flushes queued PR review tasks (when the session has a PR); only if none were queued does it move the plan item to `In Review` and the phase to `ready_for_review`.
 
-This document describes the current board workflow. It does not describe the older explicit Review-tab workflow.
+## Where to change what
 
-## Current Board UX
+| Concern | Owner |
+|---|---|
+| Playbook shape, validation, built-ins, harness steps | `src/shared/playbooks.ts` |
+| Pure cursor transitions, candidate resolution, directive rendering | `src/shared/playbookRuntime.ts` |
+| Reacting to turn completion, dispatching steps, fan-out rounds, commit capture | `BoardAgentOrchestrator.ts` (+ `playbookRoundStore.ts`) |
+| Settling a step: advance, pause, or finish | `playbookStepRunner.ts` |
+| Writing `automation_phase` and cursor fields | `automationPhaseMachine.ts` |
+| Reading a session's playbook and cursor | `sessionPlaybook.ts` (`readSessionRun`) |
+| One main-step turn, including restart at the same step | `mainStepTurn.ts` |
+| Turns the playbook never declared (PR follow-up, hook repair, ad-hoc review) | `harnessTurn.ts` |
+| Provider launch options, one path for every board session | `agentLaunch.ts` |
+| Provider list, models, capabilities shown to playbooks | `boardProviderRegistry.ts` |
+| Review findings JSON schema and parsing | `reviewOutputContract.ts` |
+| Session lifecycle, worktree, prompt assembly | `src/main/services/repo/DevSessionService.ts`, `devSessionPrompt.ts` |
 
-The board UI exposes two explicit actions:
+## Playbooks
 
-- `Play` starts or resumes implementation for a plan item
-- `Stop` stops the currently active implementation run
+A step is `session: 'main'` (a turn on the implementation agent) or `session: 'subagent'` (a separate session beside it). Its `directive` is a prompt (`promptKey` or inline `text`) or a skill; `{{output:<stepId>}}` inlines an earlier step's final text and `{{findings}}` the current findings. A findings step (`verdict: 'findings'`) routes through `onFindings: { goto, maxPasses, onMaxPasses, onStall }`. `parsePlaybook` enforces the structural rules (for example: only the first main step may set `agents` or `systemPromptKey`, `writes` only on single-run subagent steps, every cycle must pass through a step with `maxPasses`).
 
-Everything else is automated according to the selected playbook. The fresh-install default runs only the implementation step, captures the work, and moves the task to `In Review`. Review playbooks add:
+- **Snapshots.** A session runs its own copy of the playbook taken at creation. Editing a playbook in Settings never changes a running or resumable session.
+- **Candidate chains.** A step lists candidates in order; the first whose provider is available and has a matching model wins (an unmatched model falls back to the provider's default model). A `{ useDefault: true }` candidate follows the user's KPM default model and falls through when that provider is unavailable. The built-in implement steps list `useDefault`, then Claude. A step whose chain resolves to nothing fails with `provider-unavailable:<stepId>`; playbook steps never substitute a provider behind the user's back.
+- **Convergence.** Only critical and warning findings buy another round. A suggestion-only round is addressed once, then the loop exits (a harness key in `step_outputs` carries that across restarts), and a suggestion-only round past the pass limit proceeds rather than pausing. When the review step sets `onStall`, an address turn that commits nothing pauses (`stalled`) or proceeds instead of re-reviewing an unchanged diff. A re-review is shown the implementer's previous assessment so it can tell a declined finding from an ignored one. A fan-out round where any run fails ends in `some-runs-failed`: settling on the survivors would pass a round one lens never reviewed.
+- **Pauses.** `max_passes` and `stalled` pauses offer `proceed` or `one_more_pass` through `resumePlaybook`.
 
-1. implementation runs
-2. review runs once
-3. implementation agent assesses and fixes review findings if warranted
-4. task moves to `In Review`
+### Cursor rules
 
-The board detail pane exposes:
+`dev_sessions.current_step_id` must always name a step the snapshot can resolve, and the phase machine never invents one: every cursor-writing event carries a step id the caller resolved first.
 
-- tabs: `Activity`, `Changes`, and `Review` — the `Review` tab is conditional and only renders when the session has a linked PR (`session.pr_number != null`)
-- no explicit board control to manually run opposing-agent review as part of the normal path — that still runs automatically once after implementation
+- **Read cursors only with `readSessionRun(session)`.** A cursor can name a harness step (`AD_HOC_REVIEW_STEP`, `PR_REVIEW_FOLLOWUP_STEP`) that no playbook lists; `stepById` cannot see those and strands the session. `stepById` is only for ids that came out of `playbook.steps`.
+- **Harness steps stay out of `playbook.steps` on purpose.** `advancePlaybook` completes the run when the finished step is not in the playbook, which is what makes an injected turn end instead of restarting at step one.
+- **Injected turns go through `harnessTurn.ts`.** `requestHarnessTurn` moves the cursor only after the agent accepts the turn, and defers (sends nothing) when the agent is mid-turn. `requestHarnessReview` moves the cursor first, because the review can finish before launch returns, and restores the snapshot if the launch fails. Writing a cursor for a turn that never ran silently drops the run's remaining steps.
+- **A parked `needs_attention` survives automated injected turns**; only the user's own action (`ReviewService.triggerReviewAutomation`, or dismissing) clears it. The cursor still moves.
+- **Ask what a step does, not the phase.** `readSessionRun(...).cursor.addressesFindings` tells you whether a step addresses review findings; `addressing_review` is the live phase of every main step.
+- **"Run review"** (`DevSessionService.runAdHocReview`) runs the playbook's own findings step as a new pass when it has one (`startPlaybookReviewPass`); run ids are keyed on the pass count, so reusing the count would settle the new review on the previous round's rows. Only a playbook without a findings step falls back to `launchAutoReview`.
+- **Restarts re-enter at the same step.** The registry evicts a finished session after `agentSession.terminalSessionTtlMs` (30 minutes), so a follow-up often has to start a fresh agent. `sendAgentFollowUp`'s `restartAs` carries the step's `systemPromptKey` and live phase into `startAgentSession`; without it an address turn would run under the implementation role at `idle`, where a crash never reaches `needs_attention`.
 
-The `BoardCard` failure indicator fires on a **union** of two signals:
-1. `session.automation_phase === 'needs_attention'` — set by `BoardAgentOrchestrator` or the poller's follow-up-failure branch. `session.attention_reason` persists the concrete failure so the board can show a specific label and valid recovery action.
-2. `reviewActionableBySessionId[sessionId].hasActionable` — derived from review tasks that need user action: `disposition === 'needs_user_input'`, `internal_state === 'failed'`, `internal_state === 'stale'`, or a task `error` set on an otherwise-open task. Populated by (a) the `review-poll:actionable` broadcast emitted at the end of every `processSession` call in `ReviewPollService`, and (b) local recomputation in the renderer's `setReviewInbox` helper so user actions (ignore/override/post) clear the dot immediately without waiting for the next poll tick. The reconciler deliberately does NOT touch `automation_phase` to avoid stomping on non-review callers that set `needs_attention`.
+## Automation phase machine
 
-The older opposing-agent review findings (`agent_review_runs` / `agent_review_findings`) still exist for audit/debugging but are not the primary UI surface in the board flow.
+`dev_sessions.automation_phase` is the persisted automation state (P9); never keep it only in renderer state. `createAutomationPhaseMachine(...).transition(sessionId, event)` is its only writer: a synchronous read, decide, write, so no caller can interleave a stale write. The event union and the whole transition table are in `automationPhaseMachine.ts`.
 
-## Architecture
+| Phase | Meaning |
+|---|---|
+| `idle` | No automation in flight. |
+| `addressing_review` | A main step is running. Not only review work; see Cursor rules. |
+| `reviewing` | A subagent step is running. |
+| `fixing_commit_hooks` | The one automated repair turn after the capture commit failed. |
+| `paused` | Waiting on the user. `paused_reason`: `gate`, `max_passes`, `stalled`, or `stopped` (the user pressed Stop). |
+| `ready_for_review` | Run finished; plan item moved to `In Review`. |
+| `needs_attention` | Automation could not continue. `attention_reason` names why, and the board turns it into a specific label and recovery action. |
 
-```text
-Board card (drag to in_progress / play button)
-  ↓ AgentStartModal (repo, base branch, prompt)
-  ↓ IPC: agent-session:create-and-start
-Main process
-  ├── DevSessionService
-  │   ├── resume latest inactive/pending session for the plan item when possible
-  │   └── otherwise create pending session + worktree metadata
-  ├── AgentSessionManager
-  │   ├── ClaudeSdkSession   — Claude via Agent SDK
-  │   ├── CodexSdkAgentSession — Codex via Codex SDK
-  │   ├── PiSdkAgentSession  — pi.dev models via the in-process Pi SDK
-  │   └── CliAgentSession    — Gemini / legacy Claude via CLI + hooks
-  └── BoardAgentOrchestrator (wired in by appServices.ts)
-      ├── implement complete -> capture branch work
-      ├── selected playbook may launch review or follow-up steps
-      └── terminal state -> move task to In Review or Needs Attention
-  ↓ IPC events broadcast to renderer
-devSessionsStore
-  ├── session rows
-  ├── agentStateBySessionId
-  ├── activityFeedBySessionId
-  ├── latestActivityBySessionId
-  ├── completionBySessionId
-  ├── commitStateBySessionId
-  └── persisted review findings rehydration
-  ↓
-BoardCard / DetailPane / ChangesTab / ActivityTab / CommitComposer
-```
+- **Notifications come from the machine.** A transition into `ready_for_review`, `needs_attention`, or `paused` emits a `board_agent` event on the `UpdateEventBus` (`BOARD_AGENT_NOTIFY_PHASES`), except a `stopped` pause. Do not emit board notifications from the orchestrator or session manager.
+- **Unexpected termination** during `reviewing`, `addressing_review`, `paused`, or hook repair becomes `needs_attention` / `agent-terminated`; a user Stop becomes `paused` / `stopped`.
 
-## Session Lifecycle
+### Recipe: change the machine
 
-### 1. Trigger
+1. New event: add it to `AutomationPhaseEvent` and a case to `nextState`. Set `pausedReason` / `attentionReason` explicitly so a stale one does not survive.
+2. New attention reason: extend `DevSessionAttentionReason` in `src/shared/types.ts` and give it a label and action in `src/renderer/components/board-view/panelStatus.ts`. The column has no DB constraint.
+3. New phase or paused reason: extend the type in `src/shared/types.ts`, then add a migration, because `dev_sessions` has CHECK constraints on `automation_phase` and `paused_reason` (changing one means a table rebuild; see [`src/main/db/CLAUDE.md`](../../db/CLAUDE.md)). Decide membership in `isLiveAutomationPhase` (`shared/types.ts`), the machine's termination guard, and `BOARD_AGENT_NOTIFY_PHASES`, and project it in `panelStatus.ts`.
+4. Cover it in `automationPhaseMachine.test.ts`, and in `BoardAgentOrchestrator.test.ts` if the orchestrator emits it.
 
-User drags a card to `in_progress` or clicks `Play`.
+## Commit capture
 
-The board start flow uses `agent-session:create-and-start`, but it now prefers continuing prior work:
+Every write-capable turn carries `BOARD_AGENT_WRITE_POLICY`: leave changes uncommitted. After each main turn, and after a writing subagent, `captureWorkOnBranch` commits the worktree onto the task branch; without it the branch stays at its fork point and review and PR flows see nothing. A clean tree is fine. A failed commit (usually hooks) gets one automated repair turn in `fixing_commit_hooks`; a second failure lands in `needs_attention`. Whether the capture committed anything is also the "made progress" signal stall detection uses.
 
-- if the latest session for that plan item and repo is `inactive` or `pending`, KPM starts that existing session again
-- otherwise KPM creates a new pending session and starts it
+## Providers
 
-This avoids silently creating a fresh worktree every time the user re-clicks `Play`.
+Board providers are `claude` (`ClaudeSdkSession`), `codex` (`CodexSdkAgentSession`), `pi` (`PiSdkAgentSession`), and `gemini` (`CliAgentSession`, the Gemini CLI in a hidden PTY). All extend `BaseAgentSession`. `CliAgentSession` also carries a Claude CLI path wired to `hookServer.ts`, but board launch never reaches it: `AgentSessionManager.create` always sends Claude to the SDK.
 
-### 2. Start / Resume
+- **Completion** is the provider's own turn-end: Claude's `query()` iterator ending, Codex's `turn.completed`. Never treat `task_*` or `session_state_changed` messages as completion.
+- **Follow-ups resume the provider session.** Claude passes `resume: sdkSessionId` with the full stored options, because the SDK applies the options' `systemPrompt` on resume, not the persisted one. With nothing resumable, `DevSessionService.sendAgentFollowUp` restarts with context.
+- **Role prompts** (`systemPromptKey`, registered in `src/main/chat/prompts/promptRegistry.ts`, user-overridable through `PromptOverrideService`) go through the native system prompt for Claude and pi, and are prepended to the task prompt for Codex and Gemini (`buildBoardProviderPrompt`).
+- **Repo instructions** are read from the worktree natively: Claude through `settingSources: ['user', 'project']` (which also loads the repo's committed `.claude/settings.json` hooks and permissions), pi through its context files, Codex on its own.
+- **Safety.** Board Claude runs in `bypassPermissions`, which skips `canUseTool`, so the credential guard is a `PreToolUse` hook (`credentialGuardHook.ts`). Subagent steps without `writes` launch read-only. Claude board sessions disallow `AskUserQuestion` and workflow tools because board turns are one-shot.
+- **Findings** are parsed from `finalOutput()`, the full final text, through `reviewOutputContract.ts`. Activity content is capped at 4000 characters, so never parse results from activities.
+- **Completion stats** come from `git diff --stat HEAD` before the capture commit, so they show that turn's uncommitted changes.
+- **Opposing review** (`getReviewOpponent` in `agentCatalog.ts`: Claude is reviewed by Codex, everything else by Claude) applies only to `launchAutoReview`, the ad-hoc fallback. It substitutes Claude when the opponent is unavailable; playbook steps never do. Its session id is always `toReviewSessionId(implSessionId)` (inverse `toImplSessionId`); never build `` `${id}-review` `` by hand.
 
-`DevSessionService.startAgentSession()` is the board execution entrypoint for SDK-backed sessions.
+### Recipe: add a board provider
 
-Key behavior:
+1. Add it to `AgentType` (`src/shared/agent-types.ts`) and the `agentType` enum in `src/shared/ipc/agentSessionEndpoints.ts`.
+2. Add an `AGENT_CONFIGS` entry and availability check in `agentCatalog.ts`.
+3. Write the session class over `BaseAgentSession`: implement `finalOutput()`, finish a turn with `maybeCompleteTurn` / `completeOnce`, support `followUp`, and honour `readOnly`.
+4. Add a branch in `AgentSessionManager.create`. Gotcha: the final `else` builds a `CliAgentSession`, so a missing branch silently runs the provider as a PTY agent.
+5. In `agentLaunch.ts`, add it to `BOARD_PROVIDERS` and decide which launch fields it reads (`sdkOptions` is Claude-only; `model` and `effort` pass only for Codex and pi; a native `systemPrompt` only for pi). Update `buildBoardProviderPrompt` if it has a native system prompt.
+6. Add it to `listBoardProviders` (`boardProviderRegistry.ts`) with its models and capabilities. `nativeSkills` decides whether a skill directive is sent as `/skill` or inlined from the skill body.
+7. `agent_review_runs.reviewer_agent` and `agent_review_findings.agent` have CHECK constraints listing `claude`, `codex`, `gemini`. A provider that can run a findings step needs a migration widening them.
+8. Test in `boardProviderRegistry.test.ts`, `agentLaunch.test.ts`, and a session test beside the class.
 
-- creates the worktree only if the session worktree path does not already exist
-- reuses the existing worktree contents if the path is already present
-- marks the session `active`
-- launches the implementation agent through `AgentSessionManager`
+## Prompt assembly
 
-## Main-Process Automation
+`buildAgentContext` (`devSessionPrompt.ts`) renders the Work Brief execution projection: title, optional `## Intent`, structured `## Acceptance Criteria`, optional `## Context`, tracker key, parent, children, and code refs. It never parses headings out of context, so a `## Acceptance Criteria` heading inside context stays ordinary context. The result is stored in `initial_instructions` with the matching Work Brief revision; resumes and follow-ups refresh it when the approved Work Brief changed, and a change mid-turn queues one reconciliation turn before the playbook advances.
 
-Automation state is persisted on the `dev_sessions.automation_phase` column, not held only in the renderer.
+The first turn's task context is built in `createAndStartFromBoard`, in this order: resolved `<plan-refs>` for any `@plan/<uuid>` in the text (`formatPlanRefSection`), the KPM project context file (skipped while it is still the placeholder), attached context files, then the stored instructions. `renderPlaybookDirective` appends the step directive, any resume note, and the harness policy. For a native skill directive the `/skill` line comes first, because Claude only invokes a command deterministically at byte zero.
 
-Current phases:
+Subagents read `DevSessionService.buildSubagentTaskContext`: plan refs, the project context file, and the stored instructions, plus the diff against the base branch (capped at 100k characters by `capReviewDiff`, which lists every file the cut hid). Files attached at launch are not stored, so subagents never see them. The built-in review steps also pass `{{output:implement}}` so the implementer's report is checked against the diff rather than trusted.
 
-- `idle`
-- `reviewing`
-- `addressing_review`
-- `fixing_commit_hooks`
-- `paused`
-- `ready_for_review`
-- `needs_attention`
+## Testing
 
-`needs_attention` is an internal lifecycle phase, not a user-facing label. The
-board projects `attention_reason` into a specific failure such as commit checks,
-automated review, provider availability, or an interrupted run. An intentional
-Stop persists as `paused` with `paused_reason = 'stopped'`, so it never appears
-as a failure.
-
-The orchestration lives in `src/main/services/agents/BoardAgentOrchestrator.ts` (`createBoardAgentOrchestrator`), wired into `AgentSessionManager` from `appServices.ts`.
-
-`automationPhaseMachine` is the sole writer of the phase, so it is also where board automation announces itself to the notification bell: a transition **into** `ready_for_review`, `needs_attention`, or a user-decision `paused` state emits a `board_agent` event on the `UpdateEventBus` (`BOARD_AGENT_NOTIFY_PHASES`). An intentional Stop does not notify. Mid-flight phases stay silent — the board card already shows them — and a write that only moves the cursor or pass counts is not announced. Do not emit board notifications from `BoardAgentOrchestrator` or `AgentSessionManager`; route the phase change through the machine and the notification follows.
-
-### Playbook cursors
-
-`dev_sessions.current_step_id` must always name a step the session's `playbook_snapshot` can resolve. The phase machine never invents one: every cursor-writing event carries a `stepId` the caller resolved first, through `sessionPlaybook.ts`.
-
-Read a persisted cursor with `readSessionRun(session)` and nothing else. A cursor can name a harness step no playbook lists, so the narrow `stepById` strands the session (`Play` on a stopped PR-review follow-up used to land in `needs_attention` for exactly this reason); `stepById` is only for ids that came out of `playbook.steps` in the first place, such as a route target. `readSessionRun` also answers whether a step addresses review findings — ask that, not the `addressing_review` phase, which every main step runs under.
-
-Every injected turn goes through `harnessTurn.ts` (`requestHarnessTurn` for a turn sent to the session's own agent, `requestHarnessReview` for an unscheduled review subagent). It moves the cursor only once the agent accepts the turn, and puts back the interrupted cursor when a review never launches. A session parked at `needs_attention` keeps that phase through an automated injected turn — only the user's own trigger (`ReviewService.triggerReviewAutomation`) clears it — but the cursor moves either way, because a cursor left on the failed step makes the injected turn's completion settle that step and complete the run from a step that never ran. Writing the cursor first is what silently drops a run's remaining steps: the injected step is not in `playbook.steps`, so the live turn's completion resolves that cursor and `advancePlaybook` completes the run.
-
-Some turns the harness injects are not declared by any playbook — an ad-hoc review launched from the board, and a PR-review follow-up. Those are declared once as standalone `PlaybookStep` values (`AD_HOC_REVIEW_STEP`, `PR_REVIEW_FOLLOWUP_STEP` in `src/shared/playbooks.ts`) and resolved by `resolveHarnessStep` / `resolveRunStep`. They are deliberately **not** members of any playbook's `steps` array: `advancePlaybook` completes the run for a step id it cannot find in the playbook, which is what makes an injected turn end at its terminal instead of restarting the playbook from step one. An ad-hoc review on a playbook that already has a findings-producing review step resolves to that step instead, so it routes to that playbook's address step exactly as the automated path does. `BoardAgentOrchestrator.startPlaybookReviewPass` runs it as a **new pass** of that step — run ids are keyed off the step's pass count, so reusing the count would rebuild the previous round's completed rows and settle the new review on their findings. Spending that pass is also what a findings result is then measured against, so a playbook whose pass limit is already used up re-pauses with `max_passes` instead of addressing.
-
-A main step's turn goes through `mainStepTurn.ts`, which is also where the choice between continuing the loaded agent and starting a new one lives. Eviction makes the restart routine, so a restarted turn re-enters at its own step: `sendAgentFollowUp`'s `restartAs` carries that step's `systemPromptKey` and live phase into `startAgentSession`, instead of the run reopening at step one's role prompt and `idle` (where a crash never reaches `needs_attention`). A step that declares no `systemPromptKey` of its own still falls back to the playbook's first main step.
-
-### Implementation completion
-
-When the implementation session completes:
-
-- KPM captures the work onto the task branch with a commit
-- if the selected playbook has no next step, KPM marks it `ready_for_review` and moves the plan item to `In Review`
-- if the next step is a review step, KPM marks it `reviewing` and launches the configured subagent review
-- if the session was already in `addressing_review`, completion advances from that playbook step rather than restarting the review path
-- if the branch-capture commit fails because hooks report issues, KPM sends one follow-up to the implementation agent with the raw hook output, using `fixing_commit_hooks` plus the persisted playbook cursor to remember where the lifecycle should resume
-
-### Review completion
-
-When a findings-producing review session completes:
-
-- if there are no findings, KPM moves the task to `In Review`
-- if findings exist, KPM marks the implementation session `addressing_review` and sends one aggregated follow-up back to the implementation agent
-
-The built-in `Implement + review` playbook runs one review pass and one address pass. The deeper built-in code-review playbook can run more review/address rounds, bounded by its configured pass limit.
-
-Only critical and warning findings keep a loop going. A round that raises only suggestions still goes to the address step once, but that address turn exits the loop instead of re-reviewing (`RoundOutcome.closesLoop`, carried across restarts by a harness key in `step_outputs`), and a suggestion-only round past the pass limit proceeds rather than pausing. A re-review sees the previous address turn's output, so the reviewer can tell a declined finding from an unaddressed one. A fan-out step fails with `some-runs-failed` when any run fails: settling on the survivors would pass a round that one lens never reviewed.
-
-Commit-hook repair is also bounded to one automated pass. If the commit still
-fails after the repair turn, the session moves to `needs_attention`.
-
-### Race condition guard
-
-If the user sends a follow-up to the implementation agent while the review is still running, the impl session will be in `working` state when the review completes. `BoardAgentOrchestrator`'s `onSessionComplete` detects this and skips the automated follow-up — the impl session is already making progress. Since the phase is `addressing_review`, when the impl agent completes again it will move the task to `In Review` as normal.
-
-### Failure / stop behavior
-
-If implementation or review stops/fails during automation:
-
-- implementation sessions are marked `inactive` on terminal states
-- an intentional stop moves to `paused` with reason `stopped`
-- a failure moves to `needs_attention` with a persisted `attention_reason`
-- the item does not silently continue as though automation succeeded
-
-This is important for `Stop`: the board should no longer leave an SDK-backed implementation session looking active after it has been stopped.
-
-## Review Model
-
-The board workflow still uses opposing-agent review, but it is largely internal:
-
-| Implementation agent | Reviewer |
-|----------------------|----------|
-| `claude` | `codex` |
-| `codex` | `claude` |
-| `gemini` | `claude` |
-| `pi` | `claude` |
-
-`launchAutoReview` substitutes providers (an unavailable or unauthenticated opponent falls back to Claude) while `launchPlaybookSubagent` refuses one and fails the step — deliberately: the opposing reviewer is a harness heuristic whose only promise is that someone independent reads the diff, whereas a playbook step names the reviewer the user configured, and a playbook expresses its own fallbacks through its candidate chain.
-
-Review results are persisted in `agent_review_runs` / `agent_review_findings`, keyed to the implementation session (not only the `-review` session id). Used for restart-safe audit and stale review detection; not the primary board interaction model.
-
-### Review diff
-
-`launchAutoReview` now accepts an optional `baseBranch` parameter. When provided, it diffs `${baseBranch}..HEAD` to capture both committed and uncommitted changes. Without a base branch it falls back to `git diff HEAD` (uncommitted only). `BoardAgentOrchestrator` passes `session.base_branch` automatically for all automated review launches.
-
-A diff over 100k characters is cut by `capReviewDiff`, which lists every file the cut hid so the reviewer opens them in the worktree.
-
-Reviewers and other subagents read `DevSessionService.buildSubagentTaskContext`: the stored Work Brief plus the same project context file and resolved `<plan-refs>` the implementer launched with. Files attached at launch are not stored, so reviewers do not see them. The built-in review steps also pass `{{output:implement}}`, the implementer's final report, as claims to check against the diff.
-
-Board agents read the repo's own instructions from the worktree: Claude through `settingSources: ['user', 'project']` (which also brings the repo's committed `.claude/settings.json` hooks and permissions), pi through its context files, Codex natively.
-
-## Completion Detection
-
-Each board turn is a discrete single-shot `query()`. Completion is the SDK async iterator ending (after the final `result`): `ClaudeSdkSession.runTurn` calls `handleCompletion()` when its `for await` loop exits. There is no debounce, no `idle`-vs-`result` arbitration, and no subagent task-counting gate — so an unbalanced subagent `task_started` can no longer pin a session in `working` (the prior failure mode). The `result` message only records usage + `terminal_reason`; `task_*` and `session_state_changed` messages only emit activities / capture the resume id. `CodexSdkAgentSession` uses the same turn-end model (`turn.completed`).
-
-Follow-up turns (`followUp`) start a new `query()` with `options.resume = sdkSessionId` and the full stored `sdkOptions`. **The SDK applies these options' `systemPrompt` on resume, not the persisted one** — always pass the complete options. If there is no resumable `sdkSessionId`, `followUp` rejects and `DevSessionService.sendAgentFollowUp` falls back to a full restart-with-context.
-
-The chat path (`src/main/claude/streaming/StreamingSession.ts`) intentionally keeps streaming-input mode for mid-turn steering — do not converge it onto this model.
-
-## Stop / Resume Semantics
-
-Expected behavior:
-
-- `Stop` terminates the live implementation run and the session becomes `inactive`
-- clicking `Play` again on the same task should prefer resuming/continuing the most recent session for that plan item and repo
-- a brand new worktree should only appear when KPM is truly starting fresh, not on a normal stop-then-play cycle
-
-If a session was destroyed rather than stopped, the old worktree is gone and KPM will create a new one.
-
-## Key Files
-
-| File | Purpose |
-|------|---------|
-| `src/shared/agent-types.ts` | shared types + `toReviewSessionId` / `toImplSessionId` helpers |
-| `src/main/services/agents/AgentSessionManager.ts` | session registry, event wiring, review persistence, 30 min TTL eviction |
-| `src/main/services/agents/PiSdkAgentSession.ts` | Pi SDK board adapter, model selection, worktree tools, usage, and activity mapping |
-| `src/main/services/agents/autoReview.ts` | one-shot opposing review launch; accepts `baseBranch` and the `stepId` its completion resolves back to |
-| `src/main/services/agents/mainStepTurn.ts` | one turn of a main playbook step: directive, that step's role prompt, and follow-up vs restart at the same cursor and phase |
-| `src/main/services/agents/harnessTurn.ts` | injected turns the playbook never declared: cursor discipline, deferral, and the one failure reason they land on |
-| `src/main/services/agents/sessionPlaybook.ts` | `readSessionRun` — the one reader of a session's playbook, cursor, and whether it is live or resumable; plus `resolveHarnessStep` |
-| `src/main/services/agents/reviewOutputContract.ts` | `REVIEW_FINDINGS_SCHEMA`, `parseReviewFindings`, `deriveReviewOutcome` — the shared review-output contract every adapter's `getResult()` parses through |
-| `src/main/services/agents/BoardAgentOrchestrator.ts` | automation state machine: implement → review → address → ready |
-| `src/main/services/repo/DevSessionService.ts` | session lifecycle; composes `devSessionPrompt.ts` (`buildAgentContext`, `buildBoardStartInstructions`), `worktreeScaffold.ts`, `devSessionGitInspection.ts` |
-| `src/main/services/repo/devSessionPrompt.ts` | `buildAgentContext` (renders Intent / Acceptance Criteria / Context prompt), `buildBoardStartInstructions`, board model/effort/SDK-settings resolution — re-exported from `DevSessionService.ts` |
-| `src/renderer/stores/devSessions/` | sliced renderer store: lifecycleSlice, prSlice, reviewSlice, background commit state, persisted review rehydration |
-
-## Review Session ID
-
-The review session ID is always `toReviewSessionId(implSessionId)` from `shared/agent-types.ts`. **Do not** inline the string derivation (`` `${id}-review` ``) anywhere. Use the helper; its inverse is `toImplSessionId`.
-
-## Session Registry Lifetime
-
-`AgentSessionManager` keeps sessions in its registry for **30 minutes** after they reach a terminal state (`complete/failed/stopped`), then evicts them automatically. This window covers follow-up requests. Do not rely on `getByDevSession` returning a session beyond that window — `sendAgentFollowUp` falls back to a full restart when the session is gone.
-
-## Completion Stats
-
-`ClaudeSdkSession`, `CodexSdkAgentSession`, and `CliAgentSession` compute `AgentCompletionSummary` from `git diff --stat HEAD` at completion time. The stats reflect uncommitted changes only; committed-only sessions will report zeros.
-
-## Agent Prompt Shape
-
-`buildAgentContext` (`src/main/services/repo/devSessionPrompt.ts`, re-exported from `DevSessionService.ts`) consumes `workBriefFromPlanItem` and the central execution projection. It renders task facts only: title, optional `## Intent`, structured `## Acceptance Criteria`, optional `## Context`, tracker key, children, parent, and code refs. It does not parse headings from context: a `## Acceptance Criteria` heading inside context remains ordinary context and cannot become the execution contract.
-
-A new session stores its execution context in `initial_instructions` and captures the matching Work Brief revision. Play on an existing pending/inactive same-repo session keeps the worktree and prior supplemental instructions, but refreshes the approved Work Brief before resuming. Follow-up turns do the same. If the Work Brief changes during an implementation turn, the orchestrator queues one reconciliation turn before advancing the playbook to review or completion. Pending proposals are not authoritative until the configured approval or auto-apply path applies them.
-
-`DevSessionService.buildPlanRefSection` additionally prepends a `<plan-refs>` block via `formatPlanRefSection` (`src/main/claude/contextRefs.ts`) so any `@plan/<uuid>` tokens referenced by the item resolve to full plan-item context without the agent needing to call a tool.
-
-The user message is assembled in this order:
-
-1. project-level context file, when present and not still the placeholder
-2. explicitly attached context files
-3. expanded `<plan-refs>` for any referenced plan items
-4. captured Work Brief execution context
-5. playbook directive for the current step
-6. harness-owned execution policy
-
-The role prompt selected by `systemPromptKey` owns behavior such as implementation, test-first implementation, or review. Claude and Pi receive it through their native system-prompt mechanism. Codex and Gemini adapters prepend it to the initial user message because those board adapters do not expose an equivalent system-prompt option. Implementation roles interpret each KPM field by purpose: acceptance criteria define completion, relevant files provide efficient starting points, and parent items, subtasks, plan refs, project context, and attachments provide constraints without silently expanding scope. File references are hints rather than an authoritative or exhaustive edit list. The default implementation role asks the agent to inspect only the repo instructions and nearby code needed, preserve scope, match local test patterns, and report exact verification. The test-first role is used only by playbooks that select `agents.implementation_tdd_system`; its verification guidance defers to repository instructions and does not require a full suite by default.
-
-The harness appends a non-configurable policy to every write-capable step: the agent leaves changes uncommitted and KPM captures them onto the task branch after the turn. Commit-hook repair uses the same ownership rule.
-
-## Common Pitfalls
-
-- Do not assume board `Play` always means "new worktree". It should usually mean "continue existing work" when prior work exists.
-- Do not rely on renderer-only state for orchestration. Use persisted `automation_phase`.
-- Do not treat `task_*` or `session_state_changed` messages as session completion. Only the SDK iterator ending (the final `result`) is authoritative — see Completion Detection.
-- Do not design the board UX around explicit review-tab interactions unless you intentionally want to reintroduce them.
-- Do not reintroduce a blocking commit modal. Commit confirmation is modal; commit execution is backgrounded.
-- Do not inline `` `${id}-review` `` — use `toReviewSessionId` / `toImplSessionId` from `shared/agent-types.ts`.
-- Do not send an automated review follow-up if the impl session is already active. Check `agentSessionManager.isSessionBusy(implSessionId)` first.
+Tests sit beside each module. `BoardAgentOrchestrator.test.ts` runs the real phase machine over an in-memory `AutomationPhaseRepository`, mocks `electron` and `./autoReview`, and fakes the dev session service, which makes it the place for end-to-end playbook scenarios. Pure cursor logic belongs in `src/shared/playbookRuntime.test.ts` and schema rules in `src/shared/playbooks.test.ts`. Gotcha: these in-memory repositories skip SQLite, so they never exercise the table's CHECK constraints; a new phase, reason, or reviewer value also needs a check against the real schema.

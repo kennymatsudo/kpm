@@ -1,267 +1,107 @@
 # Architecture
 
-## Directory Structure
+How KPM's processes, layers, and subsystems fit together. For the rules behind these choices read [`core-principles.md`](core-principles.md); for step-by-step recipes read the subsystem guide linked in each section. Names that appear here are the stable seams; anything finer-grained is best read from the code.
+
+## Processes
+
+KPM is an Electron app with three code zones and one shared package:
 
 ```
 src/
-├── main/                    # Electron main process
-│   ├── db/
-│   │   ├── connection.ts    # Schema definition
-│   │   ├── migrations.ts    # Database migrations
-│   │   ├── interfaces/      # Repository interfaces
-│   │   ├── repositories/    # CRUD operations
-│   │   └── domain/          # Domain services (Sync, Export, Import)
-│   ├── bootstrap/            # App menu, dock icon, window manager
-│   ├── ipc/                 # IPC handlers
-│   │   ├── handlers/        # Handler implementations by domain
-│   │   ├── register/        # Handler registration by domain (workspace, development, platform)
-│   │   └── validation/      # Shared validators, handler wiring utils, registry-schema refines
-│   ├── chat/                # Chat runtime, prompts, and write-consent policy
-│   ├── claude/              # Claude SDK integration and streaming session classes
-│   ├── codex/               # Codex auth, binary, and error helpers
-│   ├── config/              # Runtime configuration and defaults
-│   ├── documents/           # Plan-ref resolver + markdown codecs (used at every export boundary)
-│   │   └── codecs/          # Per-format markdown codecs
-│   ├── kpmTools/            # In-process MCP tool server shared by providers
-│   │   └── tools/           # KPM-aware tool implementations
-│   ├── pi/                  # pi chat-provider session
-│   ├── providers/           # Provider capability and readiness resolution
-│   ├── project-context/     # Project context file compatibility helpers
-│   ├── security/            # URL and app-navigation safety helpers
-│   ├── services/            # Application services (DI pattern)
-│   │   ├── core/            # Plan, Project, Chat, Tracker, Onboarding, settings, cross-project activity
-│   │   ├── repo/            # Repo, DevSession, GitHub, Environment, Review, ScheduledLoopRunner
-│   │   ├── files/           # FileExplorer, FileSummary, TempImage, RepoFile, watchers, scoped FS
-│   │   ├── streaming/       # Terminal and Claude StreamingSession
-│   │   ├── generation/      # CustomPrompt, Onboarding
-│   │   ├── agents/          # AgentSessionManager, Claude/Codex/Gemini sessions, hooks, auto-review
-│   │   ├── confluence/      # ConfluenceSyncService
-│   │   ├── composition/     # Service composition helpers
-│   │   ├── toollog/         # Tool call logging
-│   │   └── PerfLogger.ts    # Performance metrics
-│   ├── trackers/            # Tracker-specific logic
-│   ├── tracker-clients/     # Jira/Linear API clients
-│   └── wiki-clients/        # Confluence API client
-├── renderer/                # React frontend
-│   ├── components/          # Feature-organized UI — see src/renderer/CLAUDE.md and the UI Surface Map in docs/features.md
-│   ├── stores/              # Zustand state management
-│   │   ├── project/         # Sliced project store
-│   │   ├── chat/            # Chat store slices
-│   │   ├── devSessions/     # Dev-session store slices
-│   │   └── tracker/         # Tracker-related stores
-│   ├── contexts/            # Stable providers (currently theme)
-│   ├── hooks/               # Cross-feature renderer hooks
-│   ├── lib/                 # Renderer library integrations
-│   ├── services/            # Renderer-side API wrappers
-│   ├── themes/              # Theme loading and normalization
-│   ├── types/               # Renderer/global type declarations
-│   ├── utils/               # Renderer utilities
-│   └── constants/
-├── preload/                 # IPC bridge (security boundary)
-└── shared/                  # Shared types and process-neutral contracts
+├── main/       # Electron main process: database, services, providers, IPC handlers
+├── preload/    # contextBridge: the only surface the renderer can call (window.api)
+├── renderer/   # React UI and Zustand stores
+└── shared/     # Process-neutral types, Zod schemas, registries, pure helpers
 ```
 
-## Project Folder Structure
+`shared/` is imported by both processes and bundled into the renderer, so it must stay free of Node built-ins and native modules.
 
-A KPM project has a KPM-owned project folder. That folder may be a git repository if the user chooses, but it is not assumed to be one of the connected code repos. Plans live in SQLite; project files are local working documents and generated artifacts.
+### Main process map
+
+| Directory | Owns |
+|---|---|
+| `db/` | SQLite connection, migrations, repositories, and domain services (plan actions, sync, export, deletion drain). See [`src/main/db/CLAUDE.md`](../src/main/db/CLAUDE.md). |
+| `ipc/` | Handler bindings and registration for the endpoint registries in `shared/ipc/`. See [`src/main/ipc/CLAUDE.md`](../src/main/ipc/CLAUDE.md). |
+| `services/` | Application services and the composition root (`appServices.ts`). See [`src/main/services/CLAUDE.md`](../src/main/services/CLAUDE.md); board execution lives in `services/agents/` ([guide](../src/main/services/agents/CLAUDE.md)). |
+| `chat/` | Chat runtime pieces shared by every provider: prompts, the project write grant, shell write policy, per-Chat model choice. |
+| `claude/`, `codex/`, `pi/` | One directory per chat provider: session implementation, auth/binary discovery, model listing. See [`src/main/claude/CLAUDE.md`](../src/main/claude/CLAUDE.md). |
+| `kpmTools/` | KPM's own tools (plan, documents, git, trackers), served to every provider from one runtime. |
+| `providers/` | Provider readiness and the model catalog fetched at launch. |
+| `generation/` | The one-shot generation seam (`runGeneration`). |
+| `documents/`, `workBrief/` | The export boundary (`toExternalMarkdown`), markdown codecs, and Work Brief projections for trackers. |
+| `trackers/`, `tracker-clients/`, `wiki-clients/` | Jira/Linear/Confluence API clients and tracker status reconciliation. |
+| `bootstrap/`, `config/`, `security/`, `project-context/` | Window/menu/dock setup, `getConfig()`, navigation safety, the project context file. |
+
+The renderer is organized by feature under `components/` with one store per domain under `stores/`; see [`src/renderer/CLAUDE.md`](../src/renderer/CLAUDE.md) and [`src/renderer/stores/CLAUDE.md`](../src/renderer/stores/CLAUDE.md).
+
+## Request path
+
+```
+renderer service -> window.api (preload) -> ipcRenderer.invoke
+  -> registry handler (Zod-validated params) -> service or repository -> SQLite
+```
+
+Each IPC domain has one registry in `src/shared/ipc/{domain}Endpoints.ts` that owns the channel names and param schemas; `src/main/ipc/handlers/{domain}.ts` binds a typed handler to every entry. Push events from main to renderer are declared in `src/shared/ipc/{domain}Events.ts`. Renderer code reaches `window.api` only through `src/renderer/services/`.
+
+## Layers in the main process
+
+- **Repositories** (`db/repositories/impl/`, interfaces in `db/interfaces/`) are thin, synchronous SQL wrappers, created by the container in `db/container.ts`.
+- **Domain services** (`db/domain/`) own multi-table invariants and transactions: applying `PlanAction`s, tracker import/export and sync, staging and draining tracker deletions.
+- **Application services** (`services/`) own workflows that cross the database, git, the filesystem, and providers. They return `ServiceResult<T>` instead of throwing, and are wired once in `services/appServices.ts`.
+- **Shared polling** runs on one `PollScheduler`; review polling, chat idle cleanup, and interval-triggered actions register tasks with it instead of owning timers.
+
+Handlers validate and delegate to whichever of these has the behavior; they don't hold business logic.
+
+## Data
+
+All plan data lives in one SQLite database (better-sqlite3) in the user data directory. The schema is defined entirely by `db/migrations.ts`; read it, or a fresh database, for the current tables. The central ones:
+
+- `projects`, `repos` (connected repos, including the active worktree override), and `plan_items` with `plan_relations`. Plan items nest through `parent_id`; labels are free-form and map to tracker issue types when exported.
+- `chat_sessions` / `chat_messages`, including each Chat's model choice and each assistant turn's actual model.
+- `dev_sessions`, the persisted board execution state (`automation_phase`, `worktree_path`, `base_sha`), with `execution_playbooks` and the review tables beside it.
+- `outbound_changes` (tracker changes staged for export, including deletions) and `sync_snapshots` (last-synced state for three-way conflict detection).
+- `project_write_grants` (P7), `actions` / `action_runs`, and `app_settings`.
+
+Credentials are never stored in SQLite; tracker tokens live in the OS keychain.
+
+### Project folder
+
+Each project also has a KPM-owned folder for working documents. It is not one of the connected code repos.
 
 ```
 {project_folder}/
-├── attachments/             # Uploaded attachment copies
-├── outputs/                 # Generated artifacts (markdown outputs from custom prompts)
-└── AGENTS.md                # Project context file (KPM only ever writes this name;
-                              # an existing legacy CLAUDE.md is still read, not created)
+├── attachments/   # Copies of uploaded attachments
+├── outputs/       # Results written by actions with the write-outputs capability
+└── AGENTS.md      # Project context file (a legacy CLAUDE.md is read if present, never created)
 ```
 
-Do not create `.kpm/` folders or store plan hierarchy data inside connected repos. Connected repos are linked through the `repos` table and read/write rules, not by embedding KPM metadata in their working trees.
+Plan data never goes into connected repos: no `.kpm/` folders, no committed plan exports (P4).
 
-## Domain Model
+## Chat
 
-**Hierarchy:** project → feature → task
+A Chat runs on one provider at a time: Claude (Agent SDK, `claude/streaming/StreamingSession`), Codex (`codex app-server`, `codex/CodexChatSession`), or pi (`pi/PiChatSession`). All implement `IChatSession` (`services/streaming/IChatSession.ts`); Codex and pi share `BaseTurnQueueChatSession`, while Claude steers follow-ups into a running turn itself. `StreamingSessionService` owns session lifecycle, keyed `chat:{projectId}:{chatSessionId}`, and reconnects idle sessions through native provider resume.
 
-**Status categories:** `not_started` | `in_progress` | `in_review` | `done` | `blocked` | `canceled`
+Per-provider differences are declared in `src/shared/providerCapabilities.ts` and checked through it, never by comparing provider names at call sites.
 
-**Tracker linking:** Connection → Scope → Association (JQL filter)
+**Tools.** KPM's tools are defined once in `kpmTools/` and registered in `kpmTools/runtimeRegistry.ts`, then exposed to each provider through its own adapter (in-process SDK MCP server for Claude, a local MCP server for Codex, a native tool adapter for pi). Tools that change the plan never write to the database: they emit `PlanAction[]`, and `proposedChangeDisposal` in the renderer either queues them for review or applies them, depending on the user's setting (P8).
 
-## Database Tables
+**Prompts.** `buildSystemPrompt()` / `buildFocusSystemPrompt()` in `chat/prompts/` compose one registry of sections for every provider.
 
-| Table | Purpose |
-|-------|---------|
-| `projects` | KPM projects (name, folder, phase, session state, token usage) |
-| `repos` | Connected repositories plus environment mode and active worktree override |
-| `attachments` | Uploaded files |
-| `plan_items` | Plan hierarchy + external tracker fields + `completed_at` |
-| `plan_relations` | Dependencies (depends_on, blocks, relates_to) |
-| `tracker_connections` | Site-level connections (credentials in OS keychain) |
-| `tracker_project_scopes` | Tracker project authorization (Jira/Linear) |
-| `kpm_tracker_associations` | Tracker sync filters (JQL for Jira) + status/custom field mappings |
-| `tracker_type_mappings` | Label → tracker issue type |
-| `sync_queue` | Items staged for export (with custom field overrides) |
-| `sync_snapshots` | Last-synced state for three-way conflict detection |
-| `chat_messages` | Persistent message history, including nullable actual-model attribution for assistant turns |
-| `dev_sessions` | Plan-item-tied dev sessions for board agentic execution (pending/active/inactive status); `base_sha` records the immutable fork-point SHA used for commit-range attribution; `review_policy` (auto/skip) selects whether opposing review runs, added in migration 093 (which also added the now-unused `execution_mode` column); `worktree_path` records the session's isolated git worktree |
-| `app_settings` | Global key-value application preferences |
-| `custom_themes` | Imported VS Code/KPM theme definitions |
-| `confluence_page_links` | Document ↔ Confluence page links |
-| `chat_sessions` | Chat session metadata, native provider resume IDs, scope/focus metadata, and the versioned per-Chat model-choice aggregate |
-| `task_prompt_templates` | Task prompt templates |
-| `tool_permissions` | Persisted per-project tool permission grants |
-| `review_tasks` | GitHub review threads normalized into KPM review tasks |
-| `review_ownership` | Review-thread ownership decisions |
-| `review_sync_state` | PR review polling cursors and sync state |
-| `agent_review_runs` | Opposing-agent review run metadata |
-| `agent_review_findings` | Structured findings from opposing-agent reviews |
-| `global_search_index` | Full-text search metadata |
-| `global_search_fts` | Virtual FTS5 table for full-text search |
-| `claude_usage_events` | Claude usage/cost accounting events |
-| `project_file_metadata` | Cached summaries and indexing metadata for project files |
-| `actions` | Saved prompts with a trigger (`manual`/`interval`/`event`) and a capability grant; successor to `custom_prompts` + `scheduled_loops` (migrations 115–118; `custom_prompts`, `scheduled_loops`, and `loop_runs` were merged in and dropped) |
-| `action_runs` | Per-run history for an action (outcome, summary, artifact path), pruned to 50 per action |
+**Write consent (P7).** `chat/writeGrants.ts` owns the per-project write grant, persisted in `project_write_grants` and read synchronously from memory on the hot path. Each provider adapter translates the decision into its native mode: Claude through `canUseTool` and its sandbox, Codex by switching between read-only and workspace-write sandboxes and answering app-server approval requests, pi by gating its write tools. `chat/shellWritePolicy.ts` decides which shell commands count as writes for all three.
 
-**Key fields for features:**
-- `plan_items.completed_at` - Stamped on transition to done, cleared on transition away; no feature currently reads it
-- `chat_sessions.claude_session_id` - Claude SDK session ID for resuming conversations
-- `chat_sessions.chat_model_choice` - Versioned provider/model/effort memory owned by that Chat; null only until legacy adoption
-- `chat_messages.model` - Actual model attribution for new assistant turns; null for user and legacy rows
-- `dev_sessions.worktree_path` - Path to isolated git worktree
-- `dev_sessions.status` - Session lifecycle state (pending, active, inactive)
-- `dev_sessions.automation_phase` - Board automation state (`idle`, `reviewing`, `addressing_review`, `fixing_commit_hooks`, `fixing_commit_hooks_after_review`, `ready_for_review`, `needs_attention`)
-- `dev_sessions.base_sha` - Immutable fork-point SHA captured when worktree is created; used to compute commit range for Changes tab (falls back to merge-base for legacy rows)
-- `dev_sessions.merge_order` - Optional user override for merge queue ordering
-- `repos.active_worktree_path` - Active checkout used for repo context and branch watching
-- `chat_messages.chat_session_id` - Session boundary tracking for history browsing
-- `agent_review_runs.status` - Latest opposing-agent review freshness (`complete` or `stale`)
+**Generations.** Tool-free, one-shot calls (PR descriptions, commit messages, file summaries) go through `runGeneration` in `generation/`, which resolves a purpose and quality tier to a provider and model. Anything that uses tools is a chat or agent turn instead.
 
-## Repository Architecture
+**Actions.** Saved prompts with a trigger and a capability grant (`src/shared/actions.ts`). Manual runs can open in a Chat; automatic and headless runs are single agent turns in `services/repo/ActionRunnerService.ts`, with the tool runtime enforcing the grant.
 
-**Dependency Injection Container** (`src/main/db/container.ts`):
-- Factory function creates all repositories with database instance
-- Singleton pattern with lazy initialization
-- Testable via mock injection
+## Board execution
 
-**Repository Interfaces** (`src/main/db/interfaces/`):
-- Type definitions separated by domain (plan, project, tracker, etc.)
-- Clean separation between interface and implementation
-- Enables mocking for unit tests
+Starting work on a plan item creates a dev session: an isolated git worktree plus an agent (Claude, Codex, pi, or Gemini) driven by the playbook the user chose. `BoardAgentOrchestrator` runs the playbook's steps (implement, optional opposing review, addressing pass) and persists progress in `dev_sessions.automation_phase` so a run survives restarts (P9). Board agents write only inside their worktree and never read the connected repo's active worktree. See [`src/main/services/agents/CLAUDE.md`](../src/main/services/agents/CLAUDE.md).
 
-Repositories live in `src/main/db/repositories/impl/` — read the directory for the full list (see [`src/main/db/CLAUDE.md`](../src/main/db/CLAUDE.md)).
+## Plan references and the export boundary
 
-## Service Architecture
+Markdown anywhere in KPM (descriptions, criteria, chat, documents) can carry `@plan/<uuid>` tokens, parsed by `src/shared/planRefs.ts`.
 
-**Two-Layer Service Pattern:**
-
-1. **Domain Services** (`src/main/db/domain/`):
-   - Tightly coupled to database
-   - Handle multi-table transactions
-   - Services: `SyncService`, `ExportService`, `ImportService`, `PlanActionService`, `PlanItemService`, `SyncQueuePolicy`, `TypeMappingService`
-
-2. **Application Services** (`src/main/services/`):
-   - Testable with dependency injection
-   - Return `ServiceResult<T>` for explicit error handling
-   - Organized by domain under `src/main/services/` — see [`src/main/services/CLAUDE.md`](../src/main/services/CLAUDE.md) for the annotated catalog
-
-**Shared polling** (`PollScheduler`): a single timer drives interval-based polling. `ReviewPollService`, `StreamingSessionService` (chat session cleanup ticks), and `ScheduledLoopRunnerService` register tasks instead of holding their own `setInterval`. Repo and project file watching use fs watchers, and `SearchService` runs its own interval — they do not register.
-
-**Composition Root** (`src/main/services/appServices.ts`):
-- Wires all services with their dependencies
-- Single point of service instantiation
-
-**Service Container** (`src/main/services/container.ts`):
-- `initializeServices(container)`, called once at app startup, holds the single `AppServices` instance
-
-## Frontend Architecture
-
-**Zustand Store Organization** (`src/renderer/stores/`): a sliced project store (`project/` — projectSlice, planSlice, uiSlice, resourceSlice) plus one specialized store per feature domain. See [`src/renderer/stores/CLAUDE.md`](../src/renderer/stores/CLAUDE.md) for the full organization and patterns. Focused resources live in the project UI slice (`project/uiSlice.ts`), accessed through `useProjectUiDomainStore`.
-
-**Cross-Store Events** (`storeEvents.ts`): stores communicate side effects via typed events to avoid circular imports. `storeEvents.ts` is the authoritative event list — don't duplicate it in docs.
-
-**Project-Scoped Store Management** (`projectScopedStores.ts`): manages store lifecycle tied to project switching; clears relevant stores when the project changes.
-
-## IPC Pattern
-
-```
-Renderer → ipcRenderer.invoke (Zod validated) → Handler → Service → Repository → SQLite
-```
-
-**Validation Organization**:
-- Each domain's Zod payload schemas live in `src/shared/ipc/{domain}Endpoints.ts` — the endpoint registry is their single owner
-- `src/main/ipc/validation/` holds only what the registry can't express itself: shared validators (`shared.ts`: uuid, paths, etc.), handler wiring utilities (`createIpcHandler()`, `createRegistryIpcHandlers()`, `bindRegistryHandlers()` in `utils.ts`), and stronger refines layered on top of specific registry schemas (path-existence / temp-dir scoping checks needing Node builtins unavailable in registry files bundled into the renderer)
-
-## Claude Integration Architecture
-
-KPM runs chat/dev sessions on one of three provider backends behind a provider-neutral `IChatSession` — the Claude Agent SDK (Claude), the Codex SDK (Codex), and pi.dev (pi) — plus in-process MCP tools (`src/main/kpmTools/`) shared across all three for KPM-aware tool calls:
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  Main Chat (Streaming Session)                                  │
-│  ├─ StreamingSessionService (Claude lifecycle)                  │
-│  │   └─ StreamingSession (Claude SDK wrapper)                   │
-│  │       └─ AsyncMessageQueue (push-to-pull adapter)            │
-│  ├─ Claude SDK query() with streaming input                     │
-│  ├─ In-process SDK MCP Server                                   │
-│  │   └─ Tools as direct function calls                          │
-│  │       ├─ Plan tools (get hierarchy, filter, modify)          │
-│  │       ├─ Jira tools (search, get issues, compare)            │
-│  │       ├─ Relations tools (dependencies, blockers)            │
-│  │       ├─ Document tools (create, edit, context updates)      │
-│  │       ├─ Confluence tools (URL lookup)                       │
-│  │       ├─ GitHub tools (PR description generation)            │
-│  │       ├─ File tools (move/delete project files)              │
-│  │       ├─ Git tools (read-only git against connected repos)   │
-│  │       └─ Storybook tools (list/search components)            │
-│  └─ Database (single connection)                                │
-└─────────────────────────────────────────────────────────────────┘
-
-┌──────────────────────────────────────────────────────────────────┐
-│  Plan-item Dev Sessions (board-driven, isolated worktrees)       │
-│  ↑ Triggered from the Board UI via IPC                           │
-│    (agent-session:create-and-start) — not a chat tool call       │
-│  ├─ DevSessionService (session + worktree management)            │
-│  ├─ AgentSessionManager (Claude/Codex/Pi/Gemini backends)        │
-│  ├─ BoardAgentOrchestrator (implement → review → address → ready)│
-│  └─ Multiple concurrent sessions:                                │
-│      ├─ Session 1: Git worktree + implementation agent           │
-│      ├─ Session 2: Git worktree + review agent                   │
-│      └─ Session N: Git worktree + agent subprocess               │
-└──────────────────────────────────────────────────────────────────┘
-```
-
-For the tool-by-tool and file-by-file map, see the File Organization table in [`src/main/claude/CLAUDE.md`](../src/main/claude/CLAUDE.md).
-
-**Chat Provider Abstraction**: the main chat runs on one provider per session — Claude (`ClaudeSdkSession`, streaming-input), Codex (`CodexChatSession`), or pi (`src/main/pi/PiChatSession.ts`). All implement `IChatSession` (`src/main/services/streaming/IChatSession.ts`); Codex and pi share `BaseTurnQueueChatSession`, while Claude steers mid-turn on its own base. Per-provider feature support is declared in `src/shared/providerCapabilities.ts` (`PROVIDER_CAPABILITIES`) and readiness is resolved via `src/shared/providerResolution.ts`. `ChatProvider = 'claude' | 'codex' | 'pi'` is defined in `src/shared/types.ts`. `StreamingSessionService.createSession` dispatches to the backend.
-
-**Chat Write Consent**: `src/main/chat/writeGrants.ts` owns the project write grant and coalesces concurrent requests for the same project. It is hydrated from `project_write_grants` at startup so the hot-path check stays a synchronous memory read, and every change writes through. Permission requests still carry `chatSessionId` for display; the renderer queues them by Chat so concurrent sessions cannot display or answer each other's prompt, and a request from a run with no chat session lands in the unscoped queue behind the pending-requests badge. Provider adapters translate the shared decision into native behavior: Claude uses `canUseTool` plus its filesystem sandbox, Codex switches between native `read-only` and `workspace-write` modes at turn boundaries, and pi gates its native write tools. Claude's sandbox allows localhost and Docker so an approved shell can use the developer's running services; Docker remains subject to the conversation write grant. KPM-controlled file tools preserve the denied credential roots from `src/main/services/files/pathSecurity.ts`, including Docker client state.
-
-**System Prompt Organization**: prompt modules live in `src/main/chat/prompts/` with `buildSystemPrompt()` / `buildFocusSystemPrompt()` as entry points — see [`src/main/claude/CLAUDE.md`](../src/main/claude/CLAUDE.md).
-
-**Shared Prompt Defaults** (`src/shared/taskPromptDefaults.ts`):
-- Default task prompt template used by both prompt construction and persistence fallbacks
-
-**Streaming Sessions:**
-- Session key is `chat:{projectId}:{chatSessionId}` — multiple concurrent chat sessions per project, up to `session.maxConcurrentSessionsPerProject` from `getConfig()`. See `src/main/claude/CLAUDE.md` for session-type/scope details.
-- Connects on project open (zero-latency first message)
-- Auto-reconnects after 30min idle timeout
-- Full conversation history via SDK resume
-- Tool proposal events (`plan-actions`, `pending-implementation`) are scoped by origin `projectId` + `chatSessionId` before renderer delivery to avoid cross-session duplication
-
-**Plan-item Dev Sessions:**
-- Launched from the board view by selecting a plan item and starting agent execution
-- Multiple isolated implementation/review agent subprocesses
-- Each runs in a separate git worktree
-- User approval required before starting
-- Automatic opposing-agent review can run after implementation completion and feed findings back into the implementation session before the plan item moves to `in_review`
-
-## Plan References (`@plan/<uuid>`)
-
-Markdown surfaces (descriptions, intents, acceptance criteria, chat, documents) can carry `@plan/<uuid>` tokens that resolve to a `PlanItem`.
-
-**Token shape:** `@plan/<uuid>` — pure structural primitive parsed in `src/shared/planRefs.ts`.
-
-**Layers:**
-- **Authoring:** Monaco editor (`planRefMonaco.tsx`) folds UUIDs to readable titles and surfaces unresolved-ref diagnostics. Markdown render path (`src/renderer/utils/markdown.tsx`) swaps refs for `PlanRefChip` (`src/renderer/components/plan-ref/PlanRefChip.tsx`).
-- **Agent context:** `formatPlanRefSection` (`src/main/claude/contextRefs.ts`) expands refs into agent prompts so agents see resolved title/status/etc. without a tool call. `DevSessionService.buildPlanRefSection` prepends a `<plan-refs>` block to board agent launch prompts.
-- **Tools:** `plan-refs.ts` exposes `extract_plan_items_from_doc` so Claude can lift refs out of a project file by path.
-- **Validation:** `PlanActionService` rejects `create_item` / `update_item` actions whose text contains unresolved refs.
-- **Export boundary:** `toExternalMarkdown` (`src/main/documents/exportBoundary.ts`) rewrites refs to native syntax at every external export — Jira/Linear (`ExportService`, before the codec converts markdown), Confluence (`ConfluenceSyncService`), GitHub (`GitHubService`). Its branded `ExternalMarkdown` return type is what tracker write payloads require, so an unresolved description is a compile error. Refs never leak to external trackers.
-
-See `src/renderer/CLAUDE.md` for z-index hierarchy and renderer conventions.
+- **Authoring:** the Monaco editor folds tokens to titles (`renderer/components/ui/planRefMonaco.tsx`); rendered markdown shows `PlanRefChip`.
+- **Agent context:** `formatPlanRefSection` (`claude/contextRefs.ts`) expands tokens into prompts; `DevSessionService` prepends a `<plan-refs>` block to board agent launches.
+- **Validation:** `PlanActionService` rejects creates and updates that contain unresolved refs.
+- **Export:** `toExternalMarkdown` (`documents/exportBoundary.ts`) rewrites tokens into the destination's native syntax. It is called on every outbound path: tracker exports (through the Work Brief projections), Confluence and Linear document publishing (`services/documentSync/`), and GitHub. Its branded `ExternalMarkdown` return type is what those payloads require, so skipping it is a compile error (P6).

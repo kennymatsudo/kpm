@@ -1,91 +1,55 @@
 # Renderer
 
-React 19 + TypeScript + Tailwind v4 + Zustand. Extract hooks not components. Use Zustand over Context for fine-grained subscriptions.
+React 19 + TypeScript + Tailwind v4 + Zustand. State patterns live in [`stores/CLAUDE.md`](stores/CLAUDE.md).
 
-## Component Organization
+## How it is organized
 
-Components organized by feature in `components/`. Key directories: `app/` (app-shell providers/boundaries), `layout/`, `planning/`, `board-view/`, `chat/`, `workspace/`, `welcome/` (no-project landing pane), `development/` (shared PR/review components used by the board), `tracker/`, `plan-ref/`, `keyboard-shortcuts/`, `sidebar/`, `command-palette/`, `ui/` (shared primitives). Browse the directory for the full list.
+- `components/<feature>/` — one directory per feature area (`board-view/`, `chat/`, `workspace/`, `settings/`, `tracker/`, ...). Feature-local hooks sit beside the components (`layout/hooks/`, `planning/hooks/`, `sidebar-tree/hooks/`, `board-view/use*.ts`). `components/ui/` holds shared primitives (`Modal`, `Popover`, `Select`, `DropdownMenu`, `Tooltip`, `Toast`, lazy Monaco and Mermaid wrappers). Browse the tree; don't trust a list here.
+- `hooks/` — app-wide hooks: IPC bridges and sync hooks (`useChatIpcBridge`, `usePermissionIpcBridge`, `useDevSessionsSync`, ...), `useProjectLoader`, `useChat`.
+- `services/` — the only place that may touch `window.api` (enforced by the `no-restricted-properties` lint rule). Each file is a thin typed forward to the preload bridge.
+- `stores/` — Zustand stores and cross-store events.
+- `constants/` — `zIndex.ts`, `layout.ts` (resizable panel sizes), `statusConfig.ts`.
+- `utils/markdown.tsx` — shared markdown-to-jsx options.
+- `themeBoot.ts`, `themes/`, `contexts/ThemeContext.tsx` — theme application.
 
-## Design Principles
+The main view is `'workspace'` or `'planning'`, persisted per project by `components/layout/hooks/usePersistedViewState.ts` (default `'workspace'`). The planning view has one renderer, the board (`components/board-view/`), mounted by `components/planning/index.tsx`, which owns the shared modals, context menu, and selection. There is no view switcher to extend.
 
-### Extract Hooks, Not Components
+## Recipes
 
-When logic is complex, extract to a custom hook rather than a wrapper component.
+**Add a component to a feature area.** Put it in that feature's directory. When logic grows, extract a hook next to it rather than a wrapper or provider component; `components/planning/index.tsx` keeps its logic in `planning/hooks/` for this reason. Split files only when the pieces are genuinely independent, and wait for three real uses before abstracting.
 
-```tsx
-// GOOD: Extract logic to hook
-function Layout() {
-  const { sidebarWidth, handleResizeStart } = usePanelResize();
-  // ...
-}
+**Call a new IPC endpoint.** Add the endpoint to `src/shared/ipc/{domain}Endpoints.ts` and the handler in main (see `src/main/ipc/CLAUDE.md`), expose it in `src/preload/api.ts` via `deriveDomainApi`, then add a function to `services/{domain}Service.ts` that forwards the payload object to `window.api.{domain}.*`. Stores and components import the service function, never `window.api`.
 
-// AVOID: Creating wrapper components for state
-function SidebarResizeProvider({ children }) {
-  // Adds render cycle, context overhead
-}
-```
+**Subscribe to a main-to-renderer event.** Register the listener in a hook mounted by `Layout.tsx` or `App.tsx` (see the existing `*IpcBridge` and `*Sync` hooks), not inside the feature component. A listener inside a component that unmounts when the user switches views silently drops events; that is the bug `useChatIpcBridge` was created to fix.
 
-### Zustand Over Context
+**Add a setting.**
+1. Add a typed definition to `SETTINGS` in `src/shared/settingsRegistry.ts` (key, default, codec).
+2. Read and write it with `getSetting` / `setSetting` from `services/settingsService.ts`. No per-key IPC endpoint is needed.
+3. Hold it in a store (general settings live in `stores/generalSettingsStore.ts`) and render the control in the matching `components/settings/*Settings.tsx`, usually inside a `SettingsSection`.
+4. A new Settings tab needs a `SettingsTab` member in `stores/settingsUIStore.ts` and an entry in `SETTINGS_TABS` in `components/settings/settingsTabs.tsx`, which is the single owner of tab order, nav, and padding.
 
-React Context re-renders all consumers on any change. Zustand has fine-grained subscriptions.
+**Add an icon.** Create `components/icons/<Name>Icon.tsx` following the existing shape (`className = 'w-4 h-4'` default, `stroke="currentColor"`, `aria-hidden="true"`, 24x24 viewBox) and export it from `components/icons/index.ts`.
 
-```tsx
-// AVOID: Context for frequently-changing state like panel widths
-// GOOD: Keep using Zustand for app state
-// GOOD: Use local state + hooks for component-specific concerns
-```
+**Use theme colors.** Use the semantic Tailwind utilities (`bg-surface-1`, `text-text-secondary`, `border-border-subtle`, `text-danger`, `bg-depth-2`, ...). Never hardcode a hex value. `src/shared/theme.ts` owns every palette and `generateThemeVariables`; `themeBoot.ts` writes the CSS variables onto `document.documentElement` before React mounts and `ThemeContext` re-applies them on change. To change a color, edit `theme.ts` (root `CLAUDE.md`, "Change a theme token"). A brand-new token also needs an alias in the `@theme` block of `index.css` so Tailwind can generate its utility. `index.css` otherwise holds only theme-independent tokens (type scale, radii, `--titlebar-height`, `--doc-measure`) and shared classes (`.btn`, `.btn-primary`, `.btn-secondary`, `.btn-ghost`, `.btn-danger`, `.dropdown-item`).
 
-### Colocation Over Organization
+**Render markdown.** Use markdown-to-jsx with an options object from `utils/markdown.tsx` (`markdownOptions`, `growingBlockMarkdownOptions`, `githubMarkdownOptions`, the focus and search-highlight builders). Don't build options inline. They all set `forceBlock: true`, because without it a single paragraph renders as a bare text node with no `<p>` and no prose spacing (streamed chat looked unformatted until its last block arrived). They also set `disableParsingRawHTML: true`, so JSX in a code sample is not turned into a real element; only the GitHub options turn it back on. The still-streaming block uses `growingBlockMarkdownOptions`, which keeps an unfinished mermaid fence as plain code.
 
-Keep related code together. Don't split files just to meet arbitrary LOC limits.
+## Invariants and gotchas
 
-```tsx
-// AVOID: Splitting every concern into 5+ files
-// GOOD: Split only when there's genuine independence
-```
+- **No emojis in the UI.** Use SVG icons from `components/icons/`.
+- **No self-referential UI text.** Labels say what a control does, not how it works or what it contains.
+- **Zustand for app state, not React Context.** Context re-renders every consumer. The few contexts that exist are narrow and rarely change (`ThemeContext`, `ModalLayerContext`, the tooltip provider).
+- **Selectors must return stable values** or the screen crashes with "Maximum update depth exceeded". See [`stores/CLAUDE.md`](stores/CLAUDE.md).
+- **Z-index comes from `Z_INDEX` in `constants/zIndex.ts`**, low to high: `resizeHandle` (10), `panel` (100), `dropdown` (200), `taskIndicator` (300), `palette` (400), `modal` (500), `toast` (600). Offset by small steps within a layer. `Modal` publishes its z-index through `ModalLayerContext`; `Popover` and `Select` read `useModalLayer() + 10`, so anything floating inside a modal should do the same rather than use `Z_INDEX.dropdown`, which renders behind the modal.
+- **Open documents are a list.** `workspaceStore` holds `openDocuments` + `activeDocumentId`. `WorkspaceView` renders `FileEditor` with `key={activeDocumentId}` because the markdown editor keeps a live Monaco model and reusing it leaks undo history between tabs. `useDocumentAutosave` is mounted in `WorkspaceView`, above the editor; moving it into the editor makes background tabs stop saving. Subscribe to the active id or path, never the document object, or every keystroke re-renders the tree and the chat panel.
+- **Plan item edits go through plan actions.** `usePlanTaskEdit` builds one atomic batch (`buildPlanTaskEditActions` in `planning/planItemFormActions.ts`: `revise_work_brief`, `set_repo_targets`, `update_item`) and sends it through `executePlanActions`. Trim and cap criteria at save time using the limits in `src/shared/planItemFields.ts`, not while the user types. `WorkBriefEditor` and `RepositoryScopeEditor` are the shared editors for create, edit, and approval details.
+- **Status is set by dragging on the board.** `TaskEditModal` does not edit `status_category`, and the board cannot reparent; hierarchy changes come from chat tools. `BoardView` nests a child under its parent only when both share a column.
+- **Card faces stay editor-free.** `BoardCard` shows one repo chip (the dev session's worktree repo, else `primary_repo_id`); Work Brief fields and affected repos stay in the modal.
+- **`source_document_id` has no UI on purpose.** It is a breadcrumb written by the `modify_plan` tool. Don't surface it without a use case.
 
-### Three Uses Rule
+## Testing
 
-Don't create abstractions until you have 3+ actual uses of a pattern. Wait until the pattern is proven.
-
-## Key Conventions
-
-- **Layout hooks** in `components/layout/hooks/` — `usePanelResize`, `useLayoutShortcuts`, `usePersistedViewState`, `useTrackerTopBarIntegration`
-- **Planning hooks** in `components/planning/hooks/` — the logic behind `PlanView` (`components/planning/index.tsx`) lives in hooks exported from `components/planning/hooks/index.ts`: `usePlanItemSelection`, `usePlanContextMenu`, `usePlanTaskEdit`, `useCreateItemModal`, `useBulkActions`. Extract new plan-view concerns into hooks here rather than growing `index.tsx`.
-- **Chat** — `Chat` component receives `currentView?: 'plan' | 'workspace'` prop. Chat history shared across views via `useChatStore` (`stores/chat/`).
-- **Layout constants** in `constants/layout.ts` — the resizable-panel size configs
-- **Stores** — See `stores/CLAUDE.md` for patterns. Use `useShallow` for multi-value selectors. Stores communicate via typed events.
-- **Default view** — Main view defaults to `'workspace'` and is persisted per project via `usePersistedViewState`. The planning view has one renderer, the board, so there is nothing to switch.
-- **Open documents are a list, not a field.** `workspaceStore` holds `openDocuments` + `activeDocumentId`; `DocumentTabStrip` renders them and `FileEditor` is keyed by document id, because the markdown editor keeps a live Monaco model and reusing one instance bleeds a file's undo history into the next tab. Autosave lives in `useDocumentAutosave`, mounted above the editor — put it back inside the editor and background tabs silently stop saving. Subscribe to the active *id* or *path*, never the document object, or typing re-renders the tree and the chat panel.
-- **WorkspaceHome** — `components/workspace/WorkspaceHome.tsx` is the landing screen shown inside the workspace view when no chat is active. Displays project context and quick-start prompts, plus a dismissible nudge (persisted per-project in localStorage) offering to generate the project's AGENTS.md context file via `RegenerateContextModal` when one is missing or still the placeholder.
-
-## CSS Conventions
-
-- Use Tailwind utilities
-- **Theme color tokens are projected in JS, not declared in CSS.** `src/shared/theme.ts` is the single source of palettes + `generateThemeVariables`; `themeBoot.ts` writes the CSS custom properties onto `document.documentElement` synchronously before React mounts, and `ThemeContext` re-applies them on change. `index.css` holds only theme-independent tokens (`--titlebar-height`, `--doc-measure`, `--chat-note-max`, etc.), a crash-safety background, and the `@theme` utility aliases — no hardcoded theme hex values. To change a theme color, edit `src/shared/theme.ts` (see the root CLAUDE.md "Change a theme token" recipe).
-- Existing `.btn`, `.btn-primary`, `.dropdown-item` classes for consistent styling
-
-## Work Brief and Repository Scope in UI
-
-`WorkBriefEditor` owns the controlled Intent, Description, and Acceptance Criteria controls. `RepositoryScopeEditor` owns the controlled primary/affected connected-repo controls. The full create modal, task edit modal, and applicable approval details reuse these editors; title stays with each modal so quick create remains title-only.
-
-**Card faces are editor-free; only the primary repo shows.** `components/board-view/BoardCard.tsx` renders one repo chip in its metadata row: the worktree's repo when a dev session has one, otherwise the item's `primary_repo_id` resolved through `connectedRepoName`. Affected repos, Intent, Description, and Acceptance Criteria stay off the card face — users open the modal to view or edit them.
-
-**`source_document_id` is unwired in the renderer** — the field is on `PlanItem` and is populated by the `modify_plan` Claude tool (`src/main/kpmTools/tools/plan-changes.ts`) as an iteration-doc breadcrumb, but no UI here reads or displays it. Do not surface it without a clear use case; see `src/main/claude/CLAUDE.md` for the write side.
-
-**Conventions:**
-- **Editable sections are always rendered in expanded create and edit modals.** This lets legacy items adopt a complete Work Brief and Repository Scope.
-- **Sanitize on save, not on edit.** Keep in-progress empty criterion rows while typing; trim, drop empties, and cap at the limits owned by `PLAN_ITEM_FIELDS` in `src/shared/planItemFields.ts` when building the save payload.
-- **Work Brief edits are revision guarded.** `usePlanTaskEdit` sends one atomic action batch through `executePlanActions`: `revise_work_brief` for semantic Work Brief changes, `set_repo_targets` for scope changes, and `update_item` for generic operational fields.
-- **`status_category` is not edited from `TaskEditModal`.** Column placement is handled by the board and tracker sync. Drag on the board to move a card.
-- **Work Brief reconciliation is automatic.** Start and detail surfaces do not ask users to compare revisions. Reused sessions keep their worktree while the main process refreshes execution context to the latest approved Work Brief.
-
-## Plan View
-
-The board (`components/board-view/`) is the only renderer over `plan_items`, mounted by `components/planning/index.tsx`, which owns the shared modals, context menu, and selection. Kanban columns are fixed to the status categories; dragging a card between columns is the only way to set status in the UI, and a card's dev session opens in the detail pane. Cards size themselves to the column, so there is no layout math to keep in sync. Children nest under their parent card and `BoardView` builds that hierarchy itself.
-
-A Cards canvas and a Tree outline were removed (2026-09), so a proposal to "switch views" has nowhere to switch to. Hierarchy edits now come from chat tools; the board reads the hierarchy but cannot reparent.
-
-## Z-Index Layers
-
-Use the `Z_INDEX` scale in `constants/zIndex.ts`, not raw Tailwind arbitrary values — most components already do. Low to high: `resizeHandle` → `panel` → `dropdown` → `taskIndicator` → `palette` → `modal` → `toast`. Within a layer, offset in small increments (e.g. `Z_INDEX.dropdown + 10` for submenus).
+- Vitest runs in a **node** environment (`vitest.config.mts`); there is no jsdom and no Testing Library. Test pure logic by extracting it into a `.ts` module beside the component (`chat/turnRenderPlan.ts`, `board-view/panelStatus.ts`). Test markup with `renderToStaticMarkup` from `react-dom/server` (see `chat/MessageList.test.tsx`).
+- Tests are co-located (`*.test.ts(x)`). The repo-root `tests/` tree holds shared mocks such as `tests/mocks/electron-api.ts` (`createMockApi`) and a few store tests.
+- Mock at the service boundary: `vi.mock('../services/<domain>Service', ...)`.
+- E2E: Playwright specs in `e2e/`, run with `make test:e2e` (packages the app first) or `make test:e2e:dev` against an existing package.

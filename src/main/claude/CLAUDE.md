@@ -1,200 +1,77 @@
-# Claude Integration
+# Chat Providers, KPM Tools, and Prompts
 
-Bridge between Electron main process and Claude via the Agent SDK. In-process MCP tools, streaming sessions, and structured plan modifications that are approval-gated by default or auto-applied when the user opts in.
+Chat runs on one of three providers per session: Claude (Agent SDK), Codex (app-server), or pi. All three share one KPM tool runtime, one prompt module, and one project write grant. This guide covers how those pieces fit and how to extend them. Board agents live in [`../services/agents/`](../services/agents/CLAUDE.md) and are out of scope here.
 
-## Architecture
+## How it fits together
 
-```
-StreamingSession (SDK wrapper)
-    ↓
-StreamingSessionService (lifecycle management)
-    ↓
-IPC handlers (chat.ts)
-    ↓
-src/main/kpmTools/runtimeRegistry.ts (provider-neutral KPM tool runtime)
-    ↓
-src/main/kpmTools/createKpmServer.ts (Claude MCP server adapter)
-    ├─ plan-items.ts (query tools)
-    ├─ plan-changes.ts (modification tool + callbacks)
-    ├─ jira.ts (Jira integration)
-    ├─ relations.ts (dependency tools)
-    ├─ storybook.ts (component discovery)
-    ├─ document-read.ts (document read tools)
-    ├─ document-update.ts (document update tools)
-    ├─ document-edit.ts (document edit tools)
-    ├─ context-file-update.ts (project context updates)
-    ├─ github.ts (GitHub PR description generation)
-    ├─ confluence.ts (Confluence integration tools)
-    ├─ file-move.ts (file move tools)
-    ├─ file-delete.ts (file delete tools)
-    ├─ plan-refs.ts (extract plan items from a doc; resolve @plan/<uuid> tokens)
-    ├─ list-project-files.ts (project file listing)
-    ├─ spill-read.ts (read_spill_file: recover SDK tool-result overflow files)
-    ├─ git-read.ts (git_read: read-only git against connected repos)
-    └─ git-push.ts (git_push: publish the checked-out branch)
-    ↓
-Shared chat prompts (`../chat/prompts/`)
-```
+**Sessions.** `services/streaming/StreamingSessionService.ts` owns live chat sessions, keyed `chat:{projectId}:{chatSessionId}`. `services/streaming/chatSessionLaunch.ts` turns a resolved model choice into a provider session: `claude/streaming/StreamingSession.ts` (fed by `buildSdkOptions` in `sdkOptionsBuilder.ts`), `codex/CodexChatSession.ts`, or `pi/PiChatSession.ts`. All implement `IChatSession`. A session disconnects after `session.mainIdleTimeoutMs` of idle time and resumes on the next message. Scope is `main` (full tool set, shared by the Plan and Workspace views) or `focus_document` (doc focus mode, reduced tools and a slimmer prompt).
 
-## Key Patterns
+**KPM tools.** Tool implementations live in `src/main/kpmTools/tools/`. `kpmTools/runtimeRegistry.ts` groups them (`buildToolGroups`) and is the source of truth for which tools exist; `kpmTools/runtime.ts` filters groups by scope and capability grant and runs each call inside an `AsyncLocalStorage` execution context (project, chat session, proposal sink). Each provider has a thin adapter over the same runtime:
 
-### 1. Streaming Sessions
+| Provider | Adapter | Tool names the model sees |
+|---|---|---|
+| Claude | `kpmTools/createKpmServer.ts` (in-process SDK MCP server) | `mcp__kpm__<name>` |
+| Codex | `codex/KpmCodexMcpServer.ts` (localhost MCP over HTTP, per-session bearer token) | via the `kpm` MCP server |
+| pi | `pi/kpmToolAdapter.ts` (pi `defineTool` shape) | bare `<name>` |
 
-Session key is `chat:{projectId}:{chatSessionId}` — multiple concurrent chat sessions per project are supported (up to `session.maxConcurrentSessionsPerProject` from `getConfig()`), each connecting on open and staying alive for 30 minutes of idle time.
+**Proposals.** Tools that change the plan or project files never write. They emit a proposal (`kpmTools/proposals.ts`); `StreamingSessionService.subscribeToToolProposals` forwards it to the renderer, and `renderer/stores/proposedChangeDisposal.ts` either queues it for review or auto-applies it per the user's setting (P8). Focus sessions always force review of document proposals.
 
-**Session Types (`ChatSessionScope`):**
-- **`main`**: full-featured session shared between Plan and Workspace views for a given chat thread
-- **`focus_document`**: slim session scoped to a single document (doc focus mode) — reduced tool set via `getFocusKpmServer()`, built with `buildFocusSystemPrompt()`
+**Prompts.** `src/main/chat/prompts/index.ts` exposes `buildChatSystemPrompt(context, { provider, scope })`, which every provider calls. Claude keeps its own templates (`buildSystemPrompt`, `buildFocusSystemPrompt`) because it is the only provider whose built-in tool names the prompt may mention. Codex and pi share one composition plus a `PROMPT_PROFILES` entry (identity line, optional prelude). Editable sections come from `promptRegistry.ts` via `resolveRegistryPrompt`, so user overrides (Settings, Prompts) reach every provider. `contextBuilders.ts` assembles the `PlanContext` the builders read.
 
-**Unified Chat Architecture (main scope):**
-- Single session survives switching between Plan and Workspace views — no disconnect, no session reset
-- The system prompt is view-independent (byte-stable, so prompt caching survives); the current view is injected as a `[Context: …]` line on each message instead
-- History persists across view switches
+**Write consent (P7).** `chat/writeGrants.ts` holds the one persisted grant per project. Each provider enforces it at its own gate: Claude in `claude/permissions.ts` (`canUseTool`), Codex through its sandbox mode plus app-server approval requests, pi in its tool-call hook. All three use `chat/shellWritePolicy.ts` for shell commands: a command needs the grant unless `classifyGitShellCommand` (`services/repo/gitReadOnly.ts`) proves it is read-only git.
 
-**Flow:**
-1. `StreamingSession` wraps the SDK `query()` function
-2. `AsyncMessageQueue` converts push (IPC) to pull (SDK generator)
-3. Init message received → MCP servers connect → session ready
-4. `send()` queues user messages; session processes asynchronously
-5. Session disconnects after 30min idle, explicit close, project delete, or app teardown
+**Models and capabilities.** `providers/modelCatalog.ts` fetches Claude's and Codex's model lists at launch (`refreshModelCatalog` in `main.ts`), saves the last good copy under userData, and serves reads synchronously; `shared/modelCatalog.ts` holds the parsers, the fallback list, and `formatModelName`. `chat/modelChoice/` resolves which provider, model, and effort a chat uses. `shared/providerCapabilities.ts` declares what each provider can do; the renderer reads it through `getProviderCapabilities`.
 
-### 2. In-Process MCP Tools
+## Recipes
 
-Tools are direct function calls registered with the SDK at startup—no subprocess spawning.
+### Add a KPM tool
 
-**Lifecycle:**
-1. `warmupMcpSdk()` initializes the KPM tool runtime at app startup
-2. Tool implementations from `src/main/kpmTools/tools/` are collected by `src/main/kpmTools/runtimeRegistry.ts`
-3. Claude MCP server instances are created by `src/main/kpmTools/createKpmServer.ts` from the shared KPM tool definitions
-4. Tool proposals flow through the single KPM proposal bus (`src/main/kpmTools/proposals.ts`) before being fanned out to renderer approval events
+1. Write a `createXTools(deps)` factory in `src/main/kpmTools/tools/` using `tool()` from `tools/index.ts`, a Zod raw shape for input, and `jsonResult` / `toolError` for output. `plan-items.ts` is the read example; `plan-changes.ts` is the proposal example.
+2. Add a `group(...)` entry in `buildToolGroups()` in `runtimeRegistry.ts`. Pick availability (`MAIN_ONLY` or `ALL_CHAT_SCOPES`); this is how a tool is hidden from focus mode. Pick capabilities from `KpmToolCapability` in `runtime.ts`, adding one if none fits.
+3. If the tool should be reachable from action runs, map its capability in `services/core/actionCapabilities.ts`. That map is keyed by action grant, so a new tool capability left out of it compiles fine and is silently unreachable from actions.
+4. If the tool changes plan state, emit `PlanAction[]` through the `emitPlanActions` callback. Never write the DB. For files, reuse the document, context, move, or delete emitters. A new proposal kind needs a variant in `proposals.ts`, a branch in `subscribeToToolProposals`, and an adapter in `proposedChangeDisposal.ts`.
+5. If the tool must act directly instead of proposing (as `git_push` does), request the project grant inside the tool through `projectWriteGrants.request`; see `requestGitPushWriteAccess`. No provider gate stops a KPM tool: `canUseTool` auto-allows `mcp__kpm__*`, and Codex and pi do not gate them either.
+6. Put routing guidance in `chat/prompts/toolDocs.ts` only if the decision is non-obvious. That tree is in Claude's main prompt only; Codex and pi learn a tool from its description, so the description must stand on its own.
+7. Restart the app. Tool definitions are built once in `warmupMcpSdk` and cached.
 
-### 3. Plan Modification Workflow
+### Add or change a prompt section
 
-**CRITICAL: All plan modifications MUST go through the structured PlanAction flow.**
+- **User-editable section:** export the default text from `workspace.ts`, add a `SYSTEM_PROMPTS` entry in `promptRegistry.ts`, and call `resolveRegistryPrompt(key, getPromptContent)` in both `buildSystemPrompt` and the shared branch of `buildChatSystemPrompt`. Settings picks up registry entries automatically through `PromptOverrideService`.
+- **Fixed section:** add it to the builders directly. If it names Claude tools (Read, Grep, Glob, Bash), keep it out of the shared composition; `crossProviderPromptParity.test.ts` fails if they leak to Codex or pi. Provider-specific tool guidance goes in that provider's `PROMPT_PROFILES` prelude.
+- **Per-message context** (current view, focused resources) is injected into the user turn by `StreamingSessionService`, not the system prompt. That keeps the system prompt byte-stable so prompt caching survives view switches.
+- Update the golden files in `chat/prompts/__fixtures__/` (`claudeMainBaseline.txt`, `codexFocusBaseline.txt`, `piFocusBaseline.txt`). The tests compare byte for byte, so review the diff as a prompt change.
 
-Claude proposes changes via tools; KPM either shows the approval modal or auto-applies the actions based on the user's global setting.
+### Add a provider capability
 
-```
-Claude calls modification tool (modify_plan, bulk_modify_plan, etc.)
-  ↓ Tool validates input via Zod
-  ↓ Tool emits PlanAction[] via onPlanActions callback
-  ↓ UI receives event
-  ↓ Manual mode: approval modal → user approves → actions applied atomically
-  ↓ Auto-apply mode: actions applied atomically immediately
-```
+Add the field with a doc comment to `ProviderCapabilities` in `shared/providerCapabilities.ts` and set it for every provider; `satisfies Record<ChatProvider, ProviderCapabilities>` makes a missing entry a compile error. Read it through `getProviderCapabilities(provider)` instead of branching on the provider name. Some flags are declarative only and have no reader yet, so check for one before assuming a flag changes behavior.
 
-**Modification tools that emit actions for approval or auto-apply:**
-- `modify_plan` - General plan modifications
-- `bulk_modify_plan` - Bulk mutations (set_status, set_label, set_release, reparent, delete, clear_dependencies) against items selected by ID or filter
+### Change the model list
 
-## Adding New Tools
+Claude offers only the moving aliases in `CLAUDE_CHAT_MODEL_IDS` (`shared/modelCatalog.ts`), so a new Claude version needs no code change. Codex's list comes live from app-server `model/list`; `CODEX_CHAT_MODELS` in `shared/types.ts` is the fallback and the only source of Codex context windows. Readers never wait on a fetch, so a new consumer should call `getModelCatalog()` and listen for the `chatEvents.modelCatalog` update rather than fetching.
 
-1. Create tool in `src/main/kpmTools/tools/` — see `src/main/kpmTools/tools/plan-items.ts` for read-only example, `src/main/kpmTools/tools/plan-changes.ts` for modification example
-2. Register the tool group in `src/main/kpmTools/runtimeRegistry.ts`
-3. Add usage guidance in `prompts/toolDocs.ts`
-4. If the tool should be hidden in a mode or disabled state, enforce that in `permissions.ts` / `canUseTool`; do not use SDK `allowedTools` because it hides external MCP tools
-5. Restart Electron (no rebuild required)
+## Invariants and gotchas
 
-**CRITICAL:** Modification tools MUST emit `PlanAction[]` via `onPlanActions` callback — NEVER modify the database directly from a tool.
+- **The prompt channel matters.** Claude gets `systemPrompt: { type: 'custom', prompt, snapshot: false }`. `snapshot: false` is load-bearing: otherwise the SDK records the first request's prompt and replays it on every later request and resume, so plan edits and grant changes never reach the model. Always send the full prompt on resume. Codex gets it as `developer_instructions` in the thread config (`CodexChatSession.threadOptions`), which is re-sent every request and survives compaction; prepending it to the first message would put it in history, which compaction throws away.
+- **The global `~/.claude/CLAUDE.md` is folded in by KPM**, not the SDK, since KPM passes a custom prompt rather than the `claude_code` preset. It is gated by the `respectGlobalClaudeMd` setting in `contextBuilders.ts` and reaches all providers through `buildUserGlobalInstructionsSection`. `appSettings` is an optional dependency so non-chat callers do not inherit it.
+- **Read the grant live.** Permission handlers are built once per session spawn, so anything they depend on must be looked up per call. `projectWriteGrants.has()` is a synchronous memory read for that reason; never capture the grant as a boolean.
+- **`allowedTools` bypasses `canUseTool`.** Grep and Glob are in `allowedTools` so searching never prompts, which also skips the credential deny in `permissions.ts`. `searchGuardHook.ts` restores it as a PreToolUse hook. Do not add more tools to `allowedTools`, and do not use it to hide tools: it does not restrict availability. `tools` is `['default']`, which only expands to the built-in preset as the sole value.
+- **Credential paths stay denied after the grant.** Direct file tools check the `services/files/pathSecurity.ts` roots in `permissions.ts`. Claude's shell runs in the SDK sandbox with the same roots denied and only localhost network. Codex's sandbox governs write scope only, and pi has no sandbox (`sandboxedShell: false`), so their shells after a grant reach more than Claude's.
+- **The shell cannot publish or reach GitHub.** The sandboxed shell has no network and no credentials, so `git_push` and `read_pull_request` run from the main process. `git_push` goes through `publishBranch` (`services/repo/gitWrites.ts`), which refuses force, refspecs, and protected or default branches. `git_read` runs read-only git via `execFile` and needs no grant.
+- **Claude's edits to project files are intercepted, not executed.** `Write`/`Edit` on the project context file or on project files are captured by `permissions.ts` and turned into a review proposal. Repeated edits to one file in a turn accumulate through the pending-content cache in `runtimeRegistry.ts`, which is cleared at the start of each turn.
+- **Tool input schemas must convert to JSON Schema.** Codex and pi receive JSON Schema, not Zod. `assertKpmToolInputSchemas` throws at startup if a shape does not convert.
+- **Listing and execution are both scope- and grant-checked.** A tool the model names outside its scope or grant is refused at execution, not just hidden.
+- **`@plan/<uuid>` refs** must come from KPM tool results; `PlanActionService` rejects unresolved ones. `contextRefs.ts` (`formatPlanRefSection`) expands them for agent context, and `toExternalMarkdown` rewrites them at export (see the root guide).
+- **Work Brief fields** (title, description, intent, acceptance criteria) change through the `revise_work_brief` PlanAction with `expected_revision`; `update_item` cannot touch them. Repository Scope uses `set_repo_targets`. Keep the `modify_plan` description telling the model to fetch the item first, since a revision is a full replacement. Field limits live in `shared/planItemFields.ts`.
 
-## Modifying Prompts
+## Tests
 
-### System Prompts (Main Chat)
+Tests sit next to their modules. The ones that guard this subsystem's contracts:
 
-Files live in `../chat/prompts/` so Claude, Codex, and pi chat adapters can share them without depending on Claude-specific paths. Entry point is `index.ts` with `buildChatSystemPrompt(context, { provider, scope })`, which every provider calls. Claude keeps its own templates (`buildSystemPrompt` / `buildFocusSystemPrompt`) because it is the only provider whose built-in tool names the prompt may reference; every other provider shares one composition plus a `PROMPT_PROFILES` entry for its identity line and any prelude its own tool surface needs. Overrides reach all of them through `resolveRegistryPrompt` (`promptRegistry.ts`). Focus scope has two rule sets on purpose: `CLAUDE_FOCUS_OPERATING_RULES` names Claude's tools, `FOCUS_OPERATING_RULES` is shared by the rest.
+- `kpmTools/providerParity.test.ts`: all three adapters route through the runtime and expose the same tool contracts per scope.
+- `kpmTools/runtime.test.ts`: scope and capability filtering.
+- `claude/permissions.test.ts`, `chat/writeGrants.test.ts`, `chat/shellWritePolicy.test.ts`, `services/repo/gitReadOnly.test.ts`: write consent and credential denial.
+- `claude/sdkOptionsBuilder.test.ts`: Claude launch options.
+- `chat/prompts/index.test.ts`, `chat/prompts/crossProviderPromptParity.test.ts`: prompt baselines and leak checks.
+- `providers/modelCatalog.test.ts`, `shared/modelCatalog.test.ts`, `shared/providerCapabilities.test.ts`.
 
-Each provider delivers that prompt through its own channel, and the channel matters as much as the content. Claude and pi take it as a real system prompt. Codex has no such field on `ThreadOptions`, so KPM passes it as `developer_instructions` through the client's config overlay (`codexConfigWithKpmMcp`) — every model request re-sends it, so it survives Codex's history compaction and a resumed thread. Do not go back to prepending it to the first message: that lands in history, which is exactly what compaction discards, and a long session then loses the operating rules and tool inventory without any signal.
-
-Key files: `toolDocs.ts` (tool decision tree), `modes.ts` (repo-access + plan-modification guidance), `workspace.ts` (constraints, workspace boundaries, plan rules, response style), `planFormatting.ts` (plan display), `focusedResources.ts` (focused resource handling), `promptRegistry.ts` (system prompt registry), `types.ts` (`PlanContext` / `ContinuationTurn`).
-
-The developer's global `~/.claude/CLAUDE.md` is folded into the chat prompt (main, focus, and the Codex/pi adapters) via `buildUserGlobalInstructionsSection`, gated by the `respectGlobalClaudeMd` setting and read in `contextBuilders.ts` (`appSettings` is an optional `BuildContextDeps` dep, so non-chat callers like scheduled loops don't inherit it). The SDK does **not** inject it natively: KPM passes a custom `systemPrompt`, not the `claude_code` preset. That prompt is sent as `{ type: 'custom', prompt, snapshot: false }` — `snapshot: false` is load-bearing, because the SDK otherwise records the prompt on a conversation's first request and replays it verbatim on every resume, so a rebuilt prompt would never reach the model. Board and review agents use their own prompt builders and are intentionally excluded.
-
-The `currentView` ('plan' | 'workspace') sent with each message is injected as a `[Context: …]` line ahead of the user's text (`StreamingSessionService.sendChatMessage`) rather than built into the system prompt — this keeps the prompt byte-stable across view switches for cache hits without changing response modes.
-
-## Common Pitfalls
-
-### Streaming Sessions
-- Session key is `chat:{projectId}:{chatSessionId}` - main-scope sessions share history across Plan and Workspace for that chat thread
-- MCP connects once per session (tool availability fixed for session)
-- 30-minute idle timeout auto-disconnects; next message auto-resumes
-
-### Tools
-- Tool names are exposed to Claude with the `mcp__kpm__` prefix
-- Callbacks emit during tool execution (UI must handle mid-response updates)
-- Restart required for tool changes (no hot reload)
-
-### Prompts
-- Repos added via `--add-dir`, not prompts
-- Permissions are built once per SDK session spawn (not per message), so anything they close over must be read live — the project write grant is looked up through `chat/writeGrants.ts` for exactly this reason, never captured as a boolean
-- Undocumented behavior = Claude guesses (add concrete examples)
-
-### Plan Modifications
-- **ALL modification tools MUST emit PlanAction[] via onPlanActions callback**
-- **NEVER modify the database directly from a tool** - this bypasses review, auto-apply handling, validation, and renderer synchronization
-- Actions are atomic (all succeed or all fail)
-- In manual mode, user approval happens after Claude finishes responding; in auto-apply mode, the renderer executes proposals as they arrive
-- If adding a new bulk modification tool, pass `onPlanActions` callback and emit actions
-
-## File Organization
-
-| File | Purpose |
-|------|---------|
-| `clientManager.ts` | Singleton Claude client |
-| `contextBuilders.ts` | Context fetching for sessions |
-| `permissions.ts` | File access control. Routes direct file, shell, and git writes through the conversation-wide consent gate, checks the live grant on every write, and denies direct access to protected credential paths. |
-| `sdkOptionsBuilder.ts` | SDK config construction, including the fail-closed shell sandbox. It keeps protected credential paths denied after a write grant while allowing localhost and Docker; direct file tools still deny Docker client state. It also applies `thinking: { type: 'adaptive', display: 'summarized' }` for opus and sonnet so thinking content streams in the response. |
-| `auth.ts` | API key management |
-| `activity.ts` | Activity tracking |
-| `findClaude.ts` | Claude binary discovery |
-| `sdkTypeGuards.ts` | Type guard utilities |
-| `streaming/` | Session management |
-| `../kpmTools/` | Provider-neutral KPM tool runtime, tool implementations, tool manifest, MCP server adapter, and proposal bus |
-| `../kpmTools/tools/schemas.ts` | Shared Zod primitives (`StatusCategoryEnum`, `PlanActionsCallback`) reused across tool files |
-| `../kpmTools/tools/review-assessment.ts` | Separate read-only MCP server used by `ReviewAssessmentService` (not part of the main-chat `createKpmServer`) |
-| `../kpmTools/tools/plan-refs.ts` | `extract_plan_items_from_doc` — lift `@plan/<uuid>` tokens out of a project file by path |
-| `../kpmTools/tools/spill-read.ts` | `read_spill_file` — read-only recovery of SDK tool-result spill files in `~/.claude/projects/` |
-| `../kpmTools/tools/git-read.ts` | `git_read` — runs read-only git in a connected repo via `execFile` (no shell). Needs no write grant. Raw `git` in chat Bash goes through `permissions.ts` Rule -1: `classifyGitShellCommand` allows a command it can prove is read-only git, everything else needs the conversation write grant. Both classifications live in `services/repo/gitReadOnly.ts`. |
-| `../kpmTools/tools/git-push.ts` | `git_push` — pushes the checked-out branch of a connected repo. The sandboxed chat shell can reach neither the credential paths nor the network, so a push must run from the main process, where the user's git credential helper applies. KPM MCP tools are auto-allowed by `canUseTool`, so this tool asks for the conversation write grant itself (`requestGitPushWriteAccess` in `../kpmTools/runtimeRegistry.ts`). The push itself runs through `publishBranch` (`services/repo/gitWrites.ts`), the one entry point for moving a branch ref: no force, no refspec, no protected or default branch, and every caller must state its `WriteAuthorization`. |
-| `contextRefs.ts` | `formatPlanRefSection` — expand plan refs into agent context |
-| `../chat/prompts/` | Shared chat system prompt builders |
-
-## Plan References (`@plan/<uuid>`)
-
-Descriptions, intents, and acceptance criteria may contain `@plan/<uuid>` tokens. Iteration-doc filenames and other ad-hoc references must not appear in fields that sync to external trackers, but `@plan/<uuid>` is the **sanctioned exception**: it gets rewritten to native syntax (Jira ADF, Linear ref, Confluence link, GitHub markdown) at every export boundary by `toExternalMarkdown` in `src/main/documents/exportBoundary.ts`.
-
-`PlanActionService` rejects `create_item` / `update_item` actions whose text contains unresolved refs. `DevSessionService` prepends a `<plan-refs>` block via `formatPlanRefSection` so agents see resolved ref state without a tool call. The pure parser/expander lives in `src/shared/planRefs.ts`.
-
-## Work Brief and Repository Scope
-
-A Plan Item's Work Brief is the revisioned aggregate of title, description, intent, and acceptance criteria. `create_item` retains its flat payload for compatibility. After creation, chat must fetch the complete item and use `revise_work_brief` with `expected_revision`; `update_item` cannot mutate Work Brief fields. `set_repo_targets` replaces the separate Repository Scope and does not change the Work Brief revision or queue tracker sync.
-
-The aggregate fields flow from the chat iteration doc → plan item → implementation agent:
-
-| Field | Shape | Role |
-|-------|-------|------|
-| `intent` | `string` (≤ 500 chars, one sentence) | Decided outcome. What "done" means at a glance. |
-| `acceptance_criteria` | `string[]` (≤ 50 entries, each ≤ 1000 chars) | Testable checklist the agent must satisfy. |
-| `description` | `string` (markdown) | Rationale, context, rejected alternatives. The story, not the contract. |
-| `source_document_id` | `string` (no FK) | Breadcrumb to the iteration doc this item was extracted from. |
-
-Guidance baked into the `modify_plan` tool prompt: prefer `intent` + `acceptance_criteria` for implementation items; rely on `description` alone for exploratory/research items where criteria cannot be enumerated yet. `revise_work_brief` is a full replacement, so the model fetches current values first. Intent or Acceptance Criteria headings inside `description` are ordinary prose, never a shadow contract.
-
-The fields are normalized by `shared/workBrief.ts`, revised atomically by `PlanItemRepository.compareAndReviseWorkBrief`, and projected to execution by `main/workBrief/projections.ts`. New dev sessions capture the projected prompt in `initial_instructions` and its revision in `dev_sessions.work_brief_revision`. Reused sessions and follow-up turns automatically refresh to the latest approved revision while preserving the existing worktree and supplemental instructions.
-
-### Sync boundary
-
-KPM is the developer's local source of truth; Jira/Linear are the org's. Keep the boundary clean:
-
-| Field | External tracker (Jira/Linear) |
-|-------|--------------------------------|
-| `title` | Synced as `summary` |
-| `description` | Synced as description (markdown → ADF for Jira) |
-| `intent` | **Local-only** — not synced |
-| `acceptance_criteria` | **Local-only** — not synced |
-| `source_document_id` | **Local-only** — not synced |
-
-Enforced at `src/main/db/domain/ExportService.ts` (see the guard comments on `createIssue` / `updateIssue` payloads). Do not add spec fields to the outbound payload without an explicit product decision.
-
-**Descriptions must stay sync-clean.** Because `description` is pushed to Jira/Linear verbatim, it must not contain references to local-only resources: KPM document IDs (`doc-...`), `source_document_id` values, or iteration-doc filenames that live only in the developer's project folder. Those references are dead outside the developer's machine. The `modify_plan` tool prompt instructs Claude to use `source_document_id` for iteration-doc breadcrumbs and never to cite them in prose — preserve that guidance when editing the tool docstring.
-
-If you later want intent or criteria to reach external stakeholders, do it by appending them to the description payload at export time (under explicit section headers like `## Acceptance Criteria`) rather than by changing sync-direction defaults on the fields themselves. That keeps the "local by default" invariant intact.
+Run one with `npm test -- <path>`.

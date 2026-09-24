@@ -1,147 +1,65 @@
 # Zustand Stores
 
-UI state management with slice pattern, typed events for cross-store communication, and dependency injection for testing.
+One store per feature domain, a sliced project store for plan and project data, and typed events for side effects that cross stores. Everything public is re-exported from `index.ts`; browse the directory for the current set.
 
-## Store Organization
+## Shapes you will find
 
-- **`projectStore.ts`** — Main store factory (sliced into `project/` subdirectory: projectSlice, planSlice, resourceSlice, uiSlice)
-- **`chat/`** — Sliced store for unified chat state shared between Plan & Workspace views: `historySlice`, `messageSlice`, `streamingSlice`, `sessionManagementSlice`, `settingsSlice` plus shared `baseState.ts`, `types.ts`, `persistence.ts`. Exported as `useChatStore` from `stores/chat` (or via `stores/index.ts`).
-- **`devSessions/`** — Sliced store for board agent sessions. `index.ts` composes `lifecycleSlice` (load/delete/dismiss/rename sessions, diff loading), `prSlice` (PR context, creation, linking, and status polling), `reviewSlice` (review inbox: load/assign/assess, draft and send replies, resolve/ignore threads) plus shared `helpers.ts` and `requestState.ts`. Live agent state (`agentStateBySessionId`, `activityFeedBySessionId`, `commitStateBySessionId`, etc.) lives on the root store object. Every collection keyed by session id is declared once in `PER_SESSION_STATE` (`helpers.ts`) with the ids that may key it — `impl` for the session the user started, `runtime` for its review twin and playbook subagents — and `retainPerSessionState` / `dropPerSessionState` are the only two places entries are removed. A new per-session map will not compile until it declares its keying. Import as `useDevSessionsStore` from `stores/devSessions` (or via `stores/index.ts`).
-- **`proposedChangeDisposal.ts`** — Deep, project-scoped disposal module for Proposed Changes. Its five-operation interface (`propose`, `approve`, `retry`, `dismiss`, `resetProject`) owns review versus auto-apply policy, per-kind merging, serialized execution, and failed auto-apply recovery. A static exhaustive adapter registry owns kind-specific identity, edits, mutation execution, presentation data, and success projection.
-- **`trackerStore.ts`** — Association and scope management (top-level file, not under `tracker/`).
-- **`tracker/`** — Other tracker-related sub-stores:
-  - `useSyncStore` — Sync preview state, conflict resolutions, and `syncAvailability` (keyed by associationId). `checkForUpdates()` is called by `useTrackerTopBarIntegration` on a 2-minute polling interval; badge UI reads from `syncAvailability`.
-  - `useExportStore` — Export queue state. `addToQueueWithStatus()` stages items and tracks `recentlyImportedIds` for visual feedback.
-  - `useCredentialStore` — Tracker credential loading/display.
-  - `useTrackerConfigStore` — Custom fields, status mapping, and issue browse/search for an association.
-  - `useTrackerMetadataStore` — Cached tracker project/issue-type/status metadata, keyed by `trackerType:projectKey`.
-  - `useSyncReviewStore` — Sync review state (project-scoped).
-- **Specialized stores** — One per feature domain (workspace, artifacts, search, background tasks, Claude availability, etc.). Includes `backgroundTaskStore.ts`, `customPromptTaskStore.ts`, and `claudeAvailabilityStore.ts` in addition to the domain stores listed above.
-- **Infrastructure** — `storeEvents.ts` (typed event emitter), `projectScopedStores.ts` (lifecycle management — reset list includes `proposedChanges`, `syncReview`, and `devSessions`), `useStoreSubscriptions.ts` (event wiring)
+- **Project store** (`projectStore.ts` + `project/`): one `create()` combining `projectSlice`, `planSlice`, `resourceSlice`, `uiSlice`. `createProjectStore(deps)` takes `ProjectStoreDependencies` (`api`, `emit`) so tests can inject mocks. Components should use the domain views in `projectDomains.ts` (`useProjectDomainStore`, `usePlanDomainStore`, `useResourceDomainStore`, `useProjectUiDomainStore`); they are typed windows onto the same store, not copies. Derived reads live in `project/selectors.ts`.
+- **Other sliced stores**: `chat/` (sessions keyed by id in a `sessions` Map, `viewedSessionId` for the focused tab, open tabs persisted per project and restored by `hydrateOpenSessions`) and `devSessions/`.
+- **Standalone stores**: plain `create()` that call `services/*` for IPC. `linearDocumentsStore.ts` is a typical project-scoped example; `searchStore.ts` is a minimal UI-only one.
+- **Infrastructure**: `storeEvents.ts` (typed event bus), `useStoreSubscriptions.ts` (cross-domain listeners, mounted once in `App.tsx`), `projectScopedStores.ts` (reset on project switch).
 
-All stores exported from `index.ts`. See the directory for the full list.
+## Rules with reasons
 
-## Slice Pattern (Large Stores)
+**Selectors must return stable values.** zustand v5 passes the selector straight to React's `useSyncExternalStore`, so a selector that builds a new object or array on every call reads as a changed snapshot every render and React aborts with "Maximum update depth exceeded". This is a correctness rule.
 
-Slices are factory functions returning partial state + actions:
+- Safe: a primitive, or a reference the store already holds (`map.get(id)`, `array.find(...)`).
+- For several values, wrap in `useShallow` from `zustand/react/shallow`. It compares one level deep, so each field must itself be a primitive or stored reference. A field built inline (`.map`, `.filter`, `?? []`, a helper returning a fresh object) loops just as hard. Select a primitive key and rebuild in `useMemo` (`components/board-view/BoardCard.tsx`), or move the derivation into its own `useShallow` hook (`components/board-view/useReviewRuntime.ts`).
 
 ```typescript
-// types.ts
-export interface MySlice {
-  myValue: string;
-  myAction: (newValue: string) => void;
-}
-
-export type SliceCreator<TSlice> = (deps: ProjectStoreDependencies) =>
-  StateCreator<ProjectState, [], [], TSlice>;
-
-// mySlice.ts
-export const createMySlice: SliceCreator<MySlice> = (deps) => (set, get) => ({
-  myValue: 'initial',
-  myAction: (newValue) => set({ myValue: newValue }),
-});
-
-// projectStore.ts - Combine slices
-export const createProjectStore = (deps?: ProjectStoreDependencies) => {
-  return create<ProjectState>((set, get, store) => ({
-    ...createBaseState(),
-    ...createMySlice(deps)(set, get, store),
-  }));
-};
-```
-
-## Standalone Stores
-
-Simpler domains use `create()` directly. See `searchStore.ts` for a typical example.
-
-## Chat Store (Unified Sessions)
-
-Multiple concurrent sessions per project, each shared between Plan and Workspace views. Per-session state lives in a `sessions: Map<string, PerSessionState>` keyed by a `crypto.randomUUID()` session id; `viewedSessionId` tracks the focused tab and `activeSessionIds` the sessions with a running subprocess. Which tabs were open (and which was focused) is persisted per project to localStorage (see `chat/persistence.ts`) and restored via `hydrateOpenSessions`. Chat history carries over when switching views. `currentView` parameter passed to prompts for context-aware AI suggestions.
-
-## Cross-Store Communication
-
-Stores use **typed events** for side effects, to avoid circular dependencies:
-1. Define event types in `storeEvents.ts`
-2. Emit from store actions: `deps.emit({ type: 'status-changed', payload })`
-3. Listen in `useStoreSubscriptions.ts` for cross-domain reactions (e.g. status change → auto-queue export), or via a module-level `subscribe(...)` call at the bottom of the consuming store's own file when the reaction belongs entirely to that store's domain (see `useSyncStore.ts`, `useExportStore.ts`)
-
-Direct cross-store imports are fine for simple reads (e.g. Proposed Change disposal reads `generalSettingsStore`) — use typed events for side effects such as projecting successful mutations into other stores.
-
-## Key Patterns
-
-- **Dependency Injection:** Stores receive `ProjectStoreDependencies` (api, emit) via factory functions for testability
-- **Optimistic Updates:** Update UI immediately, revert on error. See `planSlice.ts` for examples.
-- **Project-Scoped Lifecycle:** `projectScopedStores.ts` clears relevant stores on project switch
-
-## Selectors (Must Return Stable Values)
-
-**A selector that mints a fresh object or array on every call crashes the screen it's on.** zustand v5 passes the selector straight to React's `useSyncExternalStore`, so a result that never compares equal reads as a changed snapshot on every render and React aborts the tree with "Maximum update depth exceeded". This is a correctness rule, not a performance tip.
-
-Safe returns: a primitive, or a reference the store already holds (`map.get(id)`, `array.find(...)`).
-
-For a derived object, wrap the selector in `useShallow` — and note it compares **one level deep only**, so every field must itself be a primitive or a stored reference. A field built inline (`.map(...)`, `.filter(...)`, `?? []`, a helper returning a new object) loops just as hard as an unwrapped selector: return a primitive key instead and rebuild the value in a `useMemo` (see `board-view/BoardCard.tsx`), or move the whole derivation into a `useShallow` hook of its own (see `board-view/useReviewRuntime.ts`).
-
-```typescript
-import { useShallow } from 'zustand/react/shallow';
-import {
-  useProjectDomainStore,
-  usePlanDomainStore,
-  useProjectUiDomainStore,
-} from '../stores';
-
-// Good - scoped by domain and selected fields
+const projectId = useProjectDomainStore((s) => s.currentProjectId);
 const { projects, currentProjectId } = useProjectDomainStore(
-  useShallow((state) => ({ projects: state.projects, currentProjectId: state.currentProjectId }))
+  useShallow((s) => ({ projects: s.projects, currentProjectId: s.currentProjectId }))
 );
-
-// Better - select only what you need
-const projectId = useProjectDomainStore((state) => state.currentProjectId);
-const planItems = usePlanDomainStore((state) => state.planItems);
-const focusedResources = useProjectUiDomainStore((state) => state.focusedResources);
 ```
 
-`useProjectStore` remains the internal aggregate store. New component code should prefer domain stores.
+**IPC goes through `services/`.** Stores import service functions; `window.api` is lint-restricted to `src/renderer/services/`. The project store is the one exception: it receives `api` through its deps.
 
-## Adding a New Store
+**Side effects across stores use events; reads may import directly.** A store may read another store's state directly (`proposedChangeDisposal.ts` reads `generalSettingsStore` and `usePlanDomainStore`). When store A needs store B to do something, emit an event, which avoids import cycles.
 
-### Large domain (with slices):
-```
-stores/myFeature/
-├── types.ts      # Define interfaces
-├── baseState.ts  # Initial state
-├── mySlice.ts    # Slice factory
-```
+**Per-session maps in `devSessions/` must declare their keying.** Every collection keyed by session id is listed once in `PER_SESSION_STATE` (`devSessions/helpers.ts`) with which ids may key it (`impl` for the user's session, `runtime` for its review twin and playbook subagents). `retainPerSessionState` and `dropPerSessionState` are the only places entries are removed. A new map will not compile until it is declared.
 
-### Standalone:
-```typescript
-// stores/myStore.ts
-export const useMyStore = create<MyState>((set) => ({ /* ... */ }));
-```
+**Proposed Changes have one owner.** `proposedChangeDisposal.ts` owns review versus auto-apply (P8) through `propose`, `approve`, `retry`, `dismiss`, `resetProject`, with a per-kind adapter registry. Add a new change kind as an adapter there; don't write a parallel approval path.
 
-### Export from `stores/index.ts`
+## Recipes
 
-## Adding Cross-Store Events
+**Add a store.**
+1. Small domain: `stores/myStore.ts` with `create<MyState>()`. Large domain: a directory with `types.ts`, `baseState.ts`, slice files, and an `index.ts` that composes them (copy `devSessions/` or `chat/`).
+2. Call IPC through a `services/*Service.ts` function; set an `error` field on failure rather than throwing into components.
+3. Re-export from `stores/index.ts`.
+4. Decide whether it is project-scoped (below).
 
-1. Define event in `storeEvents.ts`
-2. Emit from Store A: `deps.emit({ type: 'my-event', payload })`
-3. Listen in `useStoreSubscriptions.ts`, or via a module-level `subscribe(...)` in Store B's own file — see "Cross-Store Communication" above
+**Decide if a store is project-scoped.** If it holds data belonging to the open project, it must be cleared on switch or the next project shows stale data.
+1. Add a `resetProjectState()` action that clears project data but keeps global preferences (the chat store keeps the model choice; the terminal store keeps panel geometry).
+2. Register it in `PROJECT_SCOPED_STORES` in `projectScopedStores.ts`. The list is typed, so a missing method is a compile error. `useProjectLoader` calls `resetAllProjectScopedStores()`.
+3. Update the expected list in `projectScopedStores.test.ts`.
 
-## Best Practices
+Leave global stores out (settings, model catalog, toasts). `permissionStore` and `activityStore` must stay out: they describe work still running in the project you just left, and resetting them on switch recreates the bug they were added to fix.
 
-- **Use slices for large stores** — Split by concern, not by line count
-- **Dependency injection** — Pass `deps` to allow mocking
-- **Error handling** — Always set `error` state on failures
-- **Selectors** — Return stable values; a freshly-built object or array crashes the render loop. See "Selectors" above
-- **Events instead of imports** — No circular dependencies
-- **Optimistic updates** — Update UI immediately, revert on error
+**Add a cross-store event.**
+1. Add an event interface to `storeEvents.ts` and include it in the `StoreEvent` union. That file is the authoritative list.
+2. Emit it: `emit({ type: 'my-event', payload })` (the project store uses `deps.emit`).
+3. Listen in `useStoreSubscriptions.ts` when the reaction spans domains, or with a module-level `subscribe('my-event', ...)` at the bottom of the consuming store's file when the reaction belongs to that store (`tracker/useSyncStore.ts`, `tracker/useExportStore.ts`).
 
 ## Testing
 
-```typescript
-const mockApi = { /* mock methods */ };
-const mockEmit = vi.fn();
-const store = createProjectStore({ api: mockApi, emit: mockEmit });
+- Project store: build it with injected deps.
 
-store.getState().myAction();
-expect(mockApi.myEndpoint).toHaveBeenCalled();
-```
+  ```typescript
+  const api = createMockApi(); // tests/mocks/electron-api.ts
+  const emit = vi.fn();
+  const store = createProjectStore({ api: api as unknown as API, emit });
+  ```
+
+- Standalone stores: mock the service module, e.g. `vi.mock('../services/permissionService', ...)` (see `permissionStore.test.ts`, `workspaceStore.test.ts`).
+- Tests are co-located as `*.test.ts`; a few live under the repo-root `tests/stores/`.

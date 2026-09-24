@@ -1,154 +1,82 @@
 # Database Layer
 
-Owns database schema, migrations, repositories (data access), and domain services (complex multi-table transactions).
+One SQLite file (`planner.db` in Electron's `userData`), accessed synchronously through better-sqlite3. This folder owns the schema (`migrations.ts`), the repositories that do all data access (`repositories/impl/`), the container that wires them (`container.ts`), and the domain services that run multi-table transactions (`domain/`).
 
-## Document storage
+Markdown documents are files on disk in the project folder, not rows. `plan_items.source_document_id` is plain TEXT with no foreign key; cross-references use `@plan/<uuid>` tokens.
 
-Markdown documents live as files on disk in the project folder. There is no DB-backed document store. `PlanItem.source_document_id` is a free-form text breadcrumb (no FK); the plan-refs feature uses `@plan/<uuid>` tokens for first-class cross-references. Claude's `propose_document_create` and `propose_document_edit` tools write files directly.
+## How it fits together
 
-## Directory Structure
+- `connection.ts`: `initDatabase()` opens the file, applies pragmas from `getConfig().database` (WAL, `synchronous`, `foreign_keys = ON`), then calls `runMigrations`. `getDatabase()` returns the handle.
+- `migrations.ts`: the entire schema. A fresh install runs every migration from `001_initial_schema`; there is no separate base schema.
+- `container.ts`: `createRepositoryContainer({ database, userDataPath, ... })` builds every repository eagerly. `main.ts` calls `initializeRepositoryContainer()` once; `createAppServices(container)` in `src/main/services/appServices.ts` hands it to services, and IPC handlers reach it as `services.container.<repo>`.
+- `interfaces/`: one `I{Name}Repository` per repository, grouped by domain file, re-exported from `interfaces/index.ts`. `IRepositoryContainer` lives in `interfaces/container.ts`.
+- `domain/`: factory functions (`createPlanActionExecutor(deps)`, `createSyncService(deps)`, ...) that take repositories and the `database` as explicit dependencies and wrap multi-table writes in one transaction. Exported from `domain/index.ts`.
+- `appSettingsAccess.ts`: typed `getSetting` / `setSetting` over the `app_settings` key-value table, driven by `src/shared/settingsRegistry.ts`. Use it instead of raw keys.
 
-```
-src/main/db/
-├── connection.ts              # Database initialization & pragmas
-├── migrations.ts              # Schema versioning (never modify after deploy)
-├── container.ts               # DI container for repositories
-├── interfaces/                # Repository & container type definitions
-├── repositories/
-│   └── impl/                  # Concrete repository classes
-└── domain/                    # Domain services for multi-table transactions
-```
+## Recipe: add a migration
 
-## Schema Evolution
+1. Append an object to the end of the `migrations` array in `migrations.ts`. Order in the array is run order.
+2. Take the next number after the last entry: `id: 1000 + N`, `name: 'NNN_short_description'` (e.g. after `1125` / `125_...` comes `1126` / `126_...`). `id` is the primary key and `name` is unique; applied state is looked up by `name`. Skip gaps; never reuse a number.
+3. Write `up(db)` with `db.exec` for DDL, and `db.prepare(...).run(...)` for data backfills.
+4. Add a test to `migrations.test.ts` if the migration moves or reshapes data (see below).
 
-Schema lives in `connection.ts` (initial tables) and `migrations.ts`.
+The migration runs on the next app start. The model:
 
-**New install:** Gets full schema + migrations applied.
-**Existing user:** Only pending migrations run at startup. Before any pending migration runs against an existing database, `runMigrations` checkpoints the WAL and copies the file to `planner.db.bak` (best-effort, single rolling backup; skipped for fresh databases so an empty file never overwrites a useful backup).
+- `runMigrations` wraps each migration's `up` and its bookkeeping row in one `db.transaction()`. A throw rolls back that migration only; earlier ones stay applied.
+- Before applying pending migrations to a database that already has history, it checkpoints the WAL and copies the file to `planner.db.bak`. This is a single rolling copy, overwritten by the next migration run.
 
-### Adding a Column
+### Migration rules
 
-1. Create migration in `migrations.ts`. `id` is `1000 + N` where `N` matches the zero-padded number in `name`; use the next `N` after the current highest entry:
+- **Never edit a migration that has shipped.** Users' databases have already recorded it as applied, so an edit only reaches fresh installs and splits the schema. Fix forward with a new migration.
+- **Prefer in-place `ALTER TABLE`** (`ADD COLUMN`, `RENAME COLUMN`, `DROP COLUMN`) over recreating a table. Drop any index on a column before dropping the column, or SQLite fails the statement.
+- **`PRAGMA foreign_keys = OFF` does nothing inside a migration.** SQLite ignores that pragma inside a transaction, and every `up` runs in one. So `DROP TABLE` on a table that other tables reference with `ON DELETE CASCADE` deletes those child rows, even if the migration "turns foreign keys off" first. Some older migrations still contain that pattern; do not copy it. Dropping a table nothing references (a leaf table) is safe. If you truly need to rebuild a parent table, change the runner first so foreign keys are switched off outside the transaction and `PRAGMA foreign_key_check` runs afterwards. Migrations 056 and 125 explain why they avoided a rebuild.
+- **Guard FTS5.** `global_search_index` / `global_search_fts` only exist where SQLite has FTS5, and the test SQLite does not. A migration that touches them must check first (see the guards in migrations 040 and later).
+- **Keep migrations self-contained.** Don't import app code whose behaviour may change later. Freeze literal values inside the migration instead (see `124_backfill_playbook_snapshot`).
 
-```typescript
-{
-  id: 1097,
-  name: '097_add_example_column',
-  up: (db: BetterSqliteDatabase) => {
-    db.exec(`ALTER TABLE plan_items ADD COLUMN example_data TEXT;`);
-  },
-}
-```
+## Recipe: add a table with a repository
 
-2. Push migration to array (order matters).
-3. Migrations run automatically on next app start.
+1. Migration: `CREATE TABLE IF NOT EXISTS ...` with `REFERENCES projects(id) ON DELETE CASCADE` (or the relevant parent) so deleting the parent cleans up, plus indexes for the queries you will run.
+2. Interface: add `I{Name}Repository` to the matching file in `interfaces/` (or a new one) and export it from `interfaces/index.ts`.
+3. Implementation: `repositories/impl/{Name}Repository.ts`, exported from `repositories/impl/index.ts`. `ProjectWriteGrantRepository.ts` is a small complete example; `PlanItemRepository.ts` is the large one.
+4. Add the property to `IRepositoryContainer` (`interfaces/container.ts`) and construct it in `createRepositoryContainer` (`container.ts`).
+5. Test it against a real in-memory database (see Testing).
 
-### Critical Rule
+Plan item columns are different: follow the root `CLAUDE.md` recipe "Add a plan item field", because `src/shared/planItemFields.ts` generates `PlanItemRepository`'s insert and update SQL.
 
-**Once a migration is deployed, NEVER modify it.** Create a new one instead.
+## Recipe: add a domain service
 
-### Table Recreation (DROP/RENAME) - CRITICAL
+Put logic in `domain/` when it must write several tables atomically or is tightly bound to SQL. Otherwise it belongs in `src/main/services/`.
 
-When recreating a table (e.g., to drop a column), you MUST disable foreign keys first. Otherwise, `DROP TABLE` will trigger `ON DELETE CASCADE` on all referencing tables:
+1. Export `create{Name}(deps: {Name}Deps)`. `deps` lists the repository interfaces (narrowed with `Pick<>` where possible) and `database: Database` if you need a transaction.
+2. Wrap the writes in `deps.database.transaction(() => { ... })()`.
+3. Export it from `domain/index.ts` and wire it in `createAppServices` (`src/main/services/appServices.ts`).
 
-```typescript
-// CORRECT: Disable FK constraints during table recreation
-db.exec(`
-  PRAGMA foreign_keys = OFF;
+## Repository conventions
 
-  CREATE TABLE foo_new (...);
-  INSERT INTO foo_new SELECT ... FROM foo;
-  DROP TABLE foo;
-  ALTER TABLE foo_new RENAME TO foo;
+- **Prepare statements once**, in the constructor, into a private `PreparedStatements` object. Only statements whose SQL text changes per call, such as a variable-length `IN (?, ?, ...)`, are prepared inside methods.
+- `INSERT ... RETURNING *` instead of insert-then-select. `INSERT ... ON CONFLICT(...) DO UPDATE` (or `DO NOTHING`) instead of check-then-write.
+- `SELECT EXISTS (SELECT 1 ... LIMIT 1)` for existence checks, not `COUNT(*)`.
+- Loop writes inside `db.transaction()`. Trees use `WITH RECURSIVE` (see `getDescendantIds` in `PlanItemRepository`).
+- String arrays are stored as JSON TEXT: write with `JSON.stringify`, read with `PlanItemRepository`'s `parseStringArray`, which returns `null` for bad data.
+- Check `migrations.ts` for an existing index before adding one; use partial indexes (`WHERE col IS NOT NULL`) for sparse columns.
+- Repositories return typed data (or `undefined` when a row is missing) and hold no business rules. `ServiceResult<T>` belongs to services, not this folder.
 
-  PRAGMA foreign_keys = ON;
-`);
+## better-sqlite3 gotchas
 
-// WRONG: This will CASCADE DELETE all referencing rows!
-db.exec(`
-  CREATE TABLE foo_new (...);
-  INSERT INTO foo_new SELECT ... FROM foo;
-  DROP TABLE foo;  -- ⚠️ Triggers ON DELETE CASCADE!
-  ALTER TABLE foo_new RENAME TO foo;
-`);
-```
+- **Everything is synchronous.** A query blocks the main process until it finishes, so keep queries indexed and small.
+- **A transaction function cannot be async.** better-sqlite3 throws if the function returns a promise. Do network or file I/O first, then apply the results in one synchronous transaction (as `SyncService` does with preview, then apply).
+- **Nesting.** `db.transaction()` nests on the real driver but not in the test double. Code that must work both standalone and inside another transaction uses a raw `SAVEPOINT` (see `PlanItemRemoval.ts`).
 
-## Repository Pattern
+## Testing
 
-Follow the pattern in `PlanItemRepository.ts` for new repositories. See `../services/CLAUDE.md` for service vs repository guidance.
+`npm test` never loads native better-sqlite3. `tests/setup.ts` replaces it with a sql.js (WASM SQLite) adapter (`tests/mocks/sqljs-adapter.ts`), so `new BetterSqlite3(':memory:')` in a test gets sql.js. That has consequences:
 
-### Adding a New Repository
+- **No FTS5.** Search-table migrations are skipped. Gate FTS-dependent tests with `sqliteHasFts5()` from `testing/createTestDb.ts`.
+- **Foreign keys depend on the helper.** `createTestRepositoryContext()` (`tests/factories.ts`) and `createTestDatabase()` (`tests/mocks/database.ts`) turn `foreign_keys` on, as production does. `createTestDb()` (`testing/createTestDb.ts`) and a bare `new BetterSqlite3(':memory:')` leave it off, so cascades don't fire. Set `db.pragma('foreign_keys = ON')` whenever cascades matter.
+- **Transactions don't nest** (see above).
 
-1. Create interface in `interfaces/{domain}.ts`
-2. Implement class in `repositories/impl/FooRepository.ts`
-3. Add to `IRepositoryContainer` in `interfaces/container.ts`
-4. Wire in container (`container.ts`) — add the implementation to the `createRepositoryContainer` function
-5. Export the class from `repositories/impl/index.ts` (the barrel `container.ts` imports from)
+Repository tests use `createTestRepositoryContext()` for a migrated database plus a real container (see `tests/repositories/` and `repositories/impl/*.test.ts`).
 
-## SQL Performance Rules
+For a migration test, migrate to just before the new one, seed rows as they existed then, run the new migration's `up`, and assert the data survived and `PRAGMA foreign_key_check` returns nothing. The `125_drop_canvas_positions_and_groups` block in `migrations.test.ts` is the template.
 
-**ALWAYS follow these rules when writing SQL queries:**
-
-### 1. Cache Prepared Statements
-
-Every repository MUST cache prepared statements in the constructor — declare a `PreparedStatements` interface and populate it in `constructor(private db: Database)`. **NEVER** call `db.prepare()` inside a method body (except for dynamic IN clauses). See `PlanItemRepository.ts` for the canonical shape.
-
-### 2. Use RETURNING Clause
-
-ALWAYS use `RETURNING *` on INSERT to get the inserted row in one query instead of a follow-up SELECT.
-
-### 3. Use ON CONFLICT for Upserts
-
-NEVER check existence before insert/update. Use `INSERT ... ON CONFLICT(id) DO UPDATE SET ... RETURNING *` in a single prepared statement.
-
-### 4. Use EXISTS for Existence Checks
-
-NEVER use `COUNT(*)` when you only need to check if rows exist. Use `SELECT EXISTS (SELECT 1 FROM ... LIMIT 1) as exists_flag` — it short-circuits at the first match.
-
-### 5. Combine Sequential Queries
-
-If you find yourself running 2+ queries that could be combined, use a single query with priority ordering (`ORDER BY CASE WHEN ... END LIMIT 1`) rather than sequential calls with fallback logic.
-
-### 6. Index Guidelines
-
-- Add indexes for columns used in WHERE clauses
-- Create composite indexes for `WHERE col1 = ? ORDER BY col2` patterns
-- Use partial indexes for sparse columns: `WHERE external_key IS NOT NULL`
-- Check existing indexes in `migrations.ts` before adding duplicates
-
-### 7. Dynamic IN Clauses
-
-Dynamic `IN (?)` clauses are acceptable since they can't be pre-prepared:
-
-```typescript
-// Acceptable: Variable-length IN clause
-getMany(ids: string[]): Item[] {
-  if (ids.length === 0) return [];
-  const placeholders = ids.map(() => '?').join(',');
-  const stmt = this.db.prepare(`SELECT * FROM items WHERE id IN (${placeholders})`);
-  return stmt.all(...ids) as Item[];
-}
-```
-
-### 8. JSON-Encoded Array Columns
-
-String arrays (e.g., `code_refs`, `acceptance_criteria` on `plan_items`) are stored as JSON TEXT and parsed at read time. Use the `parseStringArray` helper in `PlanItemRepository.ts` — it defensively returns `null` on parse failure or non-array values. Write with `JSON.stringify(value)`; never concatenate or semicolon-delimit. Loose cross-table references (e.g., `source_document_id`) are stored as plain TEXT **without** a foreign key so the referenced row can be renamed/deleted without cascading.
-
-### 9. Batch Operations
-
-Use `db.transaction()` for bulk operations — wrap a loop over prepared statements inside a transaction function.
-
-## Key Design Decisions
-
-1. **Prepared statements cache** — Hot paths pre-compile SQL
-2. **RETURNING clause** — Avoid re-query after INSERT
-3. **ON CONFLICT upserts** — Single query instead of check + insert/update
-4. **EXISTS over COUNT** — Short-circuit existence checks
-5. **Recursive CTEs** — Hierarchical queries use SQL `WITH RECURSIVE`
-6. **Constructor-injected repositories** — Each repository takes the `Database` (and any deps) as constructor params; `createRepositoryContainer` wires them eagerly, so tests can inject a mock database without refactoring
-7. **DI for complex services** — Business logic accepts dependencies
-8. **Foreign key constraints** — `ON DELETE CASCADE` cleans up related rows
-
-## Discovering Repositories and Services
-
-All repositories live in `repositories/impl/`. Domain services live in `domain/`. Read the source files to see the full list — avoid hardcoding counts in documentation.
+Because the test SQLite is not the shipped SQLite, verify a destructive migration against a copy of a real database too. Copy `planner.db` from `~/Library/Application Support/KPM - Planning Workbench/` to a temp path, run the migration against the copy with `foreign_keys = ON`, and diff the tables you expected to be untouched. Never point this at the live file.

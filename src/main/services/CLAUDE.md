@@ -1,141 +1,69 @@
 # Services Layer
 
-Business logic layer with dependency injection. Services accept dependencies via factory functions, return `ServiceResult<T>` for explicit error handling, and delegate to repositories for data access.
+Application services hold behaviour that does not belong on a repository: validation, side effects, and coordination across repositories or processes. They are plain factory functions with injected dependencies, and they return `ServiceResult<T>` instead of throwing. Board agent execution has its own guide: [`agents/CLAUDE.md`](agents/CLAUDE.md).
 
-## Key Patterns
+## How it fits together
 
-**Factory Pattern with DI:** Services are created via factory functions that accept dependencies. See `PlanService.ts` for the canonical example.
+- **Composition root.** `appServices.ts` (`createAppServices(container)`) builds every service with explicit dependencies and returns one object; its return type is `AppServices`. Groups are split into `composition/repoServices.ts` and `composition/generationServices.ts`. Read the file top to bottom to see construction order.
+- **Startup.** `main.ts` calls `initializeServices(container)` (`container.ts`) once, then `registerAllIpcHandlers(getMainWindow, services)`, which hands individual services to the registrars in `src/main/ipc/register/`. There is no global getter; nothing outside startup reaches the instance.
+- **Repositories for handlers.** `services.container` exposes the repository container, so a handler can call a repository directly for a plain read or a single-entity write.
+- **Two service layers.** Multi-table, transaction-bound logic lives in `src/main/db/domain/` (for example `PlanActionService`, `PlanItemRemoval`). `src/main/services/` is the application layer above it.
+- **Late-built pieces.** The chat runtime is created after `createAppServices` returns, because it needs the main window (`services.createChatRuntime`). Anything a service needs from chat is handed in later (see `setActivityChatSource`, `appLifecycleService.attachChatRuntime`).
 
-**ServiceResult Pattern:** All service methods return `ServiceResult<T>` (`{ ok: true; data: T } | { ok: false; error: string }`). Use `success()` / `failure()` from `result.ts`. In IPC handlers, use `unwrapOrThrow()` for data-returning handlers or `toIpcResponse()` for void/action handlers.
+Directories group services by domain (`core/`, `repo/`, `agents/`, `files/`, `streaming/`, `generation/`, `confluence/`, `linearDocuments/`, `documentSync/`, `toollog/`). Read the tree for the current list; each file's header comment says what it owns.
 
-**Async:** Use `AsyncResult<T>` and `wrapAsync()` from `result.ts` for async operations.
+## Rules
 
-## Service Categories
+- **Return `ServiceResult<T>`** (`result.ts`): `success(data)` / `failure(message)`, `AsyncResult<T>` for async. `wrap` / `wrapAsync` turn a throw into a failure. Gotcha: `wrapAsync(fn, errorMessage)` replaces the thrown message with `errorMessage`, so pass one only when the original detail is worthless to the user.
+- **In handlers**, `unwrapOrThrow` (`result.ts`) returns data or throws; `toIpcResponse` (`src/main/ipc/response.ts`) is for void or action handlers.
+- **Service or repository.** If a handler needs more than the repository call (validation, side effects, more than one repository), give it a service method. If not, call the repository. Never add a method whose body is `try { return success(repo.x()) } catch { return failure(...) }`, or one that only forwards to another service.
+- **No module-level instances.** Every dependency arrives through the factory's deps object. Type deps narrowly (`Pick<PlanService, 'updateItem'>`) so tests can pass small doubles.
+- **Configuration comes from `getConfig()`** (`src/main/config/index.ts`), not literals.
 
-### Core Services (`services/core/`)
+## Shared infrastructure
 
-Plan items, projects, attachments, and tracker connections—the domain model.
+- **`PollScheduler`** (`core/PollScheduler.ts`) is the one timer for recurring background work. Register `{ id, intervalMs, handler }`, then `start(id)`. The handler receives a context with an `AbortSignal` and returns `{ outcome: 'ok' | 'noop' | 'error' }`. The scheduler owns jitter, no-overlap, and capped exponential backoff on `error`, and `AppLifecycleService.shutdown` calls `stopAll()`. Registering a duplicate id throws. Current users: `ReviewPollService`, `ActionRunnerService` (one task per interval-triggered action), and `StreamingSessionService` (chat session cleanup). File watchers and `SearchService`'s watcher-reconcile interval do not use it.
+- **`UpdateEventBus`** (`core/UpdateEventBus.ts`) carries typed cross-service events: `pr_changed`, `ticket_changed`, `branch_changed`, `action_finding`, `board_agent`. `ticket_changed` has no producer yet. `NotificationService` maps each kind to a bell notification through `NOTIFY_RULES`, which is keyed over the whole union: a new event kind does not compile until it decides whether and how it notifies. Notifications are not persisted, and identical ones are deduped for 30 seconds.
+- **`ClaudeUsageService`** records token and cost usage for every provider call site. A new call site picks a `UsageSource` (same file) rather than writing to `claude_usage_events` itself.
+- **`AppLifecycleService`** runs startup (`markActiveAsInactive`, so a session left `active` by a crash reads as inactive) and ordered shutdown. A service that owns timers, watchers, or child processes must add its dispose method to this service's deps.
 
-- `PlanService` — The behaviour that doesn't belong on a repository: `updateItem` (fires `queueTrackerUpdateIfNeeded` after the repo update), `deleteItem`/`deleteItemWithDescendants` (thin wrappers over `removePlanItem` in `db/domain/PlanItemRemoval.ts` — the single owner of staging tracker deletions and deleting, atomically, for either the orphaning or cascading path; `PlanActionService.executeDeleteItem` calls the same function). Plain reads and simple writes (`listItems`, relations, `getChildCount`, ...) go straight from the IPC handler to `IPlanItemRepository`/`IPlanRelationRepository` — see `container` on `AppServices`. Batched plan-action execution goes straight from the `plan:execute-actions` handler to `planActionExecutor.execute` (`db/domain/PlanActionService.ts`), also exposed on `AppServices` — not wrapped in a pass-through service method
-- `AttachmentService` — Upload files, track metadata
-- `SearchService` — Global search across plan items and documents
-- `PromptOverrideService` — Manage prompt overrides for board implementation/review prompts (the previous "agent-team" subsystem was removed; this is the surviving customization path)
-- `PollScheduler` — Single shared interval timer driving background polling. Services register tasks (`register({ id, intervalMs, handler })`) instead of holding their own `setInterval`. Used by `ReviewPollService` (PR review polling), `StreamingSessionService` (chat session cleanup ticks, wired through `ChatRuntimeService`), and `ActionRunnerService` (drives each enabled interval-triggered action on its own interval); `AppLifecycleService` holds it only to call `stopAll()` on shutdown. (`RepoWatcherService`/`ProjectWatcherService` use fs/file watching, and `SearchService` uses its own `setInterval` — they do not register with the scheduler.) Lives in `appServices.ts` wiring.
-- `ActionService` — Mutations for actions (saved prompts, optionally triggered). Carries only the behaviour a repository call cannot: name uniqueness within a scope, re-validating a partial update against the merged state (the cross-field rules only hold over a whole action), and keeping the live scheduler in step. Scheduler hooks are injected by `ActionRunnerService`. Plain reads go straight from the IPC handler to `IActionRepository`/`IActionRunRepository`.
-- `actionCapabilities.ts` — `toolCapabilitiesFor`, translating an action's user-facing capability grant into the `KpmToolCapability` set the run may reach. The tool runtime enforces it at both listing and execution.
-- `ChatService` / `ChatRuntimeService` — Message-send orchestration (attachment conversion, acceptance persistence), chat reset, project-wide disconnect with permission-cache teardown, focus-document session reconciliation (`ChatService`), and per-session Claude Agent SDK runtime wiring (MCP server, permissions, plan-action callbacks) (`ChatRuntimeService`). Plain session reads (messages, history, usage, active sessions) go straight from `ipc/handlers/chat.ts` to the repositories / `StreamingSessionService`.
-- `ProjectService` — Project CRUD, phase transitions, folder resolution
-- `SettingsService` — App-level settings (Anthropic auth key presence, misc app_settings reads/writes)
-- `PermissionService` — Owns the project write grant: hydrates the persisted grants at startup, and reads/sets/clears them
-- `PermissionPromptService` — Bridges a pending tool-permission request to the renderer and back (prompt/resolve/timeout)
-- `ClaudeUsageService` — Centralized recording of Claude SDK token/cost usage across every call site (chat, board agents, PR description, commit message, review assessment, custom prompt generation, onboarding) into `claude_usage_events` and the rolled-up `projects.session_*_tokens` columns
-- `TaskPromptTemplateService` — CRUD for reusable task prompt templates
-- `SlashCommandService` — Discovers user slash commands (`~/.claude/commands/**/*.md`) and skills (`~/.claude/skills/*/SKILL.md`) for the chat typeahead before a session exists; once a session is live the SDK's own command list takes over
-- `McpDiscoveryService` — Discovers installed Claude Code plugins with MCP server configs and reads `app_settings` for which servers are enabled for KPM. Does not manage MCP server processes — the SDK does
-- `CustomThemeService` — Import/manage custom editor themes (VS Code `.vsix` or marketplace theme JSON)
-- `AppLifecycleService` — App startup/shutdown coordination
-- `NotificationService` — Maps `UpdateEvent`s to user-visible `AppNotification`s and broadcasts them to renderer windows on `notification:new` (the topbar bell reads them). Dedupes identical events inside a 30s window. Display is the renderer's job; there is no Electron `Notification`, dock badge, or tray. Notifications are not persisted — the list resets on restart. Add a rule to `NOTIFY_RULES` per event kind; the record is keyed over the whole union, so a new kind won't compile until it decides whether it notifies.
-- `UpdateEventBus` — Cross-service update broadcast helper. Producers today: `ReviewPollService` (`pr_changed`), `ActionRunnerService` (`loop_finding`), `RepoWatcherService` (`branch_changed`, suppressed), and `automationPhaseMachine` (`board_agent`). `ticket_changed` has a rule, a notification presenter, and an action trigger (`On tracker change`) but no producer yet — nothing emits it until a tracker poller exists.
-- `TrackerService` — Tracker credential management, connection/scope/association CRUD, Jira API queries (issue search, labels, components, statuses, custom fields), import preview generation, and sync coordination. Wraps `TrackerClientService` + domain `ImportService`/`SyncService`.
-- `ContextFileService` — `readProjectContextFile` (shared by three call sites: the `contextFile.read` IPC handler, `ChatRuntimeService`, and `DevSessionService.buildAgentContext` via `appServices.ts` wiring) and `buildContextPrefix(projectId, contextPaths)`, which wraps attached context files in `<context-file>` blocks for prepending to agent prompts. Everything else it once forwarded to `FileWatchService` (list/read/write/delete/import a context file, write the project context file, read an arbitrary document file) now goes straight from `ipc/handlers/files.ts` or `ChatRuntimeService` to `FileWatchService` (`services/files/`) — no pass-through methods.
+## Single owners worth knowing
 
-### Repo Services (`services/repo/`)
+Each of these is the only implementation of its concern. Use it rather than writing a second path.
 
-Git repositories, worktrees, development sessions, environment capture.
+- `repo/branchFacts.ts`: every "which branch" question (current, default, base, protected, upstream). See "Branch facts" in [`CONTEXT.md`](../../../CONTEXT.md).
+- `repo/gitWrites.ts`: every ref-moving git call (`publishBranch`, `deleteRemoteBranch`, `deleteLocalBranch`). Each takes a `WriteAuthorization` (`projectWriteGrant` or `boardSession`) so consent is always stated, never inherited.
+- `db/domain/PlanItemRemoval.ts` (`removePlanItem`): the only delete path for plan items, used by `PlanService` and `PlanActionService`, because it stages tracker deletions in the same transaction.
+- `streaming/TerminalService.ts`: embedded terminal sessions. `detach` leaves the shell running and buffering; only `kill` ends it, and `kill` fails on an unknown id. Do not treat a missing session as a successful kill.
+- `repo/RepoWatcherService.ts`: watches `.git/HEAD`. macOS reports a rewrite as `rename`, not `change`; handle both. Watchers must be released on project switch and quit.
+- `repo/ActionRunnerService.ts`: runs actions. Chat-mode actions are refused here on purpose; the renderer sends them into a real chat session so their proposals reach the approval queue (P8).
 
-- `RepoService` — Add/remove repos, watch for changes
-- `DevSessionService` — Board/dev session lifecycle (create, start, resume, Work Brief reconciliation, destroy). Composes three sibling modules rather than containing their concerns inline: `devSessionPrompt.ts` owns `buildAgentContext(input: AgentContextInput)` (re-exported from `DevSessionService.ts`; input carries `item`, `project`, `children`, `parent`) which renders the Work Brief execution projection with `## Intent`, structured `## Acceptance Criteria`, and optional `## Context`; context headings are not parsed into shadow fields; `worktreeScaffold.ts` owns `scaffoldWorktree` so the board entrypoint has consistent error semantics (`checkedOutInMainRepo` / `checkedOutElsewhere` / `createFailed`); `devSessionGitInspection.ts` owns diff/log/commit reads on a session's worktree (`getSessionDiff`, `getSessionCommitLog`, `commitSessionChanges`, etc.).
-- `RepoWatcherService` — Watch git branch changes (`fs.watch` on `.git/HEAD`; macOS fires `rename`, not `change`, when git rewrites HEAD — handle both). Parses the branch name out of HEAD with `normalizeHeadRef` from `branchFacts.ts` so it reports a detached HEAD the same way `resolveCurrentBranch` does. Events are debounced (100ms); watchers must be cleaned up on project switch and app quit.
-- `EnvironmentService` — Capture environment from direnv/Nix for dev sessions
-- `GitHubService` — PR description generation, PR creation, PR template enforcement, diff/commit log helpers. Its Create-PR push goes through `publishBranch`, so it applies the same guard as the `git_push` tool.
-- `branchFacts.ts` — one resolver per git branch question (see "Branch facts" in [`CONTEXT.md`](../../../CONTEXT.md)). Anything that needs the current branch, the default branch, a base branch, or a push guard reads it here; there is deliberately no second implementation.
-- `gitWrites.ts` — the one entry point for moving a branch ref (`publishBranch`, `deleteRemoteBranch`, `deleteLocalBranch`). Owns push policy, argv, and invocation; every caller passes a `WriteAuthorization` (`projectWriteGrant` or `boardSession`) so consent can't be inherited by accident. Worktree management (`worktreeScaffold.ts`) and session commits (`devSessionGitInspection.ts`) keep their own paths.
-- `ReviewService` — GitHub PR review thread CRUD (fetch threads, post replies, resolve)
-- `ReviewAssessmentService` — SDK-backed multi-turn assessment agent that classifies PR review threads and drafts replies (uses the standalone MCP server in `kpmTools/tools/review-assessment.ts`)
-- `ReviewPollService` — Polls linked PRs (registered with `PollScheduler`), triggers assessments, broadcasts `review-poll:actionable` events that drive the board orange-dot indicator
-- `ActionRunnerService` — Executes actions: one `PollScheduler` registration per enabled interval-triggered action, plus an `UpdateEventBus` subscription for event triggers. One execution path — the capability grant decides what the run may touch and where its result lands (notification, `outputs/actions/<name>.md`, or run history only). Chat-mode actions are refused here; the renderer sends those into a real chat session so their proposals reach the approval queue.
+## Recipe: add a service
 
-### Agent Services (`services/agents/`)
+1. Create `services/<domain>/FooService.ts` exporting `createFooService(deps: FooServiceDeps)` and `export type FooService = ReturnType<typeof createFooService>`. Methods return `ServiceResult` / `AsyncResult`.
+2. Construct it in `appServices.ts` after everything it depends on, and add it to the returned `services` object. For a genuine cycle, pass a late-bound getter the way `createBoardAgentOrchestrator` receives `getDevSessionService: () => devSessionServiceRef`.
+3. If it registers pollers, take `pollScheduler` as a dep. If it holds resources, add its dispose call to `AppLifecycleService`.
+4. Expose it over IPC per [`src/main/ipc/CLAUDE.md`](../ipc/CLAUDE.md): endpoint in `src/shared/ipc/{domain}Endpoints.ts`, handler in `src/main/ipc/handlers/{domain}.ts`, registrar in `src/main/ipc/register/`.
+5. Test it with hand-built deps (see Testing).
 
-Board agent session execution (implementation + opposing review). See [`services/agents/CLAUDE.md`](agents/CLAUDE.md) for the board workflow this drives.
+## One-shot generation (`src/main/generation/`)
 
-- `AgentSessionManager` — Tracks live agent sessions, dispatches to the right session type
-- `BoardAgentOrchestrator` — Runs implementation → opposing review → auto-fix → `In Review` transition
-- `ClaudeSdkSession` / `CodexSdkAgentSession` / `PiSdkAgentSession` / `CliAgentSession` — Agent-specific session implementations over `BaseAgentSession`
+`runGeneration(request)` is the seam for single prompt-in, text-out calls with no tools. Current purposes: `commit_message` (`ipc/handlers/agentSessions.ts`), `pr_description` (`repo/GitHubService.ts`, two calls), and `file_summary` (`files/FileSummaryService.ts`). The call site states intent (purpose, tier, prompt); the seam resolves `(purpose, tier)` to a provider and model through `getConfig().generation`, the provider adapter applies the pinned invariants (for Claude: no tools and no MCP servers, `persistSession: false`, the bundled binary, the `CLAUDE_AGENT_SDK_CLIENT_APP` tag), and the seam records usage. Every purpose defaults to Claude; route one to Codex with `generation.providerByPurpose`. A provider with no registered adapter falls back to Claude.
 
-### File Services (`services/files/`)
+Tool-using or multi-turn work (onboarding, PR review assessment, actions, chat) is agentic and stays off this seam.
 
-Project file system operations, repo file access.
+To add a generation call:
 
-- `FileExplorerService` — List, create, delete files (with path traversal protection)
-- `RepoFileService` — Read/write files in connected repositories (markdown/text editable, code read-only)
-- `TempImageService` — Handle temporary images
-- `FileWatchService` — File change watching
-- `ProjectWatcherService` — Watch project directory for changes
+1. Add the purpose to `GenerationPurpose` in `generation/types.ts`.
+2. Map it in `GENERATION_PURPOSE_TO_USAGE_SOURCE` in `appServices.ts` (a `Record`, so a missing entry is a compile error), adding a `UsageSource` in `core/ClaudeUsageService.ts` if none fits.
+3. Call `runGeneration({ purpose, tier, prompt, systemPrompt, timeoutMs, timeoutMessage, projectId })` and read `result.text`. Do not build Claude SDK options or call `runClaudeQuery` yourself.
 
-### Streaming Services (`services/streaming/`)
+Gotchas: `runGeneration` returns a plain result, not a `ServiceResult`, and it throws on timeout, so the caller wraps it. Check `result.outcome.status` before trusting `text`. Codex has no system-prompt field; its adapter prepends `systemPrompt` to the prompt.
 
-Terminal/PTY and Claude session management.
+## Testing
 
-- `TerminalService` — Single owner of the embedded terminal panel's sessions: id, resolved cwd, status, exit code, scrollback, and whether a view is attached. `attach` creates the session if absent and hands back its scrollback, `detach` leaves it running, and `kill` is the only thing that ends a shell (it fails on an unknown id — do not treat a missing session as a successful kill). Output is emitted only to an attached session; a detached one keeps buffering, which is what makes the replay on re-attach gapless. An exited session stays listed until its tab is closed. See "Terminal session" in [`CONTEXT.md`](../../../CONTEXT.md).
-- `StreamingSessionService` — Main chat session lifecycle
-
-### One-shot generation seam (`src/main/generation/`)
-
-`runGeneration({ purpose, tier, prompt, systemPrompt?, maxTurns?, timeoutMs?, onText? })` is the single seam every genuinely one-shot generation site calls (file summary, commit message, PR description). It resolves `(purpose, tier)` to a provider + model via `getConfig().generation`, applies the pinned invariants, records usage keyed by `(purpose, provider)`, and dispatches to a provider adapter (`claude`, `codex`). Call sites pass intent, not provider SDK options — do **not** hand-build `sdkOptions` and call `runClaudeQuery` from a new generation site; add a `runGeneration` call. Default routing is Claude for every purpose; flip one to Codex via `generation.providerByPurpose`. See [`CONTEXT.md`](../../../CONTEXT.md) for the domain terms. Tool-using / multi-turn work (custom prompt, onboarding, review assessment, scheduled loops) is agentic, not one-shot generation, and deliberately stays off this seam.
-
-### Generation Services (`services/generation/`)
-
-- `CustomPromptGenerationService` — Custom prompt generation
-- `OnboardingService` — AGENTS.md context generation (repo scan + Claude synthesis) and its IPC entrypoints: `startGeneration` (persists scoped directories, reads any existing context file, kicks off `scanAndGenerate`), `saveContext`, `getContextDirectories`/`saveContextDirectories`
-
-### Confluence Services (`services/confluence/`)
-
-Confluence wiki integration.
-
-- `ConfluenceSyncService` — Bidirectional sync between KPM documents and Confluence pages
-
-### Tool Log Services (`services/toollog/`)
-
-Tool call logging and analysis.
-
-- `ToolCallLogger` — Log and track Claude tool calls
-- `extractFilePaths` — Extract file paths from tool call data
-
-### Performance (`services/PerfLogger.ts`)
-
-- `PerfLogger` — Optional performance logging (enabled via `KPM_PERF=1`)
-
-## Wiring
-
-- **Composition Root:** `appServices.ts` wires all services with dependencies
-- **Service Container:** `container.ts` exposes `initializeServices(container)`, called once at app startup. There is no global getter and no test-injection hook — tests build the services they need directly.
-- **Testing:** Mock repositories via DI. See existing test files for patterns.
-
-## When to Use Services vs Direct Repository Calls
-
-### Use a Service when:
-- Logic involves multiple entities
-- Business rules must be enforced
-- A result needs explicit error handling that isn't just "did the repo call throw"
-
-### Call a Repository directly when:
-- Inside a service (services delegate to repos)
-- In domain services for multi-table transactions
-- From an IPC handler, for a plain read or single-entity write that has no behaviour beyond the repo call itself — repositories are exposed to handlers via `services.container` (`AppServices`). Do not add a pass-through service method whose body is just `try { return success(repo.method(...)) } catch { return failure(...) }`; that's a wrapper with no behaviour, not a service.
-
-**Rule:** If a handler needs behaviour beyond the repository call (validation, side effects, coordinating more than one repository), give it a service method. If not, call the repository.
-
-## Anti-Patterns to Avoid
-
-**Don't:**
-- Add a service method that only forwards to one repository call or one other service call — wire the IPC handler to that repository/service directly instead
-- Throw exceptions from services (use `ServiceResult`)
-- Use global service instances (use factory + DI)
-- Duplicate business logic across services
-
-**Do:**
-- Pass dependencies explicitly
-- Return `ServiceResult<T>` from all service methods
-- Test services with mocks
-- Let services coordinate multiple repositories
+- Tests live in two trees: co-located `src/**/*.test.ts` and repo-root `tests/` (`tests/services/` covers `PlanService`, `DevSessionService`, `TrackerService`, and others). Check both before assuming something is untested or unused.
+- Build the service directly with `vi.fn()` doubles for its deps; no container or DI framework is involved. `tests/services/PlanService.test.ts` is a representative example.
+- Shared mocks are in `tests/mocks/` (Claude SDK, database, electron API, git) and `tests/factories.ts`. Mock `electron` when the module under test imports it.
+- For code that calls `runGeneration`, mock `../../generation` (see `repo/GitHubService.test.ts`). The seam's own tests (`generation/generation.test.ts`) mock `runClaudeQuery` and `@openai/codex-sdk`.
+- Run one file with `npm test -- path/to/file.test.ts`.
