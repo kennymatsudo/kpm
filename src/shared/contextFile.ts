@@ -2,17 +2,20 @@
  * Project context file conventions.
  *
  * AI coding agents use a markdown file at the project root for persistent
- * project knowledge. Different tools use different filenames:
- *   - AGENTS.md  — open standard (Linux Foundation / Agentic AI Foundation)
- *   - CLAUDE.md  — Claude Code convention
+ * project knowledge. AGENTS.md is the open standard (Linux Foundation /
+ * Agentic AI Foundation) that Claude Code, Codex, and most other tools read
+ * natively; CLAUDE.md was Claude Code's own convention before it adopted
+ * AGENTS.md. KPM only ever writes AGENTS.md, but still recognizes an existing
+ * CLAUDE.md as a project's context file — for a project that had one before
+ * KPM's own AGENTS.md-first convention, or before Claude Code read AGENTS.md.
  *
  * KPM checks for these in priority order and uses the first one found.
  */
 
-/** Canonical filename KPM owns and shows to users. */
+/** Canonical filename KPM owns, writes, and shows to users. */
 export const PRIMARY_CONTEXT_FILENAME = 'AGENTS.md';
 
-/** Compatibility filename for tools that still auto-load CLAUDE.md. */
+/** Legacy filename KPM still recognizes on read, but never creates. */
 export const COMPAT_CONTEXT_FILENAME = 'CLAUDE.md';
 
 /** Filenames to check, in priority order. */

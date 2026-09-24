@@ -69,8 +69,8 @@ A KPM project has a KPM-owned project folder. That folder may be a git repositor
 {project_folder}/
 ├── attachments/             # Uploaded attachment copies
 ├── outputs/                 # Generated artifacts (markdown outputs from custom prompts)
-├── AGENTS.md                # Preferred project context file, when present
-└── CLAUDE.md                # Backward-compatible project context file
+└── AGENTS.md                # Project context file (KPM only ever writes this name;
+                              # an existing legacy CLAUDE.md is still read, not created)
 ```
 
 Do not create `.kpm/` folders or store plan hierarchy data inside connected repos. Connected repos are linked through the `repos` table and read/write rules, not by embedding KPM metadata in their working trees.

@@ -9,7 +9,7 @@ import { randomUUID } from 'crypto';
 import type { Stats } from 'fs';
 import type { Project } from '../../../../shared/types';
 import type { IProjectRepository, ProjectCreateInput } from '../../interfaces/project';
-import { writeInitialProjectContextFilesSync } from '../../../project-context/contextFileCompat';
+import { writeInitialProjectContextFileSync } from '../../../project-context/projectContextFile';
 import { buildPlaceholderContext } from '../../../../shared/contextFile';
 import { deriveProjectFolderPath, projectsRootPath } from '../../../project-context/projectFolder';
 
@@ -103,7 +103,7 @@ export class ProjectRepository implements IProjectRepository {
 
     this.fs.mkdirSync(folderPath, { recursive: true });
 
-    writeInitialProjectContextFilesSync(this.fs, folderPath, buildPlaceholderContext(name));
+    writeInitialProjectContextFileSync(this.fs, folderPath, buildPlaceholderContext(name));
 
     return this.stmts.insert.get(id, name, folderPath) as Project;
   }

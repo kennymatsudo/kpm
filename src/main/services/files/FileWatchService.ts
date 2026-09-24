@@ -9,7 +9,7 @@ import {
   getContextFilePriority,
 } from '../../../shared/contextFile';
 import { pathExists, resolveScopedPath } from './scopedFs';
-import { writeProjectContextFiles } from '../../project-context/contextFileCompat';
+import { writeProjectContextFile as writeContextFileToDisk } from '../../project-context/projectContextFile';
 import { shouldHideFileTreeEntry } from './fileTreeVisibility';
 
 /** Context file from the project folder */
@@ -161,7 +161,7 @@ class FileWatchServiceClass {
 
     try {
       if (isContextFile(relativePath)) {
-        await writeProjectContextFiles(project.folder_path, content);
+        await writeContextFileToDisk(project.folder_path, content);
         return { success: true };
       }
 
@@ -286,7 +286,7 @@ class FileWatchServiceClass {
     }
 
     try {
-      await writeProjectContextFiles(project.folder_path, content);
+      await writeContextFileToDisk(project.folder_path, content);
       return { success: true };
     } catch (error) {
       return { success: false, error: String(error) };

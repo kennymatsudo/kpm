@@ -16,6 +16,7 @@ describe('ProjectRepository', () => {
 
     expect(ctx.mockFs.writtenFiles.has(contextFilePath)).toBe(true);
     expect(ctx.mockFs.writtenFiles.get(contextFilePath)).toContain('# Test Project');
-    expect(ctx.mockFs.symlinkedFiles.get(compatFilePath)).toBe(DEFAULT_CONTEXT_FILENAME);
+    expect(ctx.mockFs.writtenFiles.has(compatFilePath)).toBe(false);
+    expect(ctx.mockFs.symlinkedFiles.has(compatFilePath)).toBe(false);
   });
 });
