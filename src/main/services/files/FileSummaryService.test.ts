@@ -132,6 +132,44 @@ describe('FileSummaryService', () => {
     expect(repository.getByPath('project-1', 'notes.md')?.summary).toBe('Shared summary');
   });
 
+  it('never sends a file that contains a credential to the model', async () => {
+    repository.upsertHash('project-1', 'notes.md', 'old-hash');
+    repository.setSummaryForHash('project-1', 'notes.md', 'old-hash', 'Old summary');
+
+    await service.processFile('project-1', 'notes.md', '# Setup\n\nANTHROPIC_API_KEY=sk-ant-abcdefghijklmnopqrstuvwxyz\n');
+
+    expect(runClaudeQueryMock).not.toHaveBeenCalled();
+    expect(repository.getByPath('project-1', 'notes.md')).toBeNull();
+  });
+
+  it('keeps only the first line of a summary and caps its length', async () => {
+    runClaudeQueryMock.mockResolvedValueOnce({ text: `Spec: ${'model picker '.repeat(30)}\n\nSecond paragraph.`, errors: [] });
+
+    await service.processFile('project-1', 'spec.md', '# Spec');
+
+    const summary = repository.getByPath('project-1', 'spec.md')?.summary ?? '';
+    expect(summary.length).toBeLessThanOrEqual(200);
+    expect(summary).not.toContain('Second paragraph');
+    expect(summary.endsWith('…')).toBe(true);
+  });
+
+  it('stops serving older-format summaries so a listing queues a fresh one', async () => {
+    repository.upsertHash('project-1', 'old.md', 'plain-sha-from-the-old-prompt');
+    repository.setSummaryForHash('project-1', 'old.md', 'plain-sha-from-the-old-prompt', 'This document is a long old summary.');
+    runClaudeQueryMock.mockResolvedValueOnce({ text: 'Notes: current format.', errors: [] });
+    await service.processFile('project-1', 'new.md', '# New');
+
+    expect([...service.getMetadataMap('project-1')]).toEqual([['new.md', 'Notes: current format.']]);
+  });
+
+  it('drops summaries saved for files the eligibility rule now excludes', () => {
+    repository.upsertHash('project-1', '.playwright-mcp/page.yml', 'v2:x');
+    repository.setSummaryForHash('project-1', '.playwright-mcp/page.yml', 'v2:x', 'Playwright snapshot.');
+
+    expect(service.getMetadataMap('project-1').size).toBe(0);
+    expect(repository.getByPath('project-1', '.playwright-mcp/page.yml')).toBeNull();
+  });
+
   it('does not call Claude for non-summarizable files and removes stale metadata', async () => {
     repository.upsertHash('project-1', 'image.png', 'old-hash');
     repository.setSummaryForHash('project-1', 'image.png', 'old-hash', 'Old image summary');

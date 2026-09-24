@@ -109,7 +109,7 @@ export interface FileExplorerListDirectoryPagedOptions {
   limit?: number;
   /** Opaque cursor from a previous truncated response. */
   cursor?: string;
-  /** When true, each node contains only name, path, isDirectory, isSymlink — omits size, modifiedAt, summary, etc. */
+  /** When true, each node contains only name, path, isDirectory, isSymlink, and summary — omits size, modifiedAt, etc. */
   structureOnly?: boolean;
 }
 
@@ -868,7 +868,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
      *
      * Unlike listDirectory, this always returns a flat array (no nested children field).
      * Use limit + cursor to page through trees that would otherwise overflow the
-     * tool-output budget.  Use structureOnly for a name/path/type-only view.
+     * tool-output budget.  Use structureOnly for a name/path/type/summary view.
      */
     async listDirectoryPaged(
       projectId: string,
@@ -878,8 +878,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
       const directoryResult = await service.listDirectory(projectId, relativePath, {
         recursive: options.recursive,
         depth: options.depth,
-        // Skip summary backfill when structureOnly — summaries are dropped from the response anyway.
-        backfillMissingSummaries: options.structureOnly ? false : (options.backfillMissingSummaries ?? false),
+        backfillMissingSummaries: options.backfillMissingSummaries ?? false,
       });
 
       if (!directoryResult.ok) {
@@ -906,9 +905,16 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
       const slice = allNodes.slice(startOffset, pageEnd);
       const truncated = pageEnd < allNodes.length;
 
-      // Strip metadata when structureOnly.
+      // Strip metadata when structureOnly, but keep the summary: it is what lets
+      // chat pick which documents to open from one small listing.
       const nodes: FileNode[] = options.structureOnly
-        ? (slice.map(n => ({ name: n.name, path: n.path, isDirectory: n.isDirectory, isSymlink: n.isSymlink })) as unknown as FileNode[])
+        ? (slice.map(n => ({
+            name: n.name,
+            path: n.path,
+            isDirectory: n.isDirectory,
+            isSymlink: n.isSymlink,
+            ...(n.summary ? { summary: n.summary } : {}),
+          })) as unknown as FileNode[])
         : slice;
 
       return success({

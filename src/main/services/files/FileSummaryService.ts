@@ -7,16 +7,28 @@
 
 import { createHash } from 'crypto';
 import fs from 'fs';
-import path from 'path';
 import { runGeneration } from '../../generation';
+import { containsLikelySecret, isSummarizablePath } from './summaryEligibility';
 import type { IProjectFileMetadataRepository } from '../../db/interfaces/files';
 
-const SUMMARIZABLE_EXTENSIONS = new Set(['.md', '.txt', '.mdx', '.rst', '.yaml', '.yml', '.json', '.toml']);
 const MAX_CONTENT_CHARS = 16_000;
 const MAX_DISK_SUMMARY_CONCURRENCY = 2;
 const MAX_DISK_SUMMARY_QUEUE_SIZE = 500;
+/** Longest summary kept. Every listing carries one per file, so length is paid on every chat step. */
+const MAX_SUMMARY_CHARS = 200;
 
-const SYSTEM_PROMPT = `You are a document indexer for a developer's project management tool. Given a project document, write exactly 1–2 sentences summarizing what it covers. Include the document type (e.g. spec, research, meeting notes, design doc, implementation plan), the main subject or feature, and any notable scope. Output only the summary sentences — no preamble, no markdown, no labels.`;
+/**
+ * Stored in front of each content hash. Bump it when the prompt changes: rows
+ * from an older format stop being served, so listings queue them again.
+ */
+const SUMMARY_FORMAT_VERSION = 'v2';
+
+const SYSTEM_PROMPT = `You write one-line index entries for a developer's project files. An AI assistant reads these entries to decide which file to open, so write for that reader.
+
+Write ONE sentence, at most 160 characters:
+<type>: <specific subject, naming the features, services, decisions, or dates it covers>; <status if clear: decided, proposed, draft, superseded, living log>.
+
+Lead with the distinctive terms. Never start with "This document" or "This file". Never refuse, explain, or ask a question: for generated files, logs, snapshots, or data, just name what it is (e.g. "Playwright page snapshot: Zendesk ticket #3058."). Output only the entry.`;
 
 interface DiskSummaryTask {
   projectId: string;
@@ -30,12 +42,20 @@ export interface FileSummaryServiceDeps {
 }
 
 function computeHash(content: string): string {
-  return createHash('sha256').update(content, 'utf-8').digest('hex');
+  return `${SUMMARY_FORMAT_VERSION}:${createHash('sha256').update(content, 'utf-8').digest('hex')}`;
 }
 
-function isSummarizable(filePath: string): boolean {
-  const ext = path.extname(filePath).toLowerCase();
-  return SUMMARIZABLE_EXTENSIONS.has(ext);
+function isCurrentFormat(hash: string): boolean {
+  return hash.startsWith(`${SUMMARY_FORMAT_VERSION}:`);
+}
+
+/** One line, capped, so a model that ignores the length rule cannot bloat every listing. */
+function normalizeSummary(raw: string): string | null {
+  const line = raw.split('\n').map((part) => part.trim()).find(Boolean)?.replace(/^["']|["']$/g, '') ?? '';
+  if (!line) return null;
+  if (line.length <= MAX_SUMMARY_CHARS) return line;
+  const cut = line.slice(0, MAX_SUMMARY_CHARS - 1);
+  return `${cut.slice(0, Math.max(cut.lastIndexOf(' '), 1))}…`;
 }
 
 export function createFileSummaryService(deps: FileSummaryServiceDeps) {
@@ -64,7 +84,7 @@ export function createFileSummaryService(deps: FileSummaryServiceDeps) {
         projectId,
       });
 
-      return result.text.trim() || null;
+      return normalizeSummary(result.text);
     } catch (err) {
       console.error('[FileSummaryService] Summary generation failed:', err);
       return null;
@@ -75,7 +95,13 @@ export function createFileSummaryService(deps: FileSummaryServiceDeps) {
     const rows = repository.getAllForProject(projectId);
     const map = new Map<string, string>();
     for (const row of rows) {
-      if (row.summary) {
+      // Rows from before the eligibility rule (snapshots, config, secrets) are dropped for good.
+      if (!isSummarizablePath(row.path)) {
+        repository.deleteByPath(projectId, row.path);
+        continue;
+      }
+      // An older-format summary is left out so the listing that asked queues a fresh one.
+      if (row.summary && isCurrentFormat(row.content_hash)) {
         map.set(row.path, row.summary);
       }
     }
@@ -93,8 +119,9 @@ export function createFileSummaryService(deps: FileSummaryServiceDeps) {
   async function processFile(projectId: string, filePath: string, content: string): Promise<void> {
     if (disposed) return;
 
-    if (!content.trim() || !isSummarizable(filePath)) {
-      // Empty or non-summarizable writes evict prior metadata so stale summaries cannot leak into listings.
+    if (!content.trim() || !isSummarizablePath(filePath) || containsLikelySecret(content)) {
+      // Empty, non-summarizable, or secret-bearing content evicts prior metadata so
+      // a stale summary cannot leak into listings, and the file never reaches the model.
       repository.deleteByPath(projectId, filePath);
       return;
     }
@@ -129,7 +156,7 @@ export function createFileSummaryService(deps: FileSummaryServiceDeps) {
   async function processFileFromDisk(projectId: string, filePath: string, fullPath: string): Promise<void> {
     if (disposed) return;
 
-    if (!isSummarizable(filePath)) {
+    if (!isSummarizablePath(filePath)) {
       repository.deleteByPath(projectId, filePath);
       return;
     }
@@ -204,7 +231,7 @@ export function createFileSummaryService(deps: FileSummaryServiceDeps) {
   function enqueueFileFromDisk(projectId: string, filePath: string, fullPath: string, delayMs = 0): boolean {
     if (disposed) return false;
 
-    if (!isSummarizable(filePath)) {
+    if (!isSummarizablePath(filePath)) {
       repository.deleteByPath(projectId, filePath);
       return false;
     }
@@ -236,7 +263,7 @@ export function createFileSummaryService(deps: FileSummaryServiceDeps) {
     processFileFromDisk,
     enqueueFileFromDisk,
     getMetadataMap,
-    shouldSummarizePath: isSummarizable,
+    shouldSummarizePath: isSummarizablePath,
     dispose(): void {
       disposed = true;
       for (const timer of pendingDebounce.values()) {

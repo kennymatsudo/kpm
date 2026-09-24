@@ -643,7 +643,7 @@ describe('FileExplorerService', () => {
       expect(new Set(allNames).size).toBe(5); // no overlap
     });
 
-    it('applies structureOnly mode — strips size, modifiedAt, summary', async () => {
+    it('applies structureOnly mode — strips size and modifiedAt', async () => {
       fs.writeFileSync(path.join(tempDir, 'test.txt'), 'content');
 
       const result = await service.listDirectoryPaged('test-project', '', { structureOnly: true });
@@ -658,8 +658,32 @@ describe('FileExplorerService', () => {
         const keys = Object.keys(node);
         expect(keys).not.toContain('modifiedAt');
         expect(keys).not.toContain('size');
-        expect(keys).not.toContain('summary');
       }
+    });
+
+    it('keeps summaries in structureOnly mode so chat can pick documents from one listing', async () => {
+      fs.writeFileSync(path.join(tempDir, 'spec.md'), '# Spec');
+      fs.writeFileSync(path.join(tempDir, 'new.md'), '# New');
+      const enqueueFileFromDisk = vi.fn().mockReturnValue(true);
+      const serviceWithSummaries = createFileExplorerService({
+        getProjectFolder: (projectId: string) => (projectId === 'test-project' ? tempDir : null),
+        fileSummaryService: {
+          getMetadataMap: () => new Map([['spec.md', 'Spec for the model picker.']]),
+          shouldSummarizePath: () => true,
+          enqueueFileFromDisk,
+        } as unknown as FileSummaryService,
+      });
+
+      const result = await serviceWithSummaries.listDirectoryPaged('test-project', '', {
+        structureOnly: true,
+        backfillMissingSummaries: true,
+      });
+
+      expect(result.ok && result.data.nodes).toEqual([
+        { name: 'new.md', path: 'new.md', isDirectory: false, isSymlink: false },
+        { name: 'spec.md', path: 'spec.md', isDirectory: false, isSymlink: false, summary: 'Spec for the model picker.' },
+      ]);
+      expect(enqueueFileFromDisk).toHaveBeenCalledWith('test-project', 'new.md', path.join(tempDir, 'new.md'));
     });
 
     it('applies the 500-node default limit for recursive listings', async () => {

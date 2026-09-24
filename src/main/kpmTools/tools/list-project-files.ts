@@ -28,7 +28,7 @@ Use when the user asks what files or folders exist in the project, wants to brow
 - \`depth\`: Maximum recursion depth when \`recursive\` is true. Defaults to 10.
 - \`limit\`: Maximum total nodes to return. Defaults to 500 for recursive listings. Use with \`cursor\` to page through large trees.
 - \`cursor\`: Opaque handle from a previous truncated response — pass it unchanged to receive the next page.
-- \`structureOnly\`: When true, each node includes only name, path, isDirectory, and isSymlink — omitting size, modifiedAt, and summary. Produces a much smaller response; ideal for an initial tree survey.
+- \`structureOnly\`: When true, each node includes only name, path, isDirectory, isSymlink, and summary — omitting size and modifiedAt. Produces a smaller response; ideal for an initial tree survey.
 
 ## Response shape
 The response is a **flat, DFS-ordered list** of nodes (no nested children).
@@ -37,7 +37,7 @@ The response is a **flat, DFS-ordered list** of nodes (no nested children).
 - \`nextCursor\`: Present when \`truncated\` is true. Pass it as \`cursor\` in the next call to continue.
 
 ## Choosing what to read
-For a quick project survey use \`recursive: true, structureOnly: true\` — the tree shape fits in one small call for most projects. If the response is \`truncated\`, pass \`nextCursor\` as \`cursor\` to get the next page. Once you know which files are relevant, fetch their summaries or full content with \`read_project_file\`. A \`summary\` is a hint, not full content: it can lag recent edits or omit detail, so stay free to open any file. A missing \`summary\` means the file has not been indexed yet, not that it is irrelevant.
+For a project survey use \`recursive: true, structureOnly: true\`. Each document carries a one- or two-sentence \`summary\` of what it covers: use the summaries to decide which files to open with \`read_project_file\`, instead of opening files to find out what they are. If the response is \`truncated\`, pass \`nextCursor\` as \`cursor\` to get the next page. A \`summary\` is a hint, not full content: it can lag recent edits or omit detail, so stay free to open any file. A missing \`summary\` means the file has not been indexed yet, not that it is irrelevant.
 
 ## Notes
 - Generated/cache paths (${HIDDEN_FILE_TREE_ENTRIES_DESCRIPTION}) are hidden. All other files, including dotfiles, are visible.
@@ -55,13 +55,13 @@ export function createListProjectFilesTools(deps: ListProjectFilesToolDeps) {
         depth: z.number().int().min(1).max(20).default(10).describe('Max recursion depth when recursive is true'),
         limit: z.number().int().min(1).max(2000).optional().describe('Max total nodes to return (default 500 for recursive). Use with cursor to page through large trees.'),
         cursor: z.string().optional().describe('Opaque continuation handle from a previous truncated response'),
-        structureOnly: z.boolean().optional().describe('When true, return only name/path/isDirectory/isSymlink per node — omits size, modifiedAt, summary. Much smaller output.'),
+        structureOnly: z.boolean().optional().describe('When true, return only name/path/isDirectory/isSymlink/summary per node — omits size and modifiedAt. Smaller output.'),
       },
       async ({ projectId, path, recursive, depth, limit, cursor, structureOnly }) => {
         const result = await deps.fileExplorerService.listDirectoryPaged(projectId, path, {
           recursive,
           depth,
-          backfillMissingSummaries: !structureOnly,
+          backfillMissingSummaries: true,
           limit,
           cursor,
           structureOnly,
