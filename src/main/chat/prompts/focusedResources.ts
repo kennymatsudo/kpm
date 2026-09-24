@@ -91,6 +91,25 @@ Treat these as the implicit subject of the conversation unless the user explicit
 }
 
 /**
+ * The short form of the focused section, for a turn whose selection matches
+ * the full block already sent earlier in the same live session. It still names
+ * every resource, so the subject survives even if compaction summarized the
+ * earlier block away.
+ */
+export function buildFocusedReminder(focusedResources: FocusedResource[]): string {
+  if (focusedResources.length === 0) return '';
+  const lines = focusedResources.map((r) => `- ${formatFocusedResource(r)}`).join('\n');
+  return `
+# Focused Selection
+
+Unchanged since it was shared earlier in this conversation:
+${lines}
+
+Treat these as the implicit subject of the conversation unless the user explicitly names something else.
+`;
+}
+
+/**
  * Render the list of focused resources with plan-item bodies inlined under a
  * shared char budget. Returns one block per resource plus the IDs of any plan
  * items whose body was truncated (or omitted because the item wasn't loaded).

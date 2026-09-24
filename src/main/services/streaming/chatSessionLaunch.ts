@@ -53,6 +53,12 @@ export interface ManagedSession {
   mcpRecoveryAttempts: number; // Consecutive failed reconnect attempts
   /** Raw first user message before focused-resource context injection. */
   titleSeed?: string;
+  /**
+   * The full Focused Selection block this live session last received. Chips
+   * stay attached across sends, so an identical block is replaced by a short
+   * reminder instead of being re-sent every turn. A new launch starts empty.
+   */
+  lastFocusedSection?: string;
   segmentState: SegmentState; // Track message segments for splitting bubbles
   /**
    * Maps SDK tool_use id → the Activity we emitted for it.

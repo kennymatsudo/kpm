@@ -37,7 +37,7 @@ import {
 } from '../../kpmTools/runtimeRegistry';
 import { buildUserContentBlocks } from '../../claude/attachmentBlocks';
 import { projectWriteGrants } from '../../chat/writeGrants';
-import { buildFocusedSection } from '../../chat/prompts/focusedResources';
+import { buildFocusedReminder, buildFocusedSection } from '../../chat/prompts/focusedResources';
 import { type ServiceResult, type AsyncResult, success, failure } from '../result';
 import type { PlanContext } from '../../chat/prompts';
 import type { ChatChoiceEffort, ChatProvider, FocusChatDocument, FocusedResource, PlanItem, Project, Activity, ToolCallLogEntry, ChatAttachment, ChatSessionScope, SlashCommandInfo } from '../../../shared/types';
@@ -1611,19 +1611,33 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       if (prefix.trim()) focusedPrefix = prefix;
     }
 
+    // An explicit `$KPM_CONTEXT` always gets the full block. Otherwise a live
+    // session that already holds this exact block only needs the reminder;
+    // an idle or errored session is relaunched, so it gets the full block.
+    const live = sessions.get(key);
+    const reusesLiveSession = !!live && live.state !== 'idle' && live.state !== 'error';
+    const sendReminder = !!focusedPrefix && !hasContextPlaceholder
+      && reusesLiveSession && live.lastFocusedSection === focusedPrefix;
+    const focusedText = focused && sendReminder ? buildFocusedReminder(focused) : focusedPrefix;
+
     const messageWithContext = hasContextPlaceholder
       ? message.replaceAll(KPM_CONTEXT_PLACEHOLDER, focusedPrefix?.trim() ?? '')
       : message;
-    const prefixLines = [viewHint, hasContextPlaceholder ? undefined : focusedPrefix].filter((line): line is string => !!line);
+    const prefixLines = [viewHint, hasContextPlaceholder ? undefined : focusedText].filter((line): line is string => !!line);
     const messageText = prefixLines.length > 0 ? `${prefixLines.join('\n\n')}\n\n${messageWithContext}` : messageWithContext;
 
     const envelope: MessageEnvelope = { text: messageText, titleSeed: message, attachments: options.attachments };
-    return sendMessageToSession(
+    const result = await sendMessageToSession(
       key,
       envelope,
       options.clientMessageId,
       () => createChatSession(projectId, envelope, options),
     );
+    if (result.ok && focusedPrefix) {
+      const sent = sessions.get(key);
+      if (sent) sent.lastFocusedSection = focusedPrefix;
+    }
+    return result;
   }
 
   /**

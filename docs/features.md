@@ -204,10 +204,10 @@ Numbers have gaps where features were merged into a higher-level entry or remove
 - **Maturity signal:** Mature. Core feature. Production-grade streaming implementation with reconnect, timeout handling, permission prompting, and well-isolated sessions. Known: max 30-minute idle timeout before auto-reconnect.
 
 ### 12. Focused Resources (Context Files for Chat)
-- **What it does:** Users pin files/folders to "focused resources" to feed them into Claude's context. Rendered in system prompt as file tree. Users can add via drag-drop from file tree, button click, or Claude suggestions. Persisted per project and chat session.
+- **What it does:** Users pin files/folders to "focused resources" to feed them into Claude's context. Sent ahead of each message as a Focused Selection block (plan-item bodies inlined under a budget); pins stay attached across sends, so a live session that already received the identical block gets a one-line-per-resource reminder instead. Users can add via drag-drop from file tree, button click, or Claude suggestions. Persisted per project and chat session.
 - **Key code locations:**
   - Store: `src/renderer/stores/project/uiSlice.ts` and `src/renderer/stores/projectDomains.ts` (focused resources list)
-  - Service: `src/main/services/core/ChatRuntimeService.ts` (builds context from focused resources)
+  - Service: `src/main/services/streaming/StreamingSessionService.ts` (`sendChatMessage` injects the block; formatting in `src/main/chat/prompts/focusedResources.ts`)
   - Component: `src/renderer/components/sidebar-tree/ReposAndFilesSection.tsx`, `src/renderer/components/sidebar-tree/RepoContextMenu.tsx`, `src/renderer/components/sidebar-tree/FileContextMenu.tsx`
   - Prompt building: `src/main/chat/prompts/focusedResources.ts`
   - Type: `FocusedResource` in `shared/types.ts`

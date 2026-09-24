@@ -560,6 +560,41 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
     expect(session.sentMessages[0]).toBe('Ask Matt.\n\n\n\nUser request: validate it');
   });
 
+  it('sends a short reminder when the live session already has the same focused context', async () => {
+    service = createStreamingSessionService(createDeps(sendSpy));
+    const focusedResources = [{ type: 'project_file', path: 'docs/csat.md', isDirectory: false } as never];
+
+    await service.sendChatMessage('project-1', 'first', { chatSessionId: 'chat-1', model: 'sonnet', focusedResources });
+    const session = mockSessionInstances[0];
+    session.emitMessage({ type: 'result' });
+    await service.sendChatMessage('project-1', 'second', { chatSessionId: 'chat-1', model: 'sonnet', focusedResources });
+
+    expect(session.sentMessages[0]).toContain('Use the `Read` tool');
+    expect(session.sentMessages[1]).toContain('Unchanged since it was shared earlier');
+    expect(session.sentMessages[1]).toContain('- docs/csat.md');
+    expect(session.sentMessages[1]).not.toContain('Use the `Read` tool');
+  });
+
+  it('re-sends the full focused context when the selection changes', async () => {
+    service = createStreamingSessionService(createDeps(sendSpy));
+
+    await service.sendChatMessage('project-1', 'first', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+      focusedResources: [{ type: 'project_file', path: 'docs/csat.md', isDirectory: false } as never],
+    });
+    const session = mockSessionInstances[0];
+    session.emitMessage({ type: 'result' });
+    await service.sendChatMessage('project-1', 'second', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+      focusedResources: [{ type: 'project_file', path: 'docs/nps.md', isDirectory: false } as never],
+    });
+
+    expect(session.sentMessages[1]).toContain('- File: docs/nps.md');
+    expect(session.sentMessages[1]).not.toContain('Unchanged since it was shared earlier');
+  });
+
   it('routes tool approval events only to their originating chat session', async () => {
     const toolEvents = createDepsWithToolEvents(sendSpy);
     service = createStreamingSessionService(toolEvents.deps);
