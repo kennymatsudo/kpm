@@ -9,6 +9,7 @@ import { ChatSendSchema } from '../validation/chat';
 import { createRegistryIpcHandlers } from '../validation/utils';
 import { isPiAvailable } from '../../pi/detect';
 import { listPiProviders } from '../../pi/providers';
+import { getModelCatalog } from '../../providers/modelCatalog';
 import { getConfig } from '../../config';
 import { withTimeout } from '../../utils/withTimeout';
 
@@ -170,6 +171,8 @@ function buildChatHandlers(deps: ChatHandlerDeps): ChatHandlers {
       if (!result.data.choice) throw new Error('Chat model choice was not hydrated');
       return { ...result.data, choice: result.data.choice };
     },
+
+    modelCatalog: () => ({ catalog: getModelCatalog() }),
 
     piProviders: async () => {
       const available = await isPiAvailable();

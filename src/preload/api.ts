@@ -232,6 +232,8 @@ const chat = {
     ),
   getSlashCommands: chatInvoke.getSlashCommands,
   piProviders: chatInvoke.piProviders,
+  modelCatalog: chatInvoke.modelCatalog,
+  onModelCatalog: chatSubscriptions.modelCatalog,
   mcpServers: chatInvoke.mcpServers,
   reloadMcpServers: chatInvoke.reloadMcpServers,
   loginMcpServer: chatInvoke.loginMcpServer,

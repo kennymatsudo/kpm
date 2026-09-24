@@ -6,6 +6,16 @@ import {
   type ChatModelChoiceDefaults,
 } from './ChatModelChoiceService';
 import type { ChatProvider, PiProviderOption, ProvidersReadiness } from '../../../shared/types';
+import { FALLBACK_MODEL_CATALOG, type ModelCatalog } from '../../../shared/modelCatalog';
+
+/** A fetched list: each model carries the effort its provider would start it at. */
+const CATALOG: ModelCatalog = {
+  claude: [
+    { id: 'sonnet', label: 'Sonnet 5', effortLevels: ['low', 'medium', 'high', 'xhigh', 'max'], providerDefaultEffort: 'high' },
+    { id: 'opus', label: 'Opus 5.5', effortLevels: ['low', 'medium', 'high', 'xhigh', 'max'], providerDefaultEffort: 'medium' },
+  ],
+  codex: FALLBACK_MODEL_CATALOG.codex.map((model) => ({ ...model, providerDefaultEffort: 'medium' as const })),
+};
 
 function ready(): ProvidersReadiness {
   return {
@@ -24,6 +34,7 @@ function harness(
     { provider: 'cursor', modelId: 'auto', label: 'Cursor Auto', safe: true },
   ],
   piDefault: string | null = 'cursor/auto',
+  catalog: ModelCatalog = CATALOG,
 ) {
   const db = new BetterSqlite3(':memory:');
   db.exec(`
@@ -40,7 +51,6 @@ function harness(
   const defaults: ChatModelChoiceDefaults = {
     provider,
     models: { claude: 'sonnet', codex: 'gpt-5.6-sol', pi: piDefault },
-    effort: 'medium',
   };
   const getDefaults = vi.fn(() => defaults);
   const listPiProviders = vi.fn(async () => piProviders);
@@ -49,6 +59,7 @@ function harness(
     getDefaults,
     getReadiness: async () => ready(),
     listPiProviders,
+    getModelCatalog: () => catalog,
   });
   return { db, sessions, defaults, getDefaults, listPiProviders, service };
 }
@@ -57,7 +68,7 @@ describe('ChatModelChoiceService', () => {
   it('snapshots defaults once for a newly opened empty Chat', async () => {
     const h = harness();
     const first = await h.service.open({ projectId: 'p1', chatSessionId: 'c1', scope: 'main' });
-    expect(first.ok && first.data.selected).toEqual({ provider: 'claude', model: 'sonnet', effort: 'medium' });
+    expect(first.ok && first.data.selected).toEqual({ provider: 'claude', model: 'sonnet', effort: 'high' });
 
     h.defaults.models.claude = 'opus';
     const second = await h.service.open({ projectId: 'p1', chatSessionId: 'c1', scope: 'main' });
@@ -76,14 +87,22 @@ describe('ChatModelChoiceService', () => {
     h.db.close();
   });
 
-  it('starts Codex at its own model default effort rather than the configured Claude effort', async () => {
+  it('starts a new Chat at the effort the provider would pick for the model', async () => {
     const h = harness('codex');
     h.defaults.models.codex = 'gpt-5.6-terra';
-    h.defaults.effort = 'low';
 
     const opened = await h.service.open({ projectId: 'p1', chatSessionId: 'codex-1', scope: 'main' });
 
-    expect(opened.ok && opened.data.selected).toEqual({ provider: 'codex', model: 'gpt-5.6-terra', effort: 'high' });
+    expect(opened.ok && opened.data.selected).toEqual({ provider: 'codex', model: 'gpt-5.6-terra', effort: 'medium' });
+    h.db.close();
+  });
+
+  it('starts at a real level even before the provider has been asked', async () => {
+    const h = harness('claude', undefined, undefined, FALLBACK_MODEL_CATALOG);
+
+    const opened = await h.service.open({ projectId: 'p1', chatSessionId: 'c1', scope: 'main' });
+
+    expect(opened.ok && opened.data.selected.effort).toBe('medium');
     h.db.close();
   });
 
@@ -143,7 +162,7 @@ describe('ChatModelChoiceService', () => {
       intent: { type: 'choose_provider', provider: 'claude' },
     });
     if (!claude.ok) throw new Error(claude.error);
-    expect(claude.data.selected).toEqual({ provider: 'claude', model: 'sonnet', effort: 'medium' });
+    expect(claude.data.selected).toEqual({ provider: 'claude', model: 'sonnet', effort: 'high' });
     const codexAgain = await h.service.change({
       projectId: 'p1', chatSessionId: 'c1', expectedRevision: claude.data.revision,
       intent: { type: 'choose_provider', provider: 'codex' },
@@ -159,7 +178,7 @@ describe('ChatModelChoiceService', () => {
     h.db.close();
   });
 
-  it('resets unsupported effort to the selected model default for main and focus Chats', async () => {
+  it('moves to the new model\'s own default effort when the model changes, for main and focus Chats', async () => {
     const h = harness();
     const main = await h.service.open({ projectId: 'p1', chatSessionId: 'main-1', scope: 'main' });
     const focus = await h.service.open({
@@ -172,7 +191,7 @@ describe('ChatModelChoiceService', () => {
       projectId: 'p1', chatSessionId: 'main-1', expectedRevision: main.data.revision,
       intent: { type: 'choose_model', model: 'opus' },
     });
-    expect(opus.ok && opus.data.selected).toEqual({ provider: 'claude', model: 'opus', effort: null });
+    expect(opus.ok && opus.data.selected).toEqual({ provider: 'claude', model: 'opus', effort: 'medium' });
     h.db.close();
   });
 
@@ -228,7 +247,7 @@ describe('ChatModelChoiceService', () => {
 
     expect(resolved).toEqual({
       ok: true,
-      data: { provider: 'claude', model: 'sonnet', effort: 'medium', revision: opened.data.revision },
+      data: { provider: 'claude', model: 'sonnet', effort: 'high', revision: opened.data.revision },
     });
     expect(h.sessions.get('focus-resolve')?.scope).toBe('focus_document');
     h.db.close();
@@ -248,7 +267,7 @@ describe('ChatModelChoiceService', () => {
     expect(opened.ok && opened.data.selected).toEqual({
       provider: 'codex',
       model: 'gpt-5.6-sol',
-      effort: 'high',
+      effort: 'medium',
     });
     expect(opened.ok && opened.data.revision).toBe(1);
     h.db.close();
@@ -274,7 +293,7 @@ describe('ChatModelChoiceService', () => {
 
     const opened = await h.service.open({ projectId: 'p1', chatSessionId: 'effort-race', scope: 'main' });
 
-    expect(opened.ok && opened.data.selected.effort).toBe('high');
+    expect(opened.ok && opened.data.selected.effort).toBe('medium');
     expect(opened.ok && opened.data.revision).toBe(2);
     h.db.close();
   });
@@ -322,7 +341,7 @@ describe('ChatModelChoiceService', () => {
     const h = harness();
     h.sessions.create('legacy', 'p1', 'codex');
     const first = await h.service.open({ projectId: 'p1', chatSessionId: 'legacy', scope: 'main' });
-    expect(first.ok && first.data.selected).toEqual({ provider: 'codex', model: 'gpt-5.6-sol', effort: 'high' });
+    expect(first.ok && first.data.selected).toEqual({ provider: 'codex', model: 'gpt-5.6-sol', effort: 'medium' });
     expect(h.getDefaults).toHaveBeenCalled();
     expect(h.defaults.provider).toBe('claude');
     const persisted = h.sessions.get('legacy');

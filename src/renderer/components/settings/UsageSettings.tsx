@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LoadingSpinner } from '../ui/LoadingButton';
 import { ConfirmActionDialog } from '../ui/ConfirmActionDialog';
+import { useRecordedModelName } from '../../stores/modelCatalogStore';
 import {
   getProjectUsageStats,
   getGlobalUsageStats,
@@ -26,7 +27,6 @@ import {
   formatCurrency,
   formatTokensFull,
   formatSource,
-  formatModel,
   formatEventTimestamp,
   formatMsAsSeconds,
   resolveModelTier,
@@ -492,6 +492,7 @@ function ModelBreakdownPanel({
 }
 
 function BreakdownTable({ rows }: { rows: ProjectUsageStats['breakdown'] }) {
+  const recordedModelName = useRecordedModelName();
   if (rows.length === 0) {
     return (
       <div className="p-3 rounded-xl bg-surface-2 border border-border-subtle">
@@ -523,7 +524,7 @@ function BreakdownTable({ rows }: { rows: ProjectUsageStats['breakdown'] }) {
               <td className="px-3 py-2 text-text-secondary">
                 <span className="inline-flex items-center gap-2">
                   <span className={`inline-block w-1.5 h-1.5 rounded-full ${TIER_STYLE[resolveModelTier(row.model)].dot}`} aria-hidden />
-                  {formatModel(row.model)}
+                  {recordedModelName(row.model)}
                 </span>
               </td>
               <td className="px-3 py-2 text-right tabular-nums text-text-secondary">{formatTokensFull(row.events)}</td>
@@ -601,6 +602,7 @@ function formatEventLatency(durationMs: number | null, ttftMs: number | null): s
 }
 
 function RecentEventsTable({ events }: { events: ClaudeUsageEvent[] }) {
+  const recordedModelName = useRecordedModelName();
   if (events.length === 0) {
     return (
       <div className="p-3 rounded-xl bg-surface-2 border border-border-subtle">
@@ -627,7 +629,7 @@ function RecentEventsTable({ events }: { events: ClaudeUsageEvent[] }) {
             <tr key={event.id} className="border-t border-border-subtle">
               <td className="px-3 py-1.5 text-text-secondary whitespace-nowrap">{formatEventTimestamp(event.created_at)}</td>
               <td className="px-3 py-1.5 text-text-primary">{formatSource(event.source)}</td>
-              <td className="px-3 py-1.5 text-text-secondary">{formatModel(event.model)}</td>
+              <td className="px-3 py-1.5 text-text-secondary">{recordedModelName(event.model)}</td>
               <td className="px-3 py-1.5 text-right tabular-nums text-text-secondary">
                 {formatTokensFull(event.input_tokens + event.cache_creation_tokens + event.cache_read_tokens)}
               </td>

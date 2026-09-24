@@ -14,6 +14,7 @@
 
 import { payloadOf, type EventDefinition } from './appEvents';
 import type { Activity, AgentBackgroundTask, PlanAction, SlashCommandInfo } from '../types';
+import type { ModelCatalog } from '../modelCatalog';
 
 export interface ChunkEventData {
   projectId: string;
@@ -196,6 +197,8 @@ export const chatEvents = {
   slashCommands: { channel: 'chat:slash-commands', payload: payloadOf<SlashCommandsEventData>() },
   sessionDeactivated: { channel: 'chat:session-deactivated', payload: payloadOf<SessionLifecycleEventData>() },
   mcpStatus: { channel: 'chat:mcp-status', payload: payloadOf<McpStatusEventData>() },
+  /** Claude's or Codex's model list changed after the launch-time refresh. */
+  modelCatalog: { channel: 'chat:model-catalog', payload: payloadOf<ModelCatalog>() },
   /**
    * Emitted when a turn's response was truncated by hitting the max_tokens
    * limit. No preload subscriber exists today — kept wired per the

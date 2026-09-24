@@ -29,6 +29,7 @@ export type { Message, ClaudeModel as ChatClaudeModel, ChatProvider, PiProviderO
 export type { Activity, ChatViewMode } from '../../shared/types';
 export { useClaudeAvailabilityStore } from './claudeAvailabilityStore';
 export { useProviderReadinessStore } from './providerReadinessStore';
+export { useModelCatalogStore, useModelName, useRecordedModelName } from './modelCatalogStore';
 
 export { useFileTreeStore } from './fileTreeStore';
 

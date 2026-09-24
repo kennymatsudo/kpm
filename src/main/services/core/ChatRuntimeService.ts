@@ -20,6 +20,7 @@ import { listPiProviders } from '../../pi/providers';
 import { isPiAvailable } from '../../pi/detect';
 import { getConfig } from '../../config';
 import { withTimeout } from '../../utils/withTimeout';
+import { getModelCatalog } from '../../providers/modelCatalog';
 
 export interface ChatRuntimeServiceDeps {
   getMainWindow: () => BrowserWindow | null;
@@ -58,12 +59,12 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
         codex: getSetting(container.appSettings, 'chatCodexModel'),
         pi: getSetting(container.appSettings, 'chatPiProviderModel'),
       },
-      effort: getSetting(container.appSettings, 'chatEffort'),
     }),
     getReadiness: getProviderReadiness,
     listPiProviders: async () => await isPiAvailable()
       ? withTimeout(listPiProviders(), getConfig().session.piCatalogTimeoutMs, [])
       : [],
+    getModelCatalog,
   });
 
   const streamingSessionService = createStreamingSessionService({

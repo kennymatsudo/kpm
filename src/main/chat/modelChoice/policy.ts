@@ -1,13 +1,13 @@
-import {
-  CODEX_CHAT_MODELS,
-  type ChatChoiceEffort,
-  type ChatEffortDescriptor,
-  type ChatModelDescriptor,
-  type ChatProvider,
-  type ChatProviderDescriptor,
-  type PiProviderOption,
-  type ProvidersReadiness,
+import type {
+  ChatChoiceEffort,
+  ChatEffortDescriptor,
+  ChatModelDescriptor,
+  ChatProvider,
+  ChatProviderDescriptor,
+  PiProviderOption,
+  ProvidersReadiness,
 } from '../../../shared/types';
+import type { CatalogModel, ModelCatalog } from '../../../shared/modelCatalog';
 
 const LABELS: Record<ChatChoiceEffort, string> = {
   off: 'Off',
@@ -19,8 +19,6 @@ const LABELS: Record<ChatChoiceEffort, string> = {
   max: 'Max',
 };
 
-const CLAUDE_EFFORT = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
-const CODEX_EFFORT = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
 const PI_EFFORT = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
 
 /** Persisted marker for a new Chat that has no safe pi option to inherit. */
@@ -30,6 +28,33 @@ function efforts(values: readonly ChatChoiceEffort[]): ChatEffortDescriptor[] {
   return values.map((value) => ({ value, label: LABELS[value] }));
 }
 
+/**
+ * Used only before the provider's own list has been fetched, when KPM does
+ * not know a model's real starting effort yet.
+ */
+const FALLBACK_DEFAULT_EFFORT: Record<'claude' | 'codex', ChatChoiceEffort> = {
+  claude: 'medium',
+  codex: 'high',
+};
+
+/** A model starts at the effort its provider would pick for it, so the picker shows a real level. */
+function catalogDescriptors(provider: 'claude' | 'codex', models: CatalogModel[]): ChatModelDescriptor[] {
+  return models.map((model) => {
+    const candidates = [model.providerDefaultEffort, FALLBACK_DEFAULT_EFFORT[provider]];
+    const defaultEffort = candidates.find((effort) => effort && model.effortLevels.includes(effort))
+      ?? model.effortLevels[0]
+      ?? null;
+    return {
+      id: model.id,
+      label: model.label,
+      available: true,
+      effortLevels: efforts(model.effortLevels),
+      defaultEffort,
+      ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
+    };
+  });
+}
+
 function providerUnavailableReason(providerLabel: string, detail: string): string {
   return `${providerLabel} is unavailable: ${detail}. Choose an available provider or finish its setup.`;
 }
@@ -37,6 +62,7 @@ function providerUnavailableReason(providerLabel: string, detail: string): strin
 export function buildChatChoiceCatalog(
   readiness: ProvidersReadiness,
   piOptions: PiProviderOption[],
+  modelCatalog: ModelCatalog,
 ): ChatProviderDescriptor[] {
   const providerDescriptor = (
     provider: ChatProvider,
@@ -61,31 +87,8 @@ export function buildChatChoiceCatalog(
   };
 
   return [
-    providerDescriptor('claude', 'Claude', [
-      {
-        id: 'sonnet',
-        label: 'Sonnet',
-        available: true,
-        effortLevels: efforts(CLAUDE_EFFORT),
-        defaultEffort: 'medium',
-      },
-      {
-        id: 'opus',
-        label: 'Opus',
-        available: true,
-        // KPM's current Opus adapter deliberately omits explicit effort.
-        effortLevels: [],
-        defaultEffort: null,
-      },
-    ]),
-    providerDescriptor('codex', 'Codex', CODEX_CHAT_MODELS.map((model) => ({
-      id: model.value,
-      label: model.label,
-      available: true,
-      effortLevels: efforts(CODEX_EFFORT),
-      defaultEffort: 'high',
-      ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
-    }))),
+    providerDescriptor('claude', 'Claude', catalogDescriptors('claude', modelCatalog.claude)),
+    providerDescriptor('codex', 'Codex', catalogDescriptors('codex', modelCatalog.codex)),
     providerDescriptor('pi', 'pi', piOptions.map((option) => ({
       id: `${option.provider}/${option.modelId}`,
       label: option.label,

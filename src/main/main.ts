@@ -14,6 +14,11 @@ import type { AppServices } from './services/appServices';
 import { default as installExtension, REACT_DEVELOPER_TOOLS } from 'electron-devtools-installer';
 import { createMainWindowManager } from './bootstrap/windowManager';
 import { buildApplicationMenu } from './bootstrap/menu';
+import { refreshModelCatalog } from './providers/modelCatalog';
+import { listClaudeModels } from './claude/listClaudeModels';
+import { listCodexModels } from './codex/listCodexModels';
+import { emitAppEvent } from '../shared/ipc/appEvents';
+import { chatEvents } from '../shared/ipc/chatEvents';
 import { applyDockIcon, watchSystemAppearance } from './bootstrap/dockIcon';
 
 // Fix PATH for production builds launched from Finder
@@ -148,6 +153,15 @@ void app.whenReady().then(async () => {
   createWindow();
   // Actions triggered on app open, once the tool runtime and a window exist.
   services.actionRunnerService.handleAppOpened();
+  // Background only: pickers read the saved list, so nothing waits on this.
+  void refreshModelCatalog(
+    { claude: listClaudeModels, codex: () => listCodexModels() },
+    (catalog) => {
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed()) emitAppEvent(win.webContents, chatEvents.modelCatalog, catalog);
+      }
+    },
+  );
   // Keep the Dock icon following the macOS light/dark setting while running.
   watchSystemAppearance();
   buildApplicationMenu({

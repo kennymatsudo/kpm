@@ -57,28 +57,17 @@ describe('settings registry codecs', () => {
     });
   });
 
-  describe('chatEffort', () => {
-    const def = SETTINGS.chatEffort;
-    it('decodes every valid chat effort level', () => {
-      expect(def.decode('low')).toBe('low');
-      expect(def.decode('medium')).toBe('medium');
-      expect(def.decode('high')).toBe('high');
-      expect(def.decode('max')).toBe('max');
-    });
-    it('rejects board-only xhigh and unknown values', () => {
-      expect(def.decode('xhigh')).toBe('medium');
-      expect(def.decode(null)).toBe('medium');
-    });
-  });
-
   describe('chatCodexModel', () => {
     const def = SETTINGS.chatCodexModel;
     it('decodes a known codex model', () => {
       expect(def.decode('gpt-5.6-sol')).toBe('gpt-5.6-sol');
     });
-    it('folds unknown/unset to the default codex model', () => {
+    it('folds unset to the default codex model', () => {
       expect(def.decode(null)).toBe('gpt-5.6-terra');
-      expect(def.decode('gpt-5.5')).toBe('gpt-5.6-terra');
+      expect(def.decode('')).toBe('gpt-5.6-terra');
+    });
+    it('keeps a model Codex shipped after this KPM build', () => {
+      expect(def.decode('gpt-6-astra')).toBe('gpt-6-astra');
     });
   });
 

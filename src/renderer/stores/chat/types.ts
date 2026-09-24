@@ -1,4 +1,4 @@
-import type { Activity, AgentBackgroundTask, ChatAttachment, ChatChoiceIntent, ChatChoiceView, SessionState, ClaudeModel, ChatProvider, ChatSessionSummary, MessageSegment, ChatEffortLevel, PiProviderOption, SlashCommandInfo, CodexChatModel } from '../../../shared/types';
+import type { Activity, AgentBackgroundTask, ChatAttachment, ChatChoiceIntent, ChatChoiceView, SessionState, ClaudeModel, ChatProvider, ChatSessionSummary, MessageSegment, PiProviderOption, SlashCommandInfo, CodexChatModel } from '../../../shared/types';
 import type { StoreApi } from 'zustand';
 
 export interface Message {
@@ -38,7 +38,7 @@ export interface Message {
 }
 
 // Re-export types for consumers
-export type { Activity, AgentBackgroundTask, ClaudeModel, ChatProvider, MessageSegment, AgentEffortLevel, ChatEffortLevel, PiProviderOption, CodexChatModel } from '../../../shared/types';
+export type { Activity, AgentBackgroundTask, ClaudeModel, ChatProvider, MessageSegment, AgentEffortLevel, PiProviderOption, CodexChatModel } from '../../../shared/types';
 
 /** Per-session state (each concurrent session has its own state) */
 export interface PerSessionState {
@@ -117,7 +117,6 @@ export interface ChatState {
 
   // Shared state
   model: ClaudeModel;
-  effort: ChatEffortLevel;
   provider: ChatProvider;
   /** Codex model default, inherited by new sessions. */
   codexModel: CodexChatModel;
@@ -228,7 +227,6 @@ export interface ChatState {
   /** Replace the list with the SDK's authoritative one (init fetch or commands_changed push) */
   setSlashCommands: (commands: SlashCommandInfo[]) => void;
   setDefaultModel: (model: ClaudeModel) => void;
-  setDefaultEffort: (effort: ChatEffortLevel) => void;
   /** Refresh the pi.dev provider/model list (cheap; called at boot and when the provider picker opens) */
   loadPiProviders: () => Promise<void>;
   setDefaultProvider: (provider: ChatProvider) => void;

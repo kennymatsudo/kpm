@@ -86,6 +86,10 @@ export interface SessionConfig {
   mcpRecoveryMaxAttempts: number;
   /** Timeout for enumerating pi providers and models (ms) */
   piCatalogTimeoutMs: number;
+  /** Timeout for asking Claude or Codex for its model list (ms) */
+  modelCatalogTimeoutMs: number;
+  /** Filename (under userData) of the last model list fetched from Claude and Codex. */
+  modelCatalogFilename: string;
 }
 
 export interface GenerationConfig {
@@ -250,6 +254,8 @@ function createDefaultConfig(): AppConfig {
       sessionReadyPollIntervalMs: 100,
       mcpRecoveryMaxAttempts: 3,
       piCatalogTimeoutMs: 10 * 1000, // 10 seconds
+      modelCatalogTimeoutMs: 20 * 1000, // 20 seconds; Claude init can wait on MCP connectors
+      modelCatalogFilename: 'model-catalog.json',
     },
 
     generation: {

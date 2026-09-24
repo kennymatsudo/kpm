@@ -1,21 +1,25 @@
 import { getConfig } from '../../config';
 import type { BoardProvider, ModelDescriptor } from '../../../shared/playbooks';
-import { CODEX_CHAT_MODELS, PI_UNRESOLVED_MODEL_ID, type PiProviderOption } from '../../../shared/types';
+import type { ModelCatalog } from '../../../shared/modelCatalog';
+import { PI_UNRESOLVED_MODEL_ID, type PiProviderOption } from '../../../shared/types';
+import { getModelCatalog } from '../../providers/modelCatalog';
 import { listPiProviders } from '../../pi/providers';
 import { isAgentAvailable } from './agentCatalog';
 
 export interface BoardProviderRegistryDeps {
   isAvailable?: (provider: 'claude' | 'codex' | 'gemini') => Promise<boolean>;
   listPiModels?: () => Promise<PiProviderOption[]>;
+  getModelCatalog?: () => ModelCatalog;
 }
 
-function codexBoardModels(): ModelDescriptor[] {
-  const configuredModel = getConfig().agentSession.codexModel ?? CODEX_CHAT_MODELS[0].value;
-  const knownModels: ModelDescriptor[] = CODEX_CHAT_MODELS.map((model) => ({
-    id: model.value,
+function codexBoardModels(catalog: ModelCatalog): ModelDescriptor[] {
+  const configuredModel = getConfig().agentSession.codexModel ?? catalog.codex[0]?.id;
+  const knownModels: ModelDescriptor[] = catalog.codex.map((model) => ({
+    id: model.id,
     name: model.label,
-    ...(model.value === configuredModel ? { isDefault: true } : {}),
+    ...(model.id === configuredModel ? { isDefault: true } : {}),
   }));
+  if (!configuredModel) return knownModels;
   if (knownModels.some((model) => model.id === configuredModel)) return knownModels;
   return [{ id: configuredModel, name: configuredModel, isDefault: true }, ...knownModels];
 }
@@ -39,6 +43,7 @@ function piBoardModels(options: PiProviderOption[]): ModelDescriptor[] {
 
 export async function listBoardProviders(deps: BoardProviderRegistryDeps = {}): Promise<BoardProvider[]> {
   const available = deps.isAvailable ?? isAgentAvailable;
+  const catalog = (deps.getModelCatalog ?? getModelCatalog)();
   const [claude, codex, gemini, piResult] = await Promise.all([
     available('claude'),
     available('codex'),
@@ -54,16 +59,17 @@ export async function listBoardProviders(deps: BoardProviderRegistryDeps = {}): 
   const providers: BoardProvider[] = [
     {
       id: 'claude', name: 'Claude', available: claude,
-      models: [
-        { id: 'sonnet', name: 'Sonnet', isDefault: true },
-        { id: 'opus', name: 'Opus' },
-      ],
+      models: catalog.claude.map((model) => ({
+        id: model.id,
+        name: model.label,
+        ...(model.id === 'sonnet' ? { isDefault: true } : {}),
+      })),
       capabilities: { nativeSkills: true, reviewSandbox: false },
       ...(!claude ? { unavailableReason: 'Claude Code is not available' } : {}),
     },
     {
       id: 'codex', name: 'Codex', available: codex,
-      models: codexBoardModels(),
+      models: codexBoardModels(catalog),
       capabilities: { nativeSkills: false, reviewSandbox: true },
       ...(!codex ? { unavailableReason: 'Codex is not authenticated' } : {}),
     },

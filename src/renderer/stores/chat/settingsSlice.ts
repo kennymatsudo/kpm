@@ -23,7 +23,7 @@ function clearPiRetry() {
 }
 
 export function createSettingsSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
-  | 'setTokens' | 'loadSlashCommands' | 'setSlashCommands' | 'setDefaultModel' | 'setDefaultEffort'
+  | 'setTokens' | 'loadSlashCommands' | 'setSlashCommands' | 'setDefaultModel'
   | 'loadPiProviders' | 'setDefaultProvider' | 'setDefaultCodexModel'
   | 'setDefaultPiProviderModel' | 'acknowledgeUnsafePiProvider'
   | 'setChatChoice' | 'openChatChoice' | 'changeChatChoice'
@@ -93,10 +93,6 @@ export function createSettingsSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
     setDefaultModel: (model) => {
       set({ model });
       void setSetting('chatModel', model);
-    },
-    setDefaultEffort: (effort) => {
-      set({ effort });
-      void setSetting('chatEffort', effort);
     },
     loadPiProviders: async () => {
       const result = await getPiProviders();

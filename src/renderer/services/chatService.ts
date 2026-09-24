@@ -55,6 +55,14 @@ export function getSlashCommands() {
   return window.api.chat.getSlashCommands();
 }
 
+export function getModelCatalog() {
+  return window.api.chat.modelCatalog();
+}
+
+export function onModelCatalogChange(callback: Parameters<typeof window.api.chat.onModelCatalog>[0]) {
+  return window.api.chat.onModelCatalog(callback);
+}
+
 export function getPiProviders() {
   return window.api.chat.piProviders();
 }

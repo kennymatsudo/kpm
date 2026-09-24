@@ -14,6 +14,7 @@ import {
 } from '../../../shared/playbooks';
 import { resolveCandidateChain } from '../../../shared/playbookRuntime';
 import type { DefaultModel } from '../../../shared/modelDefault';
+import { useModelName } from '../../stores/modelCatalogStore';
 import type { SlashCommandInfo } from '../../../shared/types';
 import {
   createPlaybook,
@@ -329,6 +330,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 }
 
 function AgentEditor({ step, providers, defaultModel, onChange }: { step: PlaybookStep; providers: BoardProvider[]; defaultModel: DefaultModel | null; onChange: (patch: Partial<PlaybookStep>) => void }) {
+  const modelName = useModelName();
   const chains = step.runs ?? [step.agents ?? [{ provider: 'claude' }]];
   const apply = (next: PlaybookStep) => onChange({ agents: next.agents, runs: next.runs });
   return (
@@ -355,7 +357,7 @@ function AgentEditor({ step, providers, defaultModel, onChange }: { step: Playbo
                   <div className="flex flex-wrap items-center gap-2">
                     <select value={isDefault ? DEFAULT_PROVIDER_VALUE : candidate.provider} onChange={(event) => apply(updateAgentCandidate(step, runIndex, candidateIndex, event.target.value === DEFAULT_PROVIDER_VALUE ? { useDefault: true, ...(effort ? { effort } : {}) } : { provider: event.target.value, ...(effort ? { effort } : {}) }))} className="input"><option value={DEFAULT_PROVIDER_VALUE}>Default (your KPM model)</option>{providers.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}{entry.available ? '' : ' (unavailable)'}</option>)}</select>
                     {isDefaultAgent(candidate)
-                      ? <span className="text-tiny text-text-muted">Follows your KPM model{defaultModel ? ` · ${defaultModel.provider}/${defaultModel.model}` : ''}</span>
+                      ? <span className="text-tiny text-text-muted">Follows your KPM model{defaultModel ? ` · ${modelName(defaultModel.model)}` : ''}</span>
                       : <select value={candidate.model ?? provider?.models.find((model) => model.isDefault)?.id ?? ''} onChange={(event) => apply(updateAgentCandidate(step, runIndex, candidateIndex, { provider: candidate.provider, model: event.target.value, ...(effort ? { effort } : {}) }))} className="input">{provider?.models.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select>}
                     <select value={effort ?? ''} onChange={(event) => { const next = (event.target.value || undefined) as AgentCandidate['effort']; apply(updateAgentCandidate(step, runIndex, candidateIndex, isDefaultAgent(candidate) ? { useDefault: true, ...(next ? { effort: next } : {}) } : { provider: candidate.provider, ...(candidate.model ? { model: candidate.model } : {}), ...(next ? { effort: next } : {}) })); }} className="input"><option value="">Default effort</option>{['low','medium','high','xhigh','max'].map((level) => <option key={level} value={level}>{level}</option>)}</select>
                   </div>

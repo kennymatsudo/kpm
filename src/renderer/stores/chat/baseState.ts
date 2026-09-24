@@ -27,7 +27,7 @@ export const createInitialPerSessionState = (sessionNumber: number): PerSessionS
 });
 
 export const createInitialChatState = (): Pick<ChatState,
-  | 'sessions' | 'activeSessionIds' | 'viewedSessionId' | 'model' | 'effort' | 'provider' | 'codexModel' | 'piProviderModel'
+  | 'sessions' | 'activeSessionIds' | 'viewedSessionId' | 'model' | 'provider' | 'codexModel' | 'piProviderModel'
   | 'piProviders' | 'piProvidersAvailable' | 'piProvidersLoaded' | 'piAcknowledgedUnsafeProviders'
   | 'totalTokens' | 'sessionHistory' | 'slashCommands' | 'slashCommandsSource' | 'nextSessionNumber' | 'persistedProjectId'
 > => ({
@@ -35,7 +35,6 @@ export const createInitialChatState = (): Pick<ChatState,
   activeSessionIds: new Set(),
   viewedSessionId: null,
   model: 'sonnet',
-  effort: 'medium',
   provider: 'claude',
   codexModel: DEFAULT_CODEX_CHAT_MODEL,
   piProviderModel: undefined,

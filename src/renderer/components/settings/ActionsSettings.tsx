@@ -11,6 +11,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ClaudeModel } from '../../../shared/types';
+import { useModelCatalogStore } from '../../stores/modelCatalogStore';
 import {
   ACTION_CAPABILITIES,
   ACTION_CAPABILITY_LABELS,
@@ -69,11 +70,7 @@ const EVENT_OPTIONS: { value: ActionTriggerEvent; label: string }[] = ACTION_TRI
   (event) => ({ value: event, label: formatTrigger({ kind: 'event', event }) })
 );
 
-const MODEL_OPTIONS = [
-  { value: 'default', label: 'Follow my model setting' },
-  { value: 'sonnet', label: 'Sonnet' },
-  { value: 'opus', label: 'Opus' },
-];
+const FOLLOW_MODEL_OPTION = { value: 'default', label: 'Follow my model setting' };
 
 function blankAction(projectId: string | null): ActionEditable {
   return {
@@ -146,6 +143,11 @@ export function ActionsSettings({ currentProjectId }: Props) {
   const updateAction = useActionStore((state) => state.update);
   const removeAction = useActionStore((state) => state.remove);
   const runNow = useActionStore((state) => state.runNow);
+  const claudeModels = useModelCatalogStore((state) => state.catalog.claude);
+  const modelOptions = useMemo(
+    () => [FOLLOW_MODEL_OPTION, ...claudeModels.map((model) => ({ value: model.id, label: model.label }))],
+    [claudeModels],
+  );
 
   const [draft, setDraft] = useState<ActionEditable>(() => blankAction(currentProjectId ?? null));
   const [isCreating, setIsCreating] = useState(false);
@@ -393,7 +395,7 @@ export function ActionsSettings({ currentProjectId }: Props) {
                   label="Model"
                   value={draft.model ?? 'default'}
                   onChange={(next) => patch({ model: next === 'default' ? null : (next as ClaudeModel) })}
-                  options={MODEL_OPTIONS}
+                  options={modelOptions}
                 />
               </div>
 

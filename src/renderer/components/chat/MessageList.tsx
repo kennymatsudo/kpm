@@ -26,7 +26,7 @@ import { ProcessTimeline } from './ProcessTimeline';
 import { BackgroundTaskStrip } from './BackgroundTaskStrip';
 import { Tooltip } from '../ui/Tooltip';
 import { AttachmentChip } from './AttachmentChip';
-import { formatModel } from '../../utils/usageFormatters';
+import { useRecordedModelName } from '../../stores/modelCatalogStore';
 import { buildTurnRenderPlan, type TurnRenderNode } from './turnRenderPlan';
 import { sessionModelId } from '../../stores/chat/chatChoice';
 import { canMergeAssistantTurn } from '../../stores/chat/messageMerge';
@@ -48,7 +48,7 @@ const CHECKPOINT_GAP_MIN_MS = 1_500;
 /** Muted inline divider marking a merged turn boundary — carries the "time is passing" signal that a repeated header used to provide. */
 const CheckpointDivider = memo(function CheckpointDivider({ gapMs, model }: { gapMs: number | null; model?: string }) {
   const durationLabel = gapMs != null && gapMs >= CHECKPOINT_GAP_MIN_MS ? formatTurnDuration(gapMs) : null;
-  const modelLabel = formatModelLabel(model);
+  const modelLabel = useModelLabel(model);
   if (!durationLabel && !modelLabel) return null;
   const timeText = durationLabel
     ? gapMs != null && gapMs >= CHECKPOINT_GAP_DIVIDER_MS
@@ -473,9 +473,9 @@ function formatTurnDuration(ms: number | undefined): string | null {
 }
 
 /** Friendly model label derived from the model id stamped on the message. */
-function formatModelLabel(model: string | undefined): string | null {
-  if (!model) return null;
-  return formatModel(model).toLowerCase();
+function useModelLabel(model: string | undefined): string | null {
+  const recordedModelName = useRecordedModelName();
+  return model ? recordedModelName(model).toLowerCase() : null;
 }
 
 /** What answered, on what model, for how long, and when.
@@ -495,7 +495,7 @@ const AssistantCaption = memo(function AssistantCaption({
   /** Omitted while the turn is still streaming, when there is nothing final to copy. */
   copyContent?: string;
 }) {
-  const modelLabel = formatModelLabel(model);
+  const modelLabel = useModelLabel(model);
   const durationLabel = formatTurnDuration(durationMs);
   return (
     <div className="flex h-6 items-center gap-2 font-mono text-tiny text-text-muted">

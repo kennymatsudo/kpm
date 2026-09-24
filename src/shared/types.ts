@@ -57,28 +57,34 @@ export type ClaudeModel = 'opus' | 'sonnet';
 /** Chat session scope controls where a persisted conversation is surfaced. */
 export type ChatSessionScope = 'main' | 'focus_document';
 
+/**
+ * Codex models KPM knew about at build time. Only the fallback: the live list
+ * comes from Codex itself (see `shared/modelCatalog.ts`), so a new Codex model
+ * shows up without an entry here.
+ */
 export const CODEX_CHAT_MODELS = [
   {
     value: 'gpt-5.6-sol',
-    label: 'Sol',
-    description: 'GPT-5.6 Sol — Detail and polish for complex work',
+    label: 'GPT-5.6-Sol',
+    description: 'Detail and polish for complex work',
     contextWindow: 372_000,
   },
   {
     value: 'gpt-5.6-terra',
-    label: 'Terra',
-    description: 'GPT-5.6 Terra — Pragmatic all-rounder',
+    label: 'GPT-5.6-Terra',
+    description: 'Pragmatic all-rounder',
     contextWindow: 372_000,
   },
   {
     value: 'gpt-5.6-luna',
-    label: 'Luna',
-    description: 'GPT-5.6 Luna — Clear, repeatable work at scale',
+    label: 'GPT-5.6-Luna',
+    description: 'Clear, repeatable work at scale',
     contextWindow: 372_000,
   },
 ] as const;
 
-export type CodexChatModel = typeof CODEX_CHAT_MODELS[number]['value'];
+/** Any Codex model id; the set changes as Codex ships models. */
+export type CodexChatModel = string;
 /** Terra, not the first list entry: the list is ordered by depth, this is the everyday pick. */
 export const DEFAULT_CODEX_CHAT_MODEL: CodexChatModel = 'gpt-5.6-terra';
 
@@ -184,8 +190,6 @@ export interface TaskPromptTemplate {
  */
 export type AgentEffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
-/** Legacy Claude-chat effort vocabulary retained for app-setting compatibility. */
-export type ChatEffortLevel = Exclude<AgentEffortLevel, 'xhigh'>;
 
 /** Provider-neutral effort vocabulary persisted with a Chat model choice. */
 export type ChatChoiceEffort = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
@@ -1147,7 +1151,8 @@ export type DevSessionAttentionReason =
   | 'opposing-review-errored'
   | `provider-unavailable:${string}`
   | `skill-unavailable:${string}`
-  | `all-runs-failed:${string}`;
+  | `all-runs-failed:${string}`
+  | `some-runs-failed:${string}`;
 
 export function isCommitHookRepairPhase(
   phase: DevSessionAutomationPhase | null | undefined,

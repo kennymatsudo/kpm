@@ -18,6 +18,7 @@ import { z } from 'zod';
 import { resultOf, type EndpointDefinition } from './endpoints';
 import { absolutePath, uuid } from './sharedSchemas';
 import { CHAT_PROVIDERS } from '../types';
+import type { ModelCatalog } from '../modelCatalog';
 import type { Activity, ChatChoiceView, ChatMessage, ChatSessionScope, ChatSessionSummary, PiProviderOption, SessionState, SlashCommandInfo } from '../types';
 
 /**
@@ -193,6 +194,11 @@ export const chatEndpoints = {
     channel: 'chat:get-slash-commands',
     params: null,
     result: resultOf<RegistryResponse<{ commands: SlashCommandInfo[] }>>(),
+  },
+  modelCatalog: {
+    channel: 'chat:get-model-catalog',
+    params: null,
+    result: resultOf<RegistryResponse<{ catalog: ModelCatalog }>>(),
   },
   piProviders: {
     channel: 'chat:pi-providers',

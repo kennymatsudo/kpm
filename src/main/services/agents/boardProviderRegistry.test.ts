@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PI_UNRESOLVED_MODEL_ID } from '../../../shared/types';
 import { createTestConfig, setConfig } from '../../config';
 import { listBoardProviders } from './boardProviderRegistry';
+import { FALLBACK_MODEL_CATALOG } from '../../../shared/modelCatalog';
 
 describe('board provider registry', () => {
   it('reports executable board providers and configured Pi models', async () => {
@@ -45,18 +46,43 @@ describe('board provider registry', () => {
     });
   });
 
-  it('offers the shared Codex catalog while preserving the board default', async () => {
+  it('offers the fetched Codex list while preserving the board default', async () => {
     setConfig(createTestConfig({ agentSession: { codexModel: 'gpt-5.5' } }));
     const providers = await listBoardProviders({
       isAvailable: async () => true,
       listPiModels: async () => [],
+      getModelCatalog: () => ({
+        ...FALLBACK_MODEL_CATALOG,
+        codex: [
+          { id: 'gpt-6-astra', label: 'GPT-6-Astra', effortLevels: [] },
+          { id: 'gpt-5.6-terra', label: 'GPT-5.6-Terra', effortLevels: [] },
+        ],
+      }),
     });
 
     expect(providers.find((provider) => provider.id === 'codex')?.models).toEqual([
       { id: 'gpt-5.5', name: 'gpt-5.5', isDefault: true },
-      { id: 'gpt-5.6-sol', name: 'Sol' },
-      { id: 'gpt-5.6-terra', name: 'Terra' },
-      { id: 'gpt-5.6-luna', name: 'Luna' },
+      { id: 'gpt-6-astra', name: 'GPT-6-Astra' },
+      { id: 'gpt-5.6-terra', name: 'GPT-5.6-Terra' },
+    ]);
+  });
+
+  it('names Claude models the way Claude does', async () => {
+    const providers = await listBoardProviders({
+      isAvailable: async () => true,
+      listPiModels: async () => [],
+      getModelCatalog: () => ({
+        ...FALLBACK_MODEL_CATALOG,
+        claude: [
+          { id: 'sonnet', label: 'Sonnet 5', effortLevels: [] },
+          { id: 'opus', label: 'Opus 5.5', effortLevels: [] },
+        ],
+      }),
+    });
+
+    expect(providers.find((provider) => provider.id === 'claude')?.models).toEqual([
+      { id: 'sonnet', name: 'Sonnet 5', isDefault: true },
+      { id: 'opus', name: 'Opus 5.5' },
     ]);
   });
 });

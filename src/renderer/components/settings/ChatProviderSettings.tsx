@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { SettingsSection, StatusBadge } from './SettingsSection';
 import { useChatStore, useProviderReadinessStore, type ChatProvider } from '../../stores';
-import { CODEX_CHAT_MODELS, type PiProviderOption } from '../../../shared/types';
+import type { PiProviderOption } from '../../../shared/types';
+import { useModelCatalogStore } from '../../stores/modelCatalogStore';
 import { ConfirmActionDialog } from '../ui/ConfirmActionDialog';
 import { piProviderModelSelector } from '../../stores/chat/piProviderSelection';
 
@@ -13,19 +14,18 @@ const PROVIDERS: { value: ChatProvider; label: string; description: string }[] =
 ];
 
 export function ChatProviderSettings() {
-  const { provider, model, codexModel, effort, piProviders, piProviderModel, acknowledgedUnsafeProviders, setDefaultProvider, setDefaultModel, setDefaultCodexModel, setDefaultEffort, setDefaultPiProviderModel, acknowledgeUnsafePiProvider, loadPiProviders } = useChatStore(
+  const catalog = useModelCatalogStore((state) => state.catalog);
+  const { provider, model, codexModel, piProviders, piProviderModel, acknowledgedUnsafeProviders, setDefaultProvider, setDefaultModel, setDefaultCodexModel, setDefaultPiProviderModel, acknowledgeUnsafePiProvider, loadPiProviders } = useChatStore(
     useShallow((state) => ({
       provider: state.provider,
       model: state.model,
       codexModel: state.codexModel,
-      effort: state.effort,
       piProviders: state.piProviders,
       piProviderModel: state.piProviderModel,
       acknowledgedUnsafeProviders: state.piAcknowledgedUnsafeProviders,
       setDefaultProvider: state.setDefaultProvider,
       setDefaultModel: state.setDefaultModel,
       setDefaultCodexModel: state.setDefaultCodexModel,
-      setDefaultEffort: state.setDefaultEffort,
       setDefaultPiProviderModel: state.setDefaultPiProviderModel,
       acknowledgeUnsafePiProvider: state.acknowledgeUnsafePiProvider,
       loadPiProviders: state.loadPiProviders,
@@ -120,23 +120,18 @@ export function ChatProviderSettings() {
         </div>
 
         {provider === 'claude' && (
-          <div className="grid grid-cols-2 gap-2">
-            <label className="text-xs text-text-muted">Default model
-              <select value={model} onChange={(event) => setDefaultModel(event.target.value as typeof model)} className="mt-1 block w-full rounded-md bg-surface-2 p-2 text-text-primary">
-                <option value="sonnet">Sonnet</option><option value="opus">Opus</option>
-              </select>
-            </label>
-            <label className="text-xs text-text-muted">Default effort
-              <select value={effort} onChange={(event) => setDefaultEffort(event.target.value as typeof effort)} className="mt-1 block w-full rounded-md bg-surface-2 p-2 text-text-primary">
-                {(['low', 'medium', 'high', 'max'] as const).map((value) => <option key={value} value={value}>{value}</option>)}
-              </select>
-            </label>
-          </div>
+          <label className="block text-xs text-text-muted">Default model
+            <select value={model} onChange={(event) => setDefaultModel(event.target.value as typeof model)} className="mt-1 block w-full rounded-md bg-surface-2 p-2 text-text-primary">
+              {catalog.claude.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+            </select>
+          </label>
         )}
         {provider === 'codex' && (
           <label className="block text-xs text-text-muted">Default model
-            <select value={codexModel} onChange={(event) => setDefaultCodexModel(event.target.value as typeof codexModel)} className="mt-1 block w-full rounded-md bg-surface-2 p-2 text-text-primary">
-              {CODEX_CHAT_MODELS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            <select value={codexModel} onChange={(event) => setDefaultCodexModel(event.target.value)} className="mt-1 block w-full rounded-md bg-surface-2 p-2 text-text-primary">
+              {/* A saved model Codex no longer lists stays visible instead of silently showing another one. */}
+              {!catalog.codex.some((option) => option.id === codexModel) && <option value={codexModel}>{codexModel}</option>}
+              {catalog.codex.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
             </select>
           </label>
         )}
