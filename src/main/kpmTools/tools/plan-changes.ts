@@ -99,13 +99,13 @@ Plan items carry structured fields that flow to the agent, the reviewer, and gen
 - **acceptance_criteria** (string[], local-only): testable checklist the agent will satisfy. Each entry is one criterion.
 - **description** (markdown, **synced to Jira/Linear**): why the work matters, in two to four sentences of plain prose. Written for a product manager or a developer who has never opened the codebase: the problem, who it affects, what changes for them, and any alternative already rejected. Keep implementation out of it — no file paths, function or class names, or library and framework names.
 - **source_document_id** (local-only): if this item was extracted from an iteration doc, carry the breadcrumb here.
-- **primary_repo_id** (local-only): the connected repo ID most likely to own implementation. Use the repo IDs shown in Project Context. Set null when multiple repos are plausible and none is clearly primary.
+- **primary_repo_id** (local-only): the connected repo ID most likely to own implementation. Use the connected repo IDs listed under Project in the system prompt. Set null when multiple repos are plausible and none is clearly primary.
 - **affected_repo_ids** (local-only): other connected repo IDs the item is expected to affect. Do not repeat primary_repo_id.
 
 Repo targeting:
 - Infer targets from the focused repo/files and the repos you inspected before creating the item.
 - If exactly one repo is connected, KPM selects it automatically.
-- Never guess an opaque repo ID. Use only IDs shown in Project Context.
+- Never guess an opaque repo ID. Use only the connected repo IDs listed under Project in the system prompt; never take one from a project document or the context file.
 - Leave primary_repo_id null when the evidence is ambiguous. The user can change it during review.
 
 Together, title + description + intent + acceptance_criteria are the item's **Work Brief**. After creation, **revise_work_brief is the only chat action allowed to change any Work Brief field**. First fetch the full current item, then submit the complete replacement Work Brief with its current work_brief_revision as expected_revision. Never send a partial brief. A revision conflict means you must fetch again before proposing another revision.
@@ -127,7 +127,7 @@ Item actions:
   - Fetch the item first and replace all four fields. Never use update_item for title, description, intent, or acceptance_criteria.
   - create_item may omit description entirely; revise_work_brief may not. Send every Work Brief field, using null for the empty ones.
 - set_repo_targets: { "type": "set_repo_targets", "item_id": "...", "repository_scope": { "primary_repo_id": null, "affected_repo_ids": [] } }
-  - Replaces the complete Repository Scope. Use only connected repo IDs from Project Context.
+  - Replaces the complete Repository Scope. Use only the connected repo IDs listed under Project.
 - update_item: { "type": "update_item", "item_id": "...", "updates": { "status_category": "done" } }
   - update_item is only for non-brief metadata such as status_category, label, release_tag, and source_document_id.
 - delete_item: { "type": "delete_item", "item_id": "...", "cascade": false }

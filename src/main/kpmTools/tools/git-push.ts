@@ -44,7 +44,7 @@ Publishing commits that already exist locally, usually so a pull request can be 
 - Sets the upstream automatically the first time a branch is pushed.
 - Refuses a detached HEAD, the repository's default branch, and main/master/develop/release.
 - There is no force push. If the remote rejects the push as non-fast-forward, report it and let the user decide — do not try to work around it.
-- Needs the conversation's write access, requested on first use.
+- Needs the project's write grant, requested on first use.
 - Pushes committed work only. Commit first, then push.`;
 
 export function createGitPushTools(deps: GitPushToolDeps) {

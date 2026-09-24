@@ -26,7 +26,7 @@ For new files use \`propose_document_create\`. For the project context file (AGE
 Rules:
 - old_string must match exactly one location (whitespace + indentation included). If missing or non-unique, the call fails — add more surrounding context.
 - old_string and new_string must differ.
-- Treat \`@plan/<uuid>\` tokens as atomic; never split one across the boundary or partially overwrite the UUID. Use only UUIDs from the system prompt's Item Reference. Refs in prose render as live chips locally and rewrite to native tracker syntax on export.
+- Treat \`@plan/<uuid>\` tokens as atomic; never split one across the boundary or partially overwrite the UUID. Use only UUIDs from the system prompt's Item Reference or a KPM plan tool result. Refs in prose render as live chips locally and rewrite to native tracker syntax on export.
 - Multiple edits to the same file: use edits[] to batch related hunks in one atomic call (single approval). Hunks apply in order, each against the result of prior hunks. A failing hunk cancels the whole batch.`;
 
 /** A single find-and-replace hunk. */

@@ -14,7 +14,7 @@ export type { PlanContext } from './types';
 import type { PlanContext, ContinuationTurn } from './types';
 import type { ChatProvider, ChatSessionScope, TaskPromptTemplate } from '../../../shared/types';
 import { resolveEffectiveRepoPath } from '../../../shared/repoPath';
-import { FULL_HIERARCHY_THRESHOLD, buildItemReferenceTable } from './planFormatting';
+import { buildCurrentPlanSection } from './planFormatting';
 import { buildPlanModificationsSection } from './modes';
 import { buildToolDecisionTree } from './toolDocs';
 import { buildAttachmentsSection } from './workspace';
@@ -147,9 +147,8 @@ export function buildChatSystemPrompt(
   const profile = PROMPT_PROFILES[audience.provider];
   const isFocus = audience.scope === 'focus_document';
   const repos = context.repos.length > 0
-    ? context.repos.map((repo) => `- \`${resolveEffectiveRepoPath(repo)}\``).join('\n')
+    ? context.repos.map((repo) => `- ID: \`${repo.id}\` — path: \`${resolveEffectiveRepoPath(repo)}\``).join('\n')
     : 'No repos connected.';
-  const planSummary = context.planItems.length > 0 ? buildItemReferenceTable(context.planItems) : 'Empty.';
   const continuationSection = buildContinuationSection(context.continuationHistory);
   const continuation = continuationSection ? `\n${continuationSection}` : '';
   const focusDocument = context.focusDocument
@@ -184,9 +183,7 @@ Project folder: \`${context.project.folder_path}\`
 Connected repos:
 ${repos}
 ${continuation}${focusDocument}${projectContext}${userPrefs}
-# Current Plan
-${context.planItems.length} items.
-${planSummary}
+${buildCurrentPlanSection(context.planItems)}
 
 ${planRefs}`;
 }
@@ -196,7 +193,6 @@ export function buildSystemPrompt(context: PlanContext): string {
 
   const hasAttachments = attachments.length > 0;
   const hasRepos = repos.length > 0;
-  const hasPlan = planItems.length > 0;
   const hasContextFile = contextFileContent && contextFileContent.trim().length > 0;
 
   const getPrompt = (key: string): string => resolveRegistryPrompt(key, getPromptContent);
@@ -232,13 +228,7 @@ ${buildUserGlobalInstructionsSection(userGlobalInstructions)}${hasContextFile ? 
 
 ${contextFileContent}
 ` : ''}
-# Current Plan
-${hasPlan
-    ? planItems.length <= FULL_HIERARCHY_THRESHOLD
-      ? `${planItems.length} items. IDs listed below — use directly.`
-      : `${planItems.length} items. Root items below. Query \`query_plan_items\` for others.`
-    : 'Empty.'}
-${buildItemReferenceTable(planItems)}
+${buildCurrentPlanSection(planItems)}
 
 ${buildPlanReferenceRulesSection()}`;
 }
@@ -249,7 +239,7 @@ export function buildPlanReferenceRulesSection(): string {
 Use \`@plan/<uuid>\` to reference a plan item inside any markdown you author (chat replies, plan-item description / intent / acceptance_criteria, document-edit proposals). KPM renders these as live chips that show the item's current title and status, and rewrites them to native syntax (Jira smart link, Linear URL, GitHub \`Closes ENG-123\`) on export.
 
 Rules:
-- Only use UUIDs from the **Item Reference** above, or from the **Focused Selection** section (focused plan items are always valid refs even when the plan is too large to list in full). KPM rejects unknown UUIDs at save — do not invent or guess.
+- Only use UUIDs from the **Item Reference** above, the **Focused Selection** section, or a KPM plan tool result (for items the reference does not list, such as closed ones). KPM rejects unknown UUIDs at save — do not invent or guess.
 - Refs work mid-prose: "After @plan/<uuid>, we can…" is fine.
 - Don't put refs inside fenced code blocks — they won't resolve.
 - Prefer a ref over restating the item's title or external key in prose; readers get a live chip.`;

@@ -97,7 +97,7 @@ describe('buildSystemPrompt', () => {
       contextFileContent: '# Project notes\nUse the shared client.',
     }));
 
-    expect(prompt).toContain("The first file write, shell command, or state-changing git operation pauses for the user to enable writes for the conversation");
+    expect(prompt).toContain("The first file write, shell command, or state-changing git operation pauses for the user to enable writes for the project");
     expect(prompt).toContain('Your file tools can also read any other folder on disk when the user points you at one — you are not limited to the project folder and connected repos for reading.');
 
     expect(prompt).not.toContain('Connected repos are read-only in chat.');

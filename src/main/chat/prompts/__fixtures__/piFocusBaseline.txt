@@ -14,7 +14,7 @@ ID: `project-1`
 Project folder: `/tmp/project-1`
 
 Connected repos:
-- `/tmp/repo-1`
+- ID: `repo-1` — path: `/tmp/repo-1`
 
 # Prior Conversation (continued)
 
@@ -35,7 +35,6 @@ The focused document body describes the export boundary.
 </document>
 
 # Current Plan
-0 items.
 Empty.
 
 ## Plan References
