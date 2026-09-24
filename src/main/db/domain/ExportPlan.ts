@@ -35,6 +35,7 @@ import type { JiraClient, TrackerClient } from '../../tracker-clients';
 import {
   findTransitionWithMapping,
   generateTransitionWarning,
+  inferCategoryWithMapping,
   isTransitionNeededWithMapping,
 } from '../../trackers/statusTransitions';
 import { createStatusReconciler } from '../../trackers/StatusReconciler';
@@ -269,6 +270,59 @@ function emptyPlan(
  * entry. Staged deletions survive a tracker failure here — they need none of
  * the above, so a type-fetch failure leaves them reviewable and drainable.
  */
+/**
+ * Drop queued updates that would push nothing: the item's title, description,
+ * and status target all match what the tracker held at the last sync. A queue
+ * row records that an edit happened, not what it changed, so an edit that was
+ * later reverted, or overtaken by an inbound sync, would otherwise stay listed
+ * with no differences.
+ *
+ * Compares against the sync snapshot rather than a live fetch, so a row is kept
+ * whenever it can't be proven settled (no snapshot, custom field overrides).
+ */
+export function pruneSettledChanges(
+  kpmProjectId: string,
+  deps: Pick<ExportPlanDeps, 'outboundChanges' | 'planItems' | 'tracker' | 'sync'>
+): void {
+  const updates = deps.outboundChanges
+    .getByProject(kpmProjectId)
+    .filter(isOutboundItemChange)
+    .filter((entry) => entry.operation === 'update' && !entry.custom_field_overrides);
+  if (updates.length === 0) return;
+
+  const allItems = deps.planItems.getByProject(kpmProjectId);
+  const itemsById = new Map(allItems.map((item) => [item.id, item]));
+  const snapshots = deps.sync.getSnapshotsByItemIds(updates.map((entry) => entry.plan_item_id));
+  const associations = new Map<string, TrackerAssociationWithScope | undefined>();
+
+  for (const entry of updates) {
+    const item = itemsById.get(entry.plan_item_id);
+    const snapshot = snapshots.get(entry.plan_item_id);
+    if (!item?.external_key || !snapshot) continue;
+
+    if (!associations.has(entry.association_id)) {
+      associations.set(entry.association_id, deps.tracker.getAssociationById(entry.association_id));
+    }
+    const association = associations.get(entry.association_id);
+    if (!association) continue;
+
+    if (entry.target_status_category) {
+      if (!item.external_status) continue;
+      const trackerCategory = inferCategoryWithMapping(item.external_status, association.status_mapping, {
+        trackerType: association.tracker_type,
+      });
+      if (trackerCategory !== entry.target_status_category) continue;
+    }
+
+    const projected = projectForTracker(item, allItems, association.tracker_type);
+    if (projected.title !== snapshot.snapshot_title) continue;
+    if ((normalizeMarkdown(projected.description) ?? '') !== (normalizeMarkdown(snapshot.snapshot_description) ?? '')) continue;
+
+    if (getConfig().claude.debug) console.log(`[ExportPlan] Dropping ${item.external_key} from queue - matches the last sync`);
+    deps.outboundChanges.remove(entry.id);
+  }
+}
+
 export async function resolveExportPlan(
   kpmProjectId: string,
   associationId: string,
@@ -279,6 +333,7 @@ export async function resolveExportPlan(
     return emptyPlan(kpmProjectId, associationId, ['Association not found']);
   }
 
+  pruneSettledChanges(kpmProjectId, deps);
   const allQueueEntries = deps.outboundChanges.getByAssociation(associationId);
   const deletions = allQueueEntries.filter(isOutboundDeletion);
   const queueEntries = allQueueEntries.filter(isOutboundItemChange);

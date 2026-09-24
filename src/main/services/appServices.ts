@@ -261,6 +261,7 @@ export function createAppServices(container: IRepositoryContainer) {
       externalPlanItems: container.externalPlanItems,
       sync: container.sync,
       tracker: container.tracker,
+      outboundChanges: container.outboundChanges,
     }),
   });
 

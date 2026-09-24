@@ -1,13 +1,14 @@
 import type { Database } from 'better-sqlite3';
 import type {
   IExternalPlanItemRepository,
+  IOutboundChangeRepository,
   IPlanItemRepository,
   ISyncRepository,
   ITrackerRepository,
 } from '../interfaces';
 import type { TrackerClient, ExternalIssue } from '../../trackers';
 import { fetchIssuesWithSubtasks } from '../../trackers';
-import { inferCategoryWithMapping } from '../../trackers/statusTransitions';
+import { STATUS_CATEGORY_LABELS, inferCategoryWithMapping } from '../../trackers/statusTransitions';
 import { normalizeMarkdown } from '../../documents';
 import { classifyFieldChange } from './trackerReconciliation';
 import { recordTrackerAgreement } from './trackerAgreement';
@@ -22,8 +23,10 @@ import type {
   TrackerAgreementState,
   ConflictResolution,
   DeletedItemAction,
+  StatusCategory,
   StatusMapping,
 } from '../../../shared/types';
+import { isOutboundItemChange } from '../../../shared/types';
 
 type SyncProgressCallback = (phase: string, current: number, total: number) => void;
 
@@ -33,6 +36,20 @@ export interface SyncServiceDeps {
   externalPlanItems: IExternalPlanItemRepository;
   sync: ISyncRepository;
   tracker: ITrackerRepository;
+  outboundChanges: Pick<IOutboundChangeRepository, 'getByAssociation' | 'updateStatusCategory'>;
+}
+
+type ExternalItemUpdates = Parameters<IExternalPlanItemRepository['updateFromExternal']>[1];
+
+function updatesFromChanges(changes: SyncUpdatedItem['changes']): ExternalItemUpdates {
+  const updates: ExternalItemUpdates = {};
+  for (const change of changes) {
+    if (change.field === 'title') updates.title = change.new_value ?? undefined;
+    else if (change.field === 'description') updates.description = change.new_value;
+    else if (change.field === 'status_category') updates.status_category = change.new_value;
+    else updates[change.field] = change.new_value;
+  }
+  return updates;
 }
 
 export function createSyncService(deps: SyncServiceDeps) {
@@ -84,6 +101,17 @@ export function createSyncService(deps: SyncServiceDeps) {
     // Load snapshots for existing items
     const snapshots = SyncRepository.getSnapshotsByItemIds(existingItems.map(i => i.id));
 
+    // Status changes still waiting to export. The tracker's status must not
+    // silently replace one of these: the queue would go on to push the local
+    // value while the item shows the tracker's.
+    const pendingStatus = new Map(
+      deps.outboundChanges
+        .getByAssociation(associationId)
+        .filter(isOutboundItemChange)
+        .filter((entry) => entry.target_status_category)
+        .map((entry) => [entry.plan_item_id, entry.target_status_category])
+    );
+
     // Analyze each external issue
     onProgress?.('analyzing', 0, externalIssues.length);
     for (let i = 0; i < externalIssues.length; i++) {
@@ -122,7 +150,13 @@ export function createSyncService(deps: SyncServiceDeps) {
       } else {
         // Existing item - check for changes/conflicts
         const snapshot = snapshots.get(existing.id) ?? null;
-        const analysis = service.analyzeChanges(existing, issue, snapshot, association.status_mapping);
+        const analysis = service.analyzeChanges(
+          existing,
+          issue,
+          snapshot,
+          association.status_mapping,
+          pendingStatus.get(existing.id) ?? null
+        );
 
         if (analysis.conflicts.length > 0) {
           preview.conflicts.push({
@@ -131,6 +165,8 @@ export function createSyncService(deps: SyncServiceDeps) {
             title: existing.title,
             tracker_state,
             fields: analysis.conflicts,
+            changes: analysis.updates,
+            tracker_status_category: analysis.trackerStatusCategory,
           });
           preview.stats.conflicts++;
         } else if (analysis.updates.length > 0) {
@@ -164,14 +200,16 @@ export function createSyncService(deps: SyncServiceDeps) {
   /**
    * Analyze changes between KPM item, external issue, and snapshot.
    * Returns updates (tracker changed, KPM didn't) and conflicts (both changed).
+   * `pendingStatus` is the status target of the item's unexported queue entry.
    * Note: label is no longer synced - we use external_issue_type directly.
    */
   analyzeChanges(
     kpmItem: PlanItem,
     external: ExternalIssue,
     snapshot: SyncSnapshot | null,
-    statusMapping: StatusMapping | null
-  ): { updates: SyncUpdatedItem['changes']; conflicts: SyncConflict['fields'] } {
+    statusMapping: StatusMapping | null,
+    pendingStatus: StatusCategory | null = null
+  ): { updates: SyncUpdatedItem['changes']; conflicts: SyncConflict['fields']; trackerStatusCategory: StatusCategory } {
     const updates: SyncUpdatedItem['changes'] = [];
     const conflicts: SyncConflict['fields'] = [];
 
@@ -230,11 +268,17 @@ export function createSyncService(deps: SyncServiceDeps) {
       statusMapping,
       { stateType: external.statusType ?? null }
     );
+    // A local status still queued for export is a local edit, not a failed
+    // export, so it is the user's call which side wins.
     if (kpmItem.status_category !== expectedCategory) {
-      updates.push({ field: 'status_category', old_value: kpmItem.status_category, new_value: expectedCategory });
+      if (pendingStatus && kpmItem.status_category === pendingStatus) {
+        conflicts.push({ field: 'status', your_value: STATUS_CATEGORY_LABELS[pendingStatus], tracker_value: external.status });
+      } else {
+        updates.push({ field: 'status_category', old_value: kpmItem.status_category, new_value: expectedCategory });
+      }
     }
 
-    return { updates, conflicts };
+    return { updates, conflicts, trackerStatusCategory: expectedCategory };
   },
 
   /**
@@ -284,38 +328,7 @@ export function createSyncService(deps: SyncServiceDeps) {
   applyUpdates(preview: SyncPreview, result: SyncResult): void {
     for (const item of preview.updated_items) {
       try {
-        const updates: {
-          title?: string;
-          description?: string | null;
-          label?: string | null;
-          release_tag?: string | null;
-          external_status?: string | null;
-          status_category?: string | null;
-          external_assignee_id?: string | null;
-          external_assignee_name?: string | null;
-          external_assignee_avatar_url?: string | null;
-          external_creator_id?: string | null;
-          external_creator_name?: string | null;
-          external_creator_avatar_url?: string | null;
-        } = {};
-
-        for (const change of item.changes) {
-          if (change.field === 'title') updates.title = change.new_value ?? undefined;
-          else if (change.field === 'description') updates.description = change.new_value;
-          else if (change.field === 'label') updates.label = change.new_value;
-          else if (change.field === 'release_tag') updates.release_tag = change.new_value;
-          else if (change.field === 'external_status') {
-            updates.external_status = change.new_value;
-          } else if (change.field === 'status_category') {
-            // Direct status_category update (e.g., fixing out-of-sync state)
-            updates.status_category = change.new_value;
-          } else if (change.field === 'external_assignee_id') updates.external_assignee_id = change.new_value;
-          else if (change.field === 'external_assignee_name') updates.external_assignee_name = change.new_value;
-          else if (change.field === 'external_assignee_avatar_url') updates.external_assignee_avatar_url = change.new_value;
-          else if (change.field === 'external_creator_id') updates.external_creator_id = change.new_value;
-          else if (change.field === 'external_creator_name') updates.external_creator_name = change.new_value;
-          else if (change.field === 'external_creator_avatar_url') updates.external_creator_avatar_url = change.new_value;
-        }
+        const updates = updatesFromChanges(item.changes);
 
         ExternalPlanItemRepository.updateFromExternal(item.plan_item_id, updates);
         recordTrackerAgreement(item.plan_item_id, item.tracker_state, {}, deps);
@@ -340,24 +353,41 @@ export function createSyncService(deps: SyncServiceDeps) {
     for (const conflict of preview.conflicts) {
       const resolution = resolutions.get(conflict.plan_item_id);
 
+      if (conflict.changes?.length) {
+        ExternalPlanItemRepository.updateFromExternal(conflict.plan_item_id, updatesFromChanges(conflict.changes));
+      }
+
       if (resolution === 'use_theirs') {
         const updates: {
           title?: string;
           description?: string | null;
           label?: string | null;
           release_tag?: string | null;
+          status_category?: StatusCategory;
         } = {};
         for (const field of conflict.fields) {
           if (field.field === 'title') updates.title = field.tracker_value ?? undefined;
           else if (field.field === 'description') updates.description = field.tracker_value;
           else if (field.field === 'label') updates.label = field.tracker_value;
           else if (field.field === 'release_tag') updates.release_tag = field.tracker_value;
+          else if (field.field === 'status' && conflict.tracker_status_category) {
+            updates.status_category = conflict.tracker_status_category;
+          }
         }
 
         ExternalPlanItemRepository.updateFromExternal(conflict.plan_item_id, updates);
+        if (updates.status_category) {
+          // The queued status is now the tracker's own, so the export has
+          // nothing to push for it; the queue drops the row if nothing else differs.
+          for (const entry of deps.outboundChanges.getByAssociation(preview.link_id).filter(isOutboundItemChange)) {
+            if (entry.plan_item_id === conflict.plan_item_id) {
+              deps.outboundChanges.updateStatusCategory(entry.id, updates.status_category);
+            }
+          }
+        }
         result.updated++;
       }
-      // 'keep_mine' - no database change to item
+      // 'keep_mine' - the local value stays, and stays queued
 
       recordTrackerAgreement(conflict.plan_item_id, conflict.tracker_state, {}, deps);
     }

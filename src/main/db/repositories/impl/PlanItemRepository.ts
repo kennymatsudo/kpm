@@ -15,6 +15,23 @@ import {
 } from '../../../../shared/workBrief';
 
 /**
+ * The `completed_at` SET clause that goes with a `status_category` write, or
+ * null when the write leaves it alone. Every path that writes status must use
+ * this, or an item leaves done with its completion date still set.
+ *
+ * The CASE reads the OLD status_category: SQLite evaluates every SET
+ * expression against the pre-update row, so it tells "already done" apart
+ * from "becoming done" without a pre-read.
+ */
+export function completedAtAssignment(statusCategory: string | null | undefined): string | null {
+  if (statusCategory === undefined || statusCategory === null) return null;
+  if (statusCategory === 'done') {
+    return "completed_at = CASE WHEN status_category IS NOT 'done' THEN CURRENT_TIMESTAMP ELSE completed_at END";
+  }
+  return 'completed_at = NULL';
+}
+
+/**
  * Safely parse a JSON-encoded string[] column. Returns null on parse failure.
  */
 function parseStringArray(json: string | null): string[] | null {
@@ -414,19 +431,8 @@ export class PlanItemRepository implements IPlanItemRepository {
       }
     }
 
-    if (updates.status_category !== undefined) {
-      // Track completion timestamp when item is marked as done. Use a SQL CASE
-      // against the OLD status_category instead of a pre-read SELECT: SQLite
-      // evaluates every SET expression against the pre-update row values, so
-      // the CASE correctly distinguishes "already done" from "transitioning
-      // into done" without an extra round trip.
-      if (updates.status_category === 'done') {
-        fields.push("completed_at = CASE WHEN status_category != 'done' THEN CURRENT_TIMESTAMP ELSE completed_at END");
-      } else if (updates.status_category !== null) {
-        // Clear completed_at if moving away from done state
-        fields.push('completed_at = NULL');
-      }
-    }
+    const completedAt = completedAtAssignment(updates.status_category);
+    if (completedAt) fields.push(completedAt);
 
     // Extended PlanItemSyncUpdates fields (for sync operations)
     const syncUpdates = updates as PlanItemSyncUpdates;

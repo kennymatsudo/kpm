@@ -377,6 +377,7 @@ describe('ExportService', () => {
       externalPlanItems: ctx.repos.externalPlanItems,
       sync: ctx.repos.sync,
       tracker: ctx.repos.tracker,
+      outboundChanges: ctx.repos.outboundChanges,
     }).analyzeChanges(exported!, assignedIssue, snapshot, null);
 
     expect(analysis.updates).toEqual([]);
@@ -762,6 +763,73 @@ describe('ExportService', () => {
 
     expect(result).toEqual({ removed: true });
     expect(ctx.repos.outboundChanges.get(queueEntry.id)).toBeUndefined();
+  });
+
+  describe('settled queue entries', () => {
+    function queueLinkedUpdate(
+      ctx: ReturnType<typeof createTestRepositoryContext>,
+      item: { title: string; status_category: 'in_review' | 'done' },
+      target: 'in_review' | 'done' | null
+    ) {
+      const { project, association } = setupAssociation(ctx, 'Settled Queue Project');
+      ctx.repos.planItems.add(createPlanItem({
+        id: 'plan-1',
+        project_id: project.id,
+        association_id: association.id,
+        external_key: 'ENG-1',
+        external_status: 'In Review',
+        ...item,
+      }));
+      ctx.repos.sync.upsertSnapshot({
+        plan_item_id: 'plan-1',
+        snapshot_title: 'Linked issue',
+        snapshot_description: null,
+        external_updated_at: '2026-01-01T00:00:00.000Z',
+      });
+      ctx.repos.outboundChanges.add({
+        kpm_project_id: project.id,
+        plan_item_id: 'plan-1',
+        association_id: association.id,
+        operation: 'update',
+        target_issue_type_id: null,
+        target_issue_type_name: null,
+        target_parent_key: null,
+        target_status_category: target,
+        custom_field_overrides: null,
+        queued_by: 'claude',
+      });
+      return { project, association };
+    }
+
+    it('drops an update whose status was set back to the tracker value', () => {
+      const ctx = createTestRepositoryContext();
+      const { project } = queueLinkedUpdate(ctx, { title: 'Linked issue', status_category: 'in_review' }, 'in_review');
+
+      expect(createService(ctx).getQueue(project.id)).toEqual([]);
+    });
+
+    it('keeps an update whose status target still differs from the tracker', () => {
+      const ctx = createTestRepositoryContext();
+      const { project } = queueLinkedUpdate(ctx, { title: 'Linked issue', status_category: 'done' }, 'done');
+
+      expect(createService(ctx).getQueue(project.id)).toHaveLength(1);
+    });
+
+    it('keeps an update whose title differs from the last sync', () => {
+      const ctx = createTestRepositoryContext();
+      const { project } = queueLinkedUpdate(ctx, { title: 'Renamed locally', status_category: 'in_review' }, null);
+
+      expect(createService(ctx).getQueue(project.id)).toHaveLength(1);
+    });
+
+    it('leaves settled updates out of the export preview', async () => {
+      const ctx = createTestRepositoryContext();
+      const { project, association } = queueLinkedUpdate(ctx, { title: 'Linked issue', status_category: 'in_review' }, 'in_review');
+
+      const preview = await createService(ctx).generateExportPreview(project.id, association.id);
+
+      expect(preview.items).toEqual([]);
+    });
   });
 
   describe('deletion drain', () => {

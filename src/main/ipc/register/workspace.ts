@@ -33,7 +33,7 @@ export function registerWorkspaceHandlers({
     modelChoice: chatRuntime.modelChoice,
   });
   registerFileHandlers(getMainWindow, services.contextFileService);
-  registerExportHandlers(services.exportService, services.typeMappingService, services.container.outboundChanges);
+  registerExportHandlers(services.exportService, services.typeMappingService);
   registerTrackerHandlers(getMainWindow, services.trackerService);
   registerSettingsHandlers(services.settingsService, services.container.appSettings);
   registerCustomThemeHandlers(services.customThemeService);

@@ -90,6 +90,27 @@ const trackerAgreementStateSchema = z.object({
   updatedAt: z.string(),
 });
 
+const syncChangesSchema = z.array(
+  z.object({
+    field: z.enum([
+      'title',
+      'description',
+      'label',
+      'release_tag',
+      'external_status',
+      'status_category',
+      'external_assignee_id',
+      'external_assignee_name',
+      'external_assignee_avatar_url',
+      'external_creator_id',
+      'external_creator_name',
+      'external_creator_avatar_url',
+    ]),
+    old_value: z.string().nullable(),
+    new_value: z.string().nullable(),
+  })
+);
+
 const syncPreviewSchema = z.object({
   tracker_type: z.enum(['jira', 'linear']),
   link_id: z.string(),
@@ -122,26 +143,7 @@ const syncPreviewSchema = z.object({
       external_key: z.string(),
       title: z.string(),
       tracker_state: trackerAgreementStateSchema,
-      changes: z.array(
-        z.object({
-          field: z.enum([
-            'title',
-            'description',
-            'label',
-            'release_tag',
-            'external_status',
-            'status_category',
-            'external_assignee_id',
-            'external_assignee_name',
-            'external_assignee_avatar_url',
-            'external_creator_id',
-            'external_creator_name',
-            'external_creator_avatar_url',
-          ]),
-          old_value: z.string().nullable(),
-          new_value: z.string().nullable(),
-        })
-      ),
+      changes: syncChangesSchema,
     })
   ),
   conflicts: z.array(
@@ -152,11 +154,13 @@ const syncPreviewSchema = z.object({
       tracker_state: trackerAgreementStateSchema,
       fields: z.array(
         z.object({
-          field: z.enum(['title', 'description', 'label', 'release_tag']),
+          field: z.enum(['title', 'description', 'label', 'release_tag', 'status']),
           your_value: z.string().nullable(),
           tracker_value: z.string().nullable(),
         })
       ),
+      changes: syncChangesSchema.optional(),
+      tracker_status_category: statusCategory.optional(),
     })
   ),
   deleted_in_tracker: z.array(

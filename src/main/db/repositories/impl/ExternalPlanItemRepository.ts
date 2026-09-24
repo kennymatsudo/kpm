@@ -13,6 +13,7 @@ import type {
   ImportedIssueFields,
   IPlanItemRepository,
 } from '../../interfaces';
+import { completedAtAssignment } from './PlanItemRepository';
 
 /**
  * Safely parse JSON code_refs. Returns null on parse failure.
@@ -240,6 +241,8 @@ export class ExternalPlanItemRepository implements IExternalPlanItemRepository {
     if (updates.status_category !== undefined) {
       fields.push('status_category = ?');
       values.push(updates.status_category);
+      const completedAt = completedAtAssignment(updates.status_category);
+      if (completedAt) fields.push(completedAt);
     }
     if (updates.external_assignee_id !== undefined) {
       fields.push('external_assignee_id = ?');

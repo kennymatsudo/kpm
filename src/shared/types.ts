@@ -493,11 +493,15 @@ export interface SyncConflict {
   title: string;
   tracker_state: TrackerAgreementState;
   fields: {
-    field: 'title' | 'description' | 'label' | 'release_tag';
+    field: 'title' | 'description' | 'label' | 'release_tag' | 'status';
     your_value: string | null;
     tracker_value: string | null;
     // snapshot_value intentionally NOT included - internal only for detection
   }[];
+  /** Tracker changes that don't conflict (status name, people). Applied whichever side wins. */
+  changes?: SyncUpdatedItem['changes'];
+  /** The status the tracker's value maps to, applied when the tracker wins a status conflict. */
+  tracker_status_category?: StatusCategory;
 }
 
 export type ConflictResolution = 'keep_mine' | 'use_theirs';

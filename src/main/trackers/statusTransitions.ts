@@ -115,6 +115,15 @@ export function findBestTransition(
   return null;
 }
 
+export const STATUS_CATEGORY_LABELS: Record<StatusCategory, string> = {
+  not_started: 'Not Started',
+  in_progress: 'In Progress',
+  in_review: 'In Review',
+  done: 'Done',
+  blocked: 'Blocked',
+  canceled: 'Canceled',
+};
+
 /**
  * Generate a warning message when no valid transition exists.
  *
@@ -129,16 +138,7 @@ export function generateTransitionWarning(
   availableTransitions: TrackerTransition[],
   statusMapping?: StatusMapping | null
 ): string {
-  const categoryLabels: Record<StatusCategory, string> = {
-    not_started: 'Not Started',
-    in_progress: 'In Progress',
-    in_review: 'In Review',
-    done: 'Done',
-    blocked: 'Blocked',
-    canceled: 'Canceled',
-  };
-
-  const targetLabel = categoryLabels[targetCategory];
+  const targetLabel = STATUS_CATEGORY_LABELS[targetCategory];
 
   if (availableTransitions.length === 0) {
     return `Cannot transition from "${currentStatus}" — no destination states available`;

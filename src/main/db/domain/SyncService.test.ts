@@ -54,6 +54,7 @@ function createService(overrides: {
   externalPlanItems?: Partial<Parameters<typeof createSyncService>[0]['externalPlanItems']>;
   tracker?: Partial<Parameters<typeof createSyncService>[0]['tracker']>;
   sync?: Partial<Parameters<typeof createSyncService>[0]['sync']>;
+  outboundChanges?: Partial<Parameters<typeof createSyncService>[0]['outboundChanges']>;
 } = {}) {
   return createSyncService({
     database: {} as never,
@@ -96,6 +97,11 @@ function createService(overrides: {
       updateAssociationLastSynced: vi.fn(),
       ...overrides.tracker,
     } as never,
+    outboundChanges: {
+      getByAssociation: vi.fn(() => []),
+      updateStatusCategory: vi.fn(),
+      ...overrides.outboundChanges,
+    },
   });
 }
 
@@ -247,6 +253,111 @@ describe('SyncService', () => {
 
     expect(updateFromExternal).toHaveBeenCalledWith('plan-1', {
       external_status: 'Custom Dev State',
+    });
+  });
+
+  describe('local status waiting to export', () => {
+    const linkedItem = {
+      id: 'plan-1',
+      title: 'Linear issue',
+      description: null,
+      status_category: 'done',
+      external_key: 'ENG-1',
+      external_status: 'In Review',
+    } as PlanItem;
+    const inReview = createIssue({ status: 'In Review', statusType: 'started' });
+    const mapping = { in_review: 'In Review', done: 'Done' };
+
+    it('reports a conflict instead of overwriting the queued status', () => {
+      const analysis = createService().analyzeChanges(linkedItem, inReview, null, mapping, 'done');
+
+      expect(analysis.conflicts).toEqual([{ field: 'status', your_value: 'Done', tracker_value: 'In Review' }]);
+      expect(analysis.updates).toEqual([]);
+      expect(analysis.trackerStatusCategory).toBe('in_review');
+    });
+
+    it('still takes the tracker status when nothing local is queued', () => {
+      const analysis = createService().analyzeChanges(linkedItem, inReview, null, mapping);
+
+      expect(analysis.conflicts).toEqual([]);
+      expect(analysis.updates).toEqual([{ field: 'status_category', old_value: 'done', new_value: 'in_review' }]);
+    });
+
+    it('moves the queued status to the tracker value when the tracker wins', () => {
+      const updateFromExternal = vi.fn();
+      const updateStatusCategory = vi.fn();
+      const service = createService({
+        externalPlanItems: { updateFromExternal },
+        outboundChanges: {
+          getByAssociation: vi.fn(() => [{
+            id: 'queue-1',
+            plan_item_id: 'plan-1',
+            operation: 'update',
+            target_status_category: 'done',
+          }]) as never,
+          updateStatusCategory,
+        },
+      });
+      const result = { success: true, created: 0, updated: 0, deleted: 0, errors: [] };
+
+      service.applyConflictResolutions(
+        {
+          tracker_type: 'linear',
+          link_id: 'assoc-1',
+          external_project_key: 'ENG',
+          new_items: [],
+          updated_items: [],
+          conflicts: [{
+            plan_item_id: 'plan-1',
+            external_key: 'ENG-1',
+            title: 'Linear issue',
+            tracker_state: { title: 'Linear issue', description: null, updatedAt: '2026-01-02T00:00:00.000Z' },
+            fields: [{ field: 'status', your_value: 'Done', tracker_value: 'In Review' }],
+            changes: [{ field: 'external_assignee_name', old_value: null, new_value: 'Ada' }],
+            tracker_status_category: 'in_review',
+          }],
+          deleted_in_tracker: [],
+          stats: { total: 1, new: 0, updated: 0, conflicts: 1, deleted: 0, unchanged: 0 },
+        },
+        new Map([['plan-1', 'use_theirs' as const]]),
+        result
+      );
+
+      expect(updateFromExternal).toHaveBeenCalledWith('plan-1', { external_assignee_name: 'Ada' });
+      expect(updateFromExternal).toHaveBeenCalledWith('plan-1', { status_category: 'in_review' });
+      expect(updateStatusCategory).toHaveBeenCalledWith('queue-1', 'in_review');
+    });
+
+    it('leaves the item and its queued status alone when the local status is kept', () => {
+      const updateFromExternal = vi.fn();
+      const updateStatusCategory = vi.fn();
+      const service = createService({ externalPlanItems: { updateFromExternal }, outboundChanges: { updateStatusCategory } });
+      const result = { success: true, created: 0, updated: 0, deleted: 0, errors: [] };
+
+      service.applyConflictResolutions(
+        {
+          tracker_type: 'linear',
+          link_id: 'assoc-1',
+          external_project_key: 'ENG',
+          new_items: [],
+          updated_items: [],
+          conflicts: [{
+            plan_item_id: 'plan-1',
+            external_key: 'ENG-1',
+            title: 'Linear issue',
+            tracker_state: { title: 'Linear issue', description: null, updatedAt: '2026-01-02T00:00:00.000Z' },
+            fields: [{ field: 'status', your_value: 'Done', tracker_value: 'In Review' }],
+            tracker_status_category: 'in_review',
+          }],
+          deleted_in_tracker: [],
+          stats: { total: 1, new: 0, updated: 0, conflicts: 1, deleted: 0, unchanged: 0 },
+        },
+        new Map([['plan-1', 'keep_mine' as const]]),
+        result
+      );
+
+      expect(updateFromExternal).not.toHaveBeenCalled();
+      expect(updateStatusCategory).not.toHaveBeenCalled();
     });
   });
 });
