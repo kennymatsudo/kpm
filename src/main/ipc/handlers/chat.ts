@@ -1,7 +1,7 @@
 import type { ChatService } from '../../services/core/ChatService';
 import type { SlashCommandService } from '../../services/core/SlashCommandService';
 import type { StreamingSessionService } from '../../services/streaming/StreamingSessionService';
-import type { IChatMessageRepository, IProjectRepository } from '../../db/interfaces';
+import type { IChatMessageRepository, IChatSessionRepository, IProjectRepository } from '../../db/interfaces';
 import type { ChatModelChoiceService } from '../../chat/modelChoice';
 import { chatEndpoints, type ChatEndpointName } from '../../../shared/ipc/chatEndpoints';
 import type { UnwrappedHandlerFor } from '../../../shared/ipc/endpoints';
@@ -23,6 +23,7 @@ export interface ChatHandlerDeps {
   >;
   projects: IProjectRepository;
   chatMessages: IChatMessageRepository;
+  chatSessions: Pick<IChatSessionRepository, 'get' | 'updateTitle'>;
   modelChoice: ChatModelChoiceService;
 }
 
@@ -51,7 +52,7 @@ function modelChoiceControlsBusy(
 }
 
 function buildChatHandlers(deps: ChatHandlerDeps): ChatHandlers {
-  const { chatService, slashCommandService, streamingSessionService, projects, chatMessages, modelChoice } = deps;
+  const { chatService, slashCommandService, streamingSessionService, projects, chatMessages, chatSessions, modelChoice } = deps;
 
   return {
     getSlashCommands: async () => {
@@ -162,7 +163,24 @@ function buildChatHandlers(deps: ChatHandlerDeps): ChatHandlers {
         messages: chatMessages.getMessagesByChatSession(projectId, chatSessionId),
         chatSessionId,
         choice: opened.data,
+        title: chatSessions.get(chatSessionId)?.title ?? null,
       };
+    },
+
+    getSessionLabels: async ({ projectId, chatSessionIds }) => {
+      requireProject(projects, projectId);
+      return { labels: chatMessages.getSessionLabels(projectId, chatSessionIds) };
+    },
+
+    renameSession: async ({ projectId, chatSessionId, title }) => {
+      requireProject(projects, projectId);
+      if (!chatSessions.get(chatSessionId)) throw new Error('Chat not found');
+      const trimmed = title.replace(/\s+/g, ' ').trim();
+      if (trimmed) {
+        chatSessions.updateTitle(chatSessionId, trimmed, 'user', null);
+      } else {
+        chatSessions.updateTitle(chatSessionId, null, null, null);
+      }
     },
 
     getFocusDocumentSession: async (params) => {

@@ -5,7 +5,6 @@ import { cancelChatSession, disconnectChatSession } from '../../services/chatSer
 import { useShallow } from 'zustand/react/shallow';
 import { CloseIcon } from '../icons';
 import { Tooltip } from '../ui/Tooltip';
-import { getProviderCapabilities } from '../../../shared/providerCapabilities';
 import { sharedLeadingPrefix, stripSharedPrefix } from './sessionTabLabels';
 
 /** Width of the fade that stands in for a scrollbar the strip deliberately hides. */
@@ -20,11 +19,9 @@ function firstUserMessageText(messages: Message[] | undefined): string | null {
   return normalized || null;
 }
 
-/** The provider's own summary, for the providers that write one. */
-function summaryTitle(session: Pick<PerSessionState, 'choice' | 'title'> | undefined): string | null {
-  const provider = session?.choice?.selected.provider;
-  if (!provider) return null;
-  return getProviderCapabilities(provider).sessionSummaries ? session.title : null;
+/** The opening message, from loaded messages or, for a restored tab, the label fetched for it. */
+function openingMessage(session: Pick<PerSessionState, 'messages' | 'firstMessage'> | undefined): string | null {
+  return firstUserMessageText(session?.messages) ?? session?.firstMessage?.replace(/\s+/g, ' ').trim() ?? null;
 }
 
 /**
@@ -48,8 +45,8 @@ export function SessionList() {
   const sharedPrefix = useChatStore((state) => {
     const fallbacks: string[] = [];
     for (const session of state.sessions.values()) {
-      if (summaryTitle(session)) continue;
-      const firstMessage = firstUserMessageText(session.messages);
+      if (session.title) continue;
+      const firstMessage = openingMessage(session);
       if (firstMessage) fallbacks.push(firstMessage);
     }
     return sharedLeadingPrefix(fallbacks);
@@ -129,7 +126,7 @@ function SessionTab({
   sharedPrefix: string;
 }) {
   const {
-    summary,
+    title,
     sessionNumber,
     firstMessage,
     isStreaming,
@@ -138,18 +135,20 @@ function SessionTab({
     isViewed,
     setViewedSession,
     removeSession,
+    renameSession,
   } = useChatStore(useShallow((state) => {
     const session = state.sessions.get(sessionId);
     return {
-      summary: summaryTitle(session),
+      title: session?.title ?? null,
       sessionNumber: session?.sessionNumber ?? null,
-      firstMessage: firstUserMessageText(session?.messages),
+      firstMessage: openingMessage(session),
       isStreaming: session?.isStreaming ?? false,
       hasBackgroundWork: (session?.backgroundTasks.length ?? 0) > 0,
       isActive: state.activeSessionIds.has(sessionId),
       isViewed: state.viewedSessionId === sessionId,
       setViewedSession: state.setViewedSession,
       removeSession: state.removeSession,
+      renameSession: state.renameSession,
     };
   }));
 
@@ -160,6 +159,7 @@ function SessionTab({
   );
 
   const tabRef = useRef<HTMLDivElement>(null);
+  const [renameDraft, setRenameDraft] = useState<string | null>(null);
 
   // Selecting a tab that sits past the fade has to bring it back into view;
   // arrow keys walk the whole list, not just the visible part.
@@ -173,9 +173,7 @@ function SessionTab({
     return null;
   }
 
-  // Prefer the provider's auto-summary; before it exists (or for providers
-  // without summaries) fall back to the first user message, matching SessionHistory.
-  const displayTitle = summary ?? firstMessage;
+  const displayTitle = title ?? firstMessage;
 
   const closeSession = async () => {
     if (!currentProjectId) return;
@@ -193,11 +191,11 @@ function SessionTab({
     removeSession(sessionId);
   };
 
-  const label = displayTitle ?? `Session ${sessionNumber}`;
-  // A summary is already written to be told apart; only the borrowed opening
+  const label = displayTitle ?? 'New chat';
+  // A title is already written to be told apart; only the borrowed opening
   // of a first message gets trimmed, and the untrimmed words stay on the tab's
   // tooltip and in its name.
-  const shortLabel = summary === null && firstMessage
+  const shortLabel = title === null && firstMessage
     ? stripSharedPrefix(firstMessage, sharedPrefix)
     : label;
   // Background work outlives the turn that started it, so a session can still
@@ -211,6 +209,17 @@ function SessionTab({
     : isActive
       ? isStreaming ? 'responding' : hasBackgroundWork ? 'running in background' : 'active'
       : 'idle';
+
+  const startRename = () => setRenameDraft(title ?? '');
+  const finishRename = (commit: boolean) => {
+    const draft = renameDraft;
+    setRenameDraft(null);
+    tabRef.current?.focus();
+    if (!commit || draft === null || !currentProjectId) return;
+    const next = draft.replace(/\s+/g, ' ').trim();
+    if (next === (title ?? '')) return;
+    void renameSession(currentProjectId, sessionId, next);
+  };
 
   // Arrow keys move between tabs and Delete closes one, so a keyboard user
   // never has to reach a 30px target with the mouse. Only the selected tab is
@@ -227,6 +236,11 @@ function SessionTab({
       e.preventDefault();
       const target = e.key === 'Home' ? siblingIds[0] : siblingIds[siblingIds.length - 1];
       if (target) setViewedSession(target);
+      return;
+    }
+    if (e.key === 'F2') {
+      e.preventDefault();
+      startRename();
       return;
     }
     if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -248,6 +262,7 @@ function SessionTab({
       aria-selected={isViewed}
       aria-label={`${label}, ${stateLabel}`}
       onClick={() => setViewedSession(sessionId)}
+      onDoubleClick={startRename}
       onKeyDown={handleKeyDown}
       className={`
         group flex h-7 items-center gap-1.5 pl-2 pr-1 rounded-sm text-xs cursor-pointer
@@ -292,8 +307,27 @@ function SessionTab({
         )}
       </span>
 
-      {/* Session name: provider summary when available, fall back to "Session N". */}
-      {displayTitle ? (
+      {renameDraft !== null ? (
+        // Its own keys and clicks stay inside, or Backspace would close the tab.
+        <input
+          autoFocus
+          value={renameDraft}
+          placeholder={firstMessage ?? 'Name this chat'}
+          aria-label="Chat name"
+          maxLength={200}
+          onChange={(e) => setRenameDraft(e.target.value)}
+          onFocus={(e) => e.target.select()}
+          onBlur={() => finishRename(true)}
+          onClick={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === 'Enter') finishRename(true);
+            if (e.key === 'Escape') finishRename(false);
+          }}
+          className="flex-1 min-w-0 bg-transparent text-xs text-text-primary outline-none placeholder:text-text-muted"
+        />
+      ) : displayTitle ? (
         <Tooltip content={<span className="block max-w-[280px]">{label}</span>} side="bottom">
           <span className="flex-1 min-w-0 truncate">{shortLabel}</span>
         </Tooltip>

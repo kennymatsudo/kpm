@@ -4732,6 +4732,20 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    id: 1129,
+    name: '129_chat_session_title_source',
+    up: (db: BetterSqliteDatabase) => {
+      // Existing titles keep a NULL source: most are the Claude SDK's first
+      // prompt of a restarted session rather than a summary, so the next
+      // finished turn is allowed to replace them once.
+      db.exec(`
+        ALTER TABLE chat_sessions
+          ADD COLUMN title_source TEXT CHECK(title_source IN ('provider', 'generated', 'user'));
+        ALTER TABLE chat_sessions ADD COLUMN title_turn INTEGER;
+      `);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

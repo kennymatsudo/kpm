@@ -9,7 +9,6 @@ describe('provider capabilities', () => {
 
   it('keeps pi conservative for transport-guaranteed interactive features', () => {
     expect(getProviderCapabilities('pi')).toMatchObject({
-      sessionSummaries: false,
       liveSlashCommands: false,
       mcpServerManagement: false,
       mcpSessionInspection: false,

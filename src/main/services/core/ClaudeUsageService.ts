@@ -48,7 +48,8 @@ export type UsageSource =
   | 'review_assessment'
   | 'review_assessment_post_impl'
   | 'custom_prompt'
-  | 'file-summary';
+  | 'file-summary'
+  | 'chat-title';
 
 /** Shape of the SDK's `result.usage` block (with the fields we care about). */
 export interface RawUsage {

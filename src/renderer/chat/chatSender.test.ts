@@ -48,6 +48,8 @@ function makeSession(overrides: Partial<PerSessionState> = {}): PerSessionState 
     sessionNumber: 1,
     choice: makeChoice(),
     title: null,
+    firstMessage: null,
+    pendingTitle: null,
     claudeSessionId: null,
     mcpDegraded: false,
     mcpError: null,

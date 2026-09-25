@@ -91,6 +91,7 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
     chatMessageRepository: {
       addMessage: container.chatMessages.addMessage.bind(container.chatMessages),
       getMessagesByChatSession: container.chatMessages.getMessagesByChatSession.bind(container.chatMessages),
+      countAssistantMessages: container.chatMessages.countAssistantMessages.bind(container.chatMessages),
     },
     chatSessionRepository: {
       get: container.chatSessions.get.bind(container.chatSessions),

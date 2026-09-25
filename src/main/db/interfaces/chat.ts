@@ -8,7 +8,9 @@ import type {
   ChatProvider,
   ChatMessage,
   ChatSession,
+  ChatSessionLabel,
   ChatSessionSummary,
+  ChatTitleSource,
 } from '../../../shared/types';
 
 // =============================================================================
@@ -29,6 +31,10 @@ export interface IChatMessageRepository {
     model?: string | null,
   ): ChatMessage;
   getRecentSessions(sessionId: string, limit?: number): ChatSessionSummary[];
+  /** Finished assistant replies in one chat, i.e. its completed turns. */
+  countAssistantMessages(sessionId: string, chatSessionId: string): number;
+  /** Title and opening message for each listed chat that exists. */
+  getSessionLabels(sessionId: string, chatSessionIds: string[]): ChatSessionLabel[];
   /** Delete sessions beyond the keep limit (default 10), returns count deleted */
   pruneOldSessions(sessionId: string, keepCount?: number): number;
 }
@@ -66,8 +72,8 @@ export interface IChatSessionRepository {
   updateProviderSessionId(id: string, provider: ChatProvider, providerSessionId: string): void;
   /** Atomically persist the versioned model-choice aggregate at an expected revision. */
   updateModelChoice(id: string, expectedRevision: number, choiceJson: string): ChatSession | undefined;
-  /** Update the SDK-derived display title (auto-summary or user-renamed). */
-  updateTitle(id: string, title: string): void;
+  /** Replace the display title; `turn` is the completed-turn count it was written at. */
+  updateTitle(id: string, title: string | null, source: ChatTitleSource | null, turn: number | null): void;
   /**
    * Null out claude_session_id for every chat session in a project.
    * Forces the next send to spawn a fresh SDK session instead of resuming

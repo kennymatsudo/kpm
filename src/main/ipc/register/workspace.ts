@@ -30,6 +30,7 @@ export function registerWorkspaceHandlers({
     streamingSessionService: chatRuntime.streamingSessionService,
     projects: services.container.projects,
     chatMessages: services.container.chatMessages,
+    chatSessions: services.container.chatSessions,
     modelChoice: chatRuntime.modelChoice,
   });
   registerFileHandlers(getMainWindow, services.contextFileService);

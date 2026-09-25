@@ -9,7 +9,7 @@
 
 import type { Database, Statement } from 'better-sqlite3';
 import { randomUUID } from 'crypto';
-import type { ChatMessage, ChatProvider, ChatSessionSummary } from '../../../../shared/types';
+import type { ChatMessage, ChatProvider, ChatSessionLabel, ChatSessionSummary } from '../../../../shared/types';
 import type { IChatMessageRepository } from '../../interfaces';
 
 /**
@@ -23,6 +23,7 @@ interface PreparedStatements {
   insertOrIgnoreWithClientMessageId: Statement;
   getByClientMessageId: Statement;
   getRecentSessions: Statement;
+  countAssistantMessages: Statement;
   pruneOldSessions: Statement;
 }
 
@@ -70,7 +71,12 @@ export class ChatMessageRepository implements IChatMessageRepository {
           m.chat_session_id,
           COALESCE(s.provider, MIN(m.provider), 'claude') as provider,
           s.title as title,
-          MIN(CASE WHEN m.role = 'user' THEN SUBSTR(m.content, 1, 100) END) as first_message,
+          (
+            SELECT SUBSTR(f.content, 1, 100) FROM chat_messages f
+            WHERE f.session_id = m.session_id AND f.chat_session_id = m.chat_session_id AND f.role = 'user'
+            ORDER BY f.created_at, f.rowid
+            LIMIT 1
+          ) as first_message,
           COUNT(*) as message_count,
           MIN(m.created_at) as created_at,
           MAX(m.created_at) as last_activity
@@ -82,6 +88,10 @@ export class ChatMessageRepository implements IChatMessageRepository {
         GROUP BY m.chat_session_id
         ORDER BY MAX(m.created_at) DESC
         LIMIT ?
+      `),
+      countAssistantMessages: db.prepare(`
+        SELECT COUNT(*) AS count FROM chat_messages
+        WHERE session_id = ? AND chat_session_id = ? AND role = 'assistant'
       `),
       // Delete every chat_session_id older than the N most recent, in a single
       // query. The subquery uses LIMIT -1 OFFSET ? to return only the sessions
@@ -170,6 +180,28 @@ export class ChatMessageRepository implements IChatMessageRepository {
 
   getRecentSessions(sessionId: string, limit = 5): ChatSessionSummary[] {
     return this.stmts.getRecentSessions.all(sessionId, limit) as ChatSessionSummary[];
+  }
+
+  countAssistantMessages(sessionId: string, chatSessionId: string): number {
+    return (this.stmts.countAssistantMessages.get(sessionId, chatSessionId) as { count: number }).count;
+  }
+
+  getSessionLabels(sessionId: string, chatSessionIds: string[]): ChatSessionLabel[] {
+    if (chatSessionIds.length === 0) return [];
+    const placeholders = chatSessionIds.map(() => '?').join(', ');
+    return this.db.prepare(`
+      SELECT
+        s.id AS chat_session_id,
+        s.title AS title,
+        (
+          SELECT SUBSTR(f.content, 1, 100) FROM chat_messages f
+          WHERE f.session_id = s.project_id AND f.chat_session_id = s.id AND f.role = 'user'
+          ORDER BY f.created_at, f.rowid
+          LIMIT 1
+        ) AS first_message
+      FROM chat_sessions s
+      WHERE s.project_id = ? AND s.id IN (${placeholders})
+    `).all(sessionId, ...chatSessionIds) as ChatSessionLabel[];
   }
 
   /**

@@ -23,7 +23,8 @@ export type GenerationTier = 'fast' | 'deep' | 'cheap';
 export type GenerationPurpose =
   | 'pr_description'
   | 'commit_message'
-  | 'file_summary';
+  | 'file_summary'
+  | 'chat_title';
 
 /** Coarse neutral terminal outcome. Providers map their native reasons in. */
 export type GenerationOutcomeStatus = 'completed' | 'max_turns' | 'error';

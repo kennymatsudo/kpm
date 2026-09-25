@@ -40,7 +40,7 @@ import { projectWriteGrants } from '../../chat/writeGrants';
 import { buildFocusedReminder, buildFocusedSection } from '../../chat/prompts/focusedResources';
 import { type ServiceResult, type AsyncResult, success, failure } from '../result';
 import type { PlanContext } from '../../chat/prompts';
-import type { ChatChoiceEffort, ChatProvider, FocusChatDocument, FocusedResource, PlanItem, Project, Activity, ToolCallLogEntry, ChatAttachment, ChatSessionScope, SlashCommandInfo } from '../../../shared/types';
+import type { ChatChoiceEffort, ChatProvider, ChatTitleSource, FocusChatDocument, FocusedResource, PlanItem, Project, Activity, ToolCallLogEntry, ChatAttachment, ChatSessionScope, SlashCommandInfo } from '../../../shared/types';
 import type { ChatModelChoiceService, ResolvedChatChoice } from '../../chat/modelChoice';
 import { getConfig } from '../../config';
 import { isMaxTokensReached, isMaxTurnsReached, getTerminalReason } from '../../claude/sdkTypeGuards';
@@ -53,6 +53,8 @@ import { selectVisibleSlashCommands } from '../core/SlashCommandService';
 import type { PollScheduler, PollTickResult } from '../core/PollScheduler';
 import { randomUUID } from 'crypto';
 import { emitAppEvent } from '../../../shared/ipc/appEvents';
+import { runGeneration } from '../../generation';
+import { createChatTitler, type ChatTitler, type ProviderSessionSummary } from './chatTitles';
 import { chatEvents } from '../../../shared/ipc/chatEvents';
 import type { TurnCost } from './providerChatMessage';
 
@@ -92,27 +94,6 @@ const CONTINUATION_MAX_TURNS = 20;
 const CONTINUATION_MAX_CHARS = 60_000;
 const CONTINUATION_MAX_TURN_CHARS = 8_000;
 const CLEANUP_TASK_ID = 'streaming-session-cleanup';
-
-function compactTitleSeed(text: string): string | null {
-  const normalized = text.replace(/\s+/g, ' ').trim();
-  if (!normalized) return null;
-  return normalized.length > 80 ? `${normalized.slice(0, 77).trimEnd()}…` : normalized;
-}
-
-// Leading `[Context: …]` view hint that sendChatMessage prepends to the user's
-// first turn. It steers the model but must not leak into the derived tab title.
-const CONTEXT_HINT_PREFIX = /^\[Context:[^\]]*\]\s*/;
-
-export function sanitizeSessionTitle(summary: string, fallbackSeed?: string): string | null {
-  const normalized = summary.replace(/\s+/g, ' ').trim().replace(CONTEXT_HINT_PREFIX, '').trim();
-  if (!normalized) return fallbackSeed ? compactTitleSeed(fallbackSeed) : null;
-
-  if (normalized.startsWith('# Focused Selection') || normalized.startsWith('Focused Selection')) {
-    return fallbackSeed ? compactTitleSeed(fallbackSeed) : null;
-  }
-
-  return normalized;
-}
 
 /**
  * Trim stored chat messages into a replay preface for a fresh SDK session.
@@ -197,8 +178,6 @@ function sendQueueCleared(
  */
 interface MessageEnvelope {
   text: string;
-  /** Raw user text before per-turn context injection; used for clean session titles. */
-  titleSeed?: string;
   attachments?: ChatAttachment[];
 }
 
@@ -208,7 +187,6 @@ export interface ActiveSessionInfo {
   scope: ChatSessionScope;
   state: SessionState;
   isProcessing: boolean;
-  /** Persisted SDK-derived title (null for legacy rows). */
   title?: string | null;
   /**
    * Assistant text streamed so far in the turn that is still in flight, if
@@ -286,6 +264,7 @@ export interface StreamingSessionServiceDeps {
       sessionId: string,
       chatSessionId: string
     ): { role: 'user' | 'assistant'; content: string }[];
+    countAssistantMessages(sessionId: string, chatSessionId: string): number;
   };
 
   /** Chat session repository for Claude SDK session ID storage */
@@ -295,12 +274,14 @@ export interface StreamingSessionServiceDeps {
       provider?: ChatProvider | null;
       provider_session_id?: string | null;
       title: string | null;
+      title_source?: ChatTitleSource | null;
+      title_turn?: number | null;
       scope?: ChatSessionScope | null;
     } | undefined;
     create(id: string, projectId: string, provider?: ChatProvider): { id: string };
     updateClaudeSessionId(id: string, claudeSessionId: string): void;
     updateProviderSessionId?(id: string, provider: ChatProvider, providerSessionId: string): void;
-    updateTitle(id: string, title: string): void;
+    updateTitle(id: string, title: string | null, source: ChatTitleSource | null, turn: number | null): void;
     clearClaudeSessionIdsByProject(projectId: string): void;
     clearProviderSessionIdsByProject?(projectId: string): void;
   };
@@ -374,7 +355,7 @@ interface ChatProviderConfig {
     sessionId: string
   ) => void;
   /** Absent for providers with no session-summary concept (e.g. Codex). */
-  fetchSessionSummary?: (sdkSessionId: string) => Promise<{ summary?: string } | undefined>;
+  fetchSessionSummary?: (sdkSessionId: string) => Promise<ProviderSessionSummary | undefined>;
 }
 
 function getManagedDisplayModel(managed: Pick<ManagedSession, 'provider' | 'model' | 'providerModel'>): string {
@@ -544,6 +525,7 @@ export function finalizeTurnResult(
     toolCallLogger?: StreamingSessionServiceDeps['toolCallLogger'];
     recordUsage?: StreamingSessionServiceDeps['recordUsage'];
     projectRepository: StreamingSessionServiceDeps['projectRepository'];
+    titler: Pick<ChatTitler, 'onTurnCompleted'>;
     disconnectSession: (key: string, options?: { silent?: boolean; reason?: string; source?: string }) => Promise<void>;
   },
 ): void {
@@ -715,35 +697,16 @@ export function finalizeTurnResult(
     managed.resolvedModel = undefined;
   }
 
-  // Fire-and-forget: fetch the SDK's session summary so the renderer can
-  // show a meaningful tab title instead of the numeric "Claude N" label.
-  // Auto-summary generation runs alongside the first turn, so this is the
-  // earliest moment we can read it. Re-fetched after every turn so a
-  // user-renamed session updates the UI on next reply too.
   const fetchSessionSummary = CHAT_PROVIDER_CONFIG[managed.provider].fetchSessionSummary;
-  if (fetchSessionSummary && managed.sessionId && managed.persistHistory) {
-    const sdkSessionId = managed.sessionId;
-    void fetchSessionSummary(sdkSessionId)
-      .then((info) => {
-        if (!info?.summary) return;
-        const title = sanitizeSessionTitle(info.summary, managed.titleSeed);
-        if (!title) return;
-        // Persist for the history dropdown so old sessions keep their
-        // meaningful label after a reload, then notify the live UI.
-        try {
-          deps.chatSessionRepository.updateTitle(chatSessionId, title);
-        } catch (err) {
-          console.warn('[StreamingSessionService] updateTitle failed:', err);
-        }
-        emitAppEvent(mainWindow?.webContents, chatEvents.sessionTitle, {
-          projectId,
-          chatSessionId,
-          title,
-        });
-      })
-      .catch((err: unknown) => {
-        console.warn('[StreamingSessionService] getSessionInfo failed:', err);
-      });
+  const sdkSessionId = managed.sessionId;
+  if (managed.persistHistory) {
+    void deps.titler.onTurnCompleted({
+      projectId,
+      chatSessionId,
+      fetchProviderSummary: fetchSessionSummary && sdkSessionId
+        ? () => fetchSessionSummary(sdkSessionId)
+        : undefined,
+    });
   }
 
   if (maxTokensReached) {
@@ -863,6 +826,19 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
   // Start cleanup task on creation
   startCleanupTask();
+
+  const titler = createChatTitler({
+    countCompletedTurns: (projectId, chatSessionId) =>
+      deps.chatMessageRepository.countAssistantMessages(projectId, chatSessionId),
+    getChat: (chatSessionId) => deps.chatSessionRepository.get(chatSessionId),
+    getMessages: (projectId, chatSessionId) =>
+      deps.chatMessageRepository.getMessagesByChatSession(projectId, chatSessionId),
+    saveTitle: (chatSessionId, title, source, turn) =>
+      deps.chatSessionRepository.updateTitle(chatSessionId, title, source, turn),
+    onTitle: (projectId, chatSessionId, title) =>
+      emitAppEvent(deps.getMainWindow()?.webContents, chatEvents.sessionTitle, { projectId, chatSessionId, title }),
+    generate: runGeneration,
+  });
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Multi-Session Helpers
@@ -1405,7 +1381,6 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         resumeSessionId: config.resumeSessionId,
         persistHistory: config.persistHistory,
         forceApprovalReview: config.forceApprovalReview,
-        titleSeed: initialMessage.titleSeed,
         mainWindow,
         getMainWindow: deps.getMainWindow,
         unsubscribeToolProposals,
@@ -1635,7 +1610,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     const prefixLines = [viewHint, hasContextPlaceholder ? undefined : focusedText].filter((line): line is string => !!line);
     const messageText = prefixLines.length > 0 ? `${prefixLines.join('\n\n')}\n\n${messageWithContext}` : messageWithContext;
 
-    const envelope: MessageEnvelope = { text: messageText, titleSeed: message, attachments: options.attachments };
+    const envelope: MessageEnvelope = { text: messageText, attachments: options.attachments };
     const result = await sendMessageToSession(
       key,
       envelope,
@@ -2079,6 +2054,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
             toolCallLogger: deps.toolCallLogger,
             recordUsage: deps.recordUsage,
             projectRepository: deps.projectRepository,
+            titler,
             disconnectSession,
           });
           break;

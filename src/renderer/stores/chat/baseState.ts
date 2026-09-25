@@ -18,6 +18,8 @@ export const createInitialPerSessionState = (sessionNumber: number): PerSessionS
   choice: null,
   claudeSessionId: null,
   title: null,
+  firstMessage: null,
+  pendingTitle: null,
   mcpDegraded: false,
   mcpError: null,
   lastTurnUsage: null,

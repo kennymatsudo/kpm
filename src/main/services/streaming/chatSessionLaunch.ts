@@ -51,8 +51,6 @@ export interface ManagedSession {
   sessionId?: string; // SDK session ID for resume
   mcpHealthStatus: 'healthy' | 'degraded' | 'recovering'; // KPM MCP server health
   mcpRecoveryAttempts: number; // Consecutive failed reconnect attempts
-  /** Raw first user message before focused-resource context injection. */
-  titleSeed?: string;
   /**
    * The full Focused Selection block this live session last received. Chips
    * stay attached across sends, so an identical block is replaced by a short
@@ -160,7 +158,6 @@ export interface ChatLaunchRequest {
   resumeSessionId?: string;
   persistHistory: boolean;
   forceApprovalReview: boolean;
-  titleSeed?: string;
   mainWindow: BrowserWindow | null;
   /**
    * Resolved at emit time, not at launch: the window a session reports to can
@@ -286,7 +283,6 @@ export function buildChatSessionLaunch(
       effort: request.effort,
       lastActivity: now,
       turnStartedAt: now,
-      titleSeed: request.titleSeed,
       mcpHealthStatus: 'healthy',
       mcpRecoveryAttempts: 0,
       segmentState: {

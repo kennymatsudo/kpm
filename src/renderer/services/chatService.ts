@@ -148,6 +148,14 @@ export function loadChatSession(projectId: string, chatSessionId: string) {
   return window.api.chat.loadSession(projectId, chatSessionId);
 }
 
+export function getChatSessionLabels(projectId: string, chatSessionIds: string[]) {
+  return window.api.chat.getSessionLabels({ projectId, chatSessionIds });
+}
+
+export function renameChatSession(projectId: string, chatSessionId: string, title: string) {
+  return window.api.chat.renameSession({ projectId, chatSessionId, title });
+}
+
 export function getFocusDocumentChatSession(
   projectId: string,
   path: string,

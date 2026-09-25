@@ -6,7 +6,7 @@
  */
 
 import type { Database, Statement } from 'better-sqlite3';
-import type { ChatProvider, ChatSession } from '../../../../shared/types';
+import type { ChatProvider, ChatSession, ChatTitleSource } from '../../../../shared/types';
 import type { IChatSessionRepository } from '../../interfaces';
 
 /**
@@ -96,7 +96,7 @@ export class ChatSessionRepository implements IChatSessionRepository {
       `),
       updateTitle: db.prepare(`
         UPDATE chat_sessions
-        SET title = ?
+        SET title = ?, title_source = ?, title_turn = ?
         WHERE id = ?
       `),
       clearClaudeSessionIdsByProject: db.prepare(`
@@ -167,8 +167,8 @@ export class ChatSessionRepository implements IChatSessionRepository {
     return this.stmts.updateModelChoice.get(choiceJson, id, expectedRevision) as ChatSession | undefined;
   }
 
-  updateTitle(id: string, title: string): void {
-    this.stmts.updateTitle.run(title, id);
+  updateTitle(id: string, title: string | null, source: ChatTitleSource | null, turn: number | null): void {
+    this.stmts.updateTitle.run(title, source, turn, id);
   }
 
   clearClaudeSessionIdsByProject(projectId: string): void {

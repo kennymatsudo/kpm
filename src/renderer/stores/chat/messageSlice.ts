@@ -136,7 +136,12 @@ export function createMessageSlice(set: ChatSet, _get: ChatGet): Pick<ChatState,
       if (!session) return state;
 
       const trimmed = title.trim();
-      sessions.set(chatSessionId, { ...session, title: trimmed.length > 0 ? trimmed : null });
+      if (!trimmed) return state;
+      if (state.viewedSessionId === chatSessionId && session.title) {
+        sessions.set(chatSessionId, { ...session, pendingTitle: trimmed });
+      } else {
+        sessions.set(chatSessionId, { ...session, title: trimmed, pendingTitle: null });
+      }
       return { sessions };
     }),
 

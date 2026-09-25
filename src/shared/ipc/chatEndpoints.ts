@@ -19,7 +19,7 @@ import { resultOf, type EndpointDefinition } from './endpoints';
 import { absolutePath, uuid } from './sharedSchemas';
 import { CHAT_PROVIDERS } from '../types';
 import type { ModelCatalog } from '../modelCatalog';
-import type { Activity, ChatChoiceView, ChatMessage, ChatSessionScope, ChatSessionSummary, PiProviderOption, SessionState, SlashCommandInfo } from '../types';
+import type { Activity, ChatChoiceView, ChatMessage, ChatSessionLabel, ChatSessionScope, ChatSessionSummary, PiProviderOption, SessionState, SlashCommandInfo } from '../types';
 
 /**
  * Response shape for endpoints registered through `createRegistryIpcHandlers`
@@ -178,7 +178,19 @@ export const chatEndpoints = {
   loadSession: {
     channel: 'chat:load-session',
     params: z.object({ projectId: uuid, chatSessionId: uuid }),
-    result: resultOf<RegistryResponse<{ messages: ChatMessage[]; chatSessionId: string; choice: ChatChoiceView }>>(),
+    result: resultOf<RegistryResponse<{ messages: ChatMessage[]; chatSessionId: string; choice: ChatChoiceView; title: string | null }>>(),
+  },
+  /** What restored tabs show before their messages load. */
+  getSessionLabels: {
+    channel: 'chat:get-session-labels',
+    params: z.object({ projectId: uuid, chatSessionIds: z.array(uuid).max(100) }),
+    result: resultOf<RegistryResponse<{ labels: ChatSessionLabel[] }>>(),
+  },
+  /** An empty title hands naming back to KPM. */
+  renameSession: {
+    channel: 'chat:rename-session',
+    params: z.object({ projectId: uuid, chatSessionId: uuid, title: z.string().max(200) }),
+    result: resultOf<RegistryResponse>(),
   },
   getFocusDocumentSession: {
     channel: 'chat:get-focus-document-session',

@@ -72,6 +72,7 @@ function makeDeps(overrides: Partial<Parameters<typeof finalizeTurnResult>[6]> =
     toolCallLogger: { logToolCall: vi.fn(), finalizeTurn: vi.fn(), getCurrentTurnIndex: vi.fn(() => 0) },
     recordUsage: vi.fn(),
     projectRepository: { get: vi.fn(), updateTokens: vi.fn() },
+    titler: { onTurnCompleted: vi.fn().mockResolvedValue(undefined) },
     disconnectSession: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   } as Parameters<typeof finalizeTurnResult>[6];

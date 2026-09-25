@@ -58,6 +58,7 @@ const GENERATION_PURPOSE_TO_USAGE_SOURCE: Record<GenerationPurpose, UsageSource>
   pr_description: 'pr_description',
   commit_message: 'commit_message',
   file_summary: 'file-summary',
+  chat_title: 'chat-title',
 };
 
 // Confluence services

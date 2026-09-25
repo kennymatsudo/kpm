@@ -241,8 +241,10 @@ const chat = {
     invokeFlat<{ sessions: ChatSessionSummary[] }>(IPC_CHANNELS.chat.getSessionHistory, { projectId, limit }).then((result) =>
       result.success ? { success: true, sessions: result.sessions } : result
     ),
-  loadSession: (projectId: string, chatSessionId: string): Promise<{ success: boolean; messages?: ChatMessage[]; chatSessionId?: string; choice?: ChatChoiceView; error?: string }> =>
-    invokeFlat<{ messages: ChatMessage[]; chatSessionId: string; choice: ChatChoiceView }>(
+  getSessionLabels: chatInvoke.getSessionLabels,
+  renameSession: chatInvoke.renameSession,
+  loadSession: (projectId: string, chatSessionId: string): Promise<{ success: boolean; messages?: ChatMessage[]; chatSessionId?: string; choice?: ChatChoiceView; title?: string | null; error?: string }> =>
+    invokeFlat<{ messages: ChatMessage[]; chatSessionId: string; choice: ChatChoiceView; title: string | null }>(
       IPC_CHANNELS.chat.loadSession,
       { projectId, chatSessionId },
     ).then((result) => (result.success ? result : result)),

@@ -992,6 +992,16 @@ export interface ChatSessionSummary {
   last_activity: string;   // Most recent message; matches the list's sort order
 }
 
+export interface ChatSessionLabel {
+  chat_session_id: string;
+  title: string | null;
+  /** Earliest user message, truncated for display. */
+  first_message: string | null;
+}
+
+/** `provider`: the chat provider's own summary. `generated`: KPM's cheap-model title. `user`: renamed by hand, never replaced. */
+export type ChatTitleSource = 'provider' | 'generated' | 'user';
+
 /** Chat session entity - stores Claude SDK session ID for resume functionality */
 export interface ChatSession {
   id: string;  // Same as chat_session_id in chat_messages
@@ -1005,6 +1015,10 @@ export interface ChatSession {
   focus_document_hash: string | null;
   last_opened_at: string | null;
   title: string | null;
+  /** Who wrote `title`; null for untitled chats and titles saved before sources were tracked. */
+  title_source?: ChatTitleSource | null;
+  /** Completed turns when `title` was written. */
+  title_turn?: number | null;
   /** Raw versioned Chat model-choice JSON; parsed only by the main model-choice module. */
   chat_model_choice?: string | null;
   chat_model_choice_revision?: number;

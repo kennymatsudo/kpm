@@ -34,6 +34,7 @@ const SOURCE_LABELS: Record<string, string> = {
   review_assessment: 'Review assessment',
   review_assessment_post_impl: 'Review reply',
   custom_prompt: 'Custom prompt',
+  'chat-title': 'Chat titles',
 };
 
 export function formatSource(source: string): string {

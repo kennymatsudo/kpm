@@ -73,10 +73,14 @@ export interface PerSessionState {
   pendingAttachments: ChatAttachment[];
   /** Suggested next prompts from the SDK (populated after each turn) */
   suggestions: string[];
-  /** Sequential session number for display (e.g., "Session 1") */
+  /** Order the tab was opened in; sorts the tab strip. */
   sessionNumber: number;
-  /** SDK-derived display title (auto-summary or user-renamed). Falls back to sessionNumber when null. */
+  /** The chat's title, written by the provider, KPM, or the user. */
   title: string | null;
+  /** Opening user message, known before `messages` loads so a restored tab still has a label. */
+  firstMessage: string | null;
+  /** A retitle that arrived while this chat was on screen; applied once the user looks away. */
+  pendingTitle: string | null;
   /** Claude SDK session ID (for debugging) */
   claudeSessionId: string | null;
   /** Whether the KPM MCP server is degraded (tools unavailable) */
@@ -211,6 +215,7 @@ export interface ChatState {
   setPendingAttachments: (chatSessionId: string, attachments: ChatAttachment[]) => void;
   setSuggestions: (chatSessionId: string, suggestions: string[]) => void;
   setClaudeSessionId: (chatSessionId: string, claudeSessionId: string) => void;
+  /** A retitle of the chat on screen waits in `pendingTitle` so its tab doesn't change under the user. */
   setSessionTitle: (chatSessionId: string, title: string) => void;
   setMcpStatus: (chatSessionId: string, degraded: boolean, error?: string | null) => void;
   /** Replaces the session's live background-task set; pass `[]` when none remain. */
@@ -242,6 +247,10 @@ export interface ChatState {
   getChatSessionId: () => string;
   loadSessionHistory: (projectId: string) => Promise<void>;
   loadFromHistory: (projectId: string, chatSessionId: string, shouldContinue?: () => boolean) => Promise<void>;
+  /** Fetch title and opening message for tabs whose messages haven't loaded. */
+  loadTabLabels: (projectId: string) => Promise<void>;
+  /** An empty title hands naming back to KPM. */
+  renameSession: (projectId: string, chatSessionId: string, title: string) => Promise<void>;
   restoreLastSession: (projectId: string, shouldContinue?: () => boolean) => Promise<void>;
   hydrateOpenSessions: (projectId: string, shouldContinue?: () => boolean) => Promise<void>;
 

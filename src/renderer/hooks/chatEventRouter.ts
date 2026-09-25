@@ -73,6 +73,7 @@ export type ChatStoreView = Pick<
   | 'getOrCreateSession'
   | 'setClaudeSessionId'
   | 'setSessionTitle'
+  | 'loadTabLabels'
   | 'setMcpStatus'
   | 'setBackgroundTasks'
   | 'setLastTurnUsage'
@@ -270,6 +271,8 @@ export function createChatEventRouter(deps: ChatEventRouterDeps): ChatEventRoute
         preferredSessionId = session.chatSessionId;
       }
     }
+
+    void getChatState().loadTabLabels(projectId);
 
     if (!getChatState().viewedSessionId && preferredSessionId) {
       getChatState().setViewedSession(preferredSessionId);

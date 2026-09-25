@@ -1,7 +1,6 @@
 import type { ChatChoiceEffort, ChatProvider } from './types';
 
 export interface ProviderCapabilities {
-  sessionSummaries: boolean;
   liveSlashCommands: boolean;
   /** Whether KPM chooses which MCP servers the provider starts with. */
   mcpServerManagement: boolean;
@@ -46,7 +45,6 @@ const CLAUDE_EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const 
 
 export const PROVIDER_CAPABILITIES = {
   claude: {
-    sessionSummaries: true,
     liveSlashCommands: true,
     mcpServerManagement: true,
     mcpSessionInspection: true,
@@ -60,7 +58,6 @@ export const PROVIDER_CAPABILITIES = {
     backgroundTaskReporting: true,
   },
   codex: {
-    sessionSummaries: false,
     liveSlashCommands: false,
     // Codex starts the servers from its own config; KPM reports and reloads
     // them but never chooses which ones a session gets.
@@ -76,7 +73,6 @@ export const PROVIDER_CAPABILITIES = {
     backgroundTaskReporting: false,
   },
   pi: {
-    sessionSummaries: false,
     liveSlashCommands: false,
     mcpServerManagement: false,
     mcpSessionInspection: false,

@@ -289,6 +289,7 @@ function createDeps(sendSpy: (channel: string, payload: unknown) => void): Strea
     chatMessageRepository: {
       addMessage: vi.fn(),
       getMessagesByChatSession: vi.fn(() => []),
+      countAssistantMessages: vi.fn(() => 0),
     },
     chatSessionRepository: {
       get: (id: string) => chatSessions.get(id),
