@@ -80,23 +80,17 @@ const GENERATION_PROMPTS: PromptDefinition[] = [
     name: 'PR Generation System Prompt',
     description: 'Controls how Claude generates PR titles and descriptions. The {{description_guidance}} variable is replaced with body formatting instructions from the repo\'s PR template, or from the PR Description Instructions prompt when no template exists.',
     category: 'generation',
-    defaultContent: `You generate a pull request title and description from a code change and its context. Write a reviewer brief: give a cold reviewer the reason, outcome, scope, and risks they need to assess the change.
+    defaultContent: `You generate a pull request title and description from a code change and its context. The description tells a reader, in plain words and at a glance, why the change exists and what it does.
 
-Before writing, build an evidence map. Use each source for what it proves:
-- Task, Intent, Acceptance Criteria, and Feature Context: the intended goal, motivation, and scope.
-- Net Diff and the code around it: the behavior actually implemented. Authoritative for what this PR does.
-- Commit History: orientation, grouping, and candidate issue IDs only — never a source of facts about final behavior. Do not describe intermediate, reverted, or abandoned approaches unless they remain in the net diff or explain a reviewer-relevant risk.
+Use each source for what it proves:
+- Task, Intent, Acceptance Criteria, and Feature Context: why the change exists.
+- Net Diff: what the change actually does. Authoritative for what this PR contains.
+- Commit History: orientation and candidate issue IDs only. Never describe intermediate, reverted, or abandoned approaches.
 
-Establish four fields:
-- Why: the problem, limitation, or goal.
-- Outcome: the observable change for the relevant user, caller, operator, or developer.
-- Scope: the primary purpose, material secondary changes, and deliberate non-goals.
-- Risk: caveats, tradeoffs, rollout concerns, and follow-up work.
-
-Facts absent from the evidence map stay absent from the description. When the context is thin, the description is thin — invented tradeoffs and made-up risk analysis are worse than brevity. Where the intended outcome and the implemented behavior conflict, describe the implemented behavior and name the discrepancy in one sentence; do not silently reconcile them.
+Facts absent from these sources stay absent from the description. Where the intent and the diff disagree, describe what the diff does.
 
 Title:
-- Follow the repository's convention when the context shows one. Otherwise write a concise, outcome-oriented title under 72 characters in imperative mood ("Add user authentication", "Fix race condition in cache").
+- Follow the repository's convention when the context shows one. Otherwise write a concise title under 72 characters in imperative mood ("Add user authentication", "Fix race condition in cache").
 - If a tracker key is provided (e.g. JIRA-123), prefix it: "JIRA-123: Add user authentication".
 
 Description guidance:
@@ -104,17 +98,16 @@ Description guidance:
 {{description_guidance}}
 
 Writing rules:
-- Lead with why. Open the first free-form paragraph with the problem or goal, then the outcome. One or two sentences, no windup.
-- Use plain, concise language and short declarative sentences. Cut filler. Keep an unavoidable domain term only where it is clearest, and gloss it once.
-- Situate the slice. When this is part of a larger feature or workflow, name the destination and this change's contribution, but only where it helps explain the change. This is reviewer orientation, not roadmap content — do not mention future tickets, phases, or dependencies unless they explain this PR's boundary.
-- Explain decisions, not the review. Keep an implementation detail only when it explains a design decision or a risk. Name a concrete API, table, index, or class only when it changes the review focus or the risk.
-- Prefer reviewer-relevant concepts over implementation inventory. No "What's added" sections enumerating every endpoint, DTO, field, helper, test, index, or file. Group any bullets by reviewer concern or behavior rather than by file, class, or endpoint, one short sentence each.
-- Make material risks visible where the structure allows: behavior changes, ownership boundaries, data model or migration impact, authorization and security decisions, idempotency and concurrency, rollout and compatibility risk, and test coverage.
-- Use one compact, static Mermaid diagram only when it makes a changed flow, state transition, or cross-component relationship clearer than prose. Simple flowchart, sequence, or state diagram; one direction, short labels, and a prose takeaway. No custom themes, HTML, links, or click handlers.
-- Never state unimplemented follow-up work as current behavior. If the diff does not implement cleanup, expiration, routing, rendering, or another process, phrase it as outside this PR or omit it.
-- Stay proportional. A small PR gets a few sentences. Every sentence must earn its place — if it does not help someone review, cut it.
-- The material marked \`[REFERENCE — ...]\` (Task, Feature Context, Branch, Net Diff, Commit History) is context for YOU, not content to paste. Do not mirror those labels as output headings or copy the task description, feature context, intent, acceptance criteria, commits, or diff verbatim.
-- Do not paste commit SHAs, enumerate file paths, list test names, or quote diff hunks. The reviewer has the diff and the commit log.
+- Open with one or two sentences: why the change exists, then what it achieves. No windup.
+- Follow with one flat bullet list of the high-level changes, one short sentence each. Describe each change by what it does for the user or the system, not by the code that implements it.
+- Leave out lower-level technical detail: function, class, file, field, and endpoint names, refactors, renames, and mechanical churn. Fold small related changes into one bullet.
+- Never list added, updated, or removed tests as changes. Answer a template's testing section only where the template asks.
+- No bold labels or sub-section titles inside the text ("What changed", "Heads up", "Out of scope"). No nested bullets.
+- Use plain, concise language and short declarative sentences. Cut filler. Keep a domain term only where it is the clearest word.
+- Describe the change; do not grade it. No claims that it is safe, low risk, or well tested.
+- Stay proportional. A small change gets a sentence and a few bullets. Most descriptions fit well under 200 words.
+- The material marked \`[REFERENCE — ...]\` is context for you, not content to paste. Do not mirror those labels as headings or copy the task, feature context, commits, or diff verbatim.
+- Do not paste commit SHAs, file paths, or diff hunks.
 
 Respond in this exact format (no other text):
 TITLE: <the PR title>
@@ -129,15 +122,7 @@ BODY:
     name: 'PR Description Instructions',
     description: 'Fallback body formatting instructions used when the repo has no PR template.',
     category: 'generation',
-    defaultContent: `The repository has no PR template. Use this scaffold:
-
-## Summary
-
-<Reason first, then outcome.>
-
-Add a further section or bullets only when they teach the reviewer something the summary does not: reviewer focus, behavior changes, data model or migration impact, authorization and security decisions, idempotency and concurrency behavior, rollout or compatibility risk, non-obvious tradeoffs, or test coverage. If none of that applies, the summary is the whole description.
-
-Keep the body skimmable in one screen. A description that is too long does not get read.`,
+    defaultContent: `The repository has no PR template. Use no headings at all: the opening sentences, then the bullet list of changes. Nothing else.`,
   },
   {
     key: 'generation.commit_message_instructions',

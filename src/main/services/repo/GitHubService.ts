@@ -658,15 +658,14 @@ ${input.commitLog || 'No commit log provided.'}`;
         }
 
         const descriptionGuidance = effectivePrTemplate
-          ? `The repository has a PR template. Use it as the scaffold: its section headings, in its order, and no others — with one exception, the lead paragraph below. The repository's requirements take precedence over editorial preference, so preserve required headings, order, checklists, metadata, automation markers, and issue-closing keywords.
-- Begin the body with a required 2-3 sentence overview paragraph: why, then outcome. Place it at the very top, BEFORE the first template heading, with no heading of its own. This is not an "invented section".
-- Do NOT repeat that overview inside Risk Impact, Test Plan, or any other section. Those sections answer their own specific prompts.
-- If the template DOES define a Description (or Summary/Overview) section, put the overview there instead of as a lead paragraph, and follow it with a short reviewer-focus sentence or a few bullets naming what reviewers should inspect. Add a one-line out-of-scope note only where it prevents reviewer confusion.
-- Do NOT invent any other sections the template does not contain (e.g. no "Description", "Acceptance Criteria", "Out of Scope", "Dependencies", "Code References", "Commits", or "Changes" headings unless the template itself defines them).
+          ? `The repository has a PR template. Use its section headings, in its order, and no others. The repository's requirements take precedence over editorial preference, so preserve required headings, order, checklists, metadata, automation markers, and issue-closing keywords.
+- If the template defines a Description (or Summary/Overview) section, put the opening sentences and the bullet list of changes there.
+- If it does not, put the opening sentences and the bullet list at the very top, before the first template heading, with no heading of their own.
+- Do NOT add any heading the template does not contain (e.g. no "Summary", "Changes", "Out of Scope", or "Notes").
 - Do NOT omit sections the template contains.
-- Fill each required section with its shortest complete answer, never more. Aim for a body that fits on one screen.
-- If a section asks a question that does not apply, answer "N/A" on one line. Do not explain why unless the absence is itself surprising.
-- If a section expects a value after a colon (e.g. "Tested on ondemand (if applicable): "), put the value or "N/A" directly after the colon. One line, no elaboration.
+- Fill every other section with its shortest complete answer. Do not repeat the change list there.
+- If a section asks a question that does not apply, answer "N/A" on one line.
+- If a section expects a value after a colon (e.g. "Tested on ondemand (if applicable): "), put the value or "N/A" directly after the colon.
 - Check a checkbox only where the evidence supports it. Leave permitted optional sections empty or absent.
 
 HTML comments in the template (\`<!-- ... -->\`) are author-facing guidance and examples — read them to understand what each section expects, then write plain markdown in their place. Your output must not contain any \`<!-- ... -->\`, stray \`-->\`, or stray \`--->\`.

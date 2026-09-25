@@ -217,11 +217,11 @@ describe('GitHubService PR generation', () => {
     );
 
     const systemPrompt = runGenerationMock.mock.calls[0][0].systemPrompt as string;
-    expect(systemPrompt).toContain('Use it as the scaffold');
+    expect(systemPrompt).toContain('Use its section headings');
     expect(systemPrompt).toContain('## PR Template');
     expect(systemPrompt).toContain('## Manual Test Plan');
-    // The overview must lead the body even when the template has no Description section.
-    expect(systemPrompt).toContain('BEFORE the first template heading');
+    // The change list must lead the body even when the template has no Description section.
+    expect(systemPrompt).toContain('before the first template heading');
   });
 
   it('falls back to the primary checkout PR template when a worktree lacks one', async () => {
