@@ -47,6 +47,15 @@ import {
   usePersistedViewState,
 } from './hooks';
 import { logPerfEvent, startPerfSpan } from '../../utils/perfLogger';
+import { MAIN_VIEW_ORDER } from './MainViewSwitcher';
+import { itemAtPosition, type TabScope } from './tabScope';
+
+/** Sessions in the order the chat tab strip renders them. */
+function orderedChatSessionIds(): string[] {
+  return Array.from(useChatStore.getState().sessions.entries())
+    .sort((a, b) => a[1].sessionNumber - b[1].sessionNumber)
+    .map(([id]) => id);
+}
 
 interface LayoutProps {
   onDeleteProject?: () => void;
@@ -254,13 +263,10 @@ export const Layout = memo(function Layout({
     }
   }, []);
 
-  // Tabs are ordered by session number, the same order the tab strip renders,
-  // so cycling matches what the user sees. Wraps at both ends.
+  // Wraps at both ends.
   const handleCycleChatSession = useCallback((direction: -1 | 1) => {
-    const { sessions, viewedSessionId, setViewedSession } = useChatStore.getState();
-    const ordered = Array.from(sessions.entries())
-      .sort((a, b) => a[1].sessionNumber - b[1].sessionNumber)
-      .map(([id]) => id);
+    const { viewedSessionId, setViewedSession } = useChatStore.getState();
+    const ordered = orderedChatSessionIds();
     if (ordered.length < 2) return;
     const current = viewedSessionId ? ordered.indexOf(viewedSessionId) : -1;
     const next = ordered[(current + direction + ordered.length) % ordered.length];
@@ -277,11 +283,25 @@ export const Layout = memo(function Layout({
     if (next) setActiveDocument(next.id);
   }, []);
 
+  const handleSelectTab = useCallback((scope: TabScope, position: number) => {
+    if (scope === 'chat') {
+      const id = itemAtPosition(orderedChatSessionIds(), position);
+      if (id) useChatStore.getState().setViewedSession(id);
+    } else if (scope === 'documents') {
+      const { openDocuments, setActiveDocument } = useWorkspaceStore.getState();
+      const document = itemAtPosition(openDocuments, position);
+      if (document) setActiveDocument(document.id);
+    } else {
+      const view = itemAtPosition(MAIN_VIEW_ORDER, position);
+      if (view) handleMainViewChange(view);
+    }
+  }, [handleMainViewChange]);
+
   // Keyboard shortcuts
   useLayoutShortcuts({
     onToggleSidebar: handleToggleSidebar,
     onToggleChat: handleToggleChat,
-    onMainViewChange: handleMainViewChange,
+    onSelectTab: handleSelectTab,
     onOpenCommandPalette: openCommandPalette,
     onCreateItem: handleOpenCreateItem,
     onToggleToolLog: handleToggleToolLog,

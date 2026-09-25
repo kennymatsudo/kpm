@@ -212,7 +212,7 @@ export function WorkspaceView({ projectId, chatCollapsed, onShowChat }: Workspac
             ${editorVisible ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4'}
           `}
         >
-          <div className="flex flex-col h-full">
+          <div data-tab-scope="documents" className="flex flex-col h-full">
             <DocumentTabStrip />
             <div className="flex-1 min-h-0">
               <ErrorBoundary name="FileEditor">

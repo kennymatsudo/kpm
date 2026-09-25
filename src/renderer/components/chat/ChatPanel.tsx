@@ -12,7 +12,11 @@ interface ChatPanelProps {
 
 export function ChatPanel({ view, className, style }: ChatPanelProps) {
   return (
-    <div className={`panel-right flex flex-col min-w-0 ${className ?? ''}`} style={style}>
+    <div
+      data-tab-scope="chat"
+      className={`panel-right flex flex-col min-w-0 ${className ?? ''}`}
+      style={style}
+    >
       <ChatHeader />
       <div className="flex-1 min-h-0 overflow-hidden">
         <ErrorBoundary name="Chat">

@@ -32,6 +32,9 @@ const VIEW_BUTTONS: ViewButtonConfig[] = [
   },
 ];
 
+/** Left to right, which is also the Cmd+1 / Cmd+2 order. */
+export const MAIN_VIEW_ORDER: readonly MainView[] = VIEW_BUTTONS.map((button) => button.id);
+
 /**
  * MainViewSwitcher - Toggle between Workspace and Execute views.
  *

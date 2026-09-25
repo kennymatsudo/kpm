@@ -26,6 +26,7 @@ When a feature is added or removed, edit its entry in place. Don't record histor
 Two main views: **Workspace** (files, documents, and chat) and **Execute** (the plan board and agent runs), persisted per project. The top bar holds the project switcher, the view switcher, board filters, the tracker sync button, and the status badges described below.
 - `src/renderer/components/layout/` (`Layout.tsx`, `TopBar.tsx`, `TopBarProjectSection.tsx`, `MainViewSwitcher.tsx`, `TopBarPlanningControls.tsx`)
 - Keyboard shortcuts: `src/renderer/components/keyboard-shortcuts/KeyboardShortcuts.tsx` (also listed in Settings, Keyboard Shortcuts), handlers in `components/layout/hooks/useLayoutShortcuts.ts`
+- Cmd+1..9 picks a tab in the strip the user last clicked or focused in: chat sessions, open documents, or otherwise the Workspace / Execute views (9 is the last tab; Settings tabs while Settings is open). A region opts in with `data-tab-scope`; the tracker is `components/layout/tabScope.ts`
 
 ### Command palette (Cmd+K)
 Fuzzy-searchable launcher for actions (see [Actions](#actions)), "Regenerate Project Context", and "Manage actions…". A chat action with a target opens a second page to pick the document or repo it runs against; the pick is attached as a focused resource.
