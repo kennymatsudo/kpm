@@ -23,21 +23,31 @@ interface CreatePrModalProps {
 export function CreatePrModal({ isOpen, onClose, session, onPrCreated }: CreatePrModalProps) {
   const loadPrContext = useDevSessionsStore((state) => state.loadPrContext);
   const createPullRequest = useDevSessionsStore((state) => state.createPullRequest);
+  const isCreating = useDevSessionsStore((state) => state.prCreatingIds.has(session.id));
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [draft, setDraft] = useState(true);
   const [isLoadingContext, setIsLoadingContext] = useState(false);
-  const [isCreating, setIsCreating] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [noCommits, setNoCommits] = useState(false);
   const [aiGenerated, setAiGenerated] = useState(false);
+  const [branchPushed, setBranchPushed] = useState<boolean | undefined>(undefined);
   const [hasGeneratedContext, setHasGeneratedContext] = useState(false);
   const [contextDocuments, setContextDocuments] = useState<PrContextDocumentTarget[]>([]);
   const [isLoadingContextDocuments, setIsLoadingContextDocuments] = useState(false);
   const [featureContextPath, setFeatureContextPath] = useState<string>('');
   const titleRef = useRef<HTMLInputElement>(null);
   const loadContextRequestIdRef = useRef(0);
+  const isOpenRef = useRef(isOpen);
+
+  useEffect(() => {
+    isOpenRef.current = isOpen;
+  }, [isOpen]);
+
+  useEffect(() => () => {
+    isOpenRef.current = false;
+  }, []);
 
   const loadContext = useCallback((selectedFeatureContextPath: string | null) => {
     const requestId = loadContextRequestIdRef.current + 1;
@@ -71,6 +81,7 @@ export function CreatePrModal({ isOpen, onClose, session, onPrCreated }: CreateP
         setTitle(result.context.suggestedTitle);
         setBody(result.context.body);
         setAiGenerated(result.context.aiGenerated === true);
+        setBranchPushed(result.context.branchPushed);
         setHasGeneratedContext(true);
         setIsLoadingContext(false);
       })
@@ -91,6 +102,7 @@ export function CreatePrModal({ isOpen, onClose, session, onPrCreated }: CreateP
     setAuthError(null);
     setNoCommits(false);
     setAiGenerated(false);
+    setBranchPushed(undefined);
     setHasGeneratedContext(false);
     setTitle('');
     setBody('');
@@ -131,27 +143,30 @@ export function CreatePrModal({ isOpen, onClose, session, onPrCreated }: CreateP
       return;
     }
 
-    setIsCreating(true);
     setCreateError(null);
-    try {
-      const result = await createPullRequest(session.id, title.trim(), body, draft);
-      if (result.success) {
-        toast.success(`PR #${result.number} created`);
-        onPrCreated();
-        onClose();
-      } else {
-        // Shown in the modal, which stays open, so the output can be read in full.
-        setCreateError(result.error || 'Unknown error');
-      }
-    } catch {
-      toast.error('Failed to create PR');
-    } finally {
-      setIsCreating(false);
+    // The modal can be closed, or its card unmounted, while the push runs, so the
+    // outcome is reported as a toast whenever nobody is watching the form.
+    const result = await createPullRequest(session.id, title.trim(), body, draft);
+    if (result.success) {
+      toast.success(`PR #${result.number} created`);
+      onPrCreated();
+      if (isOpenRef.current) onClose();
+      return;
+    }
+    const error = result.error || 'Unknown error';
+    if (isOpenRef.current) {
+      // Shown in the modal, which stays open, so the output can be read in full.
+      setCreateError(error);
+    } else {
+      toast.error(`Could not create the pull request: ${error.split('\n')[0]}`, {
+        label: 'Copy',
+        onClick: () => void navigator.clipboard?.writeText(error),
+      });
     }
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="lg" preventClose={isCreating} initialFocusRef={titleRef}>
+    <Modal isOpen={isOpen} onClose={onClose} size="lg" initialFocusRef={titleRef}>
       <ModalHeader
         className="pt-5 pb-3"
         subtitle={<>{session.branch_name} &rarr; {session.base_branch}</>}
@@ -160,6 +175,14 @@ export function CreatePrModal({ isOpen, onClose, session, onPrCreated }: CreateP
       </ModalHeader>
 
       <ModalBody className="py-4 space-y-4">
+        {isCreating && (
+          <p className="flex items-center gap-2 text-xs text-text-muted">
+            <SpinnerIcon className="w-3 h-3 animate-spin shrink-0" />
+            {branchPushed === false
+              ? 'Pushing the branch, then opening the pull request. Pre-push hooks can take a few minutes. You can close this window; a notification appears when it finishes.'
+              : 'Opening the pull request. You can close this window; a notification appears when it finishes.'}
+          </p>
+        )}
         {authError ? (
           <InlineAlert variant="error" title="GitHub not connected">{authError}</InlineAlert>
         ) : noCommits ? (
@@ -281,10 +304,9 @@ export function CreatePrModal({ isOpen, onClose, session, onPrCreated }: CreateP
       <ModalFooter className="py-3">
         <MotionButton
           onClick={onClose}
-          disabled={isCreating}
           className="px-3 py-1.5 text-xs font-medium text-text-muted hover:text-text-primary bg-surface-3/50 hover:bg-surface-3 rounded-md transition-colors"
         >
-          Cancel
+          {isCreating ? 'Close' : 'Cancel'}
         </MotionButton>
         <MotionButton
           onClick={hasGeneratedContext ? handleSubmit : handleGenerate}
@@ -298,18 +320,18 @@ export function CreatePrModal({ isOpen, onClose, session, onPrCreated }: CreateP
           }
           className="px-3 py-1.5 text-xs font-medium text-white bg-accent hover:bg-accent/90 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {isLoadingContext ? (
+          {isCreating ? (
+            <span className="flex items-center gap-1.5">
+              <SpinnerIcon className="w-3 h-3 animate-spin" />
+              Creating...
+            </span>
+          ) : isLoadingContext ? (
             <span className="flex items-center gap-1.5">
               <SpinnerIcon className="w-3 h-3 animate-spin" />
               Generating...
             </span>
           ) : !hasGeneratedContext ? (
             'Generate'
-          ) : isCreating ? (
-            <span className="flex items-center gap-1.5">
-              <SpinnerIcon className="w-3 h-3 animate-spin" />
-              Creating...
-            </span>
           ) : (
             draft ? 'Create Draft PR' : 'Create PR'
           )}

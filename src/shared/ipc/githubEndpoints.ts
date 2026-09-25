@@ -33,6 +33,7 @@ interface PrContextResult {
   baseBranch: string;
   hasCommits: boolean;
   prTemplate: string | null;
+  branchPushed: boolean;
 }
 
 export const githubEndpoints = {

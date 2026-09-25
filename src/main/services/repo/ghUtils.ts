@@ -83,7 +83,7 @@ export interface GhPrCreateOptions {
  */
 async function ghExec(
   args: string[],
-  options: { cwd: string; maxBuffer?: number }
+  options: { cwd: string; maxBuffer?: number; timeout?: number }
 ): Promise<{ stdout: string; stderr: string }> {
   return execFileAsync('gh', args, options);
 }
@@ -289,11 +289,24 @@ export function parseCreatePrOutput(stdout: string): GhPrCreateResult {
  */
 export async function createPr(
   cwd: string,
-  opts: GhPrCreateOptions
+  opts: GhPrCreateOptions,
+  timeoutMs?: number
 ): Promise<GhPrCreateResult> {
   const args = buildCreatePrArgs(opts);
-  const { stdout } = await ghExec(args, { cwd });
-  return parseCreatePrOutput(stdout);
+  try {
+    const { stdout } = await ghExec(args, { cwd, timeout: timeoutMs });
+    return parseCreatePrOutput(stdout);
+  } catch (error) {
+    // execFile's own message on a kill is the full command line, PR body included.
+    if ((error as { killed?: boolean }).killed) {
+      throw new Error(
+        `gh pr create did not finish within ${Math.round((timeoutMs ?? 0) / 1000)} seconds. ` +
+          'Check GitHub before retrying: the pull request may have been created.',
+        { cause: error }
+      );
+    }
+    throw error;
+  }
 }
 
 /**

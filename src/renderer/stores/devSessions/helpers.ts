@@ -13,6 +13,7 @@ export interface PrCreationContext {
   baseBranch?: string;
   hasCommits?: boolean;
   prTemplate?: string | null;
+  branchPushed?: boolean;
   aiGenerated?: boolean;
   featureContextPath?: string | null;
 }
@@ -122,6 +123,7 @@ export const PER_SESSION_STATE = {
   reviewAssessmentPendingBySessionId: { kind: 'map', keying: 'impl' },
   prContextBySessionId: { kind: 'map', keying: 'impl' },
   prContextLoadingIds: { kind: 'set', keying: 'impl' },
+  prCreatingIds: { kind: 'set', keying: 'impl' },
   agentStateBySessionId: { kind: 'map', keying: 'runtime' },
   activityFeedBySessionId: { kind: 'map', keying: 'runtime' },
   latestActivityBySessionId: { kind: 'map', keying: 'runtime' },

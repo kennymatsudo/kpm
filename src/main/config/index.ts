@@ -116,6 +116,8 @@ export interface AgentSessionConfig {
   maxConcurrentSessionsPerProject: number;
   /** Max turns for a bounded playbook subagent run */
   subagentMaxTurns: number;
+  /** How long `gh pr create` may run before it is killed (ms). The branch push before it has no limit. */
+  prCreateTimeoutMs: number;
   /** How long to keep terminal sessions around for follow-up interactions (ms) */
   terminalSessionTtlMs: number;
   /** Timeout for the initial SDK agent session startup (ms) */
@@ -278,6 +280,7 @@ function createDefaultConfig(): AppConfig {
     agentSession: {
       maxConcurrentSessionsPerProject: 3,
       subagentMaxTurns: 200,
+      prCreateTimeoutMs: 2 * 60 * 1000, // 2 minutes
       terminalSessionTtlMs: 30 * 60 * 1000, // 30 minutes
       sessionStartTimeoutMs: 60 * 1000, // 1 minute
       codexModel: 'gpt-5.6-terra',

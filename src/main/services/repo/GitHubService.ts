@@ -68,6 +68,7 @@ export interface PrContextResult {
   baseBranch: string;
   hasCommits: boolean;
   prTemplate: string | null;
+  branchPushed: boolean;
 }
 
 const MAX_FEATURE_CONTEXT_DOC_CHARS = 24_000;
@@ -358,7 +359,7 @@ ${input.commitLog || 'No commit log provided.'}`;
           title,
           body: resolvedBody,
           draft,
-        });
+        }, getConfig().agentSession.prCreateTimeoutMs);
 
         // Persist PR info on the session
         deps.devSessions.updatePrInfo(
@@ -535,10 +536,11 @@ ${input.commitLog || 'No commit log provided.'}`;
 
       try {
         const baseBranch = await resolveBaseBranch(repoPath, session.base_branch);
-        const [currentBranch, commits, prTemplate] = await Promise.all([
+        const [currentBranch, commits, prTemplate, branchPushed] = await Promise.all([
           resolveCurrentBranch(repoPath),
           countCommitsAhead(repoPath, baseBranch),
           readSessionPrTemplate(repoPath, primaryRepoPath),
+          isBranchPushed(repoPath, session.branch_name),
         ]);
 
         // Build body sections
@@ -571,6 +573,7 @@ ${input.commitLog || 'No commit log provided.'}`;
           baseBranch,
           hasCommits: (commits ?? 0) > 0,
           prTemplate,
+          branchPushed,
         });
       } catch (error) {
         return failure(error instanceof Error ? error.message : String(error));

@@ -255,10 +255,11 @@ export async function countCommitsAhead(
  * Find and read a PR template from standard locations in a repo.
  * Searches: .github/pull_request_template.md, .github/PULL_REQUEST_TEMPLATE.md,
  * PULL_REQUEST_TEMPLATE.md, pull_request_template.md,
- * docs/pull_request_template.md, .github/PULL_REQUEST_TEMPLATE/ (first .md file).
+ * docs/pull_request_template.md. A PULL_REQUEST_TEMPLATE/ folder is skipped: GitHub
+ * only applies those when the PR URL names one, so none of them is the default.
  */
 export async function readPrTemplate(repoPath: string): Promise<string | null> {
-  const { readFile, readdir } = await import('fs/promises');
+  const { readFile } = await import('fs/promises');
   const { join } = await import('path');
 
   const candidates = [
@@ -276,19 +277,6 @@ export async function readPrTemplate(repoPath: string): Promise<string | null> {
     } catch {
       // File doesn't exist, try next
     }
-  }
-
-  // Check .github/PULL_REQUEST_TEMPLATE/ directory for first .md file
-  try {
-    const templateDir = join(repoPath, '.github', 'PULL_REQUEST_TEMPLATE');
-    const files = await readdir(templateDir);
-    const mdFile = files.find(f => f.endsWith('.md'));
-    if (mdFile) {
-      const content = await readFile(join(templateDir, mdFile), 'utf-8');
-      return content.trim();
-    }
-  } catch {
-    // Directory doesn't exist
   }
 
   return null;

@@ -60,6 +60,7 @@ export interface DevSessionsState {
   reviewAssessmentPendingBySessionId: Map<string, ReviewAssessmentPending>;
   prContextBySessionId: Map<string, PrCreationContext>;
   prContextLoadingIds: Set<string>;
+  prCreatingIds: Set<string>;
 
   // Computed merge order (refreshed alongside sessions)
   mergeOrderBySessionId: Map<string, { layer: number | null; blockedBy: string[] }>;
@@ -177,6 +178,7 @@ function createInitialState() {
     reviewAssessmentPendingBySessionId: new Map<string, ReviewAssessmentPending>(),
     prContextBySessionId: new Map<string, PrCreationContext>(),
     prContextLoadingIds: new Set<string>(),
+    prCreatingIds: new Set<string>(),
     mergeOrderBySessionId: new Map<string, { layer: number | null; blockedBy: string[] }>(),
     agentStateBySessionId: new Map<string, AgentSessionState>(),
     activityFeedBySessionId: new Map<string, ActivityFeed>(),

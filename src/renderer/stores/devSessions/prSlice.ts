@@ -132,6 +132,7 @@ export function createDevSessionsPrSlice(
           baseBranch: contextResult.baseBranch ?? undefined,
           hasCommits,
           prTemplate,
+          branchPushed: contextResult.branchPushed,
           aiGenerated: false,
           featureContextPath,
         };
@@ -177,6 +178,7 @@ export function createDevSessionsPrSlice(
     },
 
     createPullRequest: async (sessionId, title, body, draft) => {
+      set((state) => ({ prCreatingIds: addToSet(state.prCreatingIds, sessionId) }));
       try {
         const result = await createSessionPullRequest({ sessionId, title, body, draft });
         if (!result.success) {
@@ -204,6 +206,8 @@ export function createDevSessionsPrSlice(
           success: false,
           error: error instanceof Error ? error.message : 'Failed to create pull request',
         };
+      } finally {
+        set((state) => ({ prCreatingIds: removeFromSet(state.prCreatingIds, sessionId) }));
       }
     },
 
