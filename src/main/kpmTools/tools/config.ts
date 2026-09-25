@@ -155,7 +155,7 @@ export function createConfigTools(deps: ConfigToolDeps) {
         baseVersion: z.string().min(1).optional().describe('Version token from read_config (required for update)'),
         payload: z.object({
           name: z.string().describe('Playbook name'),
-          steps: z.array(z.record(z.string(), z.unknown())).describe('Complete ordered step list; see the grammar from read_config'),
+          steps: z.array(z.looseObject({})).describe('Complete ordered step list; see the grammar from read_config'),
         }).describe('The complete playbook'),
       },
       async ({ kind, op, id, baseVersion, payload }) => {
