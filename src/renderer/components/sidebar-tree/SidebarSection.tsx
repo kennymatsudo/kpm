@@ -56,20 +56,23 @@ export function SidebarSection({
         beneath it. A row's text starts at its margin (8) + padding (12) + icon
         (14) + gap (8) = 42px, so the header spends the same: 8px of padding,
         then a chevron (12) and a glyph (14) sharing one gapless column, then
-        the same 8px gap. The right side keeps its wider inset — that edge
-        answers to the panel, not to the rows.
+        the same 8px gap. Flush, the two glyphs crowd each other, so the icon
+        steps 2px away from the chevron and the column takes those 2px back on
+        its right. The right side keeps its wider inset — that edge answers to the
+        panel, not to the rows. The bottom inset is shorter than the top so the
+        title sits with the rows it names rather than floating between sections.
       */}
-      <div className="flex items-center gap-2 pl-2 pr-4 py-2">
+      <div className="flex items-center gap-2 pl-2 pr-4 pt-2 pb-1">
         <button
           onClick={onToggleCollapsed}
           aria-expanded={!isCollapsed}
           className="flex items-center gap-2 flex-1 min-w-0 hover:bg-surface-3 transition-colors duration-150 rounded-sm -my-1 py-1"
         >
-          <span className="flex items-center flex-shrink-0">
+          <span className="flex items-center flex-shrink-0 -mr-0.5">
             <ChevronRightIcon
               className={`w-3 h-3 flex-shrink-0 text-text-tertiary transition-transform duration-200 ${isCollapsed ? '' : 'rotate-90'}`}
             />
-            {icon}
+            <span className="flex ml-0.5">{icon}</span>
           </span>
           <span className="min-w-0 text-tiny font-medium text-text-tertiary uppercase tracking-wider truncate">
             {title}
@@ -88,7 +91,7 @@ export function SidebarSection({
         className={`overflow-hidden transition-opacity duration-150 ${
           isCollapsed
             ? 'max-h-0 opacity-0 flex-none'
-            : `flex flex-1 min-h-0 flex-col opacity-100 pt-1 ${dropZoneProps ? 'pb-4' : ''}`
+            : `flex flex-1 min-h-0 flex-col opacity-100 ${dropZoneProps ? 'pb-4' : ''}`
         }`}
       >
         {children}
