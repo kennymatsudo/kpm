@@ -174,6 +174,18 @@ function queueMissingSummaries(
 }
 
 export function createFileExplorerService(deps: FileExplorerServiceDeps) {
+  // Autosave writes after every pause in typing. Waiting out the same quiet
+  // window as the watcher (which also sees this write, under the same key)
+  // gives one summary per burst of edits instead of one per save.
+  function queueSummary(projectId: string, relativePath: string, fullPath: string): void {
+    deps.fileSummaryService?.enqueueFileFromDisk(
+      projectId,
+      relativePath,
+      fullPath,
+      getConfig().watcher.summarizationDebounceMs,
+    );
+  }
+
   function resolveFileExplorerPath(
     projectFolder: string,
     relativePath: string
@@ -347,7 +359,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         await ensureParentDirectory(fullPath);
 
         await fs.promises.writeFile(fullPath, content, 'utf-8');
-        void deps.fileSummaryService?.processFile(projectId, relativePath, content);
+        queueSummary(projectId, relativePath, fullPath);
         audit(projectId, 'write', relativePath, access);
         return success(await getScopedEntryInfo(fullPath, relativePath));
       } catch (error) {
@@ -702,7 +714,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         await ensureParentDirectory(fullPath);
 
         await fs.promises.writeFile(fullPath, finalContent, 'utf-8');
-        void deps.fileSummaryService?.processFile(projectId, relativePath, finalContent);
+        queueSummary(projectId, relativePath, fullPath);
         audit(projectId, 'write', relativePath, access);
         return success(undefined);
       } catch (error) {

@@ -525,6 +525,26 @@ describe('FileExplorerService', () => {
       expect(fs.readFileSync(path.join(tempDir, 'new.txt'), 'utf-8')).toBe('content');
     });
 
+    it('queues a debounced summary instead of summarizing every save', async () => {
+      setConfig(createTestConfig({ watcher: { summarizationDebounceMs: 30_000 } }));
+      const enqueueFileFromDisk = vi.fn().mockReturnValue(true);
+      const processFile = vi.fn();
+      const serviceWithSummaries = createFileExplorerService({
+        getProjectFolder: (projectId: string) => (projectId === 'test-project' ? tempDir : null),
+        fileSummaryService: { enqueueFileFromDisk, processFile } as unknown as FileSummaryService,
+      });
+
+      await serviceWithSummaries.writeFile('test-project', 'notes.md', 'draft');
+
+      expect(processFile).not.toHaveBeenCalled();
+      expect(enqueueFileFromDisk).toHaveBeenCalledWith(
+        'test-project',
+        'notes.md',
+        path.join(tempDir, 'notes.md'),
+        30_000,
+      );
+    });
+
     it('creates parent directories if needed', async () => {
       const result = await service.writeFile('test-project', 'nested/path/file.txt', 'content');
       expect(result.ok).toBe(true);
