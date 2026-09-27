@@ -120,6 +120,53 @@ export async function scaffoldWorktree(params: {
   }
 }
 
+/**
+ * Check that a worktree made outside KPM can back a board session: it must be
+ * a linked worktree of this repo (not the primary checkout, not another repo)
+ * with a branch checked out, since sessions track work by branch.
+ */
+export async function inspectAttachableWorktree(params: {
+  worktreePath: string;
+  repoPath: string;
+}): Promise<ServiceResult<{ worktreePath: string; branchName: string }>> {
+  if (!fs.existsSync(params.worktreePath)) {
+    return failure(`Worktree not found at ${params.worktreePath}`);
+  }
+  const [worktreePath, primaryRepoPath] = await Promise.all([
+    fs.promises.realpath(params.worktreePath),
+    fs.promises.realpath(params.repoPath),
+  ]);
+  if (worktreePath === primaryRepoPath) {
+    return failure('The main checkout cannot be attached. Pick a separate worktree.');
+  }
+
+  try {
+    const [topLevel, commonDir, primaryCommonDir] = await Promise.all([
+      gitExec(['rev-parse', '--show-toplevel'], { cwd: worktreePath }),
+      gitExec(['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: worktreePath }),
+      gitExec(['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: primaryRepoPath }),
+    ]);
+    if (await fs.promises.realpath(topLevel.stdout.trim()) !== worktreePath) {
+      return failure(`${worktreePath} is inside a worktree, not the root of one.`);
+    }
+    const [common, primaryCommon] = await Promise.all([
+      fs.promises.realpath(commonDir.stdout.trim()),
+      fs.promises.realpath(primaryCommonDir.stdout.trim()),
+    ]);
+    if (common !== primaryCommon) {
+      return failure(`${worktreePath} belongs to a different repository.`);
+    }
+  } catch {
+    return failure(`${worktreePath} is not a git worktree.`);
+  }
+
+  const branchName = await resolveCurrentBranch(worktreePath);
+  if (!branchName) {
+    return failure(`${worktreePath} has no branch checked out. Check out a branch first.`);
+  }
+  return success({ worktreePath, branchName });
+}
+
 export async function assertSessionWorktreeCheckout(params: {
   session: DevSession;
   repoPath: string;

@@ -6,6 +6,7 @@ import { CreateItemModal } from './CreateItemModal';
 import { BoardView } from '../board-view';
 import { AgentStartModal } from '../board-view/AgentStartModal';
 import { LinkPrToItemDialog } from '../development/LinkPrToItemDialog';
+import { AttachWorktreeDialog } from '../development/AttachWorktreeDialog';
 import { TaskEditModal } from './TaskEditModal';
 import { ErrorBoundary } from '../app/ErrorBoundary';
 import { LoadingSpinner } from '../ui';
@@ -200,6 +201,8 @@ export function PlanView({
     setLinkPrItemId(itemId);
   }, []);
 
+  const [attachWorktreeItemId, setAttachWorktreeItemId] = useState<string | null>(null);
+
   // --- Agent start modal ---
 
   const [agentStartItemId, setAgentStartItemId] = useState<string | null>(null);
@@ -356,6 +359,7 @@ export function PlanView({
           hasTrackerAssociation={hasTrackerAssociation}
           trackerType={activeTrackerType}
           onLinkPr={() => handleLinkPr(contextMenu.singleItemId!)}
+          onAttachWorktree={() => setAttachWorktreeItemId(contextMenu.singleItemId)}
           onStartAgent={handleStartAgent}
           onOpenDetail={setBoardDetailSessionId}
         />
@@ -385,6 +389,20 @@ export function PlanView({
           planItemId={linkPrItemId}
           repos={repos}
           onLinked={() => {
+            if (currentProjectId) {
+              void loadSessions(currentProjectId);
+            }
+          }}
+        />
+      )}
+
+      {attachWorktreeItemId && (
+        <AttachWorktreeDialog
+          isOpen={true}
+          onClose={() => setAttachWorktreeItemId(null)}
+          planItemId={attachWorktreeItemId}
+          repos={repos}
+          onAttached={() => {
             if (currentProjectId) {
               void loadSessions(currentProjectId);
             }

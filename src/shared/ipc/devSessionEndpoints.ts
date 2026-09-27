@@ -73,6 +73,11 @@ export const devSessionEndpoints = {
     params: z.object({ sessionId: uuid }),
     result: resultOf<RegistryResponse>(),
   },
+  attachWorktree: {
+    channel: 'dev-session:attach-worktree',
+    params: z.object({ planItemId: uuid, repoId: uuid, worktreePath: z.string().min(1).max(4096) }),
+    result: resultOf<RegistryResponse<{ session: DevSession }>>(),
+  },
   checkDirty: {
     channel: 'dev-session:check-dirty',
     params: z.object({ sessionId: uuid }),

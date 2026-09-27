@@ -76,6 +76,7 @@ import {
   generateUniqueBranchName,
   scaffoldWorktree,
   assertSessionWorktreeCheckout,
+  inspectAttachableWorktree,
 } from './worktreeScaffold';
 import { resolveDefaultBranch } from './branchFacts';
 import { deleteLocalBranch, deleteRemoteBranch } from './gitWrites';
@@ -121,6 +122,17 @@ export interface DevSessionServiceDeps {
   startPlaybookReviewPass: (sessionId: string) => Promise<string | null>;
 }
 const broadcastSessionStatusChange = createStatusBroadcaster<DevSession, typeof devSessionEvents.statusChanged>(devSessionEvents.statusChanged);
+
+function sameDirectory(a: string, b: string): boolean {
+  const resolve = (dir: string) => {
+    try {
+      return fs.realpathSync(dir);
+    } catch {
+      return path.resolve(dir);
+    }
+  };
+  return resolve(a) === resolve(b);
+}
 
 interface PreparedWorkBriefUpdate {
   currentWorkBrief: string;
@@ -697,6 +709,86 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         // Broadcast new session to UI
         broadcastSessionStatusChange(session);
 
+        return success(session);
+      } catch (error) {
+        return failure(error instanceof Error ? error.message : String(error));
+      }
+    },
+
+    /**
+     * Attach a worktree made outside KPM to a plan item. The result is an
+     * ordinary inactive board session, so Start, Changes, Create PR, and
+     * delete treat it exactly like a worktree KPM created. A PR-only session
+     * left by "Link PR" is folded in rather than left beside it.
+     */
+    async attachWorktree(
+      planItemId: string,
+      repoId: string,
+      worktreePath: string,
+    ): AsyncResult<DevSession> {
+      try {
+        const item = deps.planItems.get(planItemId);
+        if (!item?.project_id) return failure(`Plan item not found: ${planItemId}`);
+        const repo = deps.repos.getById(repoId);
+        if (!repo) return failure(`Repository not found: ${repoId}`);
+
+        const inspected = await inspectAttachableWorktree({ worktreePath, repoPath: repo.path });
+        if (!inspected.ok) return inspected;
+        const { branchName } = inspected.data;
+        const resolvedPath = inspected.data.worktreePath;
+
+        const projectSessions = deps.devSessions.getByProject(item.project_id);
+        const owner = projectSessions.find((session) =>
+          session.worktree_path && sameDirectory(session.worktree_path, resolvedPath));
+        if (owner) {
+          return failure(owner.plan_item_id === planItemId
+            ? 'This worktree is already attached to this task.'
+            : 'This worktree is already attached to another task.');
+        }
+        const itemSessions = projectSessions.filter((session) => session.plan_item_id === planItemId);
+        const withWorktree = itemSessions.find((session) => session.worktree_path);
+        if (withWorktree) {
+          return failure(`This task already has a worktree at ${withWorktree.worktree_path}. Delete it first.`);
+        }
+        const prOnly = itemSessions.find((session) => session.repo_id === repoId && session.pr_url);
+
+        const instructions = service.buildBoardStartInstructions(planItemId);
+        if (!instructions.ok) return instructions;
+        const baseBranch = await resolveDefaultBranch(repo.path);
+
+        const session = deps.devSessions.create({
+          id: randomUUID(),
+          project_id: item.project_id,
+          plan_item_id: planItemId,
+          repo_id: repoId,
+          name: item.title,
+          worktree_path: resolvedPath,
+          branch_name: branchName,
+          base_branch: baseBranch,
+          base_sha: await resolveBaseSha(resolvedPath, baseBranch),
+          status: 'inactive',
+          agent_type: 'claude',
+          review_policy: 'auto',
+          auto_address_pr_reviews: false,
+          automation_phase: null,
+          // Left empty so the first Start snapshots whichever playbook the user picks.
+          playbook_id: null,
+          playbook_snapshot: null,
+          current_step_id: null,
+          step_pass_counts: null,
+          paused_reason: null,
+          initial_instructions: instructions.data,
+          work_brief_revision: item.work_brief_revision ?? 1,
+          pr_number: prOnly?.pr_number ?? null,
+          pr_url: prOnly?.pr_url ?? null,
+          pr_state: prOnly?.pr_state ?? null,
+          review_state: prOnly?.review_state ?? null,
+          pr_is_draft: prOnly?.pr_is_draft ?? false,
+          merge_order: null,
+        });
+        if (prOnly) deps.devSessions.delete(prOnly.id);
+
+        broadcastSessionStatusChange(session);
         return success(session);
       } catch (error) {
         return failure(error instanceof Error ? error.message : String(error));

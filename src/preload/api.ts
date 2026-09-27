@@ -749,6 +749,8 @@ const devSessions = {
 
   destroy: devSessionInvoke.destroy,
 
+  attachWorktree: devSessionInvoke.attachWorktree,
+
   checkDirty: devSessionInvoke.checkDirty,
 
   getDiff: devSessionInvoke.getDiff,

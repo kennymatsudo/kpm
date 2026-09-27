@@ -30,6 +30,7 @@ interface PlanCardMenuProps {
   hasTrackerAssociation: boolean;
   trackerType: TrackerType | null;
   onLinkPr?: () => void;
+  onAttachWorktree?: () => void;
   onStartAgent?: (itemId: string) => void;
   onOpenDetail?: (sessionId: string) => void;
 }
@@ -46,6 +47,7 @@ export function PlanCardMenu({
   hasTrackerAssociation,
   trackerType,
   onLinkPr,
+  onAttachWorktree,
   onStartAgent,
   onOpenDetail,
 }: PlanCardMenuProps) {
@@ -283,6 +285,19 @@ export function PlanCardMenu({
           >
             {linkedPrSession ? 'Replace linked PR' : 'Link PR'}
           </DropdownMenu.Item>
+
+          {onAttachWorktree && !itemSessions.some((session) => session.worktree_path) && (
+            <DropdownMenu.Item
+              onClick={() => onAttachWorktree()}
+              icon={
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 3v12m0 0a3 3 0 100 6 3 3 0 000-6zm12-6a3 3 0 11-6 0 3 3 0 016 0zm0 0v2a4 4 0 01-4 4H9" />
+                </svg>
+              }
+            >
+              Attach worktree
+            </DropdownMenu.Item>
+          )}
 
           {hasTrackerAssociation && (
             <DropdownMenu.Item
