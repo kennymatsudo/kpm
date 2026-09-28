@@ -1193,6 +1193,8 @@ export function isLiveAutomationPhase(
   );
 }
 
+export type DevSessionWorktreeOrigin = 'kpm' | 'attached';
+
 /**
  * A development session represents an implementation attempt.
  * Each session runs Claude Code in an isolated git worktree.
@@ -1214,6 +1216,8 @@ export interface DevSession {
   // ranges use this so a task's "Changes" reflect only its own work, never
   // commits that landed on a moving base ref. Null for legacy/pre-capture rows.
   base_sha: string | null;
+  /** 'attached' when the user made the worktree outside KPM; KPM then never deletes its branch. */
+  worktree_origin?: DevSessionWorktreeOrigin;
 
   // Status
   status: DevSessionStatus;

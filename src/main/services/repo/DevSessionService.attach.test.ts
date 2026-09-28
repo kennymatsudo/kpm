@@ -5,7 +5,13 @@ import { tmpdir } from 'os';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDevSessionService } from './DevSessionService';
 
+const getPrForBranch = vi.hoisted(() => vi.fn());
+
 vi.mock('electron', () => ({ BrowserWindow: { getAllWindows: () => [] } }));
+vi.mock('./ghUtils', async (importOriginal) => ({
+  ...(await importOriginal()),
+  getPrForBranch,
+}));
 
 function runGit(cwd: string, args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf-8' }).trim();
@@ -49,6 +55,7 @@ describe('DevSessionService.attachWorktree', () => {
 
   afterEach(() => {
     rmSync(root, { recursive: true, force: true });
+    getPrForBranch.mockReset();
   });
 
   function buildService(existingSessions: Record<string, unknown>[] = []) {
@@ -83,17 +90,20 @@ describe('DevSessionService.attachWorktree', () => {
       base_branch: 'main',
       base_sha: forkSha,
       status: 'inactive',
+      worktree_origin: 'attached',
       playbook_snapshot: null,
       work_brief_revision: 3,
     });
     expect(result.data.initial_instructions).toContain('Started in a terminal');
   });
 
+  const prOnly = {
+    id: 'stub-1', plan_item_id: 'item-1', repo_id: 'repo-1', worktree_path: '',
+    pr_number: 42, pr_url: 'https://github.com/o/r/pull/42', pr_state: 'open', review_state: null, pr_is_draft: true,
+  };
+
   it('folds in a PR-only session from Link PR instead of leaving two sessions', async () => {
-    const prOnly = {
-      id: 'stub-1', plan_item_id: 'item-1', repo_id: 'repo-1', worktree_path: '',
-      pr_number: 42, pr_url: 'https://github.com/o/r/pull/42', pr_state: 'open', review_state: null, pr_is_draft: true,
-    };
+    getPrForBranch.mockResolvedValue({ number: 42 });
     const { service, deleteSession } = buildService([prOnly]);
 
     const result = await service.attachWorktree('item-1', 'repo-1', worktreePath);
@@ -101,6 +111,20 @@ describe('DevSessionService.attachWorktree', () => {
     if (!result.ok) throw new Error(result.error);
     expect(result.data).toMatchObject({ pr_number: 42, pr_url: prOnly.pr_url, pr_is_draft: true });
     expect(deleteSession).toHaveBeenCalledWith('stub-1');
+  });
+
+  it.each([
+    ['is on a different branch', { number: 7 }],
+    ['cannot be looked up', null],
+  ])('leaves a linked PR on its own session when it %s', async (_case, branchPr) => {
+    getPrForBranch.mockResolvedValue(branchPr);
+    const { service, deleteSession } = buildService([prOnly]);
+
+    const result = await service.attachWorktree('item-1', 'repo-1', worktreePath);
+
+    if (!result.ok) throw new Error(result.error);
+    expect(result.data).toMatchObject({ pr_number: null, pr_url: null });
+    expect(deleteSession).not.toHaveBeenCalled();
   });
 
   it('refuses when the task already has a worktree', async () => {
@@ -123,5 +147,24 @@ describe('DevSessionService.attachWorktree', () => {
 
     expect(result).toMatchObject({ ok: false, error: expect.stringContaining('another task') });
     expect(create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['keeps the branch of a worktree made outside KPM', 'attached', 'feature/outside'],
+    ['deletes the branch of a worktree KPM made', 'kpm', ''],
+  ])('destroy %s', async (_case, origin, remainingBranch) => {
+    const session = {
+      id: 'session-1', plan_item_id: 'item-1', repo_id: 'repo-1',
+      worktree_path: worktreePath, branch_name: 'feature/outside', worktree_origin: origin,
+    };
+    const service = createDevSessionService({
+      repos: { getById: vi.fn(() => ({ id: 'repo-1', path: repoPath })) },
+      devSessions: { get: vi.fn(() => session), delete: vi.fn() },
+    } as never);
+
+    const result = await service.destroySession('session-1');
+
+    expect(result.ok).toBe(true);
+    expect(runGit(repoPath, ['branch', '--list', 'feature/outside'])).toBe(remainingBranch);
   });
 });

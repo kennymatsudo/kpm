@@ -86,6 +86,7 @@ export function PlanCardMenu({
         project_id: actionableSession.project_id,
         worktree_path: actionableSession.worktree_path,
         branch_name: actionableSession.branch_name,
+        keepsBranches: actionableSession.worktree_origin === 'attached',
       };
     }
 
@@ -333,7 +334,9 @@ export function PlanCardMenu({
                 variant="danger"
                 closeOnClick={false}
                 disabled={isWorktreeLoading}
-                title="Permanently deletes worktree, branch, and remote branch"
+                title={targetWorktree.keepsBranches
+                  ? 'Permanently deletes the worktree folder; its branches stay'
+                  : 'Permanently deletes worktree, branch, and remote branch'}
                 onClick={() => setShowDestroyWorktreeConfirm(true)}
                 icon={
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -412,15 +415,25 @@ export function PlanCardMenu({
                 <span className="w-1 h-1 rounded-full bg-danger/60 flex-shrink-0" />
                 The worktree directory and all its files
               </li>
-              <li className="flex items-center gap-2">
-                <span className="w-1 h-1 rounded-full bg-danger/60 flex-shrink-0" />
-                The local branch <code className="text-xxs font-mono bg-surface-3 px-1 py-0.5 rounded">{targetWorktree.branch_name}</code>
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="w-1 h-1 rounded-full bg-danger/60 flex-shrink-0" />
-                The remote branch (if pushed)
-              </li>
+              {!targetWorktree.keepsBranches && (
+                <>
+                  <li className="flex items-center gap-2">
+                    <span className="w-1 h-1 rounded-full bg-danger/60 flex-shrink-0" />
+                    The local branch <code className="text-xxs font-mono bg-surface-3 px-1 py-0.5 rounded">{targetWorktree.branch_name}</code>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <span className="w-1 h-1 rounded-full bg-danger/60 flex-shrink-0" />
+                    The remote branch (if pushed)
+                  </li>
+                </>
+              )}
             </ul>
+            {targetWorktree.keepsBranches && (
+              <p className="text-xs text-text-muted mt-3 leading-relaxed">
+                The branch <code className="text-xxs font-mono bg-surface-3 px-1 py-0.5 rounded">{targetWorktree.branch_name}</code> was
+                made outside KPM, so it stays, locally and on the remote.
+              </p>
+            )}
           </ModalBody>
 
           <div className="shrink-0 flex items-center gap-2 p-5">

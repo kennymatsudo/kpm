@@ -33,6 +33,29 @@ describe('DevSessionRepository Work Brief revision', () => {
     expect(repository.get('session-legacy')?.work_brief_revision).toBeNull();
   });
 
+  it('stores the fork point, worktree origin, and PR a new session is created with', () => {
+    const created = repository.create({
+      id: 'session-attached', project_id: 'project-1', plan_item_id: null, repo_id: 'repo-1', name: 'Session',
+      worktree_path: '/tmp/worktree', branch_name: 'work', base_branch: 'main', base_sha: 'abc123',
+      worktree_origin: 'attached', status: 'inactive', agent_type: 'claude', review_policy: 'auto',
+      automation_phase: null, playbook_id: null, playbook_snapshot: null, current_step_id: null,
+      step_pass_counts: null, paused_reason: null, initial_instructions: 'Contract', work_brief_revision: 1,
+      pr_number: 42, pr_url: 'https://github.com/o/r/pull/42', pr_state: 'OPEN', review_state: 'APPROVED',
+      pr_is_draft: true, merge_order: 2,
+    });
+
+    expect(created).toMatchObject({
+      base_sha: 'abc123',
+      worktree_origin: 'attached',
+      pr_number: 42,
+      pr_url: 'https://github.com/o/r/pull/42',
+      pr_state: 'OPEN',
+      review_state: 'APPROVED',
+      pr_is_draft: 1,
+      merge_order: 2,
+    });
+  });
+
   it('updates the delivered Work Brief and revision together', () => {
     repository.create({
       id: 'session-current',

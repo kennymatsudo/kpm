@@ -78,6 +78,7 @@ import {
   assertSessionWorktreeCheckout,
   inspectAttachableWorktree,
 } from './worktreeScaffold';
+import { getPrForBranch } from './ghUtils';
 import { resolveDefaultBranch } from './branchFacts';
 import { deleteLocalBranch, deleteRemoteBranch } from './gitWrites';
 import {
@@ -750,7 +751,10 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         if (withWorktree) {
           return failure(`This task already has a worktree at ${withWorktree.worktree_path}. Delete it first.`);
         }
-        const prOnly = itemSessions.find((session) => session.repo_id === repoId && session.pr_url);
+        // A PR linked before the worktree existed only belongs here if GitHub says it is on this branch.
+        const prOnly = itemSessions.find((session) => session.repo_id === repoId && session.pr_number);
+        const branchPr = prOnly ? await getPrForBranch(repo.path, branchName) : null;
+        const carriedPr = prOnly && branchPr?.number === prOnly.pr_number ? prOnly : undefined;
 
         const instructions = service.buildBoardStartInstructions(planItemId);
         if (!instructions.ok) return instructions;
@@ -766,6 +770,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           branch_name: branchName,
           base_branch: baseBranch,
           base_sha: await resolveBaseSha(resolvedPath, baseBranch),
+          worktree_origin: 'attached',
           status: 'inactive',
           agent_type: 'claude',
           review_policy: 'auto',
@@ -779,14 +784,14 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           paused_reason: null,
           initial_instructions: instructions.data,
           work_brief_revision: item.work_brief_revision ?? 1,
-          pr_number: prOnly?.pr_number ?? null,
-          pr_url: prOnly?.pr_url ?? null,
-          pr_state: prOnly?.pr_state ?? null,
-          review_state: prOnly?.review_state ?? null,
-          pr_is_draft: prOnly?.pr_is_draft ?? false,
+          pr_number: carriedPr?.pr_number ?? null,
+          pr_url: carriedPr?.pr_url ?? null,
+          pr_state: carriedPr?.pr_state ?? null,
+          review_state: carriedPr?.review_state ?? null,
+          pr_is_draft: carriedPr?.pr_is_draft ?? false,
           merge_order: null,
         });
-        if (prOnly) deps.devSessions.delete(prOnly.id);
+        if (carriedPr) deps.devSessions.delete(carriedPr.id);
 
         broadcastSessionStatusChange(session);
         return success(session);
@@ -1171,8 +1176,9 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           // Destroying a session the user created is its own authorization. An
           // already-deleted ref is the expected case and stays quiet; anything
           // else is reported, because these two commands are unrecoverable.
+          // An attached worktree's branch predates KPM, so it is never KPM's to delete.
           const authorization = { kind: 'boardSession' } as const;
-          for (const removal of [
+          const branchRemovals = session.worktree_origin === 'attached' ? [] : [
             await deleteLocalBranch({ repoPath: repo.path, branch: session.branch_name, authorization }),
             await deleteRemoteBranch({
               repoPath: repo.path,
@@ -1180,7 +1186,8 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
               branch: session.branch_name,
               authorization,
             }),
-          ]) {
+          ];
+          for (const removal of branchRemovals) {
             if (!removal.ok && removal.kind !== 'missingRef') {
               console.warn(`[DevSession] Branch cleanup for "${session.branch_name}": ${removal.reason}`);
             }

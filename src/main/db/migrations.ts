@@ -4746,6 +4746,18 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    id: 1130,
+    name: '130_dev_session_worktree_origin',
+    up: (db: BetterSqliteDatabase) => {
+      // Worktrees attached before this column existed read as KPM-made; that
+      // matches how they were already treated.
+      db.exec(`
+        ALTER TABLE dev_sessions ADD COLUMN worktree_origin TEXT NOT NULL DEFAULT 'kpm'
+          CHECK(worktree_origin IN ('kpm', 'attached'));
+      `);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {
