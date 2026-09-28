@@ -284,6 +284,9 @@ export function parseCreatePrOutput(stdout: string): GhPrCreateResult {
   };
 }
 
+/** gh was killed at its timeout, so the command may or may not have taken effect. */
+export class GhTimeoutError extends Error {}
+
 /**
  * Create a pull request.
  */
@@ -299,7 +302,7 @@ export async function createPr(
   } catch (error) {
     // execFile's own message on a kill is the full command line, PR body included.
     if ((error as { killed?: boolean }).killed) {
-      throw new Error(
+      throw new GhTimeoutError(
         `gh pr create did not finish within ${Math.round((timeoutMs ?? 0) / 1000)} seconds. ` +
           'Check GitHub before retrying: the pull request may have been created.',
         { cause: error }

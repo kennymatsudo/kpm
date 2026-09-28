@@ -18,6 +18,9 @@ const branchMocks = vi.hoisted(() => ({
 }));
 const ghMocks = vi.hoisted(() => ({
   probePrReviewState: vi.fn(),
+  createPr: vi.fn(),
+  getPrForBranch: vi.fn(),
+  isBranchPushed: vi.fn(),
 }));
 
 vi.mock('../../generation', () => ({
@@ -28,6 +31,9 @@ vi.mock('../../config', () => ({
   getConfig: () => ({
     generation: {
       prGenerationTimeoutMs: 60_000,
+    },
+    agentSession: {
+      prCreateTimeoutMs: 120_000,
     },
     claude: {
       debug: false,
@@ -44,6 +50,7 @@ vi.mock('./ghUtils', async (importOriginal) => ({
   ...ghMocks,
 }));
 
+import { GhTimeoutError } from './ghUtils';
 import { createGitHubService } from './GitHubService';
 
 function buildService(overrides: Partial<Parameters<typeof createGitHubService>[0]> = {}) {
@@ -398,5 +405,57 @@ describe('GitHubService PR generation', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.data).toEqual({ title: 'Raw title', body: 'Raw body' });
+  });
+});
+
+describe('GitHubService.createPr after gh times out', () => {
+  const openPr = {
+    number: 42,
+    url: 'https://github.com/example/repo/pull/42',
+    state: 'OPEN',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    branchMocks.resolveBaseBranch.mockResolvedValue('main');
+    branchMocks.classifyPushTarget.mockResolvedValue({ ok: true, branch: 'feature/support-attachments' });
+    gitMocks.countCommitsAhead.mockResolvedValue(1);
+    ghMocks.isBranchPushed.mockResolvedValue(true);
+    ghMocks.createPr.mockRejectedValue(new GhTimeoutError('gh pr create did not finish within 120 seconds.'));
+  });
+
+  it('links the pull request GitHub created before the kill', async () => {
+    ghMocks.getPrForBranch.mockResolvedValue(openPr);
+    const updatePrInfo = vi.fn();
+    const { service } = buildService({
+      devSessions: {
+        get: vi.fn(() => ({
+          id: 'session-1',
+          project_id: 'project-1',
+          repo_id: 'repo-1',
+          worktree_path: '/path/that/does/not/exist',
+          branch_name: 'feature/support-attachments',
+          base_branch: 'main',
+        })),
+        updatePrInfo,
+      } as unknown as IDevSessionRepository,
+    });
+
+    const result = await service.createPr('session-1', 'Title', 'Body', true);
+
+    expect(result).toEqual({ ok: true, data: { number: 42, url: openPr.url } });
+    expect(updatePrInfo).toHaveBeenCalledWith('session-1', 42, openPr.url, 'OPEN', null, true);
+  });
+
+  it.each([
+    ['no pull request exists for the branch', null],
+    ['the branch only has a closed pull request', { ...openPr, state: 'CLOSED' }],
+  ])('reports the timeout when %s', async (_case, found) => {
+    ghMocks.getPrForBranch.mockResolvedValue(found);
+    const { service } = buildService();
+
+    const result = await service.createPr('session-1', 'Title', 'Body');
+
+    expect(result).toEqual({ ok: false, error: 'gh pr create did not finish within 120 seconds.' });
   });
 });

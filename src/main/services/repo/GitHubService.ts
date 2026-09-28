@@ -24,6 +24,7 @@ import { getConfig } from '../../config';
 import {
   checkGhAuth,
   createPr,
+  GhTimeoutError,
   getPrForBranch,
   getPrByNumber,
   parsePrIdentifier,
@@ -352,14 +353,19 @@ ${input.commitLog || 'No commit log provided.'}`;
           }
         }
 
-        // Create the PR
         const result = await createPr(repoPath, {
           head: session.branch_name,
           base: baseBranch,
           title,
           body: resolvedBody,
           draft,
-        }, getConfig().agentSession.prCreateTimeoutMs);
+        }, getConfig().agentSession.prCreateTimeoutMs).catch(async (error: unknown) => {
+          // GitHub often accepts the create just before the kill; a retry would then fail on "already exists".
+          if (!(error instanceof GhTimeoutError)) throw error;
+          const landed = await getPrForBranch(repoPath, session.branch_name);
+          if (landed?.state !== 'OPEN') throw error;
+          return { number: landed.number, url: landed.url };
+        });
 
         // Persist PR info on the session
         deps.devSessions.updatePrInfo(
