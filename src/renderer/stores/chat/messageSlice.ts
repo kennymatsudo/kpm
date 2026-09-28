@@ -73,14 +73,14 @@ export function createMessageSlice(set: ChatSet, _get: ChatGet): Pick<ChatState,
     }),
 
     setError: (chatSessionId, error) => {
-      streamingBuffer.clear(chatSessionId);
+      const buffered = streamingBuffer.flush(chatSessionId);
 
       set((state) => {
         const session = state.sessions.get(chatSessionId);
         if (!session) return state;
 
         const sessions = new Map(state.sessions);
-        sessions.set(chatSessionId, applyStreamEvent(session, { type: 'error', error }));
+        sessions.set(chatSessionId, applyStreamEvent(session, { type: 'error', error, buffered }));
         return { sessions };
       });
     },

@@ -1,14 +1,13 @@
-import type { ContentBlockParam } from '@anthropic-ai/sdk/resources';
-import { mkdtemp, rm, writeFile } from 'fs/promises';
-import { tmpdir } from 'os';
-import { join } from 'path';
+import { readFile } from 'fs/promises';
 import { CodexAppServerClient, type CodexAppServerClientOptions } from './CodexAppServerClient';
 import { registerCodexMcpSession, type CodexMcpRegistration } from './KpmCodexMcpServer';
+import { describeCodexTurnError } from './codexErrors';
 import type { PlanContext } from '../chat/prompts';
 import { buildChatSystemPrompt } from '../chat/prompts';
 import { BaseTurnQueueChatSession, type SessionEndReason } from '../services/streaming/BaseTurnQueueChatSession';
 import {
-  assistantError,
+  providerError,
+  providerNotice,
   assistantText,
   assistantThinking,
   textDelta,
@@ -17,8 +16,10 @@ import {
   type ProviderChatMessage,
 } from '../services/streaming/providerChatMessage';
 import { resolveEffectiveRepoPath } from '../../shared/repoPath';
+import { readCodexTokenCounts, subtractCodexTokens, toKpmUsage, ZERO_CODEX_TOKENS, type CodexTokenCounts } from './codexUsage';
 import type { WriteDecision } from '../chat/writeGrants';
 import { shellCommandNeedsWriteGrant } from '../chat/shellWritePolicy';
+import type { ChatAttachment } from '../../shared/types';
 import type {
   SessionMcpAuthStatus,
   SessionMcpInspection,
@@ -44,29 +45,23 @@ export interface CodexChatSessionConfig {
   createAppServerClient?: (options: CodexAppServerClientOptions) => CodexAppServerClient;
 }
 
-interface QueuedTurn { input: JsonObject[]; cleanup?: () => Promise<void>; }
+interface QueuedTurn { input: JsonObject[]; }
 
-async function contentToInput(content: string | ContentBlockParam[]): Promise<QueuedTurn> {
-  if (typeof content === 'string') return { input: [{ type: 'text', text: content }] };
+// Images go by path: the attachment already sits in KPM's temp directory, which
+// app-server reads directly. Text files are inlined, since app-server has no
+// file input. PDFs are refused before a send reaches here (`attachmentKinds`).
+async function attachmentsToInput(text: string, attachments: ChatAttachment[]): Promise<QueuedTurn> {
   const input: JsonObject[] = [];
-  let attachmentDir: string | null = null;
-  for (const [index, block] of content.entries()) {
-    if (block.type === 'text') { input.push({ type: 'text', text: block.text }); continue; }
-    if (block.type === 'image' && block.source.type === 'base64') {
-      attachmentDir ??= await mkdtemp(join(tmpdir(), 'kpm-codex-'));
-      const path = join(attachmentDir, `image-${index}${imageExtension(block.source.media_type)}`);
-      await writeFile(path, Buffer.from(block.source.data, 'base64'));
-      input.push({ type: 'localImage', path });
-      continue;
-    }
-    input.push({ type: 'text', text: `[${block.type} attachment is not supported by Codex app-server.]` });
+  for (const attachment of attachments) {
+    if (attachment.kind === 'image') { input.push({ type: 'localImage', path: attachment.path }); continue; }
+    if (attachment.kind === 'text') { input.push({ type: 'text', text: `<file name="${attachment.filename}">\n${await readFile(attachment.path, 'utf-8')}\n</file>` }); continue; }
+    throw new Error(`Codex can't read "${attachment.filename}"`);
   }
-  return { input, ...(attachmentDir ? { cleanup: () => rm(attachmentDir, { recursive: true, force: true }) } : {}) };
+  if (text.trim()) input.push({ type: 'text', text });
+  return { input };
 }
-function imageExtension(mediaType: string): string { const subtype = mediaType.split('/')[1]; return subtype && /^[a-z0-9.+-]+$/i.test(subtype) ? `.${subtype}` : '.img'; }
 function isObject(value: unknown): value is JsonObject { return typeof value === 'object' && value !== null && !Array.isArray(value); }
 function text(value: unknown): string { return typeof value === 'string' ? value : ''; }
-function number(...values: unknown[]): number { const value = values.find((candidate) => typeof candidate === 'number'); return typeof value === 'number' ? value : 0; }
 function contextWindow(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
 }
@@ -81,14 +76,20 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
   private activeTurnId: string | null = null;
   private finishTurn: (() => void) | null = null;
   private readonly items = new Map<string, JsonObject>();
+  private readonly announcedSearches = new Set<string>();
   private readonly mcpStartupStates = new Map<string, Pick<SessionMcpServer, 'status' | 'error'>>();
-  private tokenUsage: JsonObject = {};
+  // Codex's `total` is thread-cumulative (resume included) and `last` is one
+  // model request, so a turn's usage is the difference against the total from
+  // before its first request.
+  private turnUsageBaseline: CodexTokenCounts | null = null;
+  private threadUsageTotal: CodexTokenCounts = ZERO_CODEX_TOKENS;
+  private lastRequestUsage: CodexTokenCounts = ZERO_CODEX_TOKENS;
+  private threadModel: string | undefined;
   private modelContextWindow: number | undefined;
-  private readonly attachmentCleanups = new Set<() => Promise<void>>();
 
   constructor(config: CodexChatSessionConfig) { super(config.onMessage, config.onSessionEnd); this.config = config; this.systemPrompt = buildChatSystemPrompt(config.context, { provider: 'codex', scope: config.context.focusDocument ? 'focus_document' : 'main' }); this.threadId = config.resumeThreadId ?? null; }
 
-  async start(initialMessage: string | ContentBlockParam[]): Promise<void> {
+  async start(initialMessage: string, attachments: ChatAttachment[] = []): Promise<void> {
     if (this.active) throw new Error('Session already started');
     this.mcpRegistration = await (this.config.registerMcpSession ?? (() => registerCodexMcpSession({ projectId: this.config.context.project.id, chatSessionId: this.config.chatSessionId, focus: Boolean(this.config.context.focusDocument) })))();
     try {
@@ -98,15 +99,16 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
       await this.client.initialize();
       const result = await this.client.request(this.threadId ? 'thread/resume' : 'thread/start', this.threadOptions(this.threadId));
       const thread = isObject(result) && isObject(result.thread) ? result.thread : null;
+      this.threadModel = (isObject(result) ? text(result.model) : '') || this.config.model;
       const id = thread ? text(thread.id) : this.threadId;
       if (!id) throw new Error('Codex app-server did not return a thread id');
       this.threadId = id; this.active = true; this.ready = true; this.config.onReady?.(id);
-      this.turnPromise = this.runTurnAndDrain(await this.prepareTurn(initialMessage));
+      this.turnPromise = this.runTurnAndDrain(await attachmentsToInput(initialMessage, attachments));
     } catch (error) { this.disposeResources(); throw error; }
   }
 
   send(value: string): void { this.enqueue({ input: [{ type: 'text', text: value }] }); }
-  async sendUserContent(content: ContentBlockParam[]): Promise<void> { this.enqueue(await this.prepareTurn(content)); }
+  async sendWithAttachments(value: string, attachments: ChatAttachment[]): Promise<void> { this.enqueue(await attachmentsToInput(value, attachments)); }
   async interrupt(): Promise<void> { await this.abortActiveTurn(); }
   getSessionId(): string | null { return this.threadId; }
 
@@ -148,6 +150,7 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
     if (!this.client || !this.threadId) throw new Error('Codex app-server is not initialized');
     try {
       const completed = new Promise<void>((resolve) => { this.finishTurn = resolve; });
+      this.turnUsageBaseline = null; this.lastRequestUsage = ZERO_CODEX_TOKENS;
       const result = await this.client.request('turn/start', { threadId: this.threadId, input: turn.input, cwd: this.config.context.project.folder_path, approvalPolicy: 'on-request', sandboxPolicy: this.sandboxPolicy(), ...(this.config.model ? { model: this.config.model } : {}), ...(this.config.modelReasoningEffort ? { effort: this.config.modelReasoningEffort } : {}) });
       if (isObject(result) && isObject(result.turn)) this.activeTurnId = text(result.turn.id) || null;
       await completed;
@@ -157,8 +160,6 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
         this.config.onSessionEnd?.('error', error instanceof Error ? error : new Error(String(error)));
       }
     } finally {
-      await turn.cleanup?.();
-      if (turn.cleanup) this.attachmentCleanups.delete(turn.cleanup);
       this.finishTurn = null;
       this.activeTurnId = null;
     }
@@ -197,24 +198,51 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
       });
       return;
     }
-    if (method === 'thread/tokenUsage/updated') { const tokenUsage = isObject(params.tokenUsage) ? params.tokenUsage : {}; this.tokenUsage = isObject(tokenUsage.last) ? tokenUsage.last : {}; this.modelContextWindow = contextWindow(tokenUsage.modelContextWindow); return; }
-    if (method === 'turn/completed') { const usage = this.tokenUsage; const turn = isObject(params.turn) ? params.turn : {}; const turnError = isObject(turn.error) ? text(turn.error.message) : ''; if (text(turn.status) === 'failed' && turnError) this.config.onMessage(assistantError(turnError)); this.config.onMessage(turnResult({ usage: { input_tokens: number(usage.inputTokens, usage.input_tokens), output_tokens: number(usage.outputTokens, usage.output_tokens), cache_read_input_tokens: number(usage.cachedInputTokens, usage.cached_input_tokens), cache_creation_input_tokens: number(usage.cacheWriteInputTokens, usage.cache_write_input_tokens) }, contextWindow: this.modelContextWindow, sessionId: this.threadId ?? undefined })); this.finishTurn?.(); return; }
+    if (method === 'thread/tokenUsage/updated') { this.recordTokenUsage(isObject(params.tokenUsage) ? params.tokenUsage : {}); return; }
+    if (method === 'turn/completed') { const turn = isObject(params.turn) ? params.turn : {}; if (text(turn.status) === 'failed' && isObject(turn.error)) this.config.onMessage(providerError(describeCodexTurnError(turn.error))); this.config.onMessage(this.buildTurnResult()); this.finishTurn?.(); return; }
     // The app-server must die with the session: while it lives it holds the
     // thread's writer lock, and the next thread/resume is refused with
     // "already has an active writer".
-    if (method === 'error') { const error = isObject(params.error) ? text(params.error.message) : text(params.error); this.disposeResources(); this.config.onSessionEnd?.('error', new Error(error || 'Codex app-server error')); this.finishTurn?.(); }
+    // `willRetry` means Codex is retrying the request itself and the turn goes
+    // on; tearing down then would kill a turn that was about to recover.
+    if (method === 'error') {
+      if (params.willRetry === true) { const detail = isObject(params.error) ? text(params.error.message) : text(params.error); this.config.onMessage(providerNotice('Retrying', detail ? `Codex hit an error and is retrying: ${detail}` : 'Codex hit an error and is retrying')); return; }
+      this.disposeResources(); this.config.onSessionEnd?.('error', new Error(describeCodexTurnError(params.error))); this.finishTurn?.();
+    }
+  }
+  private recordTokenUsage(tokenUsage: JsonObject): void {
+    const total = readCodexTokenCounts(tokenUsage.total);
+    const last = readCodexTokenCounts(tokenUsage.last);
+    this.turnUsageBaseline ??= subtractCodexTokens(total, last);
+    this.threadUsageTotal = total;
+    this.lastRequestUsage = last;
+    this.modelContextWindow = contextWindow(tokenUsage.modelContextWindow);
+  }
+  private buildTurnResult(): ProviderChatMessage {
+    const turnUsage = this.turnUsageBaseline ? subtractCodexTokens(this.threadUsageTotal, this.turnUsageBaseline) : ZERO_CODEX_TOKENS;
+    return turnResult({
+      usage: toKpmUsage(turnUsage),
+      contextUsage: toKpmUsage(this.lastRequestUsage),
+      contextWindow: this.modelContextWindow,
+      model: this.threadModel,
+      costUnknown: true,
+      sessionId: this.threadId ?? undefined,
+    });
   }
   private handleItem(item: JsonObject, completed: boolean): void {
     const id = text(item.id); if (id) this.items.set(id, item); const type = text(item.type);
     if (type === 'agentMessage' && completed) { const message = text(item.text); if (message) this.config.onMessage(assistantText(message)); return; }
     if (type === 'reasoning') { const summary = Array.isArray(item.summary) ? item.summary.filter((value): value is string => typeof value === 'string').join('\n') : ''; if (summary) this.config.onMessage(assistantThinking(summary)); return; }
-    if (!completed) this.emitToolUse(item);
-    if (type === 'mcpToolCall' && completed && isObject(item.error)) this.config.onMessage(assistantError(text(item.error.message)));
+    // A search's query can arrive only on completion, so it is announced once it has one.
+    if (!completed || (type === 'webSearch' && !this.announcedSearches.has(id))) this.emitToolUse(item);
+    // A failed tool call goes back to the model, which usually carries on, so it
+    // is a note on the turn, not a turn error.
+    if (type === 'mcpToolCall' && completed && isObject(item.error)) { const message = text(item.error.message); this.config.onMessage(providerNotice('Tool failed', `${text(item.server)}/${text(item.tool)}${message ? `: ${message}` : ''}`)); }
   }
   private emitToolUse(item: JsonObject): void {
-    const type = text(item.type); const name = type === 'commandExecution' ? 'Bash' : type === 'fileChange' ? 'apply_patch' : type === 'mcpToolCall' ? `mcp__${text(item.server)}__${text(item.tool)}` : type === 'webSearch' ? 'WebSearch' : null;
-    if (!name) return;
-    this.config.onMessage(toolUse(text(item.id), name, type === 'commandExecution' ? { command: item.command } : type === 'mcpToolCall' ? { arguments: item.arguments } : { changes: item.changes }));
+    const calls = codexToolCalls(item);
+    if (text(item.type) === 'webSearch' && calls.length > 0) this.announcedSearches.add(text(item.id));
+    for (const call of calls) this.config.onMessage(toolUse(call.id, call.name, call.input));
   }
 
   private async handleServerRequest(method: string, params: JsonObject): Promise<unknown> {
@@ -227,15 +255,43 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
   }
   private async allowWrite(): Promise<boolean> { if (this.config.hasWriteAccess?.()) return true; return (await this.config.requestWriteConsent?.())?.allowed === true; }
   private async requestExternalApproval(toolName: string, input: JsonObject): Promise<boolean> { return this.config.requestExternalApproval ? this.config.requestExternalApproval(toolName, input) : false; }
-  private async prepareTurn(content: string | ContentBlockParam[]): Promise<QueuedTurn> {
-    const turn = await contentToInput(content);
-    if (turn.cleanup) this.attachmentCleanups.add(turn.cleanup);
-    return turn;
-  }
   private disposeResources(): void {
     this.client?.close(); this.client = null; this.mcpRegistration?.dispose(); this.mcpRegistration = null;
-    for (const cleanup of this.attachmentCleanups) void cleanup();
-    this.attachmentCleanups.clear();
+  }
+}
+
+interface CanonicalToolCall { id: string; name: string; input: JsonObject; }
+
+/**
+ * A Codex item as the tool call KPM's shared activity and tool-log code reads,
+ * which speaks Claude's tool names and input shapes. Display only: Codex's own
+ * approval requests, not these names, decide what may run.
+ */
+export function codexToolCalls(item: JsonObject): CanonicalToolCall[] {
+  const id = text(item.id);
+  switch (text(item.type)) {
+    case 'commandExecution':
+      return [{ id, name: 'Bash', input: { command: text(item.command) } }];
+    case 'fileChange': {
+      // One card per file, so each changed path is shown and logged.
+      const changes = Array.isArray(item.changes) ? item.changes.filter(isObject).filter((change) => text(change.path)) : [];
+      if (changes.length === 0) return [{ id, name: 'apply_patch', input: {} }];
+      return changes.map((change, index) => ({
+        id: index === 0 ? id : `${id}:${index}`,
+        name: isObject(change.kind) && change.kind.type === 'add' ? 'Write' : 'Edit',
+        input: { file_path: text(change.path) },
+      }));
+    }
+    case 'mcpToolCall':
+      return [{ id, name: `mcp__${text(item.server)}__${text(item.tool)}`, input: isObject(item.arguments) ? item.arguments : {} }];
+    case 'webSearch': {
+      const action = isObject(item.action) ? item.action : {};
+      const queries = Array.isArray(action.queries) ? action.queries.filter((query): query is string => typeof query === 'string') : [];
+      const query = text(item.query) || text(action.query) || queries[0] || text(action.url);
+      return query ? [{ id, name: 'WebSearch', input: { query } }] : [];
+    }
+    default:
+      return [];
   }
 }
 

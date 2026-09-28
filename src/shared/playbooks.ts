@@ -34,6 +34,24 @@ export interface ModelDescriptor {
   id: string;
   name: string;
   isDefault?: boolean;
+  /**
+   * Levels a step may pick for this model: empty when the provider ignores
+   * effort, absent when unknown (every level is offered).
+   */
+  effortLevels?: AgentEffortLevel[];
+}
+
+export const PLAYBOOK_EFFORT_LEVELS: readonly AgentEffortLevel[] = ['low', 'medium', 'high', 'xhigh', 'max'];
+
+/** The levels among a provider's own list that a playbook step can name, in order. */
+export function playbookEffortLevels(levels: readonly string[]): AgentEffortLevel[] {
+  return PLAYBOOK_EFFORT_LEVELS.filter((level) => levels.includes(level));
+}
+
+/** Effort choices for a candidate: those of its model, or of the provider's default model. */
+export function effortLevelsFor(provider: BoardProvider | undefined, modelId: string | undefined): readonly AgentEffortLevel[] {
+  const model = provider?.models.find((entry) => entry.id === modelId) ?? provider?.models.find((entry) => entry.isDefault);
+  return model?.effortLevels ?? PLAYBOOK_EFFORT_LEVELS;
 }
 
 export interface BoardProvider {

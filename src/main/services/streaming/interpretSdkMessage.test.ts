@@ -5,6 +5,7 @@ import {
   type SdkMessageSessionView,
 } from './interpretSdkMessage';
 import type { Activity } from '../../../shared/types';
+import { providerError, providerNotice } from './providerChatMessage';
 
 function makeView(overrides: Partial<SdkMessageSessionView> = {}): SdkMessageSessionView {
   return {
@@ -177,6 +178,29 @@ describe('assistant messages', () => {
     expect(events).toEqual([
       { kind: 'activity', activity: { ...parent, detail: 'Scanning src/main' } },
     ]);
+  });
+});
+
+describe('Codex and pi frames', () => {
+  it('surfaces a provider error verbatim, marks it surfaced, and keeps it out of the saved answer', () => {
+    const view = makeView({ accumulatedResponse: 'Partial answer.' });
+
+    const events = interpret(providerError('Codex usage limit reached. Details: resets at 5pm'), view);
+
+    expect(events).toEqual([{ kind: 'error', error: 'Codex usage limit reached. Details: resets at 5pm' }]);
+    expect(view.turnErrorSurfaced).toBe(true);
+    expect(view.accumulatedResponse).toBe('Partial answer.');
+  });
+
+  it('shows a provider notice as an activity without raising an error', () => {
+    const view = makeView();
+
+    const events = interpret(providerNotice('Retrying', 'pi hit an error and is retrying'), view);
+
+    expect(events).toEqual([
+      { kind: 'activity', activity: expect.objectContaining({ type: 'other', label: 'Retrying', detail: 'pi hit an error and is retrying' }) },
+    ]);
+    expect(view.turnErrorSurfaced).toBeUndefined();
   });
 });
 

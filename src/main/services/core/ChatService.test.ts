@@ -19,6 +19,8 @@ function makeProject(): Project {
   } as unknown as Project;
 }
 
+const SHOT: ChatAttachment = { kind: 'image', path: '/tmp/kpm-images/kpm-paste-1.png', filename: 'shot.png', mediaType: 'image/png' };
+
 function makeDeps(overrides: Partial<ChatServiceDeps> = {}): {
   deps: ChatServiceDeps;
   spies: {
@@ -142,37 +144,25 @@ describe('ChatService.sendMessage', () => {
     vi.clearAllMocks();
   });
 
-  it('forwards tempImages converted to ChatAttachment[] to the streaming service', async () => {
+  it('forwards attachments to the streaming service unchanged', async () => {
     const { deps, spies } = makeDeps();
     const service = createChatService(deps);
+    const attachments: ChatAttachment[] = [
+      { kind: 'image', path: '/tmp/kpm-images/kpm-paste-1.png', filename: 'shot.png', mediaType: 'image/png' },
+      { kind: 'pdf', path: '/tmp/kpm-images/kpm-attach-2.pdf', filename: 'spec.pdf' },
+      { kind: 'text', path: '/tmp/kpm-images/kpm-attach-3.md', filename: 'notes.md', mediaType: 'text/markdown' },
+    ];
 
     const result = await service.sendMessage({
       projectId: 'project-1',
       message: 'describe this',
       chatSessionId: 'session-1',
-      tempImages: [
-        '/tmp/kpm-images/kpm-paste-1.png',
-        '/tmp/kpm-images/kpm-paste-2.jpeg',
-      ],
+      attachments,
     });
 
     expect(result.ok).toBe(true);
-    expect(spies.sendChatMessage).toHaveBeenCalledTimes(1);
     const [, , options] = spies.sendChatMessage.mock.calls[0];
-    expect(options.attachments).toEqual<ChatAttachment[]>([
-      {
-        kind: 'image',
-        path: '/tmp/kpm-images/kpm-paste-1.png',
-        filename: 'kpm-paste-1.png',
-        mediaType: 'image/png',
-      },
-      {
-        kind: 'image',
-        path: '/tmp/kpm-images/kpm-paste-2.jpeg',
-        filename: 'kpm-paste-2.jpeg',
-        mediaType: 'image/jpeg',
-      },
-    ]);
+    expect(options.attachments).toEqual(attachments);
   });
 
   it('resolves a pathless focused repo to its active worktree', async () => {
@@ -204,14 +194,30 @@ describe('ChatService.sendMessage', () => {
       projectId: 'project-1',
       message: 'describe this',
       chatSessionId: 'session-1',
-      tempImages: ['/tmp/kpm-images/kpm-paste-1.png'],
+      attachments: [SHOT],
     });
 
     expect(spies.addMessage).toHaveBeenCalledTimes(1);
     const [, role, content] = spies.addMessage.mock.calls[0];
     expect(role).toBe('user');
     expect(content).toBe('describe this');
-    expect(content).not.toMatch(/Images attached/i);
+  });
+
+  it('sends an attachment-only message with no text and persists the file names for history', async () => {
+    const { deps, spies } = makeDeps();
+    const service = createChatService(deps);
+
+    await service.sendMessage({
+      projectId: 'project-1',
+      message: '',
+      chatSessionId: 'session-1',
+      attachments: [SHOT, { kind: 'pdf', path: '/tmp/kpm-images/kpm-attach-2.pdf', filename: 'spec.pdf' }],
+    });
+
+    const [, text] = spies.sendChatMessage.mock.calls[0];
+    expect(text).toBe('');
+    const [, , content] = spies.addMessage.mock.calls[0];
+    expect(content).toBe('Attached shot.png, spec.pdf');
   });
 
   it('does not persist a user message when the streaming service rejects it', async () => {
@@ -268,26 +274,25 @@ describe('ChatService.sendMessage', () => {
     });
   });
 
-  it('rejects an unsupported attachment extension with a clear error', async () => {
+  it('refuses an attachment kind the resolved provider cannot read, before sending', async () => {
     const { deps, spies } = makeDeps();
     const service = createChatService(deps);
 
     const result = await service.sendMessage({
       projectId: 'project-1',
-      message: 'describe',
+      message: 'summarize',
+      provider: 'codex',
       chatSessionId: 'session-1',
-      tempImages: ['/tmp/kpm-images/kpm-paste-1.bmp'],
+      attachments: [{ kind: 'pdf', path: '/tmp/kpm-images/kpm-attach-2.pdf', filename: 'spec.pdf' }],
     });
 
     expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error).toMatch(/bmp|unsupported/i);
-    }
+    if (!result.ok) expect(result.error).toBe('Codex can\'t read PDFs. Remove "spec.pdf" to send.');
     expect(spies.sendChatMessage).not.toHaveBeenCalled();
     expect(spies.addMessage).not.toHaveBeenCalled();
   });
 
-  it('omits attachments option when no temp images are present', async () => {
+  it('omits attachments option when there are none', async () => {
     const { deps, spies } = makeDeps();
     const service = createChatService(deps);
 

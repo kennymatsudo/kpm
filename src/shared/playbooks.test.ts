@@ -5,6 +5,9 @@ import {
   getPlaybookLoops,
   getPlaybookValidationIssues,
   parsePlaybook,
+  effortLevelsFor,
+  PLAYBOOK_EFFORT_LEVELS,
+  type BoardProvider,
 } from './playbooks';
 
 describe('playbookSchema', () => {
@@ -222,5 +225,29 @@ describe('playbookSchema', () => {
   it('formats internal step ids as user-facing titles', () => {
     expect(formatPlaybookStepTitle('security_review')).toBe('Security Review');
     expect(formatPlaybookStepTitle('address-2')).toBe('Address 2');
+  });
+});
+
+describe('effortLevelsFor', () => {
+  const codex: BoardProvider = {
+    id: 'codex',
+    name: 'Codex',
+    available: true,
+    capabilities: { nativeSkills: false, reviewSandbox: true },
+    models: [
+      { id: 'gpt-6-astra', name: 'GPT-6-Astra', isDefault: true, effortLevels: ['low', 'medium'] },
+      { id: 'gpt-5.5', name: 'GPT-5.5', effortLevels: ['low', 'medium', 'high', 'xhigh'] },
+      { id: 'custom', name: 'custom' },
+    ],
+  };
+
+  it("offers the chosen model's levels, falling back to the provider default model", () => {
+    expect(effortLevelsFor(codex, 'gpt-5.5')).toEqual(['low', 'medium', 'high', 'xhigh']);
+    expect(effortLevelsFor(codex, undefined)).toEqual(['low', 'medium']);
+  });
+
+  it('offers every level when the model did not report its own', () => {
+    expect(effortLevelsFor(codex, 'custom')).toEqual(PLAYBOOK_EFFORT_LEVELS);
+    expect(effortLevelsFor(undefined, undefined)).toEqual(PLAYBOOK_EFFORT_LEVELS);
   });
 });

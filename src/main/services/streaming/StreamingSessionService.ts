@@ -35,7 +35,6 @@ import {
   recordPendingDocumentContent,
   type KpmToolProposal,
 } from '../../kpmTools/runtimeRegistry';
-import { buildUserContentBlocks } from '../../claude/attachmentBlocks';
 import { projectWriteGrants } from '../../chat/writeGrants';
 import { buildFocusedReminder, buildFocusedSection } from '../../chat/prompts/focusedResources';
 import { type ServiceResult, type AsyncResult, success, failure } from '../result';
@@ -43,7 +42,7 @@ import type { PlanContext } from '../../chat/prompts';
 import type { ChatChoiceEffort, ChatProvider, ChatTitleSource, FocusChatDocument, FocusedResource, PlanItem, Project, Activity, ToolCallLogEntry, ChatAttachment, ChatSessionScope, SlashCommandInfo } from '../../../shared/types';
 import type { ChatModelChoiceService, ResolvedChatChoice } from '../../chat/modelChoice';
 import { getConfig } from '../../config';
-import { isMaxTokensReached, isMaxTurnsReached, getTerminalReason } from '../../claude/sdkTypeGuards';
+import { isMaxTokensReached, isMaxTurnsReached, getTerminalReason, describeTerminalReason } from '../../claude/sdkTypeGuards';
 import { interpretSdkMessage } from './interpretSdkMessage';
 import { extractFilePaths } from '../toollog/extractFilePaths';
 import { DEFAULT_CONTEXT_FILENAME, CONTEXT_FILE_PENDING_CACHE_KEY } from '../../../shared/contextFile';
@@ -241,6 +240,7 @@ export interface StreamingSessionServiceDeps {
       cache_read_input_tokens?: number | null;
     };
     totalCostUsd?: number | null;
+    costUnknown?: boolean;
     sdkSessionId?: string | null;
     sdkResultUuid?: string | null;
     sdkCostScope?: string | null;
@@ -345,7 +345,7 @@ export interface StreamingSessionServiceDeps {
  * table instead of branching on `provider === 'claude' | 'codex'`.
  */
 interface ChatProviderConfig {
-  usageModel: (managed: Pick<ManagedSession, 'model'>) => string;
+  usageModel: (managed: Pick<ManagedSession, 'model' | 'providerModel'>) => string;
   resolveResumeSessionId: (
     chatSession: ReturnType<StreamingSessionServiceDeps['chatSessionRepository']['get']>
   ) => string | undefined;
@@ -421,7 +421,7 @@ export const CHAT_PROVIDER_CONFIG: Record<ChatProvider, ChatProviderConfig> = {
     fetchSessionSummary: getSessionInfo,
   },
   codex: {
-    usageModel: () => 'codex',
+    usageModel: (managed) => managed.providerModel ?? 'codex',
     resolveResumeSessionId: (chatSession) =>
       chatSession?.provider === 'codex' ? chatSession.provider_session_id ?? undefined : undefined,
     persistSessionId: (repo, chatSessionId, sessionId) => {
@@ -562,7 +562,9 @@ export function finalizeTurnResult(
     resetToReady(managed);
     // The SDK consumed any follow-up into this turn (or there was none).
   }
-  const maxTokensReached = isMaxTokensReached(sdkMsg);
+  // Claude reports truncation as its API stop_reason; Codex and pi adapters
+  // flag it on the result they build (providerChatMessage.ts).
+  const maxTokensReached = isMaxTokensReached(sdkMsg) || sdkMsg.outputLimitReached === true;
 
   // Check if response was truncated
   if (maxTokensReached) {
@@ -574,11 +576,16 @@ export function finalizeTurnResult(
     });
   }
 
+  // End-of-turn banners are sent after the turn is finalized below: an error
+  // arriving first would close the bubble as interrupted and drop the model
+  // and token details the finalize step attaches.
+  let endOfTurnError: string | undefined;
+
   // Check if response hit max turns limit
   if (isMaxTurnsReached(sdkMsg)) {
     const numTurns = 'num_turns' in sdkMsg ? sdkMsg.num_turns : undefined;
     console.log(`[StreamingSessionService] Response truncated (max_turns: ${numTurns}) for ${key}`);
-    sendChatError(mainWindow, projectId, chatSessionId, `Response reached the turn limit (${numTurns ?? 'unknown'} turns). Send another message to continue.`);
+    endOfTurnError = `Response reached the turn limit (${numTurns ?? 'unknown'} turns). Send another message to continue.`;
   }
 
   // Surface other terminal reasons that stopped the session. Skip when a
@@ -586,22 +593,10 @@ export function finalizeTurnResult(
   // an `overloaded` failure that also reports terminal_reason 'model_error')
   // so the user sees one actionable banner, not two.
   const terminalReason = getTerminalReason(sdkMsg);
-  if (terminalReason && terminalReason !== 'completed' && terminalReason !== 'max_turns' && !managed.turnErrorSurfaced) {
-    const terminalMessages: Partial<Record<typeof terminalReason, string>> = {
-      aborted_tools: 'Response stopped: tool execution was aborted.',
-      blocking_limit: 'Response stopped: rate limit reached. Send another message to continue.',
-      hook_stopped: 'Response stopped by a hook.',
-      stop_hook_prevented: 'Response stopped: a stop hook prevented continuation.',
-      tool_deferred: 'Response paused: a tool is waiting for approval.',
-      prompt_too_long: 'Response stopped: the prompt exceeded the context limit.',
-      model_error: 'Response stopped due to a model error.',
-      rapid_refill_breaker: 'Response stopped: too many rapid requests. Please wait a moment.',
-    };
-    const message = terminalMessages[terminalReason];
-    if (message) {
-      console.log(`[StreamingSessionService] Terminal reason: ${terminalReason} for ${key}`);
-      sendChatError(mainWindow, projectId, chatSessionId, message);
-    }
+  const terminalMessage = terminalReason ? describeTerminalReason(terminalReason) : undefined;
+  if (terminalMessage && !managed.turnErrorSurfaced) {
+    console.log(`[StreamingSessionService] Terminal reason: ${terminalReason} for ${key}`);
+    endOfTurnError ??= terminalMessage;
   }
 
   // Detect auth error responses before resetting accumulatedResponse
@@ -654,7 +649,9 @@ export function finalizeTurnResult(
     Array.isArray(rawIterations) && rawIterations.length > 0
       ? rawIterations[rawIterations.length - 1]
       : null;
-  const ctxSource = lastIter ?? sdkMsg.usage;
+  // Adapters whose `usage` is a multi-request turn total say which request
+  // was last through `contextUsage`.
+  const ctxSource = sdkMsg.contextUsage ?? lastIter ?? sdkMsg.usage;
 
   managed.report.endTurn({
     cause: 'result',
@@ -678,6 +675,7 @@ export function finalizeTurnResult(
       contextWindow: resolveReportedContextWindow(sdkMsg, managed.resolvedModel),
     },
   });
+  if (endOfTurnError) sendChatError(mainWindow, projectId, chatSessionId, endOfTurnError);
 
   // Clear the queued envelope now — the SDK has the message and is about
   // to feed it to Claude as the next turn. Any further sends on this
@@ -738,6 +736,8 @@ export function finalizeTurnResult(
       total_cost_usd?: number | null;
       /** Set by adapters that build their own result (see providerChatMessage.ts). */
       cost?: TurnCost;
+      costUnknown?: true;
+      model?: string;
       session_id?: string | null;
       uuid?: string | null;
       modelUsage?: Record<string, {
@@ -780,9 +780,10 @@ export function finalizeTurnResult(
         } else {
           deps.recordUsage({
             projectId,
-            model: CHAT_PROVIDER_CONFIG[managed.provider].usageModel(managed),
+            model: resultMsg.model ?? CHAT_PROVIDER_CONFIG[managed.provider].usageModel(managed),
             usage: sdkMsg.usage,
             totalCostUsd: totalCostUsd ?? null,
+            ...(resultMsg.costUnknown ? { costUnknown: true } : {}),
             sdkSessionId: resultMsg.session_id ?? null,
             sdkResultUuid: resultMsg.uuid ?? null,
             sdkCostScope: '__total__',
@@ -1068,8 +1069,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         { projectId: managed.projectId, chatSessionId: managed.chatSessionId },
         async () => {
           if (envelope.attachments && envelope.attachments.length > 0) {
-            const blocks = await buildUserContentBlocks(envelope.text, envelope.attachments);
-            await managed.session.sendUserContent(blocks);
+            await managed.session.sendWithAttachments(envelope.text, envelope.attachments);
           } else {
             managed.session.send(envelope.text);
           }
@@ -1393,16 +1393,11 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       // session to tear down.
       sessions.set(key, launch.managed);
 
-      // Start session WITH the initial message (required by SDK).
-      // For attachments, build native multimodal blocks and seed them into
-      // the SDK's first turn rather than waiting until after start() resolves.
+      // Start session WITH the initial message (required by SDK), attachments
+      // included, rather than waiting until after start() resolves.
       // Can throw on timeout or MCP connection failure.
-      const seedContent =
-        initialMessage.attachments && initialMessage.attachments.length > 0
-          ? await buildUserContentBlocks(initialMessage.text, initialMessage.attachments)
-          : initialMessage.text;
       await runWithToolExecutionContext({ projectId, chatSessionId }, () =>
-        launch.session.start(seedContent)
+        launch.session.start(initialMessage.text, initialMessage.attachments)
       );
 
       const managed = sessions.get(key);
@@ -1794,8 +1789,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
     try {
       if (envelope.attachments && envelope.attachments.length > 0) {
-        const blocks = await buildUserContentBlocks(envelope.text, envelope.attachments);
-        await managed.session.sendUserContent(blocks);
+        await managed.session.sendWithAttachments(envelope.text, envelope.attachments);
       } else {
         managed.session.send(envelope.text);
       }

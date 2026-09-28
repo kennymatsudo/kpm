@@ -54,7 +54,7 @@ export const FALLBACK_MODEL_CATALOG: ModelCatalog = {
   })),
 };
 
-function knownEfforts(values: unknown[]): ChatChoiceEffort[] {
+export function knownEfforts(values: unknown[]): ChatChoiceEffort[] {
   return values.filter((value): value is ChatChoiceEffort => typeof value === 'string' && KNOWN_EFFORTS.has(value));
 }
 

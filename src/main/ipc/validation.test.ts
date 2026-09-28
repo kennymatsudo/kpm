@@ -294,37 +294,52 @@ describe('ChatSchemas (send)', () => {
       expect(parsed).not.toHaveProperty('effort');
     });
 
-    it('rejects empty or oversized messages', () => {
-      for (const input of [
-        { projectId: randomUUID(), message: '' },
-        { projectId: randomUUID(), message: 'a'.repeat(100001) },
-      ]) {
-        expectInvalid(ChatSchemas.send, input);
-      }
+    it('rejects oversized messages', () => {
+      expectInvalid(ChatSchemas.send, { projectId: randomUUID(), message: 'a'.repeat(100001) });
     });
   });
 
-  describe('ChatSendSchema (temp image path scoping)', () => {
-    it('accepts a temp image inside the KPM temp images directory', () => {
+  describe('ChatSendSchema', () => {
+    const shot = (filePath: string) => ({ kind: 'image', path: filePath, filename: 'shot.png', mediaType: 'image/png' });
+
+    it('accepts an attachment inside the KPM temp images directory', () => {
       expectValid(ChatSendSchema, {
         projectId: randomUUID(),
         message: 'Here is a screenshot',
-        tempImages: [path.join(getTempImagesDir(), 'paste-1.png')],
+        attachments: [shot(path.join(getTempImagesDir(), 'paste-1.png'))],
       });
     });
 
-    it('rejects a temp image path escaping the KPM temp images directory', () => {
-      for (const tempImages of [
-        ['/etc/passwd'],
-        [path.join(path.dirname(getTempImagesDir()), 'not-kpm-temp', 'paste-1.png')],
-        [`${getTempImagesDir()}-evil/paste-1.png`],
+    it('rejects an attachment path escaping the KPM temp images directory', () => {
+      for (const filePath of [
+        '/etc/passwd',
+        path.join(path.dirname(getTempImagesDir()), 'not-kpm-temp', 'paste-1.png'),
+        `${getTempImagesDir()}-evil/paste-1.png`,
       ]) {
         expectInvalid(ChatSendSchema, {
           projectId: randomUUID(),
           message: 'Here is a screenshot',
-          tempImages,
+          attachments: [shot(filePath)],
         });
       }
+    });
+
+    it('accepts an empty message when attachments carry the turn, and rejects it otherwise', () => {
+      expectValid(ChatSendSchema, {
+        projectId: randomUUID(),
+        message: '',
+        attachments: [shot(path.join(getTempImagesDir(), 'paste-1.png'))],
+      });
+      expectInvalid(ChatSendSchema, { projectId: randomUUID(), message: '  ' });
+      expectInvalid(ChatSendSchema, { projectId: randomUUID(), message: '', attachments: [] });
+    });
+
+    it('rejects an image type no model reads', () => {
+      expectInvalid(ChatSendSchema, {
+        projectId: randomUUID(),
+        message: 'look',
+        attachments: [{ ...shot(path.join(getTempImagesDir(), 'paste-1.bmp')), mediaType: 'image/bmp' }],
+      });
     });
   });
 });

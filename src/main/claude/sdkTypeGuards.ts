@@ -214,3 +214,42 @@ export function describeAssistantError(error: SDKAssistantMessageError): string 
       return 'The response stopped due to an error. Send another message to retry.';
   }
 }
+
+/**
+ * Banner text for each way Claude's query loop can end. Keyed over the whole
+ * union so a reason added by an SDK bump fails to compile until someone
+ * decides whether the user should hear about it.
+ *
+ * `null` means no banner: the turn finished normally, the user stopped it, or
+ * another path already explains it.
+ */
+const TERMINAL_REASON_MESSAGES: Record<TerminalReason, string | null> = {
+  completed: null,
+  // The result's own max-turns check reports this with the turn count.
+  max_turns: null,
+  // The user's interrupt ends the stream here; they already know.
+  aborted_streaming: null,
+  // Claude Code stopped before the next API call because the turn was sent to
+  // the background on purpose, not because anything failed.
+  background_requested: null,
+  aborted_tools: 'Response stopped: tool execution was aborted.',
+  blocking_limit: 'Response stopped: rate limit reached. Send another message to continue.',
+  rapid_refill_breaker: 'Response stopped: too many rapid requests. Please wait a moment.',
+  hook_stopped: 'Response stopped by a hook.',
+  stop_hook_prevented: 'Response stopped: a stop hook prevented continuation.',
+  tool_deferred: 'Response paused: a tool is waiting for approval.',
+  tool_deferred_unavailable: 'Response stopped: a tool needed approval that could not be requested. Send another message to retry.',
+  prompt_too_long: 'Response stopped: the prompt exceeded the context limit.',
+  image_error: 'Response stopped: an attached image could not be processed. Remove it and send again.',
+  model_error: 'Response stopped due to a model error.',
+  api_error: 'Response stopped due to an API error. Send another message to retry.',
+  malformed_tool_use_exhausted: "Response stopped: Claude's tool call could not be read, even after a retry. Send another message to retry.",
+  budget_exhausted: 'Response stopped: the spending limit for this session was reached.',
+  structured_output_retry_exhausted: 'Response stopped: Claude could not produce output in the required format.',
+  turn_setup_failed: 'Response stopped: the turn could not start. Send another message to retry.',
+};
+
+export function describeTerminalReason(reason: TerminalReason): string | undefined {
+  // `?? undefined` also covers a reason newer than the installed type declarations.
+  return TERMINAL_REASON_MESSAGES[reason] ?? undefined;
+}

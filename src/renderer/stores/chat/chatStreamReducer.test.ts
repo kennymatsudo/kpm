@@ -489,6 +489,30 @@ describe('applyStreamEvent error', () => {
     expect(next.streamStartedAt).toBeNull();
     expect(next.lastStreamUpdateAt).toBeNull();
   });
+
+  it('keeps what the turn already streamed as an interrupted answer', () => {
+    const session = {
+      ...createInitialPerSessionState(1),
+      isStreaming: true,
+      streamingSegments: [{ type: 'text' as const, content: 'Half of the ' }],
+      streamStartedAt: Date.now(),
+    };
+
+    const next = applyStreamEvent(session, { type: 'error', error: 'boom', buffered: 'answer' });
+
+    const last = next.messages[next.messages.length - 1];
+    expect(last).toMatchObject({ role: 'assistant', interrupted: true, segments: [{ type: 'text', content: 'Half of the answer' }] });
+    expect(next.error).toBe('boom');
+  });
+
+  it('adds no bubble when nothing had streamed yet, as when a send fails', () => {
+    const session = { ...createInitialPerSessionState(1), isStreaming: true, streamStartedAt: Date.now() };
+
+    const next = applyStreamEvent(session, { type: 'error', error: 'Failed to send' });
+
+    expect(next.messages).toEqual(session.messages);
+    expect(next.isStreaming).toBe(false);
+  });
 });
 
 describe('applyFollowUpTransition', () => {

@@ -19,6 +19,7 @@ const LABELS: Record<ChatChoiceEffort, string> = {
   max: 'Max',
 };
 
+/** Offered only when pi's catalog did not say which levels a model accepts. */
 const PI_EFFORT = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
 
 /** Persisted marker for a new Chat that has no safe pi option to inherit. */
@@ -55,6 +56,27 @@ function catalogDescriptors(provider: 'claude' | 'codex', models: CatalogModel[]
   });
 }
 
+/**
+ * A model without reasoning offers no picker: "off" is its only level, and
+ * sending nothing leaves pi on it anyway.
+ */
+function piDescriptor(option: PiProviderOption): ChatModelDescriptor {
+  const levels = option.thinkingLevels ?? PI_EFFORT;
+  const effortLevels = levels.length === 1 && levels[0] === 'off' ? [] : levels;
+  const defaultEffort = [option.defaultThinkingLevel, 'medium' as const]
+    .find((level) => level && effortLevels.includes(level))
+    ?? effortLevels[0]
+    ?? null;
+  return {
+    id: `${option.provider}/${option.modelId}`,
+    label: option.label,
+    available: true,
+    effortLevels: efforts(effortLevels),
+    defaultEffort,
+    ...(option.contextWindow ? { contextWindow: option.contextWindow } : {}),
+  };
+}
+
 function providerUnavailableReason(providerLabel: string, detail: string): string {
   return `${providerLabel} is unavailable: ${detail}. Choose an available provider or finish its setup.`;
 }
@@ -89,14 +111,7 @@ export function buildChatChoiceCatalog(
   return [
     providerDescriptor('claude', 'Claude', catalogDescriptors('claude', modelCatalog.claude)),
     providerDescriptor('codex', 'Codex', catalogDescriptors('codex', modelCatalog.codex)),
-    providerDescriptor('pi', 'pi', piOptions.map((option) => ({
-      id: `${option.provider}/${option.modelId}`,
-      label: option.label,
-      available: true,
-      effortLevels: efforts(PI_EFFORT),
-      defaultEffort: 'medium',
-      ...(option.contextWindow ? { contextWindow: option.contextWindow } : {}),
-    }))),
+    providerDescriptor('pi', 'pi', piOptions.map(piDescriptor)),
   ];
 }
 

@@ -24,6 +24,7 @@ import {
   onUsageEvent,
 } from '../../services/usageService';
 import {
+  formatAggregateCost,
   formatCurrency,
   formatTokensFull,
   formatSource,
@@ -33,10 +34,12 @@ import {
   modelTierLabel,
   type ModelTier,
 } from '../../utils/usageFormatters';
-import type {
-  ClaudeUsageEvent,
-  ClaudeUsageProjectBreakdownRow,
-  ProjectUsageStats,
+import {
+  UNKNOWN_COST_SOURCE,
+  type ClaudeUsageEvent,
+  type ClaudeUsageProjectBreakdownRow,
+  type ClaudeUsageTotals,
+  type ProjectUsageStats,
 } from '../../../shared/usage-types';
 
 type Scope = 'project' | 'global';
@@ -44,6 +47,7 @@ type Scope = 'project' | 'global';
 interface TierRow {
   tier: ModelTier;
   events: number;
+  unpriced_events: number;
   input_tokens: number;
   output_tokens: number;
   cache_creation_tokens: number;
@@ -166,6 +170,7 @@ export function UsageSettings({ currentProjectId }: Props) {
       const existing = map.get(tier);
       if (existing) {
         existing.events += row.events;
+        existing.unpriced_events += row.unpriced_events;
         existing.input_tokens += row.input_tokens;
         existing.output_tokens += row.output_tokens;
         existing.cache_creation_tokens += row.cache_creation_tokens;
@@ -175,6 +180,7 @@ export function UsageSettings({ currentProjectId }: Props) {
         map.set(tier, {
           tier,
           events: row.events,
+          unpriced_events: row.unpriced_events,
           input_tokens: row.input_tokens,
           output_tokens: row.output_tokens,
           cache_creation_tokens: row.cache_creation_tokens,
@@ -213,7 +219,7 @@ export function UsageSettings({ currentProjectId }: Props) {
       ) : (
         <>
           <SummaryRow
-            costMicroUsd={totals.cost_micro_usd}
+            totals={totals}
             totalTokens={totalTokens}
             events={totals.events}
             cacheReadRate={cacheReadRate}
@@ -327,23 +333,28 @@ function ScopeTab({ active, onClick, children }: { active: boolean; onClick: () 
 }
 
 function SummaryRow({
-  costMicroUsd,
+  totals,
   totalTokens,
   events,
   cacheReadRate,
   byModelTier,
 }: {
-  costMicroUsd: number;
+  totals: ClaudeUsageTotals;
   totalTokens: number;
   events: number;
   cacheReadRate: number | null;
   byModelTier: TierRow[];
 }) {
+  const costMicroUsd = totals.cost_micro_usd;
+  const unpriced = totals.unpriced_events;
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
       <SummaryCard
         label="Estimated cost"
-        value={formatCurrency(costMicroUsd)}
+        value={formatAggregateCost(totals)}
+        hint={unpriced > 0 && unpriced < totals.events
+          ? `Excludes ${formatTokensFull(unpriced)} ${unpriced === 1 ? 'run' : 'runs'} with no known price`
+          : undefined}
         accent
         footer={byModelTier.length > 0 ? <ModelDistributionBar rows={byModelTier} totalCostMicroUsd={costMicroUsd} /> : undefined}
       />
@@ -480,7 +491,7 @@ function ModelBreakdownPanel({
                   {totalCostMicroUsd === 0 ? '—' : `${Math.round(share * 100)}%`}
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums text-text-primary font-medium">
-                  {formatCurrency(row.cost_micro_usd)}
+                  {formatAggregateCost(row)}
                 </td>
               </tr>
             );
@@ -536,7 +547,7 @@ function BreakdownTable({ rows }: { rows: ProjectUsageStats['breakdown'] }) {
                 {formatTokensFull(row.cache_read_tokens)}
               </td>
               <td className="px-3 py-2 text-right tabular-nums text-text-primary font-medium">
-                {formatCurrency(row.cost_micro_usd)}
+                {formatAggregateCost(row)}
               </td>
             </tr>
           ))}
@@ -583,7 +594,7 @@ function ProjectBreakdownTable({ rows }: { rows: ClaudeUsageProjectBreakdownRow[
                   {totalCost === 0 ? '—' : `${Math.round(share * 100)}%`}
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums text-text-primary font-medium">
-                  {formatCurrency(row.cost_micro_usd)}
+                  {formatAggregateCost(row)}
                 </td>
               </tr>
             );
@@ -637,7 +648,7 @@ function RecentEventsTable({ events }: { events: ClaudeUsageEvent[] }) {
                 {formatTokensFull(event.output_tokens)}
               </td>
               <td className="px-3 py-1.5 text-right tabular-nums text-text-primary">
-                {formatCurrency(event.cost_micro_usd)}
+                {event.cost_source === UNKNOWN_COST_SOURCE ? '—' : formatCurrency(event.cost_micro_usd)}
               </td>
               <td className="px-3 py-1.5 text-right tabular-nums text-text-secondary whitespace-nowrap">
                 {formatEventLatency(event.duration_ms, event.ttft_ms)}

@@ -604,13 +604,15 @@ export const MessageRow = memo(function MessageRow({
         </div>
       )}
 
-      <div
-        className={`chat-message-content chat-note text-text-secondary whitespace-pre-wrap ${
-          awaitingDelivery ? 'chat-note-queued' : ''
-        }`}
-      >
-        <UserMessageText content={userText} />
-      </div>
+      {userText && (
+        <div
+          className={`chat-message-content chat-note text-text-secondary whitespace-pre-wrap ${
+            awaitingDelivery ? 'chat-note-queued' : ''
+          }`}
+        >
+          <UserMessageText content={userText} />
+        </div>
+      )}
 
       {message.followUp && (
         <div className="mt-1 flex items-center gap-2 text-xs text-text-muted">

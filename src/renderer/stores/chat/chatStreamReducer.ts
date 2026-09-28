@@ -11,7 +11,7 @@ export type ChatStreamEvent =
   | { type: 'activity-update'; activity: Activity }
   | { type: 'flush'; text: string }
   | { type: 'retry' }
-  | { type: 'error'; error: string }
+  | { type: 'error'; error: string; buffered?: string }
   | { type: 'queue-cleared-already-sent'; clientMessageId?: string }
   | { type: 'queue-cleared-dropped'; clientMessageId?: string }
   | { type: 'deactivate'; buffered?: string }
@@ -482,18 +482,11 @@ export function applyStreamEvent(session: PerSessionState, event: ChatStreamEven
       };
 
     case 'error':
-      return {
-        ...session,
-        error: event.error,
-        isStreaming: false,
-        streamingContent: '',
-        streamingThinking: '',
-        activities: [],
-        streamingSegments: [],
-        pendingActivities: [],
-        streamStartedAt: null,
-        lastStreamUpdateAt: null,
-      };
+      // Keep what the turn already streamed as an interrupted bubble. The
+      // backend saves that text too, so discarding it here made the answer
+      // vanish until reload. A send that failed has streamed nothing, so it
+      // just stops.
+      return { ...finalize(session, { interrupted: true }, event.buffered ?? ''), error: event.error };
 
     case 'queue-cleared-already-sent': {
       const messages = applyFollowUpTransition(session.messages, { kind: 'delivered', clientMessageId: event.clientMessageId });

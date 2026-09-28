@@ -142,6 +142,13 @@ export interface PiProviderOption {
    * whichever model the registry happened to list first.
    */
   isDefault?: boolean;
+  /**
+   * Thinking levels pi accepts for this model (`["off"]` for a model without
+   * reasoning). Absent when the catalog did not report them.
+   */
+  thinkingLevels?: ChatChoiceEffort[];
+  /** The level pi would start this model on, from the user's pi settings. */
+  defaultThinkingLevel?: ChatChoiceEffort;
 }
 
 // =============================================================================
@@ -919,6 +926,9 @@ export interface SyncReviewItem extends ExportPreviewItem {
 
   /** Warning: Jira was updated after last_synced_at */
   hasConflict: boolean;
+
+  /** Set when the pushed description would erase tracker content KPM can't represent. */
+  contentLossWarning?: string;
 }
 
 /** A staged tracker deletion under review. Always opt-in — never pre-approved. */

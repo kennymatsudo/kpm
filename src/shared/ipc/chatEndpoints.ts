@@ -7,11 +7,12 @@
  * `StreamingSessionService`/`ChatRuntimeService`, not invoke endpoints, so
  * they stay hand-declared in `src/preload/api.ts` and out of this registry.
  *
- * `send.tempImages` is scoped to KPM's OS-temp images directory
+ * `send.attachments` paths are scoped to KPM's OS-temp images directory
  * (`os.tmpdir()`-derived, main-process-only, not derivable in shared/renderer
  * code) — this registry only validates each path is absolute;
  * `validation/chat.ts` layers the temp-dir scoping refine back on, the same
- * escape hatch used by `tempImageEndpoints.ts`/`attachmentEndpoints.ts`.
+ * escape hatch used by `tempImageEndpoints.ts`/`attachmentEndpoints.ts`. It also
+ * adds the rule that a send carries text, attachments, or both.
  */
 
 import { z } from 'zod';
@@ -55,6 +56,18 @@ import type { SessionMcpServer } from '../../main/services/streaming/sessionMcp'
 
 const chatProvider = z.enum(CHAT_PROVIDERS, { message: 'Provider must be "claude", "codex", or "pi"' });
 
+export const chatAttachmentSchema = <P extends z.ZodType<string>>(pathSchema: P) =>
+  z.discriminatedUnion('kind', [
+    z.object({
+      kind: z.literal('image'),
+      path: pathSchema,
+      filename: z.string().min(1),
+      mediaType: z.enum(['image/png', 'image/jpeg', 'image/gif', 'image/webp']),
+    }),
+    z.object({ kind: z.literal('pdf'), path: pathSchema, filename: z.string().min(1) }),
+    z.object({ kind: z.literal('text'), path: pathSchema, filename: z.string().min(1), mediaType: z.string() }),
+  ]);
+
 const focusedResourceSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('plan_item'), id: z.string(), title: z.string() }),
   z.object({ type: z.literal('project_file'), path: z.string(), isDirectory: z.boolean() }),
@@ -76,9 +89,9 @@ export const chatEndpoints = {
     channel: 'chat:send',
     params: z.object({
       projectId: uuid,
-      message: z.string().min(1, 'Message cannot be empty').max(100000, 'Message too long'),
+      message: z.string().max(100000, 'Message too long'),
       focusedResources: z.array(focusedResourceSchema).default([]),
-      tempImages: z.array(absolutePath).optional(),
+      attachments: z.array(chatAttachmentSchema(absolutePath)).optional(),
       chatSessionId: uuid.optional(),
       clientMessageId: uuid.optional(),
       currentView: chatViewModeSchema,

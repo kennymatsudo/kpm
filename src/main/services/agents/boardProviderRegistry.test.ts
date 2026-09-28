@@ -62,8 +62,8 @@ describe('board provider registry', () => {
 
     expect(providers.find((provider) => provider.id === 'codex')?.models).toEqual([
       { id: 'gpt-5.5', name: 'gpt-5.5', isDefault: true },
-      { id: 'gpt-6-astra', name: 'GPT-6-Astra' },
-      { id: 'gpt-5.6-terra', name: 'GPT-5.6-Terra' },
+      { id: 'gpt-6-astra', name: 'GPT-6-Astra', effortLevels: [] },
+      { id: 'gpt-5.6-terra', name: 'GPT-5.6-Terra', effortLevels: [] },
     ]);
   });
 
@@ -81,8 +81,29 @@ describe('board provider registry', () => {
     });
 
     expect(providers.find((provider) => provider.id === 'claude')?.models).toEqual([
-      { id: 'sonnet', name: 'Sonnet 5', isDefault: true },
-      { id: 'opus', name: 'Opus 5.5' },
+      { id: 'sonnet', name: 'Sonnet 5', isDefault: true, effortLevels: [] },
+      { id: 'opus', name: 'Opus 5.5', effortLevels: [] },
     ]);
+  });
+
+  it('offers each model the effort levels its provider accepts, and none for Gemini', async () => {
+    setConfig(createTestConfig({}));
+    const providers = await listBoardProviders({
+      isAvailable: async () => true,
+      listPiModels: async () => [
+        { provider: 'openai', modelId: 'gpt-5.5', label: 'OpenAI — GPT-5.5', safe: true, thinkingLevels: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'] },
+      ],
+      getModelCatalog: () => ({
+        ...FALLBACK_MODEL_CATALOG,
+        claude: [{ id: 'sonnet', label: 'Sonnet 5', effortLevels: ['low', 'medium', 'high'] }],
+        codex: [{ id: 'gpt-6-astra', label: 'GPT-6-Astra', effortLevels: ['minimal', 'low', 'medium', 'high', 'xhigh'] }],
+      }),
+    });
+    const levels = (id: string) => providers.find((provider) => provider.id === id)?.models.map((model) => model.effortLevels);
+
+    expect(levels('claude')).toEqual([['low', 'medium', 'high']]);
+    expect(levels('codex')).toEqual([undefined, ['low', 'medium', 'high', 'xhigh']]);
+    expect(levels('pi')).toEqual([['low', 'medium', 'high', 'xhigh']]);
+    expect(levels('gemini')).toEqual([[]]);
   });
 });

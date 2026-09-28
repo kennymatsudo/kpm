@@ -14,6 +14,8 @@ export interface GenerationUsageEvent {
   projectId: string | null;
   usage: GenerationUsage;
   totalCostUsd?: number | null;
+  /** The provider reports no cost and KPM has no price for it (Codex). */
+  costUnknown?: boolean;
 }
 
 export interface GenerationRuntimeDeps {

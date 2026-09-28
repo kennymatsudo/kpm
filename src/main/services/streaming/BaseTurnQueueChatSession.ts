@@ -1,4 +1,4 @@
-import type { ContentBlockParam } from '@anthropic-ai/sdk/resources';
+import type { ChatAttachment } from '../../../shared/types';
 import type { IChatSession } from './IChatSession';
 import { userTurnEcho, type ProviderChatMessage } from './providerChatMessage';
 
@@ -41,9 +41,9 @@ export abstract class BaseTurnQueueChatSession<TTurn extends object> implements 
     this.onSessionEnd = onSessionEnd;
   }
 
-  abstract start(initialMessage: string | ContentBlockParam[]): Promise<void>;
+  abstract start(initialMessage: string, attachments?: ChatAttachment[]): Promise<void>;
   abstract send(text: string): void;
-  abstract sendUserContent(content: ContentBlockParam[]): void | Promise<void>;
+  abstract sendWithAttachments(text: string, attachments: ChatAttachment[]): Promise<void>;
   abstract interrupt(): Promise<void>;
 
   /**

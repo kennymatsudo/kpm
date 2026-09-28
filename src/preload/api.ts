@@ -1,4 +1,4 @@
-import { ipcRenderer } from 'electron';
+import { ipcRenderer, webUtils } from 'electron';
 import { IPC_CHANNELS } from '../shared/ipcChannels';
 import { deriveDomainApi } from '../shared/ipc/endpoints';
 import { deriveEventSubscriptions } from '../shared/ipc/appEvents';
@@ -91,6 +91,7 @@ import type {
   SlashCommandInfo,
   PermissionRequest,
   PermissionAction,
+  ChatAttachment,
   FocusedResource,
   TaskPromptTemplate,
   SessionState,
@@ -210,7 +211,7 @@ const chat = {
     projectId: string;
     message: string;
     focusedResources: FocusedResource[];
-    tempImages?: string[];
+    attachments?: ChatAttachment[];
     chatSessionId?: string;
     currentView?: ChatViewMode;
     clientMessageId?: string;
@@ -842,6 +843,9 @@ const fileExplorer = {
 
   // Copy an external file into the project
   copyExternalFile: fileExplorerInvoke.copyExternalFile,
+
+  // Disk path of a dropped File; '' when it has none. Electron 32 removed File.path.
+  getPathForFile: (file: File): string => webUtils.getPathForFile(file),
 
   // Create a new binary file (images, PDFs, etc.)
   createBinaryFile: fileExplorerInvoke.createBinaryFile,

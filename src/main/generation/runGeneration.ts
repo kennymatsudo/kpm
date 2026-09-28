@@ -56,7 +56,7 @@ export async function runGeneration(request: GenerationRequest): Promise<Generat
 
   return adapter.run(resolved, {
     onUsage: recordUsage
-      ? (usage, totalCostUsd) =>
+      ? (usage, totalCostUsd, costUnknown) =>
           recordUsage({
             purpose: request.purpose,
             provider,
@@ -64,6 +64,7 @@ export async function runGeneration(request: GenerationRequest): Promise<Generat
             projectId: request.projectId ?? null,
             usage,
             totalCostUsd,
+            ...(costUnknown ? { costUnknown } : {}),
           })
       : undefined,
   });

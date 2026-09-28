@@ -151,7 +151,7 @@ export function createAppServices(container: IRepositoryContainer) {
   // per-site recordUsage plumbing is gone; this maps the neutral (purpose,
   // usage) shape onto the ledger's source + raw token block.
   configureGeneration({
-    recordUsage: ({ purpose, model, projectId, usage, totalCostUsd }) => {
+    recordUsage: ({ purpose, model, projectId, usage, totalCostUsd, costUnknown }) => {
       claudeUsageService.recordUsage({
         projectId,
         source: GENERATION_PURPOSE_TO_USAGE_SOURCE[purpose],
@@ -163,6 +163,7 @@ export function createAppServices(container: IRepositoryContainer) {
           cache_creation_input_tokens: usage.cacheWriteTokens ?? 0,
         },
         totalCostUsd,
+        costUnknown,
       });
     },
   });

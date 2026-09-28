@@ -106,6 +106,8 @@ export interface AgentCompletionSummary {
   filesChanged: number;
   additions: number;
   deletions: number;
+  /** Git could not measure the change; the counts above are zero and mean nothing. */
+  diffUnknown?: boolean;
   /**
    * Why the SDK query loop terminated. Surfaces cases like `max_turns`,
    * `aborted_tools`, `prompt_too_long`, `hook_stopped`, etc. so the UI can
@@ -205,6 +207,8 @@ export interface AgentSessionUsage {
    * The centralized usage tracker prefers this over its local pricing table.
    */
   totalCostUsd: number | null;
+  /** No reported cost and no local price for this provider (Codex); stored as unknown. */
+  costUnknown?: boolean;
   sdkSessionId?: string | null;
   sdkResultUuid?: string | null;
   sdkCostScope?: string | null;

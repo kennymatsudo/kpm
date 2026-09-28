@@ -1,5 +1,5 @@
 import { getConfig } from '../../config';
-import type { BoardProvider, ModelDescriptor } from '../../../shared/playbooks';
+import { playbookEffortLevels, type BoardProvider, type ModelDescriptor } from '../../../shared/playbooks';
 import type { ModelCatalog } from '../../../shared/modelCatalog';
 import { PI_UNRESOLVED_MODEL_ID, type PiProviderOption } from '../../../shared/types';
 import { getModelCatalog } from '../../providers/modelCatalog';
@@ -17,6 +17,7 @@ function codexBoardModels(catalog: ModelCatalog): ModelDescriptor[] {
   const knownModels: ModelDescriptor[] = catalog.codex.map((model) => ({
     id: model.id,
     name: model.label,
+    effortLevels: playbookEffortLevels(model.effortLevels),
     ...(model.id === configuredModel ? { isDefault: true } : {}),
   }));
   if (!configuredModel) return knownModels;
@@ -31,7 +32,13 @@ function piBoardModels(options: PiProviderOption[]): ModelDescriptor[] {
     if (option.modelId === PI_UNRESOLVED_MODEL_ID) continue;
     const id = `${option.provider}/${option.modelId}`;
     if (option.isDefault) defaultSelector = id;
-    if (!bySelector.has(id)) bySelector.set(id, { id, name: option.label });
+    if (!bySelector.has(id)) {
+      bySelector.set(id, {
+        id,
+        name: option.label,
+        ...(option.thinkingLevels ? { effortLevels: playbookEffortLevels(option.thinkingLevels) } : {}),
+      });
+    }
   }
   const models = [...bySelector.values()];
   // Default to the model the user's own pi CLI uses; first-listed only stands
@@ -62,6 +69,7 @@ export async function listBoardProviders(deps: BoardProviderRegistryDeps = {}): 
       models: catalog.claude.map((model) => ({
         id: model.id,
         name: model.label,
+        effortLevels: playbookEffortLevels(model.effortLevels),
         ...(model.id === 'sonnet' ? { isDefault: true } : {}),
       })),
       capabilities: { nativeSkills: true, reviewSandbox: false },
@@ -75,7 +83,8 @@ export async function listBoardProviders(deps: BoardProviderRegistryDeps = {}): 
     },
     {
       id: 'gemini', name: 'Gemini', available: gemini,
-      models: [{ id: 'default', name: 'Default', isDefault: true }],
+      // The Gemini CLI takes no effort setting, so steps offer none.
+      models: [{ id: 'default', name: 'Default', isDefault: true, effortLevels: [] }],
       capabilities: { nativeSkills: false, reviewSandbox: false },
       ...(!gemini ? { unavailableReason: 'Gemini CLI is not available' } : {}),
     },

@@ -24,7 +24,7 @@ export interface ChatSenderServices {
     projectId: string;
     message: string;
     focusedResources: FocusedResource[];
-    tempImages?: string[];
+    attachments?: ChatAttachment[];
     chatSessionId: string;
     currentView?: ChatViewMode;
     clientMessageId: string;
@@ -59,7 +59,7 @@ export interface ChatSender {
     targetChatSessionId?: string,
   ) => Promise<string | null>;
   /** Re-send an existing user message without adding a second bubble for it. */
-  retry: (message: string, clientMessageId: string, tempImages?: string[]) => Promise<void>;
+  retry: (message: string, clientMessageId: string, attachments?: ChatAttachment[]) => Promise<void>;
   /** Interrupt the viewed session's turn. */
   cancel: () => void;
   /** Withdraw a follow-up that is still waiting behind a live turn. */
@@ -163,19 +163,13 @@ export function createChatSender(deps: ChatSenderDeps): ChatSender {
       clientMessageId: effectiveClientMessageId,
     });
 
-    // The IPC wire format stays `tempImages: string[]`; the main process
-    // re-classifies each path by extension.
-    const tempImages = attachments && attachments.length > 0
-      ? attachments.map((attachment) => attachment.path)
-      : undefined;
-
     let outcome: ChatSendOutcome;
     try {
       outcome = await services.sendChatMessage({
         projectId,
         message,
         focusedResources: turn.focusedResources,
-        tempImages,
+        attachments: attachments && attachments.length > 0 ? attachments : undefined,
         chatSessionId,
         currentView,
         clientMessageId: effectiveClientMessageId,
@@ -197,7 +191,7 @@ export function createChatSender(deps: ChatSenderDeps): ChatSender {
     return effectiveClientMessageId;
   };
 
-  const retry: ChatSender['retry'] = async (message, clientMessageId, tempImages) => {
+  const retry: ChatSender['retry'] = async (message, clientMessageId, attachments) => {
     const chatSessionId = getChatState().getChatSessionId();
 
     const turn = await prepareTurn(chatSessionId);
@@ -211,7 +205,7 @@ export function createChatSender(deps: ChatSenderDeps): ChatSender {
         projectId,
         message,
         focusedResources: turn.focusedResources,
-        tempImages,
+        attachments,
         chatSessionId,
         currentView,
         clientMessageId,

@@ -73,13 +73,14 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
       get: container.projects.get.bind(container.projects),
       updateTokens: container.projects.updateTokens.bind(container.projects),
     },
-    recordUsage: ({ projectId, model, usage, totalCostUsd, sdkSessionId, sdkResultUuid, sdkCostScope, isCumulativeCostSnapshot, ttftMs, durationMs }) => {
+    recordUsage: ({ projectId, model, usage, totalCostUsd, costUnknown, sdkSessionId, sdkResultUuid, sdkCostScope, isCumulativeCostSnapshot, ttftMs, durationMs }) => {
       services.claudeUsageService.recordUsage({
         projectId,
         source: 'chat',
         model,
         usage,
         totalCostUsd,
+        costUnknown,
         sdkSessionId,
         sdkResultUuid,
         sdkCostScope,

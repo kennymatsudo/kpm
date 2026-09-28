@@ -255,6 +255,7 @@ vi.mock('../../claude/sdkTypeGuards', async () => {
     getTerminalReason: () => sdkTypeGuardState.terminalReason,
     describeAssistantError: actual.describeAssistantError,
     describeModelRefusalNoFallback: actual.describeModelRefusalNoFallback,
+    describeTerminalReason: actual.describeTerminalReason,
   };
 });
 

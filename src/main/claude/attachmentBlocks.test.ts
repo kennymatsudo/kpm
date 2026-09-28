@@ -93,7 +93,7 @@ describe('buildUserContentBlocks', () => {
     expect(blocks).toHaveLength(2);
     expect(blocks[0]).toEqual({
       type: 'text',
-      text: `<file path="${filePath}">\nline 1\nline 2\n</file>`,
+      text: '<file name="notes.md">\nline 1\nline 2\n</file>',
     });
     expect(blocks[1]).toEqual({ type: 'text', text: 'look at this' });
   });
@@ -149,5 +149,16 @@ describe('buildUserContentBlocks', () => {
     expect(blocks[0]).toMatchObject({ type: 'image' });
     expect(blocks[1]).toMatchObject({ type: 'image' });
     expect(blocks[2]).toEqual({ type: 'text', text: 'compare them' });
+  });
+
+  it('leaves out the text block when the message is empty, since the API rejects empty text', async () => {
+    const a = path.join(tmpDir, 'a.png');
+    await fs.writeFile(a, Buffer.from([1, 2, 3]));
+
+    const blocks = await buildUserContentBlocks('', [
+      { kind: 'image', path: a, filename: 'a.png', mediaType: 'image/png' },
+    ]);
+
+    expect(blocks).toEqual([expect.objectContaining({ type: 'image' })]);
   });
 });

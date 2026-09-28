@@ -12,32 +12,15 @@ describe('provider capabilities', () => {
       liveSlashCommands: false,
       mcpServerManagement: false,
       mcpSessionInspection: false,
-      midSessionModelSwitch: false,
       promptSuggestions: false,
-      textDeltas: true,
     });
-    expect(getProviderCapabilities('pi').effortLevels.levels).toEqual([]);
-  });
-
-  it('marks the providers whose transport can pause a turn to ask permission', () => {
-    // pi's `tool_call` hook may return a promise, so it can block mid-turn.
-    // Codex chat uses app-server, whose JSON-RPC server requests pause the
-    // active turn until KPM answers the approval.
-    expect(getProviderCapabilities('claude').inTurnWriteApproval).toBe(true);
-    expect(getProviderCapabilities('pi').inTurnWriteApproval).toBe(true);
-    expect(getProviderCapabilities('codex').inTurnWriteApproval).toBe(true);
-
-    expect(getProviderCapabilities('pi').permissionPrompts).toBe(true);
-    expect(getProviderCapabilities('codex').permissionPrompts).toBe(true);
   });
 
   it('preserves Claude-only interactive controls as capabilities', () => {
     const claude = getProviderCapabilities('claude');
     expect(claude.liveSlashCommands).toBe(true);
     expect(claude.mcpServerManagement).toBe(true);
-    expect(claude.permissionPrompts).toBe(true);
     expect(claude.promptSuggestions).toBe(true);
-    expect(claude.effortLevels.levels).toEqual(['low', 'medium', 'high', 'xhigh', 'max']);
   });
 
   it('is closed over the ChatProvider union at compile time', () => {

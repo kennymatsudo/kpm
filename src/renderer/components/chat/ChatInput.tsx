@@ -13,7 +13,7 @@ import { AttachmentChip } from './AttachmentChip';
 import { SlashCommandMenu } from './SlashCommandMenu';
 import { useSlashCommandTypeahead } from './useSlashCommandTypeahead';
 import { CHAT_STYLES } from '../../constants/chatStyles';
-import { getProviderCapabilities } from '../../../shared/providerCapabilities';
+import { getProviderCapabilities, unsupportedAttachmentError } from '../../../shared/providerCapabilities';
 import type { ChatAttachment, FocusedResource } from '../../../shared/types';
 import { sessionContextWindow, sessionModelId, sessionProvider } from '../../stores/chat/chatChoice';
 
@@ -161,6 +161,8 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource }: Ch
   const [isDragOver, setIsDragOver] = useState(false);
 
   const capabilities = getProviderCapabilities(viewedSessionProvider ?? 'claude');
+  // Derived rather than checked at attach time, so it tracks a provider change.
+  const unsupportedAttachment = unsupportedAttachmentError(viewedSessionProvider ?? 'claude', attachments);
   const visibleSuggestions = capabilities.promptSuggestions ? suggestions : NO_SUGGESTIONS;
 
   // Slash command typeahead is shown only for providers that support live slash commands.
@@ -257,8 +259,9 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource }: Ch
         const blob = item.getAsFile();
         if (!blob) continue;
 
-        if (!isSupportedImageFormat(blob.type)) {
-          setAttachmentError('Unsupported image format. Supported: PNG, JPEG, GIF, WebP, BMP');
+        // The temp-image cache also takes BMP, but no model reads it.
+        if (!isSupportedImageFormat(blob.type) || blob.type === 'image/bmp') {
+          setAttachmentError('Unsupported image format. Supported: PNG, JPEG, GIF, WebP');
           break;
         }
 
@@ -271,7 +274,7 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource }: Ch
           const result = await saveTempImage(uint8Array, blob.type);
 
           if (result.success) {
-            const mediaType = blob.type as 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
+            const mediaType = blob.type;
             // Pasted images are always image kind. The temp-image service
             // returns the pasted bytes' actual MIME, so trust it here.
             setAttachments((prev) => [
@@ -351,11 +354,11 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource }: Ch
     // Sending while streaming is allowed for Claude — the backend queues this
     // as the next turn. For Codex, keep the old behavior (block until the
     // current response finishes) since its service rejects mid-stream sends.
-    if ((trimmed || attachments.length > 0) && !disabled && !sendDisabledWhileStreaming) {
+    if ((trimmed || attachments.length > 0) && !unsupportedAttachment && !disabled && !sendDisabledWhileStreaming) {
       const chatSessionId = viewedSessionId ?? getChatSessionId();
       getOrCreateSession(chatSessionId);
       onSend(
-        trimmed || '(see attached files)',
+        trimmed,
         attachments.length > 0 ? attachments : undefined,
         chatSessionId,
       );
@@ -503,9 +506,9 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource }: Ch
       )}
 
       {/* Attachment error message */}
-      {attachmentError && (
+      {(attachmentError ?? unsupportedAttachment) && (
         <div className="collapse-reveal mb-2 px-3 py-2 bg-danger-muted text-danger text-xs rounded-lg">
-          {attachmentError}
+          {attachmentError ?? unsupportedAttachment}
         </div>
       )}
 
@@ -607,7 +610,7 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource }: Ch
           )}
           <button
             onClick={handleSend}
-            disabled={(!message.trim() && attachments.length === 0) || disabled || sendDisabledWhileStreaming}
+            disabled={(!message.trim() && attachments.length === 0) || Boolean(unsupportedAttachment) || disabled || sendDisabledWhileStreaming}
             className="btn btn-primary h-8 w-8 !p-0 flex-shrink-0 rounded-lg transition-transform active:scale-90"
             title={
               sendDisabledWhileStreaming

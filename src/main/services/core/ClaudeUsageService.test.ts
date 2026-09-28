@@ -43,11 +43,11 @@ function createUsageRepo(): IClaudeUsageRepository & { events: ClaudeUsageEvent[
       }
       return null;
     },
-    totalsByProject: () => ({ events: 0, input_tokens: 0, output_tokens: 0, cache_creation_tokens: 0, cache_read_tokens: 0, cost_micro_usd: 0 }),
+    totalsByProject: () => ({ events: 0, unpriced_events: 0, input_tokens: 0, output_tokens: 0, cache_creation_tokens: 0, cache_read_tokens: 0, cost_micro_usd: 0 }),
     breakdownByProject: () => [],
     breakdownAll: () => [],
     breakdownByProjectAll: () => [],
-    globalTotals: () => ({ events: 0, input_tokens: 0, output_tokens: 0, cache_creation_tokens: 0, cache_read_tokens: 0, cost_micro_usd: 0 }),
+    globalTotals: () => ({ events: 0, unpriced_events: 0, input_tokens: 0, output_tokens: 0, cache_creation_tokens: 0, cache_read_tokens: 0, cost_micro_usd: 0 }),
     listRecent: () => [],
     listBoardPlaybookCostsByDevSession: () => [],
     deleteByProject: () => {},
@@ -138,6 +138,35 @@ describe('ClaudeUsageService', () => {
 
     expect(usageRepo.events[0].cost_micro_usd).toBe(36_750_000);
     expect(usageRepo.events[0].cost_source).toBe('local_pricing_fallback');
+  });
+
+  it('stores an unknown cost instead of pricing an unpriced provider as Claude', () => {
+    const usageRepo = createUsageRepo();
+    const service = createClaudeUsageService({
+      claudeUsage: usageRepo,
+      projects: createProjectRepo(),
+      getMainWindow: () => null,
+    });
+
+    service.recordUsage({
+      projectId: 'project-1',
+      source: 'chat',
+      model: 'gpt-5.5',
+      usage: { input_tokens: 1_000_000, output_tokens: 1_000_000 },
+      costUnknown: true,
+    });
+    service.recordUsage({
+      projectId: 'project-1',
+      source: 'board_playbook',
+      model: null,
+      usage: { input_tokens: 10, output_tokens: 10 },
+      costUnknown: true,
+    });
+
+    expect(usageRepo.events.map((event) => [event.model, event.cost_micro_usd, event.cost_source])).toEqual([
+      ['gpt-5.5', 0, 'unknown'],
+      ['unknown', 0, 'unknown'],
+    ]);
   });
 
   it('passes ttftMs/durationMs through to the inserted event, defaulting to null when omitted', () => {

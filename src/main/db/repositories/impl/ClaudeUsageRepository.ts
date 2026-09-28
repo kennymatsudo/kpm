@@ -17,6 +17,11 @@ import type {
   ClaudeUsageProjectBreakdownRow,
   BoardPlaybookCostRow,
 } from '../../interfaces/usage';
+import { UNKNOWN_COST_SOURCE } from '../../../../shared/usage-types';
+
+function unpricedEvents(costSourceColumn: string): string {
+  return `COALESCE(SUM(CASE WHEN ${costSourceColumn} = '${UNKNOWN_COST_SOURCE}' THEN 1 ELSE 0 END), 0) AS unpriced_events`;
+}
 
 interface PreparedStatements {
   insert: Statement;
@@ -37,6 +42,7 @@ interface PreparedStatements {
 
 const EMPTY_TOTALS: ClaudeUsageTotals = {
   events: 0,
+  unpriced_events: 0,
   input_tokens: 0,
   output_tokens: 0,
   cache_creation_tokens: 0,
@@ -51,6 +57,7 @@ export class ClaudeUsageRepository implements IClaudeUsageRepository {
     const totalsSelect = `
       SELECT
         COUNT(*) AS events,
+        ${unpricedEvents('cost_source')},
         COALESCE(SUM(input_tokens), 0) AS input_tokens,
         COALESCE(SUM(output_tokens), 0) AS output_tokens,
         COALESCE(SUM(cache_creation_tokens), 0) AS cache_creation_tokens,
@@ -64,6 +71,7 @@ export class ClaudeUsageRepository implements IClaudeUsageRepository {
         source,
         model,
         COUNT(*) AS events,
+        ${unpricedEvents('cost_source')},
         COALESCE(SUM(input_tokens), 0) AS input_tokens,
         COALESCE(SUM(output_tokens), 0) AS output_tokens,
         COALESCE(SUM(cache_creation_tokens), 0) AS cache_creation_tokens,
@@ -108,6 +116,7 @@ export class ClaudeUsageRepository implements IClaudeUsageRepository {
           u.project_id AS project_id,
           COALESCE(p.name, u.project_name_snapshot) AS project_name,
           COUNT(*) AS events,
+          ${unpricedEvents('u.cost_source')},
           COALESCE(SUM(u.input_tokens), 0) AS input_tokens,
           COALESCE(SUM(u.output_tokens), 0) AS output_tokens,
           COALESCE(SUM(u.cache_creation_tokens), 0) AS cache_creation_tokens,
@@ -153,6 +162,7 @@ export class ClaudeUsageRepository implements IClaudeUsageRepository {
         WHERE dev_session_id = ?
           AND source = 'board_playbook'
           AND step_id IS NOT NULL
+          AND cost_source != '${UNKNOWN_COST_SOURCE}'
         ORDER BY created_at, rowid
       `),
     };

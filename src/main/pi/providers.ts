@@ -11,6 +11,7 @@
  */
 
 import { PI_UNRESOLVED_MODEL_ID, type PiProviderOption } from '../../shared/types';
+import { knownEfforts } from '../../shared/modelCatalog';
 import { readPiCatalog, type PiCatalogSnapshot } from './piCatalog';
 
 export type { PiProviderOption };
@@ -157,6 +158,7 @@ export function buildPiProviderOptions(catalog: PiCatalogSnapshot): PiProviderOp
 
     for (const model of models) {
       const contextWindow = modelContextWindow(model);
+      const [defaultThinkingLevel] = knownEfforts([model.defaultThinkingLevel]);
       options.push({
         provider,
         modelId: model.id,
@@ -164,6 +166,8 @@ export function buildPiProviderOptions(catalog: PiCatalogSnapshot): PiProviderOp
         label: `${displayName} — ${model.name}`,
         safe,
         ...(contextWindow ? { contextWindow } : {}),
+        ...(model.thinkingLevels ? { thinkingLevels: knownEfforts(model.thinkingLevels) } : {}),
+        ...(defaultThinkingLevel ? { defaultThinkingLevel } : {}),
         ...(`${provider}/${model.id}` === catalog.defaultSelector ? { isDefault: true } : {}),
       });
     }

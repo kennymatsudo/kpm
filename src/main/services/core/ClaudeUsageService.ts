@@ -3,9 +3,8 @@
  *
  * Centralized recording of Claude API usage across every place KPM invokes
  * the Claude Agent SDK (main chat, board agents, PR description, commit message,
- * review assessment, custom prompt generation, and onboarding).
- * Codex/Gemini sessions are tracked separately and do NOT
- * flow through this service.
+ * review assessment, custom prompt generation, and onboarding). Codex and pi
+ * usage lands here too; Codex rows carry an unknown cost (`costUnknown`).
  *
  * Each call to recordUsage:
  *   1. Persists an event row in `claude_usage_events` (append-only).
@@ -30,6 +29,7 @@ import type { IProjectRepository } from '../../db/interfaces/project';
 import { computeCostMicroUsd, resolveModelPricing } from '../../config/claudePricing';
 import { emitAppEvent } from '../../../shared/ipc/appEvents';
 import { usageEvents } from '../../../shared/ipc/usageEvents';
+import { UNKNOWN_COST_SOURCE } from '../../../shared/usage-types';
 
 // =============================================================================
 // Types
@@ -71,6 +71,11 @@ export interface RecordUsageInput {
    * and must be converted to a delta before storing in the summable ledger.
    */
   totalCostUsd?: number | null;
+  /**
+   * The provider reports no cost and the local price table covers only Claude
+   * (Codex). Stored as an unknown cost so dashboards do not show invented dollars.
+   */
+  costUnknown?: boolean;
   /** SDK session/result identifiers used for delta calculation and deduping. */
   sdkSessionId?: string | null;
   sdkResultUuid?: string | null;
@@ -116,6 +121,10 @@ export function createClaudeUsageService(deps: ClaudeUsageServiceDeps) {
   }
 
   function computeStoredCost(input: RecordUsageInput, tokens: ReturnType<typeof normalizeUsage>) {
+    if (input.costUnknown && typeof input.totalCostUsd !== 'number') {
+      return { costMicroUsd: 0, sdkCumulativeCostMicroUsd: null, costSource: UNKNOWN_COST_SOURCE };
+    }
+
     if (typeof input.totalCostUsd === 'number' && Number.isFinite(input.totalCostUsd)) {
       const cumulativeCostMicroUsd = Math.max(0, Math.round(input.totalCostUsd * 1_000_000));
 
@@ -185,7 +194,7 @@ export function createClaudeUsageService(deps: ClaudeUsageServiceDeps) {
         // Persist the resolved tier (opus/sonnet/haiku) when the caller passed
         // an alias; otherwise persist the raw model string. Either way the
         // dashboard can group by it.
-        model: input.model && input.model.length > 0 ? input.model : tier,
+        model: input.model && input.model.length > 0 ? input.model : input.costUnknown ? 'unknown' : tier,
         input_tokens: tokens.input,
         output_tokens: tokens.output,
         cache_creation_tokens: tokens.cacheCreation,
@@ -230,6 +239,7 @@ export function createClaudeUsageService(deps: ClaudeUsageServiceDeps) {
           cacheCreationTokens: tokens.cacheCreation,
           cacheReadTokens: tokens.cacheRead,
           costMicroUsd: costMicroUsd,
+          costUnknown: costSource === UNKNOWN_COST_SOURCE,
         });
       }
 

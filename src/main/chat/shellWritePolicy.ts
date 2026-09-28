@@ -6,8 +6,7 @@
  * they shared the classifier underneath but each decided on its own what a
  * non-git command meant and when the read-only escape applied, so a change to
  * one left the other stale. Codex chat applies this at app-server approval
- * requests, which is recorded as `inTurnWriteApproval` in
- * `shared/providerCapabilities.ts`.
+ * requests, which pause the turn until KPM answers.
  *
  * The rule: a shell command needs the grant unless it is provably read-only git.
  * `classifyGitShellCommand` only accepts what it can prove, so an unparseable

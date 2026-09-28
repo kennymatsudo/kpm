@@ -1,9 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
-import { existsSync } from 'fs';
-import { CodexChatSession } from './CodexChatSession';
+import { mkdtempSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { CodexChatSession, codexToolCalls } from './CodexChatSession';
+import { getToolActivity } from '../claude/activity';
+import { extractFilePaths } from '../services/toollog/extractFilePaths';
 import type { CodexAppServerClient } from './CodexAppServerClient';
 import type { PlanContext } from '../chat/prompts';
-import type { ContentBlockParam } from '@anthropic-ai/sdk/resources';
+import type { ProviderChatMessage } from '../services/streaming/providerChatMessage';
 
 type Handler = (method: string, params: Record<string, unknown>) => Promise<unknown>;
 
@@ -43,6 +47,10 @@ class FakeAppServer {
 
 function context(): PlanContext {
   return { project: { id: 'project-1', name: 'Project', phase: 'discovery', folder_path: '/tmp/project', storybook_url: null, created_at: '2026-01-01T00:00:00.000Z', session_tokens: 0, session_input_tokens: 0, session_output_tokens: 0 }, repos: [], attachments: [], planItems: [], focusedResources: [] };
+}
+
+function sentMessages(onMessage: ReturnType<typeof vi.fn>): ProviderChatMessage[] {
+  return onMessage.mock.calls.map(([msg]) => msg as ProviderChatMessage);
 }
 
 function registration() { return { url: 'http://127.0.0.1:1234/mcp/kpm', token: 'token', dispose: vi.fn() }; }
@@ -113,6 +121,34 @@ describe('CodexChatSession', () => {
     await session.close();
   });
 
+  it('records a turn as the growth of the thread total, with input excluding cached tokens', async () => {
+    const client = new FakeAppServer();
+    client.completeTurns = false;
+    const onMessage = vi.fn();
+    const session = new CodexChatSession({ context: context(), model: 'gpt-5.5', onMessage, registerMcpSession: async () => registration(), createAppServerClient: () => client as unknown as CodexAppServerClient });
+    await session.start('two requests');
+    await vi.waitFor(() => expect(client.requests.some((request) => request.method === 'turn/start')).toBe(true));
+    // A resumed thread: 1,000 input tokens were spent before this turn.
+    const usage = (total: number[], last: number[]) => ({
+      total: { inputTokens: total[0], cachedInputTokens: total[1], outputTokens: total[2], cacheWriteInputTokens: 0 },
+      last: { inputTokens: last[0], cachedInputTokens: last[1], outputTokens: last[2], cacheWriteInputTokens: 0 },
+      modelContextWindow: 272_000,
+    });
+    client.emit('thread/tokenUsage/updated', { threadId: 'thread-1', turnId: 'turn-1', tokenUsage: usage([1_100, 80, 20], [100, 80, 10]) });
+    client.emit('thread/tokenUsage/updated', { threadId: 'thread-1', turnId: 'turn-1', tokenUsage: usage([1_250, 200, 35], [150, 120, 15]) });
+    client.emit('turn/completed', { threadId: 'thread-1', turn: { id: 'turn-1', status: 'completed' } });
+
+    await vi.waitFor(() => expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'result' })));
+    expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'result',
+      usage: { input_tokens: 50, cache_read_input_tokens: 200, cache_creation_input_tokens: 0, output_tokens: 25 },
+      contextUsage: { input_tokens: 30, cache_read_input_tokens: 120, cache_creation_input_tokens: 0, output_tokens: 15 },
+      model: 'gpt-5.5',
+      costUnknown: true,
+    }));
+    await session.close();
+  });
+
   it('shuts the app-server down when it reports a session error', async () => {
     const client = new FakeAppServer();
     client.completeTurns = false;
@@ -121,30 +157,104 @@ describe('CodexChatSession', () => {
     await session.start('wait');
     await vi.waitFor(() => expect(client.requests.some((request) => request.method === 'turn/start')).toBe(true));
 
-    client.emit('error', { error: { message: 'app-server exploded' } });
+    client.emit('error', { error: { message: 'app-server exploded' }, willRetry: false });
 
-    expect(onSessionEnd).toHaveBeenCalledWith('error', expect.objectContaining({ message: 'app-server exploded' }));
+    expect(onSessionEnd).toHaveBeenCalledWith('error', expect.any(Error));
+    expect((onSessionEnd.mock.calls[0]?.[1] as Error).message).toContain('app-server exploded');
     expect(client.closed).toBe(true);
   });
 
-  it('sends base64 image attachments as local app-server images and removes the temporary file', async () => {
+  it('keeps the session alive while Codex retries an error itself', async () => {
+    const client = new FakeAppServer();
+    client.completeTurns = false;
+    const onMessage = vi.fn();
+    const onSessionEnd = vi.fn();
+    const session = new CodexChatSession({ context: context(), onMessage, onSessionEnd, registerMcpSession: async () => registration(), createAppServerClient: () => client as unknown as CodexAppServerClient });
+    await session.start('wait');
+    await vi.waitFor(() => expect(client.requests.some((request) => request.method === 'turn/start')).toBe(true));
+
+    client.emit('error', { error: { message: 'stream disconnected', codexErrorInfo: { responseStreamDisconnected: { httpStatusCode: null } } }, willRetry: true, threadId: 'thread-1', turnId: 'turn-1' });
+
+    expect(onSessionEnd).not.toHaveBeenCalled();
+    expect(client.closed).toBe(false);
+    const notice = sentMessages(onMessage).find((msg) => msg.type === 'provider_notice');
+    expect(notice).toMatchObject({ label: 'Retrying' });
+    expect(notice?.type === 'provider_notice' && notice.detail).toContain('stream disconnected');
+    expect(sentMessages(onMessage).some((msg) => msg.type === 'provider_error')).toBe(false);
+    client.emit('turn/completed', { threadId: 'thread-1', turn: { id: 'turn-1', status: 'completed' } });
+    await session.close();
+  });
+
+  it('tells the user to log in to Codex when an error is an auth failure', async () => {
+    const client = new FakeAppServer();
+    client.completeTurns = false;
+    const onSessionEnd = vi.fn();
+    const session = new CodexChatSession({ context: context(), onMessage: vi.fn(), onSessionEnd, registerMcpSession: async () => registration(), createAppServerClient: () => client as unknown as CodexAppServerClient });
+    await session.start('wait');
+    await vi.waitFor(() => expect(client.requests.some((request) => request.method === 'turn/start')).toBe(true));
+
+    client.emit('error', { error: { message: '401 Unauthorized', codexErrorInfo: 'unauthorized' }, willRetry: false });
+
+    const error = onSessionEnd.mock.calls[0]?.[1] as Error;
+    expect(error.message).toMatch(/codex login/);
+    expect(error.message).not.toMatch(/Claude|wait a moment/i);
+  });
+
+  it('reports a failed turn in Codex terms with its guidance and raw message', async () => {
+    const client = new FakeAppServer();
+    client.completeTurns = false;
+    const onMessage = vi.fn();
+    const session = new CodexChatSession({ context: context(), onMessage, registerMcpSession: async () => registration(), createAppServerClient: () => client as unknown as CodexAppServerClient });
+    await session.start('wait');
+    await vi.waitFor(() => expect(client.requests.some((request) => request.method === 'turn/start')).toBe(true));
+
+    client.emit('turn/completed', { threadId: 'thread-1', turn: { id: 'turn-1', status: 'failed', error: { message: 'You hit your usage limit. Try again at 5pm.', codexErrorInfo: 'usageLimitExceeded' } } });
+
+    const failure = sentMessages(onMessage).find((msg) => msg.type === 'provider_error');
+    const text = failure?.type === 'provider_error' ? failure.message : '';
+    expect(text).toMatch(/^Codex usage limit reached\./);
+    expect(text).toContain('Try again at 5pm.');
+    expect(sentMessages(onMessage).some((msg) => msg.type === 'assistant')).toBe(false);
+    await session.close();
+  });
+
+  it('shows a failed tool call as a note on the turn, not a turn error', async () => {
+    const client = new FakeAppServer();
+    client.completeTurns = false;
+    const onMessage = vi.fn();
+    const session = new CodexChatSession({ context: context(), onMessage, registerMcpSession: async () => registration(), createAppServerClient: () => client as unknown as CodexAppServerClient });
+    await session.start('wait');
+    await vi.waitFor(() => expect(client.requests.some((request) => request.method === 'turn/start')).toBe(true));
+
+    client.emit('item/completed', { item: { id: 'tool-1', type: 'mcpToolCall', server: 'linear', tool: 'get_issue', arguments: {}, error: { message: 'issue not found' } } });
+
+    expect(sentMessages(onMessage)).toContainEqual({ type: 'provider_notice', label: 'Tool failed', detail: 'linear/get_issue: issue not found' });
+    expect(sentMessages(onMessage).some((msg) => msg.type === 'provider_error')).toBe(false);
+    client.emit('turn/completed', { threadId: 'thread-1', turn: { id: 'turn-1', status: 'completed' } });
+    await session.close();
+  });
+
+  it('sends image attachments by their own path and inlines text files by name', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'kpm-codex-test-'));
+    const imagePath = join(dir, 'kpm-attach-1.png');
+    const notesPath = join(dir, 'kpm-attach-2.md');
+    writeFileSync(imagePath, 'image');
+    writeFileSync(notesPath, '# Notes');
     const client = new FakeAppServer();
     const session = new CodexChatSession({ context: context(), onMessage: vi.fn(), registerMcpSession: async () => registration(), createAppServerClient: () => client as unknown as CodexAppServerClient });
     await session.start('first');
     await vi.waitFor(() => expect(client.requests.filter((request) => request.method === 'turn/start')).toHaveLength(1));
-    client.completeTurns = false;
-    const content: ContentBlockParam[] = [
-      { type: 'image', source: { type: 'base64', media_type: 'image/png', data: Buffer.from('image').toString('base64') } },
-      { type: 'text', text: 'describe this image' },
-    ];
-    await session.sendUserContent(content);
+
+    await session.sendWithAttachments('', [
+      { kind: 'image', path: imagePath, filename: 'shot.png', mediaType: 'image/png' },
+      { kind: 'text', path: notesPath, filename: 'notes.md', mediaType: 'text/markdown' },
+    ]);
+
     await vi.waitFor(() => expect(client.requests.filter((request) => request.method === 'turn/start')).toHaveLength(2));
-    const input = client.requests[2]?.params.input as { type: string; path?: string }[];
-    const image = input[0];
-    expect(image).toMatchObject({ type: 'localImage' });
-    expect(image?.path && existsSync(image.path)).toBe(true);
-    client.emit('turn/completed', { threadId: 'thread-1', turn: { id: 'turn-1', usage: {} } });
-    await vi.waitFor(() => expect(image?.path && existsSync(image.path)).toBe(false));
+    expect(client.requests[2]?.params.input).toEqual([
+      { type: 'localImage', path: imagePath },
+      { type: 'text', text: '<file name="notes.md">\n# Notes\n</file>' },
+    ]);
   });
 
   it('keeps file and shell writes denied without a project grant', async () => {
@@ -179,5 +289,58 @@ describe('CodexChatSession', () => {
     client.emit('item/started', { item: { id: 'click', type: 'mcpToolCall', server: 'playwright', tool: 'browser_click', arguments: {}, readOnlyHint: false } });
     await expect(client.ask('item/tool/requestUserInput', { itemId: 'click', questions: [{ id: 'approval', options: [{ label: 'Allow' }] }] })).resolves.toEqual({ answers: { approval: { answers: ['Allow'] } } });
     expect(requestExternalApproval).not.toHaveBeenCalled();
+  });
+});
+
+describe('codexToolCalls', () => {
+  function shown(item: Record<string, unknown>) {
+    return codexToolCalls(item).map((call) => ({
+      label: getToolActivity(call.name, call.input)?.label,
+      detail: getToolActivity(call.name, call.input)?.detail,
+      filePaths: extractFilePaths(call.name, call.input),
+    }));
+  }
+
+  it('shows and logs every file a patch changes', () => {
+    expect(shown({ id: 'patch-1', type: 'fileChange', changes: [
+      { path: '/repo/src/a.ts', kind: { type: 'update', move_path: null }, diff: '' },
+      { path: '/repo/src/b.ts', kind: { type: 'add' }, diff: '' },
+    ] })).toEqual([
+      { label: 'a.ts', detail: '/repo/src/a.ts', filePaths: ['/repo/src/a.ts'] },
+      { label: 'b.ts', detail: '/repo/src/b.ts', filePaths: ['/repo/src/b.ts'] },
+    ]);
+  });
+
+  it('labels a web search with its query, not its changes', () => {
+    expect(shown({ id: 'search-1', type: 'webSearch', query: 'vitest mock esm', action: null })).toEqual([
+      { label: 'vitest mock esm', detail: undefined, filePaths: [] },
+    ]);
+  });
+
+  it('surfaces MCP tool arguments in the card detail', () => {
+    expect(shown({ id: 'mcp-1', type: 'mcpToolCall', server: 'linear', tool: 'get_issue', arguments: { id: 'KPM-12' } })).toEqual([
+      { label: 'get issue', detail: 'id=KPM-12', filePaths: [] },
+    ]);
+  });
+});
+
+describe('CodexChatSession web search', () => {
+  it('announces a search once, when its query first arrives', async () => {
+    const client = new FakeAppServer();
+    client.completeTurns = false;
+    const onMessage = vi.fn();
+    const session = new CodexChatSession({ context: context(), onMessage, registerMcpSession: async () => registration(), createAppServerClient: () => client as unknown as CodexAppServerClient });
+    await session.start('search');
+    await vi.waitFor(() => expect(client.requests.some((request) => request.method === 'turn/start')).toBe(true));
+    client.emit('item/started', { item: { id: 'search-1', type: 'webSearch', query: '', action: null } });
+    client.emit('item/completed', { item: { id: 'search-1', type: 'webSearch', query: 'codex app-server', action: null } });
+
+    const blocks = (onMessage.mock.calls as [{ type: string; message?: { content: { type: string }[] } }][])
+      .flatMap(([message]) => message.type === 'assistant' ? message.message?.content ?? [] : []);
+    expect(blocks.filter((block) => block.type === 'tool_use')).toEqual([
+      { type: 'tool_use', id: 'search-1', name: 'WebSearch', input: { query: 'codex app-server' } },
+    ]);
+    client.emit('turn/completed', { threadId: 'thread-1', turn: { id: 'turn-1', status: 'completed' } });
+    await session.close();
   });
 });

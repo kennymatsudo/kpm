@@ -2,6 +2,7 @@ import type {
   ChatChoiceIntent,
   ChatViewMode,
   FocusChatDocument,
+  ChatAttachment,
   FocusedResource,
 } from '../../shared/types';
 
@@ -93,7 +94,7 @@ export function sendChatMessage(params: {
   projectId: string;
   message: string;
   focusedResources: FocusedResource[];
-  tempImages?: string[];
+  attachments?: ChatAttachment[];
   chatSessionId: string;
   currentView?: ChatViewMode;
   clientMessageId: string;
@@ -103,7 +104,7 @@ export function sendChatMessage(params: {
     projectId: params.projectId,
     message: params.message,
     focusedResources: params.focusedResources,
-    tempImages: params.tempImages,
+    attachments: params.attachments,
     chatSessionId: params.chatSessionId,
     currentView: params.currentView,
     clientMessageId: params.clientMessageId,

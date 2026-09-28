@@ -20,6 +20,15 @@ export function formatCurrency(microUsd: number): string {
   return `$${usd.toFixed(2)}`;
 }
 
+/**
+ * Cost of an aggregate row. A row made only of unpriced runs (Codex, which
+ * reports no cost) shows a dash, since its $0 means unknown rather than free.
+ */
+export function formatAggregateCost(row: { cost_micro_usd: number; events: number; unpriced_events: number }): string {
+  if (row.events > 0 && row.unpriced_events >= row.events) return '—';
+  return formatCurrency(row.cost_micro_usd);
+}
+
 /** Full form for tables: "1,234,567". */
 export function formatTokensFull(n: number): string {
   return n.toLocaleString('en-US');

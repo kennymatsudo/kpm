@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  effortLevelsFor,
   formatPlaybookStepTitle,
   getPlaybookLoops,
   getPlaybookValidationIssues,
@@ -344,6 +345,11 @@ function AgentEditor({ step, providers, defaultModel, onChange }: { step: Playbo
               const isDefault = isDefaultAgent(candidate);
               const provider = isDefaultAgent(candidate) ? undefined : providers.find((entry) => entry.id === candidate.provider);
               const effort = candidate.effort;
+              const effortLevels = isDefault
+                ? effortLevelsFor(providers.find((entry) => entry.id === defaultModel?.provider), defaultModel?.model)
+                : effortLevelsFor(provider, candidate.model);
+              // A saved level the model no longer lists stays visible rather than silently reading as default.
+              const effortOptions = effort && !effortLevels.includes(effort) ? [...effortLevels, effort] : effortLevels;
               return (
                 <div key={candidateIndex} className="rounded-md border border-border-subtle bg-surface-1 p-2">
                   <div className="mb-2 flex items-center gap-1 text-tiny text-text-muted">
@@ -358,7 +364,7 @@ function AgentEditor({ step, providers, defaultModel, onChange }: { step: Playbo
                     {isDefaultAgent(candidate)
                       ? <span className="text-tiny text-text-muted">Follows your KPM model{defaultModel ? ` · ${modelName(defaultModel.model)}` : ''}</span>
                       : <select value={candidate.model ?? provider?.models.find((model) => model.isDefault)?.id ?? ''} onChange={(event) => apply(updateAgentCandidate(step, runIndex, candidateIndex, { provider: candidate.provider, model: event.target.value, ...(effort ? { effort } : {}) }))} className="input">{provider?.models.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select>}
-                    <select value={effort ?? ''} onChange={(event) => { const next = (event.target.value || undefined) as AgentCandidate['effort']; apply(updateAgentCandidate(step, runIndex, candidateIndex, isDefaultAgent(candidate) ? { useDefault: true, ...(next ? { effort: next } : {}) } : { provider: candidate.provider, ...(candidate.model ? { model: candidate.model } : {}), ...(next ? { effort: next } : {}) })); }} className="input"><option value="">Default effort</option>{['low','medium','high','xhigh','max'].map((level) => <option key={level} value={level}>{level}</option>)}</select>
+                    {effortOptions.length > 0 && <select value={effort ?? ''} onChange={(event) => { const next = (event.target.value || undefined) as AgentCandidate['effort']; apply(updateAgentCandidate(step, runIndex, candidateIndex, isDefaultAgent(candidate) ? { useDefault: true, ...(next ? { effort: next } : {}) } : { provider: candidate.provider, ...(candidate.model ? { model: candidate.model } : {}), ...(next ? { effort: next } : {}) })); }} className="input"><option value="">Default effort</option>{effortOptions.map((level) => <option key={level} value={level}>{level}</option>)}</select>}
                   </div>
                 </div>
               );

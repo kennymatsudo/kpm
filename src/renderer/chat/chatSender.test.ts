@@ -6,7 +6,7 @@ import {
   type ChatSendOutcome,
 } from './chatSender';
 import type { PerSessionState } from '../stores/chat/types';
-import type { ChatChoiceView, FocusedResource } from '../../shared/types';
+import type { ChatAttachment, ChatChoiceView, FocusedResource } from '../../shared/types';
 
 const PROJECT_ID = 'project-1';
 const SESSION_ID = 'session-1';
@@ -80,6 +80,7 @@ function makeChatState(
 }
 
 const FOCUSED_RESOURCES: FocusedResource[] = [{ type: 'document', id: 'doc-1', title: 'plan.md', path: '/docs/plan.md' }];
+const SHOT: ChatAttachment = { kind: 'image', path: '/tmp/shot.png', filename: 'shot.png', mediaType: 'image/png' };
 
 function makeDeps(chatState: ChatSenderStoreView, overrides: Partial<ChatSenderDeps> = {}) {
   const services = {
@@ -123,7 +124,7 @@ describe('send', () => {
       projectId: PROJECT_ID,
       message: 'hello',
       focusedResources: FOCUSED_RESOURCES,
-      tempImages: undefined,
+      attachments: undefined,
       chatSessionId: SESSION_ID,
       currentView: 'workspace',
       clientMessageId: CLIENT_MESSAGE_ID,
@@ -168,14 +169,18 @@ describe('send', () => {
     );
   });
 
-  it('passes attachment paths as temp images', async () => {
+  it('passes attachments with their kind, not just their paths', async () => {
     const chatState = makeChatState();
     const { deps, services } = makeDeps(chatState);
+    const attachments: ChatAttachment[] = [
+      { kind: 'image', path: '/tmp/shot.png', filename: 'shot.png', mediaType: 'image/png' },
+      { kind: 'pdf', path: '/tmp/spec.pdf', filename: 'spec.pdf' },
+    ];
 
-    await createChatSender(deps).send('look', [{ kind: 'image', path: '/tmp/shot.png', filename: 'shot.png', mediaType: 'image/png' }]);
+    await createChatSender(deps).send('look', attachments);
 
     expect(services.sendChatMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ tempImages: ['/tmp/shot.png'] }),
+      expect.objectContaining({ attachments }),
     );
   });
 });
@@ -262,7 +267,7 @@ describe('retry', () => {
     const chatState = makeChatState();
     const { deps, services } = makeDeps(chatState);
 
-    await createChatSender(deps).retry('hello', CLIENT_MESSAGE_ID, ['/tmp/shot.png']);
+    await createChatSender(deps).retry('hello', CLIENT_MESSAGE_ID, [SHOT]);
 
     expect(chatState.addUserMessage).not.toHaveBeenCalled();
     expect(chatState.setRetrying).toHaveBeenCalledWith(SESSION_ID);
@@ -270,7 +275,7 @@ describe('retry', () => {
       projectId: PROJECT_ID,
       message: 'hello',
       focusedResources: FOCUSED_RESOURCES,
-      tempImages: ['/tmp/shot.png'],
+      attachments: [SHOT],
       chatSessionId: SESSION_ID,
       currentView: 'workspace',
       clientMessageId: CLIENT_MESSAGE_ID,

@@ -27,8 +27,16 @@ export interface ClaudeUsageEvent {
   created_at: string;
 }
 
+/**
+ * `cost_source` of a row whose provider reports no cost and has no local
+ * price (Codex). Its `cost_micro_usd` is 0 and means "unknown", not free.
+ */
+export const UNKNOWN_COST_SOURCE = 'unknown';
+
 export interface ClaudeUsageTotals {
   events: number;
+  /** Events whose cost is unknown; `cost_micro_usd` excludes them. */
+  unpriced_events: number;
   input_tokens: number;
   output_tokens: number;
   cache_creation_tokens: number;
@@ -171,4 +179,5 @@ export interface UsageLiveEvent {
   cacheCreationTokens: number;
   cacheReadTokens: number;
   costMicroUsd: number;
+  costUnknown: boolean;
 }

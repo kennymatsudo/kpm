@@ -1,4 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
+import { mkdtempSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import type * as PiCodingAgent from '@earendil-works/pi-coding-agent';
 import {
   PiChatSession,
@@ -7,12 +10,17 @@ import {
   resolvePiModelSelection,
   resolvePiProjectTrust,
   resolvePiSessionManager,
+  canonicalPiToolCall,
+  selectPiModel,
   type CreatePiSessionFn,
   type PiModelRuntimeHandle,
   type PiWriteConsentFn,
   type PiSessionHandle,
 } from './PiChatSession';
 import type { PlanContext } from '../chat/prompts';
+import type { ProviderChatMessage } from '../services/streaming/providerChatMessage';
+import { getToolActivity } from '../claude/activity';
+import { extractFilePaths } from '../services/toollog/extractFilePaths';
 
 vi.mock('../kpmTools/runtimeRegistry', () => ({
   executeKpmTool: vi.fn(),
@@ -90,6 +98,27 @@ function makeFakeSession(promptImpl?: (text: string) => void | Promise<void>): F
 }
 
 describe('PiChatSession', () => {
+  it('sends image attachments as base64 images and inlines text files by name', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'kpm-pi-test-'));
+    const imagePath = join(dir, 'kpm-attach-1.png');
+    const notesPath = join(dir, 'kpm-attach-2.md');
+    writeFileSync(imagePath, 'image');
+    writeFileSync(notesPath, '# Notes');
+    const fake = makeFakeSession(() => fake.emit({ type: 'agent_end', messages: [], willRetry: false }));
+    const session = new PiChatSession({ context: makeContext(), onMessage: vi.fn(), createSession: async () => fake.handle });
+
+    await session.start('what is this', [
+      { kind: 'image', path: imagePath, filename: 'shot.png', mediaType: 'image/png' },
+      { kind: 'text', path: notesPath, filename: 'notes.md', mediaType: 'text/markdown' },
+    ]);
+
+    await waitFor(() => expect(fake.promptMock).toHaveBeenCalledTimes(1));
+    expect(fake.promptMock).toHaveBeenCalledWith(
+      '<file name="notes.md">\n# Notes\n</file>\n\nwhat is this',
+      { images: [{ type: 'image', data: Buffer.from('image').toString('base64'), mimeType: 'image/png' }] },
+    );
+  });
+
   it('persists a complete assistant text block at message_end from text_delta-only streaming', async () => {
     const fake = makeFakeSession((_text) => {
       fake.emit({
@@ -213,6 +242,62 @@ describe('PiChatSession', () => {
     expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({
       cost: { usd: 0.12, basis: 'per-turn' },
     }));
+  });
+
+  describe('how a turn ends', () => {
+    const errorEnd = (errorMessage: string) => ({ type: 'message_end', message: { role: 'assistant', content: [], stopReason: 'error', errorMessage } });
+    const answerEnd = (text: string, stopReason = 'stop') => ({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text }], stopReason } });
+
+    async function runTurn(events: unknown[]): Promise<ProviderChatMessage[]> {
+      const fake = makeFakeSession(() => { for (const event of events) fake.emit(event); });
+      const onMessage = vi.fn();
+      const session = new PiChatSession({ context: makeContext(), onMessage, createSession: async () => fake.handle });
+      await session.start('hi');
+      await waitFor(() => expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'result' })));
+      return onMessage.mock.calls.map(([msg]) => msg as ProviderChatMessage);
+    }
+
+    it('raises no error for an attempt pi retried and recovered from', async () => {
+      const messages = await runTurn([
+        errorEnd('529 overloaded'),
+        { type: 'auto_retry_start', attempt: 1, maxAttempts: 3, delayMs: 2000, errorMessage: '529 overloaded' },
+        answerEnd('Recovered answer'),
+      ]);
+
+      expect(messages).not.toContainEqual(expect.objectContaining({ type: 'provider_error' }));
+      expect(messages).toContainEqual({ type: 'provider_notice', label: 'Retrying', detail: 'pi hit an error and is retrying in 2s (attempt 1/3): 529 overloaded' });
+    });
+
+    it('reports the final unrecovered error in pi terms, before the result and outside the answer', async () => {
+      const messages = await runTurn([
+        errorEnd('529 overloaded'),
+        { type: 'auto_retry_start', attempt: 1, maxAttempts: 1, delayMs: 0, errorMessage: '529 overloaded' },
+        errorEnd('529 overloaded again'),
+        { type: 'auto_retry_end', success: false, attempt: 1, finalError: '529 overloaded again' },
+      ]);
+
+      const errors = messages.flatMap((msg) => (msg.type === 'provider_error' ? [msg.message] : []));
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toMatch(/^pi stopped with an error\./);
+      expect(errors[0]).toContain('529 overloaded again');
+      expect(errors[0]).not.toMatch(/Claude/);
+      const types = messages.map((msg) => msg.type);
+      expect(types.indexOf('provider_error')).toBeLessThan(types.indexOf('result'));
+      expect(types).not.toContain('assistant');
+    });
+
+    it('flags an answer cut off at the output limit', async () => {
+      const messages = await runTurn([answerEnd('Half an answ', 'length')]);
+
+      expect(messages).toContainEqual(expect.objectContaining({ type: 'result', outputLimitReached: true }));
+    });
+
+    it('does not flag a truncation pi recovered from by continuing', async () => {
+      const messages = await runTurn([answerEnd('Half', 'length'), answerEnd('Whole answer')]);
+
+      const result = messages.find((msg) => msg.type === 'result');
+      expect(result).not.toHaveProperty('outputLimitReached');
+    });
   });
 
   it('interrupt() calls session.abort()', async () => {
@@ -659,5 +744,47 @@ describe('resolvePiModelSelection', () => {
     const runtime = makeFakeModelRuntime([{ provider: 'openai-codex', id: 'gpt-5.4' }]);
 
     await expect(resolvePiModelSelection(runtime, { provider: 'cursor', modelId: 'auto' })).resolves.toBeUndefined();
+  });
+});
+
+describe('canonicalPiToolCall', () => {
+  it.each([
+    ['read', { path: '/repo/src/a.ts', offset: 10 }, 'a.ts', ['/repo/src/a.ts']],
+    ['edit', { path: '/repo/src/a.ts', oldText: 'x', newText: 'y' }, 'a.ts', ['/repo/src/a.ts']],
+    ['write', { path: '/repo/NOTES.md', content: 'hi' }, 'NOTES.md', ['/repo/NOTES.md']],
+    ['bash', { command: 'npm test' }, 'npm', []],
+    ['grep', { pattern: 'TODO', path: '/repo/src' }, 'src', ['/repo/src']],
+  ])('shows and logs pi %s with its path or command', (toolName, input, label, filePaths) => {
+    const call = canonicalPiToolCall(toolName, input);
+    expect(getToolActivity(call.name, call.input)?.label).toBe(label);
+    expect(extractFilePaths(call.name, call.input)).toEqual(filePaths);
+  });
+
+  it('leaves KPM and extension tools under their own names', () => {
+    expect(canonicalPiToolCall('get_plan_items', { status: 'open' })).toEqual({ name: 'get_plan_items', input: { status: 'open' } });
+  });
+});
+
+describe('selectPiModel', () => {
+  it("applies KPM's thinking level after the model switch that resets it", async () => {
+    const calls: string[] = [];
+    const session = {
+      thinkingLevel: 'high',
+      async setModel(model: string) { calls.push(`model:${model}`); this.thinkingLevel = 'from-pi-settings'; },
+      setThinkingLevel(level: string) { calls.push(`thinking:${level}`); this.thinkingLevel = level; },
+    };
+
+    await selectPiModel(session, 'openai/gpt-5.5', 'low');
+
+    expect(calls).toEqual(['model:openai/gpt-5.5', 'thinking:low']);
+    expect(session.thinkingLevel).toBe('low');
+  });
+
+  it("keeps pi's own level when KPM has none to apply", async () => {
+    const session = { setModel: vi.fn(async () => {}), setThinkingLevel: vi.fn() };
+
+    await selectPiModel(session, 'openai/gpt-5.5', undefined);
+
+    expect(session.setThinkingLevel).not.toHaveBeenCalled();
   });
 });

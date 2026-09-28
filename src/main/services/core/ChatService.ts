@@ -1,5 +1,4 @@
 import { randomUUID } from 'crypto';
-import * as path from 'path';
 import type { IChatMessageRepository, IChatSessionRepository, IProjectRepository, IRepoRepository } from '../../db/interfaces';
 import type {
   ChatAttachment,
@@ -16,6 +15,7 @@ import type { StreamingSessionService } from '../streaming/StreamingSessionServi
 import type { SlashCommandService } from './SlashCommandService';
 import type { ChatModelChoiceService } from '../../chat/modelChoice';
 import { resolveEffectiveRepoPath } from '../../../shared/repoPath';
+import { unsupportedAttachmentError } from '../../../shared/providerCapabilities';
 
 export interface ChatServiceDeps {
   projects: IProjectRepository;
@@ -43,13 +43,6 @@ export interface SendChatMessageInput {
   providerModel?: string;
   /** @deprecated Ignored when the authoritative model-choice module is configured. */
   effort?: 'low' | 'medium' | 'high' | 'max';
-  /**
-   * Wire-format list of paste-derived temp image absolute paths. Backward-
-   * compatible with the existing IPC boundary; converted to {@link ChatAttachment}
-   * before reaching the streaming layer.
-   */
-  tempImages?: string[];
-  /** Pre-built attachment list. Takes precedence when present. */
   attachments?: ChatAttachment[];
   chatSessionId?: string;
   clientMessageId?: string;
@@ -82,48 +75,6 @@ export interface FocusDocumentSessionResult {
 }
 
 /**
- * Map a paste-derived temp image path to a structured {@link ChatAttachment}.
- *
- * The renderer's paste flow only produces images today (PNG/JPEG/GIF/WebP);
- * BMP is supported by the temp-image cache but the SDK rejects it, so we
- * surface a clear error rather than silently dropping it.
- */
-function tempImagePathToAttachment(filePath: string): ChatAttachment {
-  const ext = path.extname(filePath).toLowerCase();
-  const filename = path.basename(filePath);
-  switch (ext) {
-    case '.png':
-      return { kind: 'image', path: filePath, filename, mediaType: 'image/png' };
-    case '.jpg':
-    case '.jpeg':
-      return { kind: 'image', path: filePath, filename, mediaType: 'image/jpeg' };
-    case '.gif':
-      return { kind: 'image', path: filePath, filename, mediaType: 'image/gif' };
-    case '.webp':
-      return { kind: 'image', path: filePath, filename, mediaType: 'image/webp' };
-    case '.bmp':
-      throw new Error(
-        `BMP images aren't supported by the model. Convert "${filename}" to PNG, JPEG, GIF, or WebP and try again.`,
-      );
-    default:
-      throw new Error(`Unsupported attachment type "${ext}" for "${filename}"`);
-  }
-}
-
-function buildAttachments(
-  tempImages: string[] | undefined,
-  attachments: ChatAttachment[] | undefined,
-): ChatAttachment[] {
-  if (attachments && attachments.length > 0) {
-    return attachments;
-  }
-  if (!tempImages || tempImages.length === 0) {
-    return [];
-  }
-  return tempImages.map(tempImagePathToAttachment);
-}
-
-/**
  * The chat behaviours that don't belong on the streaming service or a
  * repository: message-send orchestration (attachment conversion, acceptance
  * persistence, error events), project chat reset, project-wide disconnect
@@ -141,17 +92,20 @@ export function createChatService(deps: ChatServiceDeps) {
   function persistAcceptedUserMessage(
     projectId: string,
     message: string,
+    attachments: ChatAttachment[],
     chatSessionId: string | undefined,
     clientMessageId: string | undefined,
     provider: ChatProvider,
   ): void {
     try {
-      // Persist the plain user text — no attachment prefix. Attachment
-      // metadata persistence lands in Phase 3.
+      // Attachments are not persisted, so an attachment-only message is
+      // stored as the file names; otherwise history would show an empty bubble.
+      // Display only: providers resume from their own transcripts.
+      const displayText = message.trim() || `Attached ${attachments.map((a) => a.filename).join(', ')}`;
       deps.chatMessages.addMessage(
         projectId,
         'user',
-        message,
+        displayText,
         chatSessionId,
         clientMessageId,
         provider,
@@ -183,8 +137,7 @@ export function createChatService(deps: ChatServiceDeps) {
       const {
         projectId,
         message,
-        tempImages,
-        attachments: providedAttachments,
+        attachments = [],
         chatSessionId,
         clientMessageId,
       } = input;
@@ -193,16 +146,6 @@ export function createChatService(deps: ChatServiceDeps) {
         if (!project) {
           emitError(projectId, chatSessionId, 'Project not found');
           return failure('Project not found');
-        }
-
-        let attachments: ChatAttachment[];
-        try {
-          attachments = buildAttachments(tempImages, providedAttachments);
-        } catch (conversionError) {
-          const errorText =
-            conversionError instanceof Error ? conversionError.message : 'Unsupported attachment';
-          emitError(projectId, chatSessionId, errorText);
-          return failure(errorText);
         }
 
         const expansion = deps.slashCommandService?.expandPiPromptInvocation(message, {
@@ -241,6 +184,11 @@ export function createChatService(deps: ChatServiceDeps) {
           emitError(projectId, chatSessionId, resolvedChoice.error);
           return failure(resolvedChoice.error);
         }
+        const unsupported = unsupportedAttachmentError(resolvedChoice.data.provider, attachments);
+        if (unsupported) {
+          emitError(projectId, chatSessionId, unsupported);
+          return failure(unsupported);
+        }
 
         const result = await deps.streamingSessionService.sendChatMessage(
           projectId,
@@ -271,6 +219,7 @@ export function createChatService(deps: ChatServiceDeps) {
         persistAcceptedUserMessage(
           projectId,
           message,
+          attachments,
           chatSessionId,
           clientMessageId,
           resolvedChoice.data.provider,

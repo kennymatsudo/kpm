@@ -124,6 +124,58 @@ describe('finalizeTurnResult', () => {
     expect((errorEvent!.payload as { error: string }).error).toMatch(/not signed in.*\/login/i);
   });
 
+  describe('banners for how the turn ended', () => {
+    const errors = (sent: { channel: string; payload: unknown }[]) =>
+      sent.filter((e) => e.channel === 'chat:error').map((e) => (e.payload as { error: string }).error);
+
+    it('tells the user when an adapter reports the output limit', () => {
+      const { sent, window } = fakeWindow();
+
+      finalizeTurnResult('key', 'project-1', 'session-1', makeManaged({ provider: 'pi' }), { type: 'result', usage: undefined, outputLimitReached: true }, window, makeDeps());
+
+      expect(errors(sent)).toEqual(['Response reached the output limit. Send another message to continue.']);
+      expect(sent.some((e) => e.channel === 'chat:truncated')).toBe(true);
+    });
+
+    it.each(['api_error', 'turn_setup_failed', 'malformed_tool_use_exhausted', 'image_error', 'tool_deferred_unavailable', 'budget_exhausted'])(
+      'explains a turn Claude ended with %s',
+      (terminal_reason) => {
+        const { sent, window } = fakeWindow();
+
+        finalizeTurnResult('key', 'project-1', 'session-1', makeManaged(), { type: 'result', usage: undefined, terminal_reason }, window, makeDeps());
+
+        expect(errors(sent)).toHaveLength(1);
+        expect(errors(sent)[0]).toMatch(/^Response stopped/);
+      },
+    );
+
+    it('sends the banner after the turn is finalized, so the answer keeps its model and token details', () => {
+      const { sent, window } = fakeWindow();
+
+      finalizeTurnResult('key', 'project-1', 'session-1', makeManaged(), { type: 'result', usage: undefined, terminal_reason: 'api_error' }, window, makeDeps());
+
+      const channels = sent.map((e) => e.channel);
+      expect(channels.indexOf('chat:done')).toBeGreaterThanOrEqual(0);
+      expect(channels.indexOf('chat:error')).toBeGreaterThan(channels.indexOf('chat:done'));
+    });
+
+    it.each(['completed', 'aborted_streaming', 'background_requested'])('stays quiet when Claude ended with %s', (terminal_reason) => {
+      const { sent, window } = fakeWindow();
+
+      finalizeTurnResult('key', 'project-1', 'session-1', makeManaged(), { type: 'result', usage: undefined, terminal_reason }, window, makeDeps());
+
+      expect(errors(sent)).toEqual([]);
+    });
+
+    it('adds no second banner when the turn already surfaced an error', () => {
+      const { sent, window } = fakeWindow();
+
+      finalizeTurnResult('key', 'project-1', 'session-1', makeManaged({ turnErrorSurfaced: true }), { type: 'result', usage: undefined, terminal_reason: 'api_error' }, window, makeDeps());
+
+      expect(errors(sent)).toEqual([]);
+    });
+  });
+
   it('stays processing and skips chat:session-ready when a follow-up is already queued', () => {
     const managed = makeManaged({
       session: { pendingQueuedCount: () => 1 } as unknown as ManagedSessionArg['session'],
@@ -250,6 +302,31 @@ describe('finalizeTurnResult', () => {
         totalCostUsd: 0.12,
         isCumulativeCostSnapshot: false,
       }));
+    });
+  });
+
+  describe('adapter-built usage', () => {
+    it('records an unpriced turn under the model that answered, and fills the context bar from the last request', () => {
+      const deps = makeDeps();
+      const { sent, window } = fakeWindow();
+      const managed = makeManaged({ provider: 'codex', providerModel: 'gpt-5.5' });
+
+      finalizeTurnResult('key', 'project-1', 'session-1', managed, {
+        type: 'result',
+        usage: { input_tokens: 50, output_tokens: 25, cache_read_input_tokens: 200, cache_creation_input_tokens: 0 },
+        contextUsage: { input_tokens: 30, output_tokens: 15, cache_read_input_tokens: 120, cache_creation_input_tokens: 0 },
+        model: 'gpt-5.5-2026-09-01',
+        costUnknown: true,
+      }, window, deps);
+
+      expect(deps.recordUsage).toHaveBeenCalledWith(expect.objectContaining({
+        model: 'gpt-5.5-2026-09-01',
+        usage: expect.objectContaining({ input_tokens: 50, cache_read_input_tokens: 200 }),
+        totalCostUsd: null,
+        costUnknown: true,
+      }));
+      const done = sent.find((event) => event.channel === 'chat:done')!.payload as { inputTokens?: number; cacheReadTokens?: number };
+      expect(done).toMatchObject({ inputTokens: 30, cacheReadTokens: 120 });
     });
   });
 
