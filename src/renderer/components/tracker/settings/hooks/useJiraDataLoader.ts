@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useExportStore } from '../../../../stores';
 import {
+  trackerMetadataKey,
   useTrackerMetadataStore,
   type TrackerIssueTypeOption,
   type TrackerStatusOption,
@@ -53,7 +54,8 @@ export function useJiraDataLoader({
     saveMapping,
     removeMapping,
   } = useExportStore();
-  const statusCacheKey = projectKey ? `${trackerType}:${projectKey}` : '';
+  // Statuses and issue types share one key per tracker + project.
+  const metadataKey = projectKey ? trackerMetadataKey(trackerType, projectKey) : '';
   const {
     jiraIssueTypes,
     jiraStatuses,
@@ -65,14 +67,12 @@ export function useJiraDataLoader({
     loadStatuses,
   } = useTrackerMetadataStore(
     useShallow((state) => ({
-      jiraIssueTypes: projectKey
-        ? state.issueTypesByProject[projectKey] ?? EMPTY_ISSUE_TYPES
-        : EMPTY_ISSUE_TYPES,
-      jiraStatuses: statusCacheKey ? state.statusesByProject[statusCacheKey] ?? EMPTY_STATUSES : EMPTY_STATUSES,
-      isLoadingTypesForProject: Boolean(projectKey) && state.loadingIssueTypesFor.has(projectKey),
-      isLoadingStatusesForProject: Boolean(statusCacheKey) && state.loadingStatusesFor.has(statusCacheKey),
-      typesError: projectKey ? state.issueTypesErrorByProject[projectKey] || null : null,
-      statusesError: statusCacheKey ? state.statusesErrorByProject[statusCacheKey] || null : null,
+      jiraIssueTypes: metadataKey ? state.issueTypesByProject[metadataKey] ?? EMPTY_ISSUE_TYPES : EMPTY_ISSUE_TYPES,
+      jiraStatuses: metadataKey ? state.statusesByProject[metadataKey] ?? EMPTY_STATUSES : EMPTY_STATUSES,
+      isLoadingTypesForProject: Boolean(metadataKey) && state.loadingIssueTypesFor.has(metadataKey),
+      isLoadingStatusesForProject: Boolean(metadataKey) && state.loadingStatusesFor.has(metadataKey),
+      typesError: metadataKey ? state.issueTypesErrorByProject[metadataKey] || null : null,
+      statusesError: metadataKey ? state.statusesErrorByProject[metadataKey] || null : null,
       loadIssueTypes: state.loadIssueTypes,
       loadStatuses: state.loadStatuses,
     }))
@@ -85,7 +85,7 @@ export function useJiraDataLoader({
     if (projectKey) {
       // Linear has no `issueTypes` concept, so don't fetch them.
       if (trackerType === 'jira') {
-        void loadIssueTypes(projectKey);
+        void loadIssueTypes(projectKey, trackerType);
       }
       void loadStatuses(projectKey, trackerType);
     }

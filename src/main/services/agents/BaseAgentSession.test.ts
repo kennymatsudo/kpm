@@ -260,47 +260,71 @@ describe('BaseAgentSession.completeOnce', () => {
 });
 
 describe('BaseAgentSession.computeGitDiffSummary', () => {
-  it('returns zeros when cwd is undefined', async () => {
-    const session = makeSession();
-    await expect(session.diffSummary(undefined)).resolves.toEqual({
-      filesChanged: 0,
-      additions: 0,
-      deletions: 0,
-    });
-  });
+  const unknown = { filesChanged: 0, additions: 0, deletions: 0, diffUnknown: true };
 
-  it('parses real git diff --stat output from a worktree', async () => {
+  async function git(cwd: string, ...args: string[]): Promise<string> {
+    return (await execFileAsync('git', args, { cwd })).stdout.trim();
+  }
+
+  async function withRepo(run: (repoDir: string) => Promise<void>): Promise<void> {
     const repoDir = await mkdtemp(path.join(tmpdir(), 'base-agent-session-diff-'));
     try {
-      await execFileAsync('git', ['init'], { cwd: repoDir });
-      await execFileAsync('git', ['config', 'user.email', 'test@example.com'], { cwd: repoDir });
-      await execFileAsync('git', ['config', 'user.name', 'Test'], { cwd: repoDir });
+      await git(repoDir, 'init');
+      await git(repoDir, 'config', 'user.email', 'test@example.com');
+      await git(repoDir, 'config', 'user.name', 'Test');
       await writeFile(path.join(repoDir, 'file.txt'), 'line one\nline two\nline three\n');
-      await execFileAsync('git', ['add', '.'], { cwd: repoDir });
-      await execFileAsync('git', ['commit', '-m', 'initial'], { cwd: repoDir });
-
-      await writeFile(path.join(repoDir, 'file.txt'), 'line one\nline two changed\nline three\nline four\n');
-
-      const session = makeSession();
-      const summary = await session.diffSummary(repoDir);
-
-      expect(summary.filesChanged).toBe(1);
-      expect(summary.additions).toBeGreaterThan(0);
-      expect(summary.deletions).toBeGreaterThan(0);
+      await git(repoDir, 'add', '.');
+      await git(repoDir, 'commit', '-m', 'initial');
+      await run(repoDir);
     } finally {
       await rm(repoDir, { recursive: true, force: true });
     }
+  }
+
+  it('reports the diff as unknown when there is no worktree', async () => {
+    await expect(makeSession().diffSummary(undefined)).resolves.toEqual(unknown);
   });
 
-  it('returns zeros when cwd is not a git repository', async () => {
+  it('counts uncommitted edits to tracked files', async () => {
+    await withRepo(async (repoDir) => {
+      await writeFile(path.join(repoDir, 'file.txt'), 'line one\nline two changed\nline three\nline four\n');
+
+      await expect(makeSession().diffSummary(repoDir)).resolves.toEqual({ filesChanged: 1, additions: 2, deletions: 1 });
+    });
+  });
+
+  it('counts new untracked files and their lines without staging them', async () => {
+    await withRepo(async (repoDir) => {
+      await writeFile(path.join(repoDir, 'new.ts'), 'a\nb\nc');
+      await writeFile(path.join(repoDir, '.gitignore'), 'ignored.log\n');
+      await writeFile(path.join(repoDir, 'ignored.log'), 'noise\n');
+
+      const summary = await makeSession().diffSummary(repoDir);
+
+      // new.ts (3 lines) and .gitignore (1 line); the ignored file is not work.
+      expect(summary).toEqual({ filesChanged: 2, additions: 4, deletions: 0 });
+      expect(await git(repoDir, 'diff', '--cached', '--name-only')).toBe('');
+    });
+  });
+
+  it('measures from the session base so turns committed earlier still count', async () => {
+    await withRepo(async (repoDir) => {
+      const base = await git(repoDir, 'rev-parse', 'HEAD');
+      await writeFile(path.join(repoDir, 'first-turn.ts'), 'one\ntwo\n');
+      await git(repoDir, 'add', '.');
+      await git(repoDir, 'commit', '-m', 'turn 1');
+      await writeFile(path.join(repoDir, 'file.txt'), 'line one\nline two\nline three\nline four\n');
+
+      const session = new TestAgentSession('test-id', 'implement', false, base);
+
+      await expect(session.diffSummary(repoDir)).resolves.toEqual({ filesChanged: 2, additions: 3, deletions: 0 });
+    });
+  });
+
+  it('reports the diff as unknown when cwd is not a git repository', async () => {
     const nonRepoDir = await mkdtemp(path.join(tmpdir(), 'base-agent-session-nonrepo-'));
     try {
-      const session = makeSession();
-      await expect(session.diffSummary(nonRepoDir)).resolves.toEqual({
-        filesChanged: 0,
-        additions: 0,
-        deletions: 0,
-      });
+      await expect(makeSession().diffSummary(nonRepoDir)).resolves.toEqual(unknown);
     } finally {
       await rm(nonRepoDir, { recursive: true, force: true });
     }

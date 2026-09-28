@@ -5,7 +5,7 @@ import { connectedRepoName } from '../planning/RepositoryScopeEditor';
 import { useDevSessionsStore } from '../../stores/devSessions';
 import { useResourceDomainStore } from '../../stores';
 import { CardActivityLine } from './CardActivityLine';
-import { derivePanelStatus, type PanelPhase, type NextAction } from './panelStatus';
+import { derivePanelStatus, toDiffStats, type PanelPhase, type NextAction } from './panelStatus';
 import {
   buildReviewActionableLabel,
   resolveCardIndicator,
@@ -283,9 +283,7 @@ export const BoardCard = memo(function BoardCard({
     latestActivitySummary: (reviewIsActive ? latestReviewActivity : latestActivity)?.summary ?? null,
     terminalReason: completionStats?.terminalReason ?? null,
     elapsedMs: null,
-    diffStats: completionStats
-      ? { files: completionStats.filesChanged, additions: completionStats.additions, deletions: completionStats.deletions }
-      : null,
+    diffStats: toDiffStats(completionStats),
     mergeBlockedBy: mergeBlockedByNames,
   });
 

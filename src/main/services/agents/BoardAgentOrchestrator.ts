@@ -12,7 +12,7 @@ import type { ReviewService } from '../repo/ReviewService';
 import type { AgentSessionManager, AgentSessionManagerDeps } from './AgentSessionManager';
 import { launchPlaybookSubagent, toPlaybookSubagentSessionId } from './autoReview';
 import { isBlockingFinding } from './reviewOutputContract';
-import { createPlaybookRoundStore, type FindingRef, type RoundFinding, type RunGroup } from './playbookRoundStore';
+import { createPlaybookRoundStore, withRunAxis, type FindingRef, type RoundFinding, type RunGroup } from './playbookRoundStore';
 import { listBoardProviders as detectBoardProviders } from './boardProviderRegistry';
 import { failure, type ServiceResult } from '../result';
 import type { AutomationPhaseMachine } from './automationPhaseMachine';
@@ -479,11 +479,9 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
     else {
       if (!group.succeeded.has(params.runIndex)) {
         group.succeeded.add(params.runIndex);
-        const axis = params.step.runOverrides?.[params.runIndex]?.axis;
         const reviewSessionId = toPlaybookSubagentSessionId(params.session.id, params.step.id, group.attempt, params.runIndex);
-        group.findings.push(...(params.findings ?? []).map((finding, order) => ({
+        group.findings.push(...withRunAxis(params.findings ?? [], params.step, params.runIndex).map((finding, order) => ({
           ...finding,
-          ...(axis ? { axis: finding.axis ?? axis } : {}),
           ref: { reviewSessionId, order },
         })));
       }
@@ -574,6 +572,8 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
     },
 
     persistReviewResult: ({ implementationSessionId, reviewSessionId, reviewerAgent, findings, rawOutput, stepId, runIndex }) => {
+      const session = stepId ? deps.getDevSessionService()?.get(implementationSessionId) : undefined;
+      const step = session && stepId ? stepById(playbookForSession(session), stepId) : undefined;
       deps.agentReviews.persistCompletedReview({
         implementation_session_id: implementationSessionId,
         review_session_id: reviewSessionId,
@@ -581,7 +581,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
         raw_output: rawOutput,
         step_id: stepId ?? null,
         run_index: runIndex ?? null,
-        findings,
+        findings: withRunAxis(findings, step, runIndex),
       });
     },
 
@@ -708,6 +708,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
           cache_read_input_tokens: usage.cacheReadTokens,
         },
         totalCostUsd: usage.totalCostUsd,
+        costUnknown: usage.costUnknown,
         sdkSessionId: usage.sdkSessionId,
         sdkResultUuid: usage.sdkResultUuid,
         sdkCostScope: usage.sdkCostScope,

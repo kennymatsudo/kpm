@@ -4758,6 +4758,19 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    id: 1131,
+    name: '131_agent_review_finding_axis',
+    up: (db: BetterSqliteDatabase) => {
+      // The review lens (standards, spec) a finding came from. The implementer
+      // prompt groups findings by it, so it has to survive a restart. Rows from
+      // before this column read as NULL and fall back to the step's run lens.
+      db.exec(`
+        ALTER TABLE agent_review_findings
+          ADD COLUMN axis TEXT CHECK(axis IN ('standards', 'spec', 'general'));
+      `);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

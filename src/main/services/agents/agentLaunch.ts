@@ -58,6 +58,8 @@ export interface BoardLaunchRequest {
   /** False puts the provider in its read-only mode. */
   writes: boolean;
   expectsFindings?: boolean;
+  /** Commit the completion stats measure from; the session's fork point for an implement run. */
+  diffBase?: string | null;
   environmentMode?: RepoEnvironmentMode;
   /** Set for a subagent so its completion resolves back to the run that launched it. */
   relationship?: { implementationSessionId: string; stepId: string; runIndex: number };
@@ -147,6 +149,7 @@ export async function createBoardAgentSession(
     effort: provider === 'codex' || provider === 'pi' ? effort : undefined,
     readOnly: !request.writes,
     expectsFindings: request.expectsFindings,
+    diffBase: request.diffBase,
     implementationSessionId: request.relationship?.implementationSessionId,
     stepId: request.relationship?.stepId,
     runIndex: request.relationship?.runIndex,

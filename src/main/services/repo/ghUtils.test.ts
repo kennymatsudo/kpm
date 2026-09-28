@@ -1,8 +1,18 @@
-import { describe, expect, it } from 'vitest';
+import type * as ChildProcess from 'child_process';
+import { describe, expect, it, vi } from 'vitest';
+
+const execFileMock = vi.hoisted(() => vi.fn());
+vi.mock('child_process', async (importOriginal) => ({
+  ...(await importOriginal<typeof ChildProcess>()),
+  execFile: execFileMock,
+}));
+
 import {
   buildCreatePrArgs,
   buildGraphQLPayload,
   classifyGhAuthError,
+  getPrByNumber,
+  parsePrIdentifier,
   parseCreatePrOutput,
   parseGhAuthOutput,
   parsePrRef,
@@ -176,5 +186,46 @@ describe('parsePrRef', () => {
     ['a branch name', 'feature/frustration-score'],
   ])('rejects %s', (_case, input) => {
     expect(parsePrRef(input)).toBeNull();
+  });
+});
+
+describe('parsePrIdentifier', () => {
+  it('keeps the repository a URL names', () => {
+    expect(parsePrIdentifier('https://github.com/org/b/pull/12/files')).toEqual({
+      number: 12,
+      repo: { owner: 'org', name: 'b' },
+    });
+  });
+
+  it.each(['12', '#12', ' 12 '])('leaves the repository open for %j', (input) => {
+    expect(parsePrIdentifier(input)).toEqual({ number: 12, repo: null });
+  });
+
+  it('rejects anything else', () => {
+    expect(parsePrIdentifier('--repo=x')).toBeNull();
+  });
+});
+
+describe('getPrByNumber', () => {
+  function failGhWith(error: Error) {
+    execFileMock.mockImplementation((_file, _args, _options, callback: (err: Error) => void) => {
+      callback(error);
+    });
+  }
+
+  it('returns null when the repository has no such PR', async () => {
+    failGhWith(execError({ stderr: 'GraphQL: Could not resolve to a PullRequest with the number of 99. (repository.pullRequest)' }));
+
+    await expect(getPrByNumber('/repo', 99)).resolves.toBeNull();
+  });
+
+  it.each([
+    ['a rejected credential', execError({ stderr: 'HTTP 401: Bad credentials (https://api.github.com/graphql)' })],
+    ['a missing gh binary', execError({ code: 'ENOENT' })],
+    ['a dropped connection', execError({ stderr: 'error connecting to api.github.com' })],
+  ])('throws on %s so it is not reported as not found', async (_case, error) => {
+    failGhWith(error);
+
+    await expect(getPrByNumber('/repo', 12)).rejects.toBe(error);
   });
 });

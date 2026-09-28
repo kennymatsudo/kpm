@@ -117,6 +117,8 @@ export interface ClaudeSdkSessionConfig {
   /** SDK options to pass to query() */
   sdkOptions: SDKOptions;
   expectsFindings?: boolean;
+  /** Commit the completion stats measure from; see `BaseAgentSession.diffBase`. */
+  diffBase?: string | null;
   readOnly?: boolean;
 }
 
@@ -139,7 +141,7 @@ export class ClaudeSdkSession extends BaseAgentSession implements IAgentSession 
   private lastMessageText: string | null = null;
 
   constructor(config: ClaudeSdkSessionConfig) {
-    super(config.id, config.role, config.expectsFindings);
+    super(config.id, config.role, config.expectsFindings, config.diffBase);
     this.sdkOptions = config.sdkOptions;
     this.readOnly = config.readOnly ?? false;
   }

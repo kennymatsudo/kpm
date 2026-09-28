@@ -11,7 +11,7 @@ import {
   useWorkspaceStore,
 } from '../../stores';
 import { useResourceDomainActions } from '../../hooks/useStoreActions';
-import { isImageFile, formatFileSize } from '../../utils/image';
+import { isImageFile } from '../../utils/image';
 import { RepoListSection } from './RepoListSection';
 import { ProjectFilesTreeSection } from './ProjectFilesTreeSection';
 import type { FileNode, FocusedResource } from '../../../shared/types';
@@ -22,12 +22,15 @@ import {
   copyExternalProjectFile,
   createProjectBinaryFile,
   createProjectTextFile,
+  getDroppedFilePath,
   showProjectItemInFolder,
   unwatchProjectFiles,
   watchProjectFiles,
 } from '../../services/projectFileService';
 import { listRepoWorktrees, openRepoInEditor, showRepoInFolder } from '../../services/repoService';
 import { ReposAndFilesOverlays } from './ReposAndFilesOverlays';
+import { planExternalFileImport } from './externalFileImport';
+import { toast } from '../../stores/toastStore';
 import {
   useFileViewers,
   useFileContextMenus,
@@ -36,8 +39,6 @@ import {
   useAddMenu,
 } from './hooks';
 
-const MAX_EXTERNAL_FILE_BYTES = 50 * 1024 * 1024; // 50MB
-const MAX_TEXT_FILE_BYTES = 10 * 1024 * 1024; // 10MB (matches createFile validation)
 
 interface ReposAndFilesSectionProps {
   projectId: string;
@@ -492,48 +493,29 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
     async (files: FileList, targetPath: string) => {
       if (!projectId) return;
 
+      const failures: string[] = [];
       for (const file of Array.from(files)) {
         try {
           const newPath = targetPath ? `${targetPath}/${file.name}` : file.name;
-          const filePath = (file as File & { path?: string }).path;
-          const isText = isTextFile(file.name);
+          const plan = planExternalFileImport(file, getDroppedFilePath(file), isTextFile(file.name));
 
-          if (file.size > MAX_EXTERNAL_FILE_BYTES) {
-            console.error(
-              `File too large to import (${formatFileSize(file.size)}). Max ${formatFileSize(MAX_EXTERNAL_FILE_BYTES)}.`
-            );
-            continue;
+          if (plan.kind === 'skip') {
+            failures.push(`${file.name}: ${plan.reason}`);
+          } else if (plan.kind === 'copy') {
+            await copyExternalProjectFile({ projectId, sourcePath: plan.sourcePath, path: newPath });
+          } else if (plan.kind === 'text') {
+            await createProjectTextFile({ projectId, path: newPath, content: await file.text() });
+          } else {
+            const data = new Uint8Array(await file.arrayBuffer());
+            await createProjectBinaryFile({ projectId, path: newPath, data });
           }
-
-          if (isText) {
-            if (filePath && file.size > MAX_TEXT_FILE_BYTES) {
-              await copyExternalProjectFile({ projectId, sourcePath: filePath, path: newPath });
-              continue;
-            }
-
-            if (file.size > MAX_TEXT_FILE_BYTES) {
-              console.error(
-                `Text file too large to import (${formatFileSize(file.size)}). Max ${formatFileSize(MAX_TEXT_FILE_BYTES)}.`
-              );
-              continue;
-            }
-
-            const content = await file.text();
-            await createProjectTextFile({ projectId, path: newPath, content });
-            continue;
-          }
-
-          if (filePath) {
-            await copyExternalProjectFile({ projectId, sourcePath: filePath, path: newPath });
-            continue;
-          }
-
-          const arrayBuffer = await file.arrayBuffer();
-          const data = new Uint8Array(arrayBuffer);
-          await createProjectBinaryFile({ projectId, path: newPath, data });
         } catch (err) {
-          console.error(`Failed to copy file ${file.name}:`, err);
+          failures.push(`${file.name}: ${err instanceof Error ? err.message : String(err)}`);
         }
+      }
+
+      if (failures.length > 0) {
+        toast.error(`Could not add ${failures.length === 1 ? 'a file' : `${failures.length} files`}. ${failures.join(' ')}`);
       }
 
       void loadProjectDirectory(projectId, targetPath || undefined);

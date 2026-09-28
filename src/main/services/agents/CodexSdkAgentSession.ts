@@ -16,6 +16,7 @@ import {
   type ThreadItem,
   type ThreadOptions,
   type TurnOptions,
+  type Usage,
 } from '@openai/codex-sdk';
 import { BaseAgentSession } from './BaseAgentSession';
 import { findCodexBinaryPath } from '../../codex/binary';
@@ -27,6 +28,7 @@ import {
   todoListProgress,
   truncateCodexText,
 } from '../../codex/threadItemPresentation';
+import { readCodexTokenCounts, subtractCodexTokens, toKpmUsage, ZERO_CODEX_TOKENS, type CodexTokenCounts } from '../../codex/codexUsage';
 import { REVIEW_FINDINGS_SCHEMA } from './reviewOutputContract';
 import type {
   AgentCompletionSummary,
@@ -43,6 +45,8 @@ export interface CodexSdkAgentSessionConfig {
   model?: string;
   effort?: AgentEffortLevel;
   expectsFindings?: boolean;
+  /** Commit the completion stats measure from; see `BaseAgentSession.diffBase`. */
+  diffBase?: string | null;
   readOnly?: boolean;
 }
 
@@ -74,9 +78,10 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
   private lastAssistantMessage = '';
   private readonly structuredFindings: boolean;
   private readonly readOnly: boolean;
+  private threadUsageTotal: CodexTokenCounts = ZERO_CODEX_TOKENS;
 
   constructor(config: CodexSdkAgentSessionConfig) {
-    super(config.id, config.role, config.expectsFindings);
+    super(config.id, config.role, config.expectsFindings, config.diffBase);
     this.model = config.model;
     this.reasoningEffort = config.effort;
     this.structuredFindings = config.expectsFindings ?? config.role === 'review';
@@ -186,6 +191,7 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
         this.handleItemCompleted(event.item);
         return;
       case 'turn.completed':
+        this.emitTurnUsage(event.usage);
         await this.maybeCompleteTurn(() => this.getCompletionSummary());
         return;
       case 'turn.failed':
@@ -195,6 +201,23 @@ export class CodexSdkAgentSession extends BaseAgentSession implements IAgentSess
         this.failTurn(new Error(event.message), classifyCodexError);
         return;
     }
+  }
+
+  /** The SDK reports the thread's running total, so a turn is the growth since the last one. */
+  private emitTurnUsage(usage: Usage): void {
+    const total = readCodexTokenCounts(usage);
+    const turn = toKpmUsage(subtractCodexTokens(total, this.threadUsageTotal));
+    this.threadUsageTotal = total;
+    this.emit('onUsage', {
+      model: this.model ?? 'codex',
+      inputTokens: turn.input_tokens,
+      outputTokens: turn.output_tokens,
+      cacheCreationTokens: turn.cache_creation_input_tokens,
+      cacheReadTokens: turn.cache_read_input_tokens,
+      totalCostUsd: null,
+      costUnknown: true,
+      sdkSessionId: this.thread?.id ?? this.id,
+    });
   }
 
   private handleItemStarted(item: ThreadItem): void {

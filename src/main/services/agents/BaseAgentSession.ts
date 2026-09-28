@@ -12,6 +12,8 @@
  */
 
 import { execFile } from 'child_process';
+import { readFile, stat } from 'fs/promises';
+import path from 'path';
 import { promisify } from 'util';
 import { deriveReviewOutcome } from './reviewOutputContract';
 import { isAgentTerminal } from '../../../shared/agent-types';
@@ -40,9 +42,41 @@ export class FollowUpNotAllowedError extends Error {
   }
 }
 
-/** Matches the summary line of `git diff --stat HEAD`, e.g. " 4 files changed, 142 insertions(+), 38 deletions(-)" */
-const GIT_DIFF_STAT_PATTERN =
-  /(\d+) files? changed(?:, (\d+) insertions?\(\+\))?(?:, (\d+) deletions?\(-\))?/;
+/** Untracked files above this size count as changed without their lines being counted. */
+const MAX_UNTRACKED_LINE_COUNT_BYTES = 2 * 1024 * 1024;
+
+const MAX_LINE_COUNTED_NEW_FILES = 500;
+const UNKNOWN_DIFF: AgentCompletionSummary = { filesChanged: 0, additions: 0, deletions: 0, diffUnknown: true };
+
+/** Sum `git diff --numstat` output. Binary files print `-` for both counts. */
+function sumNumstat(stdout: string): { files: number; additions: number; deletions: number } {
+  let files = 0;
+  let additions = 0;
+  let deletions = 0;
+  for (const line of stdout.split('\n')) {
+    const match = /^(\d+|-)\t(\d+|-)\t/.exec(line);
+    if (!match) continue;
+    files += 1;
+    additions += match[1] === '-' ? 0 : parseInt(match[1], 10);
+    deletions += match[2] === '-' ? 0 : parseInt(match[2], 10);
+  }
+  return { files, additions, deletions };
+}
+
+/** Lines in a new file, counted the way git would: binary and oversized files add none. */
+async function countAddedLines(filePath: string): Promise<number> {
+  try {
+    const { size } = await stat(filePath);
+    if (size === 0 || size > MAX_UNTRACKED_LINE_COUNT_BYTES) return 0;
+    const content = await readFile(filePath);
+    if (content.includes(0)) return 0;
+    let lines = 0;
+    for (const byte of content) if (byte === 0x0a) lines += 1;
+    return content[content.length - 1] === 0x0a ? lines : lines + 1;
+  } catch {
+    return 0;
+  }
+}
 
 /**
  * Cap on the in-memory activity buffer per session. Long-running sessions (8h+)
@@ -73,6 +107,12 @@ export abstract class BaseAgentSession {
   readonly id: string;
   readonly role: AgentSessionRole;
   private readonly expectsFindings: boolean;
+  /**
+   * The commit completion stats are measured from. Each turn's work is
+   * committed onto the task branch, so an implement session passes its fork
+   * point to report the whole run; without one, stats cover uncommitted work.
+   */
+  protected readonly diffBase: string | null;
   abstract readonly agentType: AgentType;
 
   protected _state: AgentSessionState = 'starting';
@@ -107,10 +147,16 @@ export abstract class BaseAgentSession {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   protected handlers = new Map<string, Set<(...args: any[]) => void>>();
 
-  constructor(id: string, role: AgentSessionRole, expectsFindings = role === 'review') {
+  constructor(
+    id: string,
+    role: AgentSessionRole,
+    expectsFindings = role === 'review',
+    diffBase: string | null = null,
+  ) {
     this.id = id;
     this.role = role;
     this.expectsFindings = expectsFindings;
+    this.diffBase = diffBase;
   }
 
   // ===========================================================================
@@ -346,26 +392,37 @@ export abstract class BaseAgentSession {
     this.completing = false;
   }
 
-  /** Parse `git diff --stat HEAD` in `cwd` into an `AgentCompletionSummary`. */
+  /**
+   * Files and lines changed in `cwd` since `diffBase` (or HEAD), new untracked
+   * files included. Reads only: the index is never touched, so what the capture
+   * commit stages is unaffected. A git failure reports the diff as unknown
+   * rather than as no changes.
+   */
   protected async computeGitDiffSummary(cwd: string | undefined): Promise<AgentCompletionSummary> {
-    if (!cwd) {
-      return { filesChanged: 0, additions: 0, deletions: 0 };
-    }
+    if (!cwd) return UNKNOWN_DIFF;
 
     try {
-      const { stdout } = await execFileAsync('git', ['diff', '--stat', 'HEAD'], { cwd });
-      const match = GIT_DIFF_STAT_PATTERN.exec(stdout);
-      if (match) {
-        return {
-          filesChanged: parseInt(match[1], 10) || 0,
-          additions: parseInt(match[2], 10) || 0,
-          deletions: parseInt(match[3], 10) || 0,
-        };
+      const [tracked, untracked] = await Promise.all([
+        execFileAsync('git', ['diff', '--numstat', this.diffBase ?? 'HEAD', '--'], { cwd, maxBuffer: 10 * 1024 * 1024 }),
+        execFileAsync('git', ['ls-files', '--others', '--exclude-standard', '-z'], { cwd, maxBuffer: 10 * 1024 * 1024 }),
+      ]);
+      const totals = sumNumstat(tracked.stdout);
+      const newFiles = untracked.stdout.split('\0').filter(Boolean);
+      let newLines = 0;
+      // One at a time, and only the first few hundred: a repo that doesn't
+      // ignore something like node_modules can leave tens of thousands of new
+      // files, and reading them all would hold up the turn's completion. Past
+      // the cap they still count as changed files, just not their lines.
+      for (const file of newFiles.slice(0, MAX_LINE_COUNTED_NEW_FILES)) {
+        newLines += await countAddedLines(path.join(cwd, file));
       }
+      return {
+        filesChanged: totals.files + newFiles.length,
+        additions: totals.additions + newLines,
+        deletions: totals.deletions,
+      };
     } catch {
-      // Git diff may fail if not a git repo or no changes.
+      return UNKNOWN_DIFF;
     }
-
-    return { filesChanged: 0, additions: 0, deletions: 0 };
   }
 }

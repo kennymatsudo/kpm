@@ -20,8 +20,7 @@ import {
   getRecentCommits,
 } from '../../services/repo/gitUtils';
 import { resolveCurrentBranch, resolveDefaultBranch } from '../../services/repo/branchFacts';
-import { checkGhAuth, getPrDetails, getPrDiff, parsePrRef } from '../../services/repo/ghUtils';
-import { describeGhAuth } from '../../../shared/ghAuth';
+import { describeGhFailure, getPrDetails, getPrDiff, parsePrRef } from '../../services/repo/ghUtils';
 import { resolveConnectedRepoPath } from './connectedRepo';
 import { resolveEffectiveRepoPath } from '../../../shared/repoPath';
 
@@ -41,20 +40,6 @@ Any time the user names a PR — a URL, \`#123\`, or a bare number — including
 ## Notes
 - The diff is truncated past ${MAX_DIFF_CHARS.toLocaleString()} characters; the response says so and lists every changed file with its line counts, so report the truncation rather than treating the visible part as the whole PR.
 - Review comments and threads are not included.`;
-
-/**
- * A gh failure is either "that PR isn't readable" or "gh can't talk to GitHub at
- * all", and the two have different remedies. gh's own stderr says which PR it
- * failed on; only an auth probe can say the credential is the problem, so it runs
- * on the failure path rather than before every read.
- */
-async function describePrReadFailure(cwd: string, error: unknown): Promise<string> {
-  const stderr = (error as { stderr?: string })?.stderr?.trim();
-  const detail = stderr || (error instanceof Error ? error.message : String(error));
-  const auth = await checkGhAuth(cwd);
-  const credentialsAreClean = auth.authenticated && !auth.tokenEnvVar;
-  return credentialsAreClean ? detail : `${detail}\n\n${describeGhAuth(auth)}`;
-}
 
 /**
  * Create GitHub integration tools.
@@ -241,7 +226,7 @@ Requires at least a plan_item_id (to find the repo and context) or a repo_id.`,
             }),
           });
         } catch (error) {
-          return toolError(await describePrReadFailure(cwd, error));
+          return toolError(await describeGhFailure(cwd, error));
         }
       },
       { annotations: { readOnlyHint: true, openWorldHint: true } }

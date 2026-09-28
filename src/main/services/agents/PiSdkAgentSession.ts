@@ -12,6 +12,7 @@ import {
   parsePiModelSelector,
   resolvePiModelSelection,
   resolvePiProjectTrust,
+  selectPiModel,
 } from '../../pi/PiChatSession';
 import { BaseAgentSession } from './BaseAgentSession';
 
@@ -77,6 +78,8 @@ export interface PiSdkAgentSessionConfig {
   model?: string;
   effort?: AgentEffortLevel;
   expectsFindings?: boolean;
+  /** Commit the completion stats measure from; see `BaseAgentSession.diffBase`. */
+  diffBase?: string | null;
   readOnly?: boolean;
   createSession?: CreatePiBoardSessionFn;
 }
@@ -191,7 +194,7 @@ async function createRealPiBoardSession(
       session.dispose();
       throw new Error(`Pi model is not available: ${options.model}`);
     }
-    await session.setModel(resolution.model);
+    await selectPiModel(session, resolution.model, options.effort);
     if (resolution.usedFallback) {
       console.warn(
         `[PiSdkAgentSession] Pi model "${options.model}" is not registered; `
@@ -225,7 +228,7 @@ export class PiSdkAgentSession extends BaseAgentSession implements IAgentSession
   private finalError: string | null = null;
 
   constructor(config: PiSdkAgentSessionConfig) {
-    super(config.id, config.role, config.expectsFindings);
+    super(config.id, config.role, config.expectsFindings, config.diffBase);
     this.systemPrompt = config.systemPrompt;
     this.model = config.model;
     this.effort = config.effort;

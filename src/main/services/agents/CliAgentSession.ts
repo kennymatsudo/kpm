@@ -35,6 +35,8 @@ export interface CliAgentSessionConfig {
   /** Hook server port for configuring agent hooks */
   hookPort: number;
   expectsFindings?: boolean;
+  /** Commit the completion stats measure from; see `BaseAgentSession.diffBase`. */
+  diffBase?: string | null;
 }
 
 export class CliAgentSession extends BaseAgentSession implements IAgentSession {
@@ -47,7 +49,7 @@ export class CliAgentSession extends BaseAgentSession implements IAgentSession {
   private hookPort: number;
 
   constructor(config: CliAgentSessionConfig) {
-    super(config.id, config.role, config.expectsFindings);
+    super(config.id, config.role, config.expectsFindings, config.diffBase);
     this.agentType = config.agentType;
     this.hookPort = config.hookPort;
   }

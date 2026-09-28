@@ -33,7 +33,7 @@ import {
   type DevSessionAutomationPhase,
   type StatusCategory,
 } from '../../../shared/types';
-import { isAgentActive } from '../../../shared/agent-types';
+import { isAgentActive, type AgentCompletionSummary } from '../../../shared/agent-types';
 import type { ReviewWorkFacts } from '../../../shared/reviewThreadSummary';
 import { isAddressingReview, selectReviewLadderRung } from '../development/reviewActions';
 
@@ -115,6 +115,12 @@ export interface DiffStats {
   files: number;
   additions: number;
   deletions: number;
+}
+
+/** A turn's completion stats as panel diff stats; null when there are none or git couldn't measure them. */
+export function toDiffStats(summary: AgentCompletionSummary | undefined): DiffStats | null {
+  if (!summary || summary.diffUnknown) return null;
+  return { files: summary.filesChanged, additions: summary.additions, deletions: summary.deletions };
 }
 
 export interface PanelStatusInputs {

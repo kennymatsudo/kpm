@@ -13,6 +13,20 @@ export interface FindingRef {
   order: number;
 }
 
+/**
+ * Tags findings with the review lens their run was launched under, unless the
+ * reviewer named one itself. The implementer prompt groups findings by lens.
+ */
+export function withRunAxis<T extends ReviewFinding>(
+  findings: T[],
+  step: PlaybookStep | undefined,
+  runIndex: number | null | undefined,
+): T[] {
+  const axis = runIndex == null ? undefined : step?.runOverrides?.[runIndex]?.axis;
+  if (!axis) return findings;
+  return findings.map((finding) => ({ ...finding, axis: finding.axis ?? axis }));
+}
+
 /** `ref` is absent only for a finding that never came from a saved review run. */
 export type RoundFinding = ReviewFinding & { ref?: FindingRef };
 
@@ -58,7 +72,8 @@ export function createPlaybookRoundStore(deps: PlaybookRoundStoreDeps) {
       if (run.run_index == null || run.run_index < 0 || run.run_index >= expected) continue;
       if (run.status === 'complete') {
         group.succeeded.add(run.run_index);
-        group.findings.push(...run.findings.map((finding) => ({
+        // Rows saved before findings stored their lens get it from the step.
+        group.findings.push(...withRunAxis(run.findings, step, run.run_index).map((finding) => ({
           ...finding,
           ref: { reviewSessionId: run.review_session_id, order: finding.order },
         })));

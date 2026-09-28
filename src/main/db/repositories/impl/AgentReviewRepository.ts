@@ -6,7 +6,7 @@
 
 import { randomUUID } from 'crypto';
 import type { Database, Statement } from 'better-sqlite3';
-import type { AgentType, PersistedAgentReview, ReviewFinding } from '../../../../shared/agent-types';
+import type { AgentType, PersistedAgentReview, ReviewAxis, ReviewFinding } from '../../../../shared/agent-types';
 import type { FindingDisposition } from '../../../../shared/agentReportBlocks';
 import type {
   FindingDispositionUpdate,
@@ -42,6 +42,7 @@ interface AgentReviewFindingRow {
   description: string;
   agent: ReviewFinding['agent'];
   source: ReviewFinding['source'];
+  axis: ReviewAxis | null;
   disposition: FindingDisposition | null;
   disposition_reason: string | null;
 }
@@ -82,6 +83,7 @@ function hydrateReview(
       description: finding.description,
       agent: finding.agent,
       source: finding.source,
+      ...(finding.axis ? { axis: finding.axis } : {}),
     })),
   };
 }
@@ -179,9 +181,10 @@ export class AgentReviewRepository implements IAgentReviewRepository {
           line,
           description,
           agent,
-          source
+          source,
+          axis
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `),
       getLatestByImplementationSessionIds: (placeholders: string) => db.prepare(`
         SELECT
@@ -257,6 +260,7 @@ export class AgentReviewRepository implements IAgentReviewRepository {
           description,
           agent,
           source,
+          axis,
           disposition,
           disposition_reason
         FROM agent_review_findings
@@ -397,7 +401,8 @@ export class AgentReviewRepository implements IAgentReviewRepository {
           finding.line ?? null,
           finding.description,
           finding.agent,
-          finding.source
+          finding.source,
+          finding.axis ?? null
         );
       });
     });

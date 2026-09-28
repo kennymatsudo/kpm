@@ -906,6 +906,9 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           model: options?.model,
           effort: options?.effort,
           writes: true,
+          // Earlier turns are committed onto the branch, so measuring from HEAD
+          // would count only the last turn's edits.
+          diffBase: session.base_sha,
           environmentMode: options?.environmentMode ?? repo.environment_mode ?? 'auto',
         }, deps.agentSessionManager);
 

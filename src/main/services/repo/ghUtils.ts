@@ -18,6 +18,7 @@ import type {
   PrTopLevelReview,
 } from '../../../shared/types';
 import type { GhAuthState } from '../../../shared/ghAuth';
+import { describeGhAuth } from '../../../shared/ghAuth';
 import { gitExec } from './gitUtils';
 
 const execFileAsync = promisify(execFile);
@@ -223,8 +224,11 @@ export async function checkGhAuth(cwd: string): Promise<GhAuthState> {
 
 /**
  * Get the owner/repo slug for a repository (e.g., "octocat/hello-world").
+ *
+ * This is the repository gh resolves a bare PR number against, so it is the one
+ * to compare a pasted PR URL with.
  */
-async function getRepoSlug(cwd: string): Promise<string> {
+export async function getRepoSlug(cwd: string): Promise<string> {
   const { stdout } = await ghExec(
     ['repo', 'view', '--json', 'nameWithOwner', '--jq', '.nameWithOwner'],
     { cwd }
@@ -335,8 +339,13 @@ export async function getPrForBranch(
   }
 }
 
+// gh's wording when the repository has no PR with that number.
+const GH_PR_NOT_FOUND = /could not resolve to a pullrequest/i;
+
 /**
- * Get PR status by PR number. Returns null if no PR exists.
+ * Get PR status by PR number. Returns null only when the repository has no such
+ * PR; any other gh failure (missing gh, rejected credentials, no network) throws
+ * so the caller can say what actually went wrong.
  */
 export async function getPrByNumber(
   cwd: string,
@@ -352,9 +361,27 @@ export async function getPrByNumber(
     );
 
     return parsePrViewOutput(stdout);
-  } catch {
-    return null;
+  } catch (error) {
+    if (GH_PR_NOT_FOUND.test(ghErrorOutput(error))) return null;
+    throw error;
   }
+}
+
+/**
+ * A gh failure is either "that PR isn't readable" or "gh can't talk to GitHub at
+ * all", and the two have different remedies. gh's own stderr says which PR it
+ * failed on; only an auth probe can say the credential is the problem, so it runs
+ * on the failure path rather than before every call.
+ */
+export async function describeGhFailure(cwd: string, error: unknown): Promise<string> {
+  if ((error as NodeJS.ErrnoException | null)?.code === 'ENOENT') {
+    return describeGhAuth({ authenticated: false, reason: 'not_installed' });
+  }
+  const stderr = (error as { stderr?: string })?.stderr?.trim();
+  const detail = stderr || (error instanceof Error ? error.message : String(error));
+  const auth = await checkGhAuth(cwd);
+  const credentialsAreClean = auth.authenticated && !auth.tokenEnvVar;
+  return credentialsAreClean ? detail : `${detail}\n\n${describeGhAuth(auth)}`;
 }
 
 /**
@@ -1182,16 +1209,26 @@ export async function unresolveReviewThread(
   };
 }
 
+export interface PrIdentifier {
+  number: number;
+  /** The repository a URL names; null for a bare number, which gh resolves against the local repo. */
+  repo: { owner: string; name: string } | null;
+}
+
 /**
- * Parse a PR identifier string into a PR number.
- * Accepts: bare number, #number, or GitHub PR URL.
+ * Parse a PR identifier: bare number, #number, or GitHub PR URL.
+ *
+ * A URL keeps its owner/repo because the number alone means a different PR in
+ * every repository.
  */
-export function parsePrIdentifier(input: string): number | null {
+export function parsePrIdentifier(input: string): PrIdentifier | null {
   const trimmed = input.trim();
-  if (/^\d+$/.test(trimmed)) return parseInt(trimmed, 10);
-  if (/^#\d+$/.test(trimmed)) return parseInt(trimmed.slice(1), 10);
-  const urlMatch = /github\.com\/[^/]+\/[^/]+\/pull\/(\d+)/.exec(trimmed);
-  if (urlMatch) return parseInt(urlMatch[1], 10);
+  if (/^\d+$/.test(trimmed)) return { number: parseInt(trimmed, 10), repo: null };
+  if (/^#\d+$/.test(trimmed)) return { number: parseInt(trimmed.slice(1), 10), repo: null };
+  const urlMatch = /github\.com\/([^/\s]+)\/([^/\s]+)\/pull\/(\d+)/.exec(trimmed);
+  if (urlMatch) {
+    return { number: parseInt(urlMatch[3], 10), repo: { owner: urlMatch[1], name: urlMatch[2] } };
+  }
   return null;
 }
 

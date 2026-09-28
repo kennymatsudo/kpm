@@ -21,6 +21,9 @@ const ghMocks = vi.hoisted(() => ({
   createPr: vi.fn(),
   getPrForBranch: vi.fn(),
   isBranchPushed: vi.fn(),
+  getPrByNumber: vi.fn(),
+  getRepoSlug: vi.fn(),
+  describeGhFailure: vi.fn(),
 }));
 
 vi.mock('../../generation', () => ({
@@ -457,5 +460,72 @@ describe('GitHubService.createPr after gh times out', () => {
     const result = await service.createPr('session-1', 'Title', 'Body');
 
     expect(result).toEqual({ ok: false, error: 'gh pr create did not finish within 120 seconds.' });
+  });
+});
+
+describe('GitHubService.linkPr', () => {
+  const pr12 = {
+    number: 12,
+    url: 'https://github.com/org/a/pull/12',
+    state: 'OPEN',
+    reviewDecision: null,
+    isDraft: false,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    ghMocks.getRepoSlug.mockResolvedValue('org/a');
+    ghMocks.getPrByNumber.mockResolvedValue(pr12);
+  });
+
+  it('rejects a URL from another repository instead of linking the same number here', async () => {
+    const { service } = buildService();
+
+    const result = await service.linkPr('session-1', 'https://github.com/org/b/pull/12');
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain('org/b');
+    expect(result.error).toContain('org/a');
+    expect(ghMocks.getPrByNumber).not.toHaveBeenCalled();
+  });
+
+  it('accepts a URL for the session repository regardless of case', async () => {
+    const { service } = buildService();
+
+    const result = await service.linkPr('session-1', 'https://github.com/Org/A/pull/12');
+
+    expect(result).toEqual({ ok: true, data: pr12 });
+    expect(ghMocks.getPrByNumber).toHaveBeenCalledWith('/repo', 12);
+  });
+
+  it('does not need the repository slug for a bare number', async () => {
+    const { service } = buildService();
+
+    const result = await service.linkPr('session-1', '#12');
+
+    expect(result.ok).toBe(true);
+    expect(ghMocks.getRepoSlug).not.toHaveBeenCalled();
+  });
+
+  it('reports why gh failed rather than calling the PR missing', async () => {
+    const authError = Object.assign(new Error('gh failed'), { stderr: 'HTTP 401: Bad credentials' });
+    ghMocks.getPrByNumber.mockRejectedValue(authError);
+    ghMocks.describeGhFailure.mockResolvedValue('HTTP 401: Bad credentials\n\nRun `gh auth refresh`.');
+    const { service } = buildService();
+
+    const result = await service.linkPr('session-1', '12');
+
+    expect(result).toEqual({ ok: false, error: 'HTTP 401: Bad credentials\n\nRun `gh auth refresh`.' });
+    expect(ghMocks.describeGhFailure).toHaveBeenCalledWith('/repo', authError);
+  });
+
+  it('says not found only when gh found no such PR', async () => {
+    ghMocks.getPrByNumber.mockResolvedValue(null);
+    const { service } = buildService();
+
+    const result = await service.linkPr('session-1', 'https://github.com/org/a/pull/99');
+
+    expect(result).toEqual({ ok: false, error: 'PR #99 not found in org/a.' });
   });
 });

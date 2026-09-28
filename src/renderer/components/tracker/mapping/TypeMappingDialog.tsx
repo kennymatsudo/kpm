@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useExportStore, useTrackerMetadataStore } from '../../../stores';
-import type { TrackerIssueTypeOption } from '../../../stores/tracker/useMetadataStore';
+import { trackerMetadataKey, type TrackerIssueTypeOption } from '../../../stores/tracker/useMetadataStore';
 import { Modal, ModalBody, ModalFooter } from '../../ui/Modal';
 import { LoadingSpinner } from '../../ui/LoadingButton';
 import { CloseIcon } from '../../icons';
@@ -53,10 +53,10 @@ export function TypeMappingDialog({ projectId, scopeId, projectKey, onClose }: P
   } = useTrackerMetadataStore(
     useShallow((state) => ({
       jiraIssueTypes: projectKey
-        ? state.issueTypesByProject[projectKey] ?? EMPTY_ISSUE_TYPES
+        ? state.issueTypesByProject[trackerMetadataKey('jira', projectKey)] ?? EMPTY_ISSUE_TYPES
         : EMPTY_ISSUE_TYPES,
-      isLoadingIssueTypes: Boolean(projectKey) && state.loadingIssueTypesFor.has(projectKey),
-      typesError: projectKey ? state.issueTypesErrorByProject[projectKey] || null : null,
+      isLoadingIssueTypes: Boolean(projectKey) && state.loadingIssueTypesFor.has(trackerMetadataKey('jira', projectKey)),
+      typesError: projectKey ? state.issueTypesErrorByProject[trackerMetadataKey('jira', projectKey)] || null : null,
       loadIssueTypes: state.loadIssueTypes,
     }))
   );
@@ -72,7 +72,7 @@ export function TypeMappingDialog({ projectId, scopeId, projectKey, onClose }: P
   useEffect(() => {
     void loadMappingsByScope(projectId, scopeId);
     if (projectKey) {
-      void loadIssueTypes(projectKey);
+      void loadIssueTypes(projectKey, 'jira');
     }
   }, [projectId, scopeId, projectKey, loadMappingsByScope, loadIssueTypes]);
 

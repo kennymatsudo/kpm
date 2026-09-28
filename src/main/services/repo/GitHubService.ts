@@ -26,7 +26,9 @@ import {
   createPr,
   GhTimeoutError,
   getPrForBranch,
+  describeGhFailure,
   getPrByNumber,
+  getRepoSlug,
   parsePrIdentifier,
   getPrReviewSnapshot as fetchPrReviewSnapshot,
   probePrReviewState as fetchPrReviewProbe,
@@ -883,12 +885,25 @@ ${effectivePrTemplate}`
       if ('error' in resolved) return failure(resolved.error);
       const { repoPath } = resolved;
 
-      const prNumber = parsePrIdentifier(prIdentifier);
-      if (!prNumber) return failure('Invalid PR identifier. Provide a PR number or GitHub PR URL.');
+      const pr = parsePrIdentifier(prIdentifier);
+      if (!pr) return failure('Invalid PR identifier. Provide a PR number or GitHub PR URL.');
 
       try {
-        const status = await getPrByNumber(repoPath, prNumber);
-        if (!status) return failure(`PR #${prNumber} not found in this repository.`);
+        // gh looks a number up in the session's repo, so a URL from another
+        // repo would silently link that repo's PR with the same number.
+        let repoSlug: string | null = null;
+        if (pr.repo) {
+          repoSlug = await getRepoSlug(repoPath);
+          const urlSlug = `${pr.repo.owner}/${pr.repo.name}`;
+          if (urlSlug.toLowerCase() !== repoSlug.toLowerCase()) {
+            return failure(
+              `That pull request is in ${urlSlug}, but this session's repository is ${repoSlug}. Link a pull request from ${repoSlug}, or if this clone is a fork, run \`gh repo set-default ${urlSlug}\` in it first.`
+            );
+          }
+        }
+
+        const status = await getPrByNumber(repoPath, pr.number);
+        if (!status) return failure(`PR #${pr.number} not found in ${repoSlug ?? 'this repository'}.`);
 
         deps.devSessions.updatePrInfo(
           sessionId,
@@ -901,7 +916,7 @@ ${effectivePrTemplate}`
 
         return success(status);
       } catch (error) {
-        return failure(error instanceof Error ? error.message : String(error));
+        return failure(await describeGhFailure(repoPath, error));
       }
     },
   };
