@@ -13,6 +13,7 @@ import type {
 } from '../common/types';
 import { TrackerError } from '../common/errors';
 import { jiraAdfCodec } from '../../documents';
+import { findUnrepresentableContent } from './adf-to-markdown';
 import { getConfig } from '../../config';
 
 const DEFAULT_BATCH_SIZE = 50;
@@ -267,6 +268,7 @@ export class JiraClient implements TrackerClient {
       creator: this.mapUser(issue.fields.creator),
       updatedAt: issue.fields.updated,
       url: `https://${this.siteUrl}/browse/${issue.key}`,
+      unrepresentableContent: findUnrepresentableContent(issue.fields.description),
     };
   }
 

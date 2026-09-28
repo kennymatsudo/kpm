@@ -1,9 +1,11 @@
 /**
  * Convert Atlassian Document Format (ADF) to Markdown.
  *
- * ADF is a superset of Markdown - some elements (panels, media, etc.)
- * cannot be represented and are discarded. This is acceptable since
- * we just need readable descriptions, not round-trip fidelity.
+ * ADF is a superset of Markdown. Anything this converter doesn't recognise
+ * still yields its text, because the result is written back to Jira and
+ * Confluence on push: a block dropped here is a block deleted there.
+ * `findUnrepresentableContent` names what the text form cannot carry back, so
+ * a push can warn before replacing it.
  */
 
 interface AdfNode {
@@ -74,16 +76,125 @@ function convertBlock(node: AdfNode): string {
       return `> **${panelType.toUpperCase()}**\n>\n> ${content.split('\n').join('\n> ')}`;
     }
 
+    case 'taskList':
+      return convertTaskList(node);
+
+    case 'decisionList':
+      return (node.content ?? [])
+        .map(item => '- **Decision:** ' + convertInline(item.content))
+        .join('\n');
+
+    case 'expand':
+    case 'nestedExpand': {
+      const title = (node.attrs?.title as string | undefined)?.trim();
+      const body = convertBlocks(node.content);
+      return [title ? `**${title}**` : '', body].filter(Boolean).join('\n\n');
+    }
+
+    case 'blockCard':
+    case 'embedCard':
+      return cardUrl(node);
+
     case 'mediaSingle':
     case 'mediaGroup':
-      // Media cannot be represented in markdown - return placeholder
-      return '[Media attachment]';
+      return (node.content ?? []).map(convertMedia).join('\n');
+
+    case 'media':
+      return convertMedia(node);
 
     default:
-      // Unsupported block types - fall back to extracting any text content
-      return convertInline(node.content);
+      // Containers this converter doesn't name (layoutSection, layoutColumn,
+      // bodiedExtension, ...) hold blocks; a few leaf types hold inline text.
+      if (node.content?.some(child => INLINE_NODE_TYPES.has(child.type))) {
+        return convertInline(node.content);
+      }
+      return convertBlocks(node.content);
   }
 }
+
+const INLINE_NODE_TYPES = new Set([
+  'text', 'hardBreak', 'mention', 'emoji', 'inlineCard', 'date', 'status',
+  'mediaInline', 'placeholder', 'inlineExtension',
+]);
+
+function convertBlocks(content?: AdfNode[]): string {
+  return (content ?? []).map(convertBlock).filter(Boolean).join('\n\n');
+}
+
+function convertTaskList(node: AdfNode): string {
+  return (node.content ?? [])
+    .map(item => {
+      if (item.type === 'taskList') {
+        return convertTaskList(item).split('\n').map(line => '  ' + line).join('\n');
+      }
+      const box = item.attrs?.state === 'DONE' ? '[x]' : '[ ]';
+      return `- ${box} ${convertInline(item.content)}`;
+    })
+    .join('\n');
+}
+
+function cardUrl(node: AdfNode): string {
+  const url = node.attrs?.url;
+  if (typeof url === 'string') return url;
+  const data = node.attrs?.data as { url?: unknown } | undefined;
+  return typeof data?.url === 'string' ? data.url : '';
+}
+
+/**
+ * An uploaded file has no URL outside Jira, so it stays a named placeholder
+ * rather than vanishing; pushing the text back cannot restore it, which is
+ * what `findUnrepresentableContent` reports.
+ */
+function convertMedia(node: AdfNode): string {
+  const alt = typeof node.attrs?.alt === 'string' ? node.attrs.alt : '';
+  if (node.attrs?.type === 'external' && typeof node.attrs.url === 'string') {
+    return `![${alt}](${node.attrs.url})`;
+  }
+  return alt ? `[Media attachment: ${alt}]` : '[Media attachment]';
+}
+
+/** Node types markdown cannot carry back to ADF, labelled for a warning. */
+const UNREPRESENTABLE_NODE_LABELS: Record<string, string> = {
+  media: 'attachments',
+  mediaInline: 'attachments',
+  expand: 'expand sections',
+  nestedExpand: 'expand sections',
+  layoutSection: 'column layouts',
+  decisionList: 'decisions',
+  blockCard: 'smart links',
+  embedCard: 'smart links',
+  inlineCard: 'smart links',
+  extension: 'macros',
+  bodiedExtension: 'macros',
+  inlineExtension: 'macros',
+  panel: 'panels',
+  mention: 'mentions',
+  status: 'status lozenges',
+  date: 'dates',
+};
+
+/**
+ * What in this ADF document would be lost or flattened if its markdown form
+ * were written back. Empty when the text round-trips.
+ */
+export function findUnrepresentableContent(adf: unknown): string[] {
+  const found = new Set<string>();
+  const visit = (node: unknown, insideList: boolean): void => {
+    if (!node || typeof node !== 'object') return;
+    const { type, content } = node as Partial<AdfNode>;
+    const label = typeof type === 'string' ? UNREPRESENTABLE_NODE_LABELS[type] : undefined;
+    if (label) found.add(label);
+    // markdown-to-adf reads only top-level list lines, so a nested list comes
+    // back as plain paragraphs.
+    const isList = typeof type === 'string' && LIST_NODE_TYPES.has(type);
+    if (isList && insideList) found.add('nested lists');
+    if (Array.isArray(content)) content.forEach((child) => visit(child, insideList || isList));
+  };
+  visit(adf, false);
+  return [...found];
+}
+
+const LIST_NODE_TYPES = new Set(['bulletList', 'orderedList', 'taskList']);
 
 function convertListItem(node: AdfNode): string {
   if (!node.content) return '';
@@ -92,7 +203,7 @@ function convertListItem(node: AdfNode): string {
   for (const child of node.content) {
     if (child.type === 'paragraph') {
       parts.push(convertInline(child.content));
-    } else if (child.type === 'bulletList' || child.type === 'orderedList') {
+    } else if (child.type === 'bulletList' || child.type === 'orderedList' || child.type === 'taskList') {
       // Nested list - indent
       const nestedList = convertBlock(child);
       parts.push('\n' + nestedList.split('\n').map(line => '  ' + line).join('\n'));
@@ -211,6 +322,10 @@ function convertInline(content?: AdfNode[]): string {
         }
       }
       return '';
+    }
+
+    if (node.type === 'mediaInline') {
+      return convertMedia(node);
     }
 
     if (node.type === 'status') {

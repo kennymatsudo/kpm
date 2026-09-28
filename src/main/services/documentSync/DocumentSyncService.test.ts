@@ -337,6 +337,30 @@ describe('executePush — stale remote', () => {
 
 });
 
+describe('executePush — unchanged local copy', () => {
+  it('writes nothing when neither side changed since the last sync', async () => {
+    const { service, remote } = harness({
+      link: { ...SYNCED_LINK, localContentHash: hashOf('body'), remoteContentHash: hashOf('body') },
+      localContent: 'body',
+      remoteContent: 'body',
+    });
+
+    expect((await executePush(service)).ok).toBe(true);
+    expect(remote.written).toEqual([]);
+  });
+
+  it('restores an unchanged local copy over a remote someone else changed', async () => {
+    const { service, remote } = harness({
+      link: { ...SYNCED_LINK, localContentHash: hashOf('body'), remoteContentHash: hashOf('body') },
+      localContent: 'body',
+      remoteContent: 'damaged remotely',
+    });
+
+    expect((await executePush(service)).ok).toBe(true);
+    expect(remote.written).toEqual(['body']);
+  });
+});
+
 describe('executePull', () => {
   it('overwrites the local file with the remote content', async () => {
     const { service, local } = harness({ localContent: 'stale', remoteContent: 'fresh' });

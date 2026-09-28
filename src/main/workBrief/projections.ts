@@ -6,6 +6,7 @@ import {
   type ExternalDestination,
   type ExternalMarkdown,
 } from '../documents/exportBoundary';
+import { normalizeMarkdown } from '../documents/markdown';
 
 export interface TrackerWorkBriefProjection {
   title: string;
@@ -25,16 +26,37 @@ export function projectWorkBriefToTracker(
   };
 }
 
+/** What the tracker held for an item at the last sync, from its sync snapshot. */
+export interface TrackerLastSynced {
+  snapshot_title: string | null;
+  snapshot_description: string | null;
+}
+
+/**
+ * The fields a tracker update carries: only the ones that moved off the last
+ * sync. Rich-text trackers reach KPM as a markdown rendering, so re-sending an
+ * unchanged description replaces the tracker's own content with KPM's
+ * flattened copy of it; a status-only export must not touch it. With no
+ * snapshot nothing proves a field unchanged, so both are sent.
+ */
 export function projectWorkBriefToTrackerUpdate(
   workBrief: WorkBrief,
   planItems: readonly PlanItem[],
   destination: ExternalDestination,
-): { summary: string; description: ExternalMarkdown } {
+  lastSynced: TrackerLastSynced | null | undefined,
+): { summary?: string; description?: ExternalMarkdown } {
   const projected = projectWorkBriefToTracker(workBrief, planItems, destination);
-  return {
-    summary: projected.title,
-    description: projected.description ?? EMPTY_EXTERNAL_MARKDOWN,
-  };
+  const update: { summary?: string; description?: ExternalMarkdown } = {};
+
+  if (projected.title !== lastSynced?.snapshot_title) {
+    update.summary = projected.title;
+  }
+  const syncedDescription = lastSynced ? (normalizeMarkdown(lastSynced.snapshot_description) ?? '') : undefined;
+  if ((normalizeMarkdown(projected.description) ?? '') !== syncedDescription) {
+    update.description = projected.description ?? EMPTY_EXTERNAL_MARKDOWN;
+  }
+
+  return update;
 }
 
 export function projectWorkBriefToExecution(workBrief: WorkBrief): string {

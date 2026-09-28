@@ -23,6 +23,7 @@ import type {
   StatusMapping,
   StatusTransitionInfo,
   SyncReviewData,
+  SyncSnapshot,
   SyncReviewItem,
   TrackerAssociationWithScope,
   TrackerIssueType,
@@ -31,7 +32,7 @@ import type {
 } from '../../../shared/types';
 import { isOutboundDeletion, isOutboundItemChange } from '../../../shared/types';
 import { describeDeletions, drainDeletions } from './TrackerDeletionDrain';
-import type { JiraClient, TrackerClient } from '../../tracker-clients';
+import type { JiraClient, TrackerClient, UpdateIssueParams } from '../../tracker-clients';
 import {
   findTransitionWithMapping,
   generateTransitionWarning,
@@ -146,6 +147,29 @@ function projectForTracker(
     planItems,
     refDestinationForTracker(trackerType),
   );
+}
+
+function updateForTracker(
+  planItem: PlanItem,
+  planItems: readonly PlanItem[],
+  trackerType: TrackerType,
+  lastSynced: SyncSnapshot | undefined
+): UpdateIssueParams {
+  return projectWorkBriefToTrackerUpdate(
+    workBriefFromPlanItem(planItem),
+    planItems,
+    refDestinationForTracker(trackerType),
+    lastSynced,
+  );
+}
+
+/**
+ * Names what a pushed description would erase from the tracker's rich copy,
+ * so the review can say so before the user approves it.
+ */
+function describeContentLoss(trackerLabel: string, unrepresentable: readonly string[]): string {
+  return `The ${trackerLabel} description contains ${unrepresentable.join(', ')}, which KPM can't write back. ` +
+    `Pushing this description removes or flattens them. Skip this item, or make the edit in ${trackerLabel}.`;
 }
 
 /**
@@ -314,9 +338,8 @@ export function pruneSettledChanges(
       if (trackerCategory !== entry.target_status_category) continue;
     }
 
-    const projected = projectForTracker(item, allItems, association.tracker_type);
-    if (projected.title !== snapshot.snapshot_title) continue;
-    if ((normalizeMarkdown(projected.description) ?? '') !== (normalizeMarkdown(snapshot.snapshot_description) ?? '')) continue;
+    const update = updateForTracker(item, allItems, association.tracker_type, snapshot);
+    if (update.summary !== undefined || update.description !== undefined) continue;
 
     if (getConfig().claude.debug) console.log(`[ExportPlan] Dropping ${item.external_key} from queue - matches the last sync`);
     deps.outboundChanges.remove(entry.id);
@@ -569,6 +592,7 @@ export async function reviewOf(plan: ExportPlan, deps: ExportPlanDeps): Promise<
     status: string;
     statusType?: string | null;
     updated: string;
+    unrepresentableContent: string[];
   }>();
   itemsNeedingFetch.forEach((item, index) => {
     const result = fetchResults[index];
@@ -580,6 +604,7 @@ export async function reviewOf(plan: ExportPlan, deps: ExportPlanDeps): Promise<
         status: issue.status,
         statusType: issue.statusType ?? null,
         updated: issue.updatedAt,
+        unrepresentableContent: issue.unrepresentableContent ?? [],
       });
     }
   });
@@ -613,12 +638,25 @@ export async function reviewOf(plan: ExportPlan, deps: ExportPlanDeps): Promise<
     }
   });
 
+  const trackerLabel = trackerLabelFor(association?.tracker_type ?? 'jira');
+  const planItems = [...plan.itemsById.values()];
+
   const reviewItems: SyncReviewItem[] = preview.items.map(item => {
     const trackerCurrent = trackerDataMap.get(item.planItem.external_key ?? '') ?? null;
     let diffs = null;
     let hasConflict = false;
+    let contentLossWarning: string | undefined;
 
     if (trackerCurrent) {
+      // Only what the push will actually send is diffed or checked for
+      // conflicts; a field left off the update can't overwrite anything.
+      const snapshot = snapshotMap.get(item.planItem.id);
+      const update = association
+        ? updateForTracker(item.planItem, planItems, association.tracker_type, snapshot)
+        : {};
+      const sendsSummary = update.summary !== undefined;
+      const sendsDescription = update.description !== undefined;
+
       // Descriptions compare on the normalized form so the tracker's
       // bullet/whitespace canonicalization (e.g. Linear rewriting `*` to `-`)
       // does not render as a change the user never made.
@@ -629,9 +667,13 @@ export async function reviewOf(plan: ExportPlan, deps: ExportPlanDeps): Promise<
       );
 
       diffs = {
-        summary: summaryDiff.hasChanges ? summaryDiff : null,
-        description: descriptionDiff.hasChanges ? descriptionDiff : null,
+        summary: sendsSummary && summaryDiff.hasChanges ? summaryDiff : null,
+        description: sendsDescription && descriptionDiff.hasChanges ? descriptionDiff : null,
       };
+
+      if (sendsDescription && trackerCurrent.unrepresentableContent.length > 0) {
+        contentLossWarning = describeContentLoss(trackerLabel, trackerCurrent.unrepresentableContent);
+      }
 
       // Flag a conflict only when the tracker was edited after our last sync
       // AND its current content actually drifted from the snapshot we stored
@@ -641,14 +683,13 @@ export async function reviewOf(plan: ExportPlan, deps: ExportPlanDeps): Promise<
         const remoteUpdated = new Date(trackerCurrent.updated).getTime();
         const updatedAfterSync = remoteUpdated > lastSynced;
 
-        const snapshot = snapshotMap.get(item.planItem.id);
         if (snapshot) {
-          const descriptionDrifted = hasRemoteFieldDrifted({
+          const descriptionDrifted = sendsDescription && hasRemoteFieldDrifted({
             remote: trackerCurrent.description,
             snapshot: snapshot.snapshot_description,
             normalize: normalizeMarkdown,
           });
-          const titleDrifted = hasRemoteFieldDrifted({
+          const titleDrifted = sendsSummary && hasRemoteFieldDrifted({
             remote: trackerCurrent.summary,
             snapshot: snapshot.snapshot_title,
           });
@@ -708,6 +749,7 @@ export async function reviewOf(plan: ExportPlan, deps: ExportPlanDeps): Promise<
       statusTransition,
       decision: 'pending' as const,
       hasConflict,
+      ...(contentLossWarning ? { contentLossWarning } : {}),
     };
   });
 
@@ -971,6 +1013,8 @@ export async function executePlan(
     recordTrackerAgreement(referenceUpdate.planItem.id, referenceUpdate.updatedIssue, {}, deps);
   }
 
+  const updateSnapshots = deps.sync.getSnapshotsByItemIds(updateEntries.map((entry) => entry.planItem.id));
+
   const updatePromises = updateEntries.map(async (entry) => {
     const planItem = entry.planItem;
     const externalKey = (entry.execution as Extract<ExportExecution, { operation: 'update' }>).externalKey;
@@ -1003,15 +1047,19 @@ export async function executePlan(
       // Sync boundary: same rule as createIssue above — spec fields are local-only.
       // Do not add `intent`, `acceptance_criteria`, or `source_document_id` to this payload.
       // Plan refs in the description are resolved to native syntax for the tracker.
-      const trackerBriefUpdate = projectWorkBriefToTrackerUpdate(
-        workBriefFromPlanItem(planItem),
+      // Fields unchanged since the last sync stay off the payload.
+      const trackerBriefUpdate = updateForTracker(
+        planItem,
         currentItems,
-        refDestinationForTracker(association.tracker_type),
+        association.tracker_type,
+        updateSnapshots.get(planItem.id)
       );
-      await client.updateIssue(externalKey, {
-        ...trackerBriefUpdate,
-        customFields: overrideFields,
-      });
+      if (trackerBriefUpdate.summary !== undefined || trackerBriefUpdate.description !== undefined || overrideFields) {
+        await client.updateIssue(externalKey, {
+          ...trackerBriefUpdate,
+          customFields: overrideFields,
+        });
+      }
 
       let updatedIssue = await client.fetchIssue(externalKey);
 

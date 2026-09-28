@@ -59,9 +59,34 @@ describe('Work Brief projections', () => {
       { ...brief, description: null },
       [referencedItem],
       'jira',
+      null,
     );
 
     expect(update.summary).toBe('Ship feature');
     expect(update.description).toBe('');
+  });
+
+  it('leaves fields unchanged since the last sync off the tracker update', () => {
+    const synced = projectWorkBriefToTracker(brief, [referencedItem], 'jira');
+
+    const update = projectWorkBriefToTrackerUpdate(brief, [referencedItem], 'jira', {
+      snapshot_title: synced.title,
+      snapshot_description: synced.description,
+    });
+
+    expect(update).toEqual({});
+  });
+
+  it('sends only the field that moved off the last sync', () => {
+    const synced = projectWorkBriefToTracker(brief, [referencedItem], 'jira');
+
+    const update = projectWorkBriefToTrackerUpdate(
+      { ...brief, title: 'Renamed' },
+      [referencedItem],
+      'jira',
+      { snapshot_title: synced.title, snapshot_description: synced.description },
+    );
+
+    expect(update).toEqual({ summary: 'Renamed' });
   });
 });

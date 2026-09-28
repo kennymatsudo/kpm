@@ -928,6 +928,102 @@ describe('ExportService', () => {
     });
   });
 
+  describe('update payload', () => {
+    function queueSyncedUpdate(
+      ctx: ReturnType<typeof createTestRepositoryContext>,
+      item: { title?: string; description?: string | null; status_category?: 'in_review' | 'done' }
+    ) {
+      const { project, association } = setupAssociation(ctx, 'Update Payload Project');
+      ctx.repos.tracker.updateStatusMapping(association.id, { in_review: 'In Review', done: 'Done' });
+      ctx.repos.planItems.add(createPlanItem({
+        id: 'plan-1',
+        project_id: project.id,
+        title: 'Linked issue',
+        description: 'Synced body',
+        association_id: association.id,
+        external_key: 'ENG-1',
+        external_status: 'In Review',
+        status_category: 'in_review',
+        last_synced_at: '2026-01-01T00:00:00.000Z',
+        ...item,
+      }));
+      ctx.repos.sync.upsertSnapshot({
+        plan_item_id: 'plan-1',
+        snapshot_title: 'Linked issue',
+        snapshot_description: 'Synced body',
+        external_updated_at: '2026-01-01T00:00:00.000Z',
+      });
+      ctx.repos.outboundChanges.add({
+        kpm_project_id: project.id,
+        plan_item_id: 'plan-1',
+        association_id: association.id,
+        operation: 'update',
+        target_issue_type_id: null,
+        target_issue_type_name: null,
+        target_parent_key: null,
+        target_status_category: item.status_category ?? null,
+        custom_field_overrides: null,
+        queued_by: 'user',
+      });
+      return { project, association };
+    }
+
+    const syncedIssue: ExternalIssue = { ...linearInReviewIssue, description: 'Synced body' };
+
+    it('sends only the status when the title and description match the last sync', async () => {
+      const ctx = createTestRepositoryContext();
+      const { project, association } = queueSyncedUpdate(ctx, { status_category: 'done' });
+      const client = createLinearUpdateClient([syncedIssue, syncedIssue, { ...linearDoneIssue, description: 'Synced body' }]);
+
+      const result = await createService(ctx, client).executeApprovedExport(project.id, association.id, ['plan-1']);
+
+      expect(result.success).toBe(true);
+      expect(client.updateIssue).not.toHaveBeenCalled();
+      expect(client.transitionIssue).toHaveBeenCalledWith('ENG-1', 'state-done', true);
+    });
+
+    it('sends the description alone when only the description changed locally', async () => {
+      const ctx = createTestRepositoryContext();
+      const { project, association } = queueSyncedUpdate(ctx, { description: 'Edited body' });
+      const client = createLinearUpdateClient([syncedIssue]);
+
+      await createService(ctx, client).executeApprovedExport(project.id, association.id, ['plan-1']);
+
+      expect(client.updateIssue).toHaveBeenCalledWith('ENG-1', { description: 'Edited body', customFields: undefined });
+    });
+
+    it('neither diffs nor warns about a description the push leaves alone', async () => {
+      const ctx = createTestRepositoryContext();
+      const { project, association } = queueSyncedUpdate(ctx, { status_category: 'done' });
+      const client = createLinearUpdateClient([{
+        ...syncedIssue,
+        description: 'Rich body edited in the tracker',
+        updatedAt: '2026-02-01T00:00:00.000Z',
+        unrepresentableContent: ['attachments'],
+      }]);
+
+      const review = await createService(ctx, client).generateSyncReview(project.id, association.id);
+
+      expect(review.items[0]?.diffs?.description).toBeNull();
+      expect(review.items[0]?.hasConflict).toBe(false);
+      expect(review.items[0]?.contentLossWarning).toBeUndefined();
+    });
+
+    it('warns when a pushed description would erase content KPM cannot represent', async () => {
+      const ctx = createTestRepositoryContext();
+      const { project, association } = queueSyncedUpdate(ctx, { description: 'Edited body' });
+      const client = createLinearUpdateClient([{
+        ...syncedIssue,
+        unrepresentableContent: ['attachments', 'expand sections'],
+      }]);
+
+      const review = await createService(ctx, client).generateSyncReview(project.id, association.id);
+
+      expect(review.items[0]?.diffs?.description?.hasChanges).toBe(true);
+      expect(review.items[0]?.contentLossWarning).toContain('attachments, expand sections');
+    });
+  });
+
   describe('generateSyncReview deletions', () => {
     it('surfaces the current title/description/status for a pending delete', async () => {
       const ctx = createTestRepositoryContext();

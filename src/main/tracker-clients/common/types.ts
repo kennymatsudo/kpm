@@ -23,6 +23,12 @@ export interface ExternalIssue {
   creator?: ExternalPerson | null;
   updatedAt: string;
   url: string;
+  /**
+   * What the tracker's rich description holds that `description` cannot carry
+   * back (Jira attachments, expand sections, ...). Pushing `description`
+   * replaces it. Absent for trackers whose native format is markdown.
+   */
+  unrepresentableContent?: string[];
 }
 
 export interface TrackerIssueType {

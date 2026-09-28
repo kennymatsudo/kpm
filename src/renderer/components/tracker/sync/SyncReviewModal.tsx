@@ -725,8 +725,8 @@ function ItemRow({ item, depth = 0, isSelected, onSelect, onToggle, trackerLabel
             </svg>
           </div>
         )}
-        {item.hasConflict && (
-          <div className="w-4 h-4 rounded-full bg-warning/12 flex items-center justify-center" title={`Modified in ${trackerLabel}`}>
+        {(item.hasConflict || item.contentLossWarning) && (
+          <div className="w-4 h-4 rounded-full bg-warning/12 flex items-center justify-center" title={item.contentLossWarning ?? `Modified in ${trackerLabel}`}>
             <svg className="w-2.5 h-2.5 text-warning" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01" />
             </svg>
@@ -1004,6 +1004,17 @@ function DetailPanel({
                 <p key={i} className="text-tiny text-danger leading-tight">{err}</p>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {item.contentLossWarning && (
+        <div className="mx-4 mt-3 p-2.5 rounded-lg bg-warning/8 border border-warning/15 flex-shrink-0">
+          <div className="flex items-start gap-2">
+            <svg className="w-3.5 h-3.5 text-warning flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-tiny text-warning leading-tight">{item.contentLossWarning}</p>
           </div>
         </div>
       )}

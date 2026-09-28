@@ -178,6 +178,18 @@ export function createDocumentSyncService(deps: DocumentSyncDeps) {
           );
         }
 
+        // Neither side changed since the last sync, so there is nothing to send.
+        // Writing anyway would replace rich remote content (attachments, expand
+        // sections, layouts) with the flattened markdown KPM holds. A deliberate
+        // restore over a changed remote still goes through.
+        if (
+          link.localContentHash !== null &&
+          hashContent(localContent) === link.localContentHash &&
+          link.remoteContentHash === expectedRemoteHash
+        ) {
+          return current;
+        }
+
         const resolved = toExternalMarkdown(
           localContent,
           deps.planItems.getByProject(projectId),
