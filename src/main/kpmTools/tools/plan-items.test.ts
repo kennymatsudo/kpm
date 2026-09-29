@@ -4,6 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { runWithToolExecutionContext } from '../runtime';
 import BetterSqlite3, { type Database } from 'better-sqlite3';
 import { resolveBulkTargetIds, createPlanItemTools } from './plan-items';
 import type { IPlanItemRepository, IPlanRelationRepository } from '../../db/interfaces';
@@ -333,7 +334,9 @@ describe('plan item tools', () => {
   }
 
   async function call(name: string, args: unknown): Promise<ToolCallResult> {
-    return getTool(name).handler(args as never, undefined) as Promise<ToolCallResult>;
+    const { projectId = 'project-1', ...input } = args as { projectId?: string };
+    return runWithToolExecutionContext({ projectId }, () =>
+      getTool(name).handler(input as never, undefined) as Promise<ToolCallResult>);
   }
 
   describe('query_plan_items', () => {
@@ -437,7 +440,7 @@ describe('plan item tools', () => {
 
     it('include.dependencies adds blockedBy/blocks/relatedTo summaries', async () => {
       insertItem(db, { id: 'a', title: 'A' });
-      insertItem(db, { id: 'b', title: 'B' });
+      insertItem(db, { id: 'b', title: 'B', statusCategory: 'done' });
       insertRelation(db, { id: 'rel-1', fromItemId: 'b', toItemId: 'a', relationType: 'blocks' });
 
       const result = parseJson(
@@ -448,7 +451,7 @@ describe('plan item tools', () => {
         })
       );
 
-      expect(result.items[0].dependencies.blockedBy).toEqual([{ id: 'b', title: 'B', status: 'planned', external_key: null }]);
+      expect(result.items[0].dependencies.blockedBy).toEqual([{ id: 'b', title: 'B', status_category: 'done', external_key: null }]);
     });
 
     it('with all includes on a single id, reproduces get_item_context-equivalent info', async () => {

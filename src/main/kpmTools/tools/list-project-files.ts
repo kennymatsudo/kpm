@@ -6,7 +6,7 @@
  */
 
 import { z } from 'zod';
-import { tool, jsonResult, toolError } from './index';
+import { tool, jsonResult, toolError, projectScoped } from './index';
 import type { FileExplorerService } from '../../services/files/FileExplorerService';
 import { HIDDEN_FILE_TREE_ENTRIES } from '../../services/files/fileTreeVisibility';
 
@@ -16,32 +16,9 @@ interface ListProjectFilesToolDeps {
 
 const HIDDEN_FILE_TREE_ENTRIES_DESCRIPTION = HIDDEN_FILE_TREE_ENTRIES.map((entry) => `\`${entry}\``).join(', ');
 
-const TOOL_DESCRIPTION = `List files and folders within the project's file tree.
+const TOOL_DESCRIPTION = `List files and folders in the KPM project folder: the project's notes, specs, and docs, not the files of a connected code repo (use Glob, Grep, and Read for those). Use it to see what is written down, or to find the document a question depends on. For a survey, pass recursive: true and structureOnly: true; each document carries a one-line summary, so pick files to open with read_project_file from the summaries instead of opening files to learn what they are. A summary is a hint that can lag recent edits, and a missing one means the file is not indexed yet, not that it is irrelevant.
 
-## When to Use
-Use when the user asks what files or folders exist in the project, wants to browse the project structure, or needs to know what documents are available.
-
-## Parameters
-- \`projectId\`: The project UUID
-- \`path\`: Relative path to list. Use "" (empty string) for the project root. Example: "specs", "docs/archive".
-- \`recursive\`: When true, returns all descendants. Defaults to false (lists only the immediate children).
-- \`depth\`: Maximum recursion depth when \`recursive\` is true. Defaults to 10.
-- \`limit\`: Maximum total nodes to return. Defaults to 500 for recursive listings. Use with \`cursor\` to page through large trees.
-- \`cursor\`: Opaque handle from a previous truncated response — pass it unchanged to receive the next page.
-- \`structureOnly\`: When true, each node includes only name, path, isDirectory, isSymlink, and summary — omitting size and modifiedAt. Produces a smaller response; ideal for an initial tree survey.
-
-## Response shape
-The response is a **flat, DFS-ordered list** of nodes (no nested children).
-- \`count\`: Total nodes in this response page.
-- \`truncated\`: True when results were cut off at \`limit\`.
-- \`nextCursor\`: Present when \`truncated\` is true. Pass it as \`cursor\` in the next call to continue.
-
-## Choosing what to read
-For a project survey use \`recursive: true, structureOnly: true\`. Each document carries a one- or two-sentence \`summary\` of what it covers: use the summaries to decide which files to open with \`read_project_file\`, instead of opening files to find out what they are. If the response is \`truncated\`, pass \`nextCursor\` as \`cursor\` to get the next page. A \`summary\` is a hint, not full content: it can lag recent edits or omit detail, so stay free to open any file. A missing \`summary\` means the file has not been indexed yet, not that it is irrelevant.
-
-## Notes
-- Generated/cache paths (${HIDDEN_FILE_TREE_ENTRIES_DESCRIPTION}) are hidden. All other files, including dotfiles, are visible.
-- Lists files in the developer's KPM project folder only. For files inside connected code repositories, use Glob/Read/Grep instead.`;
+Returns a flat list in folder order; folder paths end in "/". A recursive listing returns up to 200 entries by default; when truncated is true, pass nextCursor as cursor for the next page. Generated and cache folders (${HIDDEN_FILE_TREE_ENTRIES_DESCRIPTION}) are hidden.`;
 
 export function createListProjectFilesTools(deps: ListProjectFilesToolDeps) {
   return [
@@ -49,15 +26,14 @@ export function createListProjectFilesTools(deps: ListProjectFilesToolDeps) {
       'list_project_files',
       TOOL_DESCRIPTION,
       {
-        projectId: z.string().uuid().describe('The project UUID'),
         path: z.string().default('').describe('Relative path to list. Use "" for project root.'),
         recursive: z.boolean().default(false).describe('Return all descendants when true'),
         depth: z.number().int().min(1).max(20).default(10).describe('Max recursion depth when recursive is true'),
-        limit: z.number().int().min(1).max(2000).optional().describe('Max total nodes to return (default 500 for recursive). Use with cursor to page through large trees.'),
+        limit: z.number().int().min(1).max(2000).optional().describe('Max entries to return (default 200 for recursive)'),
         cursor: z.string().optional().describe('Opaque continuation handle from a previous truncated response'),
-        structureOnly: z.boolean().optional().describe('When true, return only name/path/isDirectory/isSymlink/summary per node — omits size and modifiedAt. Smaller output.'),
+        structureOnly: z.boolean().optional().describe('Omit size and modified time, keeping path and summary'),
       },
-      async ({ projectId, path, recursive, depth, limit, cursor, structureOnly }) => {
+      projectScoped(async ({ projectId, path, recursive, depth, limit, cursor, structureOnly }) => {
         const result = await deps.fileExplorerService.listDirectoryPaged(projectId, path, {
           recursive,
           depth,
@@ -74,14 +50,18 @@ export function createListProjectFilesTools(deps: ListProjectFilesToolDeps) {
         const { nodes, truncated, nextCursor } = result.data;
 
         return jsonResult({
-          path: path || '',
-          recursive,
           count: nodes.length,
-          nodes,
+          nodes: nodes.map((node) => ({
+            path: node.isDirectory ? `${node.path}/` : node.path,
+            ...(node.isSymlink ? { symlink: true } : {}),
+            ...(node.summary ? { summary: node.summary } : {}),
+            ...(structureOnly || node.isDirectory ? {} : { size: node.size, modifiedAt: node.modifiedAt }),
+          })),
           truncated,
           ...(nextCursor !== undefined ? { nextCursor } : {}),
         });
-      }
+      }),
+      { annotations: { readOnlyHint: true, idempotentHint: true } }
     ),
   ];
 }

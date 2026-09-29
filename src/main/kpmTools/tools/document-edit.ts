@@ -14,20 +14,14 @@
 
 import { z } from 'zod';
 import { createHash } from 'crypto';
-import { tool, jsonResult, toolError, toolLog } from './index';
+import { tool, jsonResult, toolError, toolLog, projectScoped } from './index';
 import type { DocumentUpdateCallback } from './document-update';
 
 export type ReadProjectFileFn = (projectId: string, filePath: string) => Promise<string | null>;
 
-const TOOL_DESCRIPTION = `Submit one or more edits to an existing project file (relative path, e.g. "guide.md"). KPM queues or applies them according to the user's approval setting.
+const TOOL_DESCRIPTION = `Propose find-and-replace edits to an existing file in the KPM project folder. KPM queues them for review or applies them, per the user's setting. For a new file or a full rewrite, use propose_document_create; for the project context file (AGENTS.md or CLAUDE.md), use propose_context_edit.
 
-For new files use \`propose_document_create\`. For the project context file (AGENTS.md / CLAUDE.md) use \`propose_context_edit\`.
-
-Rules:
-- old_string must match exactly one location (whitespace + indentation included). If missing or non-unique, the call fails — add more surrounding context.
-- old_string and new_string must differ.
-- Treat \`@plan/<uuid>\` tokens as atomic; never split one across the boundary or partially overwrite the UUID. Use only UUIDs from the system prompt's Item Reference or a KPM plan tool result. Refs in prose render as live chips locally and rewrite to native tracker syntax on export.
-- Multiple edits to the same file: use edits[] to batch related hunks in one atomic call (single approval). Hunks apply in order, each against the result of prior hunks. A failing hunk cancels the whole batch.`;
+Each old_string must match exactly one place, whitespace and indentation included; if it is missing or not unique the call fails, so add surrounding text. Put several changes to one file in edits[]: they apply in order, each against the result of the ones before, as one review, and a failing hunk cancels the whole batch. Treat each @plan/<uuid> token as a unit and never cut through one. The result carries the file's new hash, which a follow-up edit can pass as expectedHash.`;
 
 /** A single find-and-replace hunk. */
 interface EditHunk {
@@ -85,7 +79,6 @@ export function createDocumentEditTools(
       'propose_document_edit',
       TOOL_DESCRIPTION,
       {
-        projectId: z.string().uuid().describe('The project UUID'),
         filePath: z.string().min(1)
           .refine(
             (p) => !p.startsWith('/') && !/^[a-zA-Z]:/.test(p) && !p.includes('..'),
@@ -100,9 +93,9 @@ export function createDocumentEditTools(
             new_string: z.string().describe('The replacement text. Can be empty to delete old_string.'),
           })
         ).min(1).optional().describe('Batch of hunks to apply atomically (preferred for multiple related changes to one file). Hunks are validated and applied in order; a failing hunk cancels the whole batch with no partial changes.'),
-        expectedHash: z.string().optional().describe('Hash returned by read_project_file. If provided and the file has changed since the read, the call fails so you can re-read before editing.'),
+        expectedHash: z.string().optional().describe('Hash from read_project_file or a previous edit; the call fails if the file changed since then'),
       },
-      async ({ projectId, filePath, old_string, new_string, edits, expectedHash }) => {
+      projectScoped(async ({ projectId, filePath, old_string, new_string, edits, expectedHash }) => {
         const isBatch = Array.isArray(edits) && edits.length > 0;
 
         if (!isBatch) {
@@ -186,18 +179,14 @@ export function createDocumentEditTools(
           return toolError(`Failed to propose document edit: ${error instanceof Error ? error.message : String(error)}`);
         }
 
-        const linesBefore = currentContent.split('\n').length;
-        const linesAfter = newContent.split('\n').length;
-
         return jsonResult({
           success: true,
           filePath,
           ...(isBatch ? { hunksApplied: edits.length } : {}),
-          linesAdded: Math.max(0, linesAfter - linesBefore),
-          linesRemoved: Math.max(0, linesBefore - linesAfter),
-          totalLines: linesAfter,
+          totalLines: newContent.split('\n').length,
+          hash: createHash('sha256').update(newContent).digest('hex').slice(0, 16),
         });
-      }
+      })
     ),
   ];
 }

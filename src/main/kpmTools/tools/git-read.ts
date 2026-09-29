@@ -12,7 +12,7 @@
  */
 
 import { z } from 'zod';
-import { tool, jsonResult, toolError, toolLog } from './index';
+import { tool, toolResult, toolError, toolLog, projectScoped } from './index';
 import type { IRepoRepository } from '../../db/interfaces';
 import { gitExecCaptured } from '../../services/repo/gitUtils';
 import { READ_GIT_SUBCOMMANDS, classifyGitInvocation } from '../../services/repo/gitReadOnly';
@@ -22,25 +22,12 @@ interface GitReadToolDeps {
   repos: Pick<IRepoRepository, 'getByProject'>;
 }
 
-const MAX_OUTPUT_CHARS = 100_000;
+const MAX_OUTPUT_CHARS = 60_000;
 const MAX_BUFFER = 10 * 1024 * 1024;
 
-const TOOL_DESCRIPTION = `Run a read-only git command in a connected repository.
+const TOOL_DESCRIPTION = `Run a read-only git command in a connected repository: log, diff, show, status, blame, branch and tag listings, merge-base, rev-parse, and similar. Arguments are passed as a list, one element per shell word, with no pipes or redirects, so nothing depends on shell quoting; limit output with git's own flags (-n, --stat, --name-only). Runs outside the shell sandbox, so it also works when Bash git is refused, and it reaches the network: fetch origin pull/123/head puts a pull request's head at FETCH_HEAD. To read a pull request itself, use read_pull_request.
 
-## When to use
-Inspecting git state: history (\`log\`), changes (\`diff\`, \`show\`), working-tree status (\`status\`), authorship (\`blame\`), branches/tags, \`merge-base\`, \`rev-parse\`, \`rev-list\`, \`for-each-ref\`, etc. Prefer this over Bash for git reads: it takes tokenized arguments, so nothing depends on shell quoting.
-
-## Parameters
-- \`projectId\`: The project UUID.
-- \`operation\`: The git subcommand, e.g. \`log\`, \`diff\`, \`status\`, \`show\`, \`merge-base\`.
-- \`args\`: Remaining git arguments as a tokenized array — one element per shell word (e.g. \`["--oneline", "-20", "origin/main..HEAD"]\`). No pipes, redirects, or shell syntax; git runs directly. To limit output, use git's own flags (\`-n\`, \`--max-count\`, \`--stat\`, \`--name-only\`).
-- \`repoPath\`: Absolute path of the connected repo (or a path inside it). Optional when exactly one repo is connected.
-
-## Notes
-- Runs outside the shell sandbox, so it is the fallback whenever Bash git is refused: unlike Bash, it reaches the network and your git credentials. A remote ref you do not have yet is one \`fetch\` away — e.g. \`operation: "fetch", args: ["origin", "pull/123/head"]\` puts a pull request's head at \`FETCH_HEAD\`. (To read a PR itself, prefer \`read_pull_request\`.)
-- Read-only: writes (commit, add, push, branch/tag creation, merge, rebase, reset, checkout, stash push, config set, ...) are rejected. \`fetch\` is allowed only in non-destructive forms (no \`src:dst\` refspec, which could move a local branch).
-- The response includes \`exitCode\`, \`stdout\`, and \`stderr\`. A non-zero \`exitCode\` is often normal (e.g. \`grep\` with no matches), so read the output rather than treating it as failure.
-- \`stdout\` is truncated past ${MAX_OUTPUT_CHARS.toLocaleString()} characters; narrow with git flags if you hit that.`;
+Commands that write (commit, add, push, checkout, reset, merge, rebase, stash push, branch or tag creation, config set) are rejected, as is fetch with a src:dst refspec. Returns an exit-code line, stderr when there is any, then stdout, cut at ${MAX_OUTPUT_CHARS.toLocaleString()} characters. A non-zero exit is often normal, such as git grep with no match.`;
 
 export function createGitReadTools(deps: GitReadToolDeps) {
   return [
@@ -48,20 +35,19 @@ export function createGitReadTools(deps: GitReadToolDeps) {
       'git_read',
       TOOL_DESCRIPTION,
       {
-        projectId: z.string().uuid().describe('The project UUID'),
         operation: z
           .enum(READ_GIT_SUBCOMMANDS)
           .describe('The read-only git subcommand to run (e.g. "log", "diff", "status").'),
         args: z
           .array(z.string())
           .default([])
-          .describe('Git arguments after the operation, tokenized one-per-word. No shell syntax.'),
+          .describe('Arguments after the subcommand, one per shell word, e.g. ["--oneline", "-20", "origin/main..HEAD"]'),
         repoPath: z
           .string()
           .optional()
           .describe('Absolute path of a connected repo (or a path inside it). Optional when exactly one repo is connected.'),
       },
-      async ({ projectId, operation, args, repoPath }) => {
+      projectScoped(async ({ projectId, operation, args, repoPath }) => {
         const resolution = resolveConnectedRepoPath(deps.repos.getByProject(projectId), repoPath);
         if (!resolution.ok) return toolError(resolution.reason);
         const cwd = resolution.repoPath;
@@ -79,19 +65,17 @@ export function createGitReadTools(deps: GitReadToolDeps) {
         );
 
         const truncated = rawStdout.length > MAX_OUTPUT_CHARS;
-        const stdout = truncated
-          ? rawStdout.slice(0, MAX_OUTPUT_CHARS) + '\n... (output truncated)'
-          : rawStdout;
+        const header = truncated
+          ? `exit ${exitCode}; stdout cut at ${MAX_OUTPUT_CHARS.toLocaleString()} of ${rawStdout.length.toLocaleString()} chars, narrow with git flags`
+          : `exit ${exitCode}`;
+        const sections = [header];
+        if (stderr.trim()) sections.push(`stderr:\n${stderr.trim()}`);
+        const stdout = truncated ? rawStdout.slice(0, MAX_OUTPUT_CHARS) : rawStdout;
+        if (stdout) sections.push(stderr.trim() ? `stdout:\n${stdout}` : stdout);
 
-        return jsonResult({
-          operation,
-          repoPath: cwd,
-          exitCode,
-          stdout,
-          ...(stderr.trim() ? { stderr: stderr.trim() } : {}),
-          truncated,
-        });
-      }
+        return toolResult(sections.join('\n\n'));
+      }),
+      { annotations: { readOnlyHint: true, openWorldHint: true } }
     ),
   ];
 }

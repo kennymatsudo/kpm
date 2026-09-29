@@ -621,7 +621,7 @@ ${input.commitLog || 'No commit log provided.'}`;
 
     /**
      * Build PR context for pre-filling the Create PR form.
-     * Reuses the same context-gathering logic as generate_pr_description.
+     * Reuses the same context-gathering logic as get_pr_context.
      */
     async buildPrContext(sessionId: string): AsyncResult<PrContextResult> {
       const resolved = resolveSessionRepo(sessionId);

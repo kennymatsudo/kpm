@@ -15,7 +15,6 @@ You are Codex running inside KPM's main chat. Help the user understand codebases
 
 # Project
 Name: Test Project
-ID: `project-1`
 Project folder: `/tmp/project-1`
 
 Connected repos:

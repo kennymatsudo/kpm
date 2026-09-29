@@ -1,9 +1,9 @@
 import { z } from 'zod';
 import { createHash } from 'crypto';
-import { tool, jsonResult, toolError, toolLog } from './index';
+import { tool, toolResult, toolError, toolLog, projectScoped } from './index';
 import type { ReadProjectFileFn } from './document-edit';
 
-const TOOL_DESCRIPTION = `Read a KPM project file. Returns content, a short hash, and line count. Call before propose_document_edit to confirm current content and obtain the hash for change detection.`;
+const TOOL_DESCRIPTION = `Read a file from the KPM project folder: the notes, specs, and docs that belong to this project, not files in a connected code repo. Returns a header line with the path, a short hash, and the line count, then the file's text. Read a file before proposing an edit to it unless its current text is already in the conversation; pass the hash as propose_document_edit's expectedHash to catch changes made in between. To find which file to read, use list_project_files.`;
 
 export function createDocumentReadTools(readFile: ReadProjectFileFn) {
   return [
@@ -11,7 +11,6 @@ export function createDocumentReadTools(readFile: ReadProjectFileFn) {
       'read_project_file',
       TOOL_DESCRIPTION,
       {
-        projectId: z.string().uuid().describe('The project UUID'),
         filePath: z
           .string()
           .min(1)
@@ -21,7 +20,7 @@ export function createDocumentReadTools(readFile: ReadProjectFileFn) {
           )
           .describe('Relative file path within the KPM project (e.g. "guide.md", "docs/spec.md")'),
       },
-      async ({ projectId, filePath }) => {
+      projectScoped(async ({ projectId, filePath }) => {
         toolLog(`[KPM Tools] read_project_file ${projectId} ${filePath}`);
 
         let content: string | null;
@@ -42,8 +41,9 @@ export function createDocumentReadTools(readFile: ReadProjectFileFn) {
         const hash = createHash('sha256').update(content).digest('hex').slice(0, 16);
         const lines = content.split('\n').length;
 
-        return jsonResult({ filePath, content, hash, lines });
-      }
+        return toolResult(`path: ${filePath} | hash: ${hash} | lines: ${lines}\n\n${content}`);
+      }),
+      { annotations: { readOnlyHint: true, idempotentHint: true } }
     ),
   ];
 }

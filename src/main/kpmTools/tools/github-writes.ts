@@ -9,7 +9,7 @@
  */
 
 import { z } from 'zod';
-import { tool, jsonResult, toolError, toolLog } from './index';
+import { tool, jsonResult, toolError, toolLog, projectScoped } from './index';
 import type { IPlanItemRepository, IRepoRepository } from '../../db/interfaces';
 import type { WriteDecision } from '../../chat/writeGrants';
 import { getConfig } from '../../config';
@@ -39,45 +39,14 @@ interface GitHubWriteToolDeps {
   requestWriteAccess: (request: PullRequestWriteRequest) => Promise<WriteDecision>;
 }
 
-const CREATE_DESCRIPTION = `Open a pull request on GitHub for the branch checked out in a connected repository.
+const CREATE_DESCRIPTION = `Open a GitHub pull request for the branch checked out in a connected repository, when the user asks to open, create, or raise a PR. This is the only way: gh pr create in Bash has no network or credentials. The branch must already be on the remote, so push it with git_push first. The head is the checked-out branch and cannot be chosen; a detached HEAD, the default branch, and main, master, develop, and release are refused. Opens as a draft unless the user asks for ready for review. Write the body from what you know about the change, following the repo's .github/pull_request_template.md when there is one; call get_pr_context only when the change is not in the conversation. @plan/<uuid> refs become tracker keys. If the branch already has a PR, report it and use update_pull_request instead of retrying. Asks for the project's write grant on first use.`;
 
-## When to use
-The user asks to open, create, or raise a PR. \`gh pr create\` in Bash cannot work — chat's shell has no network access and no credentials — so this is the only way.
-
-## Parameters
-- \`projectId\`: The project UUID.
-- \`title\`: PR title.
-- \`body\`: PR description in markdown. Follow the repo's PR template if it has one (\`.github/pull_request_template.md\`). Write it from what you already know about the change; call \`generate_pr_description\` only when you do not have the change in context, since it returns up to 80,000 characters of diff. \`@plan/<uuid>\` refs are rewritten to their tracker keys.
-- \`base\`: Branch to merge into. Defaults to the repository's default branch.
-- \`draft\`: Open as a draft (default true). Set false only when the user asks for a ready-for-review PR.
-- \`repoPath\`: Absolute path of a connected repo (or a path inside it). Optional when exactly one repo is connected.
-
-## Notes
-- Uses the checked-out branch as the head; it is not selectable. Refuses a detached HEAD, the default branch, and main/master/develop/release.
-- The branch must already be on the remote. Push it with \`git_push\` first.
-- Needs the project's write grant, requested on first use.
-- If the branch already has a PR, report it and use \`update_pull_request\` instead of retrying.`;
-
-const UPDATE_DESCRIPTION = `Change the title and/or description of an existing pull request on GitHub.
-
-## When to use
-The user asks to rename a PR, fill in or rewrite its description, or add a ticket to its title. \`body\` replaces the whole description, so when only part of it should change, read the current one first with \`read_pull_request\` and \`includeDiff: false\`.
-
-## Parameters
-- \`projectId\`: The project UUID.
-- \`pr\`: PR URL, \`#123\`, or \`123\`. A bare number resolves against the connected repo's remote.
-- \`title\`: New title. Omit to keep the current one.
-- \`body\`: New description in markdown, replacing the current one. Omit to keep it. \`@plan/<uuid>\` refs are rewritten to their tracker keys.
-- \`repoPath\`: Absolute path of a connected repo to run from. Optional when exactly one repo is connected.
-
-## Notes
-- Pass at least one of \`title\` and \`body\`.
-- Needs the project's write grant, requested on first use.`;
+const UPDATE_DESCRIPTION = `Change the title, the description, or both of an existing GitHub pull request, when the user asks to rename it, write or rewrite its description, or add a ticket to its title. body replaces the whole description, so to change part of it, read the current one first with read_pull_request. @plan/<uuid> refs become tracker keys. Pass at least one of title and body. Asks for the project's write grant on first use.`;
 
 const repoPathParam = z
   .string()
   .optional()
-  .describe('Absolute path of a connected repo (or a path inside it). Optional when exactly one repo is connected.');
+  .describe('Absolute path of a connected repo (or a path inside it); optional when exactly one repo is connected');
 
 export function createGitHubWriteTools(deps: GitHubWriteToolDeps) {
   const toGitHubMarkdown = (projectId: string, markdown: string) =>
@@ -88,14 +57,14 @@ export function createGitHubWriteTools(deps: GitHubWriteToolDeps) {
       'create_pull_request',
       CREATE_DESCRIPTION,
       {
-        projectId: z.string().uuid().describe('The project UUID'),
-        title: z.string().min(1).describe('PR title.'),
-        body: z.string().describe('PR description in markdown.'),
-        base: z.string().min(1).optional().describe('Branch to merge into; defaults to the repo default branch.'),
-        draft: z.boolean().default(true).describe('Open as a draft.'),
+        title: z.string().min(1).describe('PR title'),
+        body: z.string().describe('PR description in markdown'),
+        base: z.string().min(1).optional().describe('Branch to merge into; defaults to the repo\'s default branch'),
+        draft: z.boolean().default(true).describe('Open as a draft; false only when the user asks for ready for review'),
         repoPath: repoPathParam,
       },
-      async ({ projectId, title, body, base, draft, repoPath }) => {
+      // Defaulted here too, so a caller that skips schema parsing still gets a draft.
+      projectScoped(async ({ projectId, title, body, base, draft = true, repoPath }) => {
         const resolution = resolveConnectedRepoPath(deps.repos.getByProject(projectId), repoPath);
         if (!resolution.ok) return toolError(resolution.reason);
         const cwd = resolution.repoPath;
@@ -136,20 +105,19 @@ export function createGitHubWriteTools(deps: GitHubWriteToolDeps) {
         } catch (error) {
           return toolError(await describeGhFailure(cwd, error));
         }
-      },
+      }),
       { annotations: { openWorldHint: true } }
     ),
     tool(
       'update_pull_request',
       UPDATE_DESCRIPTION,
       {
-        projectId: z.string().uuid().describe('The project UUID'),
-        pr: z.string().describe('PR URL, "#123", or "123".'),
-        title: z.string().min(1).optional().describe('New title.'),
-        body: z.string().optional().describe('New description, replacing the current one.'),
+        pr: z.string().describe('PR URL, "#123", or "123"; a bare number resolves against the connected repo\'s remote'),
+        title: z.string().min(1).optional().describe('New title; omit to keep the current one'),
+        body: z.string().optional().describe('New description in markdown, replacing the current one; omit to keep it'),
         repoPath: repoPathParam,
       },
-      async ({ projectId, pr, title, body, repoPath }) => {
+      projectScoped(async ({ projectId, pr, title, body, repoPath }) => {
         if (title === undefined && body === undefined) {
           return toolError('Nothing to change: pass title, body, or both.');
         }
@@ -177,7 +145,7 @@ export function createGitHubWriteTools(deps: GitHubWriteToolDeps) {
         } catch (error) {
           return toolError(await describeGhFailure(cwd, error));
         }
-      },
+      }),
       { annotations: { openWorldHint: true } }
     ),
   ];

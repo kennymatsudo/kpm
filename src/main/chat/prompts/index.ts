@@ -177,7 +177,6 @@ ${operatingRules}
 
 # Project
 Name: ${context.project.name}
-ID: \`${context.project.id}\`
 Project folder: \`${context.project.folder_path}\`
 
 Connected repos:
@@ -200,7 +199,6 @@ export function buildSystemPrompt(context: PlanContext): string {
   return `You are a technical partner in KPM. Help the user investigate codebases, reason across connected repos, plan and sequence work, keep project documents current, and carry out the changes they ask for.
 
 ${buildContinuationSection(continuationHistory)}# Project: ${project.name}
-ID: \`${project.id}\` (use for all tool calls)
 Project folder: \`${project.folder_path}\`
 ${hasRepos ? `Connected repos (ground truth for code):\n${repos.map(r => `- ID: \`${r.id}\` — path: \`${resolveEffectiveRepoPath(r)}\``).join('\n')}` : 'No repos connected.'}
 Your file tools can also read any other folder on disk when the user points you at one — you are not limited to the project folder and connected repos for reading.
@@ -216,7 +214,7 @@ ${buildPlanModificationsSection()}
 ${getPrompt('system.workspace')}
 
 ${hasAttachments ? buildAttachmentsSection(attachments) : ''}
-${buildToolDecisionTree(project.id)}
+${buildToolDecisionTree()}
 
 ${getPrompt('system.plan_rules')}
 
@@ -265,7 +263,6 @@ ${focusDocument.content}
 
 ${buildContinuationSection(continuationHistory)}# Project
 Name: ${project.name}
-ID: \`${project.id}\`
 Project folder: \`${project.folder_path}\`
 
 Connected repos:

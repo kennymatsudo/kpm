@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { runWithToolExecutionContext } from '../runtime';
 import { createGitHubTools } from './github';
 import type * as GhUtils from '../../services/repo/ghUtils';
 import type { PrReviewActivity } from '../../services/repo/ghUtils';
@@ -39,15 +40,15 @@ async function readPr(input: Record<string, unknown>) {
     getByProject: () => [{ path: REPO_PATH, active_worktree_path: null }],
   } as never, {} as never) as any[];
   const read = tools.find((tool) => tool.name === 'read_pull_request');
-  const result = await read.handler({
-    projectId: PROJECT_ID, includeDiff: false, includeReviews: true, includeResolvedThreads: false, ...input,
-  });
+  const result = await runWithToolExecutionContext({ projectId: PROJECT_ID }, () => read.handler({
+    includeDiff: false, includeReviews: true, includeResolvedThreads: false, ...input,
+  }));
   return { result, body: result.isError ? null : JSON.parse(result.content[0].text) };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
-  getPrDetails.mockResolvedValue({ number: 7, url: 'https://github.com/other-org/other-repo/pull/7', baseRefName: 'main' });
+  getPrDetails.mockResolvedValue({ number: 7, url: 'https://github.com/other-org/other-repo/pull/7', baseRefName: 'main', body: '' });
   getPrDiff.mockResolvedValue('diff');
   getPrReviewActivity.mockResolvedValue(activity());
 });

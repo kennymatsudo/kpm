@@ -92,80 +92,17 @@ export function createPlanChangeTools(
   return [
     tool(
       'modify_plan',
-      `Modify the plan. KPM will either queue these changes for review or apply them immediately, depending on the user's approval setting.
+      `Propose changes to the plan: create items, revise them, set status or labels, reparent, reorder, link dependencies, delete, or queue items for tracker export. KPM queues the batch for review or applies it at once, per the user's setting. Put related changes in one call.
 
-Plan items carry structured fields that flow to the agent, the reviewer, and generated artifacts:
-- **intent** (one sentence, local-only): what "done" means at a glance. The decided outcome.
-- **acceptance_criteria** (string[], local-only): testable checklist the agent will satisfy. Each entry is one criterion.
-- **description** (markdown, **synced to Jira/Linear**): why the work matters, in two to four sentences of plain prose. Written for a product manager or a developer who has never opened the codebase: the problem, who it affects, what changes for them, and any alternative already rejected. Keep implementation out of it — no file paths, function or class names, or library and framework names.
-- **source_document_id** (local-only): if this item was extracted from an iteration doc, carry the breadcrumb here.
-- **primary_repo_id** (local-only): the connected repo ID most likely to own implementation. Use the connected repo IDs listed under Project in the system prompt. Set null when multiple repos are plausible and none is clearly primary.
-- **affected_repo_ids** (local-only): other connected repo IDs the item is expected to affect. Do not repeat primary_repo_id.
+Work Brief = title, description, intent, acceptance_criteria. On an existing item, change any of them only with revise_work_brief: fetch the item with get_plan_items, then send all four fields (null for empty ones) with its work_brief_revision as expected_revision. On a revision conflict, fetch again. update_item covers status, label, release tag, and source document.
 
-Repo targeting:
-- Infer targets from the focused repo/files and the repos you inspected before creating the item.
-- If exactly one repo is connected, KPM selects it automatically.
-- Never guess an opaque repo ID. Use only the connected repo IDs listed under Project in the system prompt; never take one from a project document or the context file.
-- Leave primary_repo_id null when the evidence is ambiguous. The user can change it during review.
+Shape: implementation items get intent plus acceptance_criteria; research items whose criteria are not known yet get intent plus description. description is the only field synced to Jira or Linear, so keep file paths, code names, commands, and local document paths out of it; they belong in intent or criteria. Headings inside description do not define the execution contract.
 
-Together, title + description + intent + acceptance_criteria are the item's **Work Brief**. After creation, **revise_work_brief is the only chat action allowed to change any Work Brief field**. First fetch the full current item, then submit the complete replacement Work Brief with its current work_brief_revision as expected_revision. Never send a partial brief. A revision conflict means you must fetch again before proposing another revision.
+IDs: $1, $2… stand for the items this batch creates, in create_item order, and work in any item-ID field. Every other item ID comes from the Item Reference in the system prompt or a plan tool result. Repo IDs come only from the Project list in the system prompt, never from documents; leave primary_repo_id null when unsure, and KPM fills it when one repo is connected. To mention an item in text, follow Plan References; for nesting, follow Plan Structure.
 
-Use intent + acceptance_criteria as the primary shape for implementation items. Use description for discovery/research items where criteria cannot be enumerated yet. Never put **Intent** or **Acceptance Criteria** headings inside description; headings there are ordinary context and do not define the execution contract.
-
-**Sync boundary — critical.** When an item has a Jira/Linear association, its \`description\` is pushed to the external tracker as-is. Keep description sync-clean:
-- **Never** mention KPM document IDs (e.g., \`doc-42\`, \`source_document_id: ...\`) or other local-only resources inside description. Those references are dead outside the developer's machine.
-- **Never** cite iteration-doc filenames or local project-folder paths unless they correspond to files actually in the synced code repo.
-- Breadcrumbs to iteration docs live in the \`source_document_id\` field, never in prose.
-- **Never** put code references in description — file paths, function names, and test commands read as noise to a stakeholder. They belong in intent or acceptance_criteria.
-- intent and acceptance_criteria are local-only and not synced today, so they can reference local context freely.
-
-To reference another plan item from a description, intent, or criterion, follow **Plan References** in the system prompt.
-
-Item actions:
-- create_item: see full example below
-- revise_work_brief: { "type": "revise_work_brief", "item_id": "...", "expected_revision": 3, "work_brief": { "title": "Complete title", "description": "Complete description or null", "intent": "Complete intent or null", "acceptance_criteria": ["Complete criterion list"] } }
-  - Fetch the item first and replace all four fields. Never use update_item for title, description, intent, or acceptance_criteria.
-  - create_item may omit description entirely; revise_work_brief may not. Send every Work Brief field, using null for the empty ones.
-- set_repo_targets: { "type": "set_repo_targets", "item_id": "...", "repository_scope": { "primary_repo_id": null, "affected_repo_ids": [] } }
-  - Replaces the complete Repository Scope. Use only the connected repo IDs listed under Project.
-- update_item: { "type": "update_item", "item_id": "...", "updates": { "status_category": "done" } }
-  - update_item is only for non-brief metadata such as status_category, label, release_tag, and source_document_id.
-- delete_item: { "type": "delete_item", "item_id": "...", "cascade": false }
-  - cascade true deletes the whole subtree; false (the default) deletes only this item and leaves its children as root items.
-- reparent: { "type": "reparent", "item_id": "...", "new_parent_id": "..." }
-- add_dependency: { "type": "add_dependency", "from_id": "...", "to_id": "..." }
-
-Placeholder references: $1, $2 etc. stand for the items this batch creates, numbered by the order of the create_item actions. They are valid in every field that takes an item ID. A placeholder naming no create in the batch is reported back as a skipped action.
-
-Full create_item example (implementation item):
-{
-  "type": "create_item",
-  "title": "Add session timeout warning modal",
-  "intent": "Warn users before their session expires so they don't lose unsaved work.",
-  "acceptance_criteria": [
-    "Warning modal appears 5 minutes before session expires",
-    "Modal exposes an Extend Session action that refreshes the token",
-    "Warning does not interrupt active form input (e.g., typing in a textarea)",
-    "Dismissing the modal still lets the session expire on schedule"
-  ],
-  "description": "Users lose draft work when their session times out with no warning. Support sees this weekly on long forms. Extending the session automatically was rejected because it weakens the protections that make timeouts worth having.",
-  "parent_id": null,
-  "primary_repo_id": null,
-  "affected_repo_ids": []
-}
-
-Exploratory item example (no criteria yet):
-{
-  "type": "create_item",
-  "title": "Investigate storage budget for offline mode",
-  "intent": "Decide whether IndexedDB is a viable target for offline plan caching, measured against OPFS.",
-  "description": "We do not yet know how much plan data a browser will reliably hold offline, so we cannot commit to an offline mode. This item settles that question before any offline work is scoped.",
-  "parent_id": null
-}
-
-Hierarchy: follow **Plan Structure** in the system prompt. Every ID that is not a placeholder must be resolved from a query tool.`,
+Relations: add_dependency reads "from_id relation_type to_id", so "A blocks B" is from_id A, relation_type blocks, to_id B. remove_dependency takes a relation_id from get_enriched_relations. delete_item without cascade keeps the children as root items.`,
       {
-        message: z.string().describe('Brief description of the proposed changes'),
+        message: z.string().describe('One line summarizing the batch'),
         actions: z.array(planActionSchema).describe('The plan actions to propose'),
       },
       async ({ message, actions }) => {

@@ -112,7 +112,7 @@ The chat system prompt is assembled from registry sections (grounding, tool guid
 - `src/main/services/core/PromptOverrideService.ts`, `TaskPromptTemplateService.ts`; `src/renderer/components/settings/PromptsSettings.tsx`
 
 ### KPM tools
-In-process tools chat uses to read and propose against KPM and connected systems: plan items and relations, plan changes, documents and AGENTS.md, project files (list, move, delete), git history and branches, `git_push`, pull requests (find, read with reviews, create, edit, `generate_pr_description`), Jira, Confluence, Storybook, and paging through oversized tool results. Mutating tools emit proposals, except `git_push` and the pull request writes, which act directly once the project write grant is given.
+In-process tools chat uses to read and propose against KPM and connected systems: plan items and relations, plan changes, documents and AGENTS.md, project files (list, move, delete), git history and branches, `git_push`, pull requests (find, read with reviews and checks, create, edit, gather context for a description), Jira, Confluence, Storybook, and paging through oversized tool results. Mutating tools emit proposals, except `git_push` and the pull request writes, which act directly once the project write grant is given.
 - `src/main/kpmTools/tools/`, registered in `src/main/kpmTools/runtimeRegistry.ts`; documented to the model in `src/main/chat/prompts/toolDocs.ts`
 - See the "Add a Claude tool" recipe in the root `CLAUDE.md`
 

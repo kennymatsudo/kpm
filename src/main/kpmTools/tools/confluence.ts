@@ -6,19 +6,18 @@
  */
 
 import { z } from 'zod';
-import { tool, jsonResult, toolError } from './index';
+import { tool, jsonResult, toolError, projectScoped } from './index';
 import type { IConfluenceLinkRepository } from '../../db/interfaces';
 
 export function createConfluenceTools(confluenceLinkRepo: IConfluenceLinkRepository) {
   return [
     tool(
       'get_confluence_url',
-      'Get the Confluence URL for a project document. Use when referencing a document that may be published to Confluence.',
+      'Look up the Confluence page a project document is published to. Use when the user wants a shareable link to a document or asks whether it is on Confluence. Errors when the document has never been published.',
       {
-        projectId: z.string().uuid().describe('The project UUID'),
         documentPath: z.string().min(1).describe('Relative path of the document (e.g. "design-spec.md")'),
       },
-      ({ projectId, documentPath }) => {
+      projectScoped(({ projectId, documentPath }) => {
         const link = confluenceLinkRepo.getByDocumentPath(projectId, documentPath);
 
         if (!link) {
@@ -34,7 +33,7 @@ export function createConfluenceTools(confluenceLinkRepo: IConfluenceLinkReposit
           pageTitle: link.page_title,
           lastSyncedAt: link.last_synced_at,
         }));
-      },
+      }),
       { annotations: { readOnlyHint: true, idempotentHint: true } }
     ),
   ];

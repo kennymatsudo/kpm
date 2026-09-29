@@ -13,7 +13,7 @@
 
 import { z } from 'zod';
 import type { Database } from 'better-sqlite3';
-import { tool, jsonResult, toolError, toolLog } from './index';
+import { tool, jsonResult, toolError, toolLog, projectScoped } from './index';
 import type { IPlanItemRepository, IPlanRelationRepository } from '../../db/interfaces';
 import type { PlanItem, PlanAction } from '../../../shared/types';
 import { getDatabase } from '../../db/connection';
@@ -21,23 +21,20 @@ import { StatusCategoryEnum, LabelEnum, type PlanActionsCallback } from './schem
 
 export type { PlanActionsCallback };
 
-// Status and label enums matching shared types
-const StatusEnum = z.literal('planned');
-
 type PlanItemSummary = Pick<
   PlanItem,
-  'id' | 'title' | 'parent_id' | 'status' | 'status_category' | 'label' | 'release_tag' | 'external_key'
+  'id' | 'title' | 'parent_id' | 'status_category' | 'label' | 'release_tag' | 'external_key'
 >;
 
 interface TreeNode extends PlanItemSummary {
-  children: TreeNode[];
+  children?: TreeNode[];
 }
 
 /** Summary of a related item for dependency display */
 interface DependencySummary {
   id: string;
   title: string;
-  status?: string | null;
+  status_category?: PlanItem['status_category'];
   external_key?: string | null;
 }
 
@@ -161,10 +158,10 @@ export function createPlanItemTools(
     // O(n) tree building
     const buildTree = (parentId: string | null): TreeNode[] => {
       const children = childrenMap.get(parentId) || [];
-      return children.map((item) => ({
-        ...item,
-        children: buildTree(item.id),
-      }));
+      return children.map((item) => {
+        const nested = buildTree(item.id);
+        return nested.length > 0 ? { ...item, children: nested } : item;
+      });
     };
 
     return buildTree(null);
@@ -188,7 +185,7 @@ export function createPlanItemTools(
           UNION
           SELECT p.parent_id FROM plan_items p JOIN lineage l ON p.id = l.id WHERE p.parent_id IS NOT NULL
         )
-        SELECT DISTINCT pi.id, pi.title, pi.parent_id, pi.status, pi.status_category, pi.label, pi.release_tag, pi.external_key
+        SELECT DISTINCT pi.id, pi.title, pi.parent_id, pi.status_category, pi.label, pi.release_tag, pi.external_key
         FROM plan_items pi
         JOIN lineage l ON pi.id = l.id
         WHERE pi.project_id = ?
@@ -237,7 +234,7 @@ export function createPlanItemTools(
     const childRows = db
       .prepare(
         `
-        SELECT id, title, parent_id, status, status_category, label, release_tag, external_key
+        SELECT id, title, parent_id, status_category, label, release_tag, external_key
         FROM plan_items
         WHERE parent_id IN (${placeholders})
         ORDER BY item_order
@@ -283,7 +280,6 @@ export function createPlanItemTools(
   function getPlanItemSummaries(
     projectId: string,
     filters?: {
-      status?: 'backlog' | 'planned';
       statusCategory?: PlanItem['status_category'];
       label?: PlanItem['label'];
       releaseTag?: string;
@@ -296,10 +292,6 @@ export function createPlanItemTools(
     const where: string[] = ['project_id = ?'];
     const params: unknown[] = [projectId];
 
-    if (filters?.status) {
-      where.push('status = ?');
-      params.push(filters.status);
-    }
     if (filters?.statusCategory) {
       where.push('status_category = ?');
       params.push(filters.statusCategory);
@@ -333,7 +325,7 @@ export function createPlanItemTools(
     }
 
     const query = `
-      SELECT id, title, parent_id, status, status_category, label, release_tag, external_key
+      SELECT id, title, parent_id, status_category, label, release_tag, external_key
       FROM plan_items
       WHERE ${where.join(' AND ')}
       ORDER BY item_order
@@ -345,12 +337,8 @@ export function createPlanItemTools(
   return [
     tool(
       'query_plan_items',
-      'Query and filter plan items by status, statusCategory, label, releaseTag, externalKey, hasExternalKey, or a case-insensitive title search substring. format: \'flat\' (default) returns a filtered list with a computed childCount per item. format: \'tree\' nests the matching items under their ancestor chain so the result is a coherent hierarchy — with no filters applied, this returns the entire plan as a tree.',
+      `Find plan items by status category, label, release tag, tracker key, parent, or title text, and see each one's status. The system prompt's Item Reference lists only the IDs and titles of open items, so use this for status, for closed (done or canceled) items, or to locate items by these fields. Returns summaries without descriptions; use get_plan_items for an item's full Work Brief. format "tree" nests matches under their ancestors, and with no filters it returns the whole plan as a tree.`,
       {
-        projectId: z.string().uuid().describe('The project UUID'),
-        status: StatusEnum.optional().describe(
-          'Filter by status. Omit to get ALL items (planned + backlog) in one call.'
-        ),
         statusCategory: StatusCategoryEnum.optional().describe('Filter by status category'),
         label: LabelEnum.optional().describe('Filter by label'),
         releaseTag: z.string().optional().describe('Filter by release tag'),
@@ -369,12 +357,11 @@ export function createPlanItemTools(
           .optional()
           .describe('Output shape: "flat" (default) or "tree" (matches nested under their ancestors).'),
       },
-      async ({ projectId, status, statusCategory, label, releaseTag, externalKey, hasExternalKey, search, parentId, format = 'flat' }) => {
-        toolLog('[KPM Tools] query_plan_items called with:', { projectId, status, statusCategory, label, format });
+      projectScoped(async ({ projectId, statusCategory, label, releaseTag, externalKey, hasExternalKey, search, parentId, format = 'flat' }) => {
+        toolLog('[KPM Tools] query_plan_items called with:', { projectId, statusCategory, label, format });
         try {
           const normalizedParent = parentId === undefined ? undefined : parentId === 'null' ? null : parentId;
           const items = getPlanItemSummaries(projectId, {
-            status,
             statusCategory,
             label,
             releaseTag,
@@ -397,7 +384,6 @@ export function createPlanItemTools(
             id: item.id,
             title: item.title,
             parent_id: item.parent_id,
-            status: item.status,
             status_category: item.status_category,
             label: item.label,
             release_tag: item.release_tag,
@@ -410,15 +396,14 @@ export function createPlanItemTools(
           console.error('[KPM Tools] query_plan_items error:', error);
           return toolError(`Failed to query plan items: ${error instanceof Error ? error.message : String(error)}`);
         }
-      },
+      }),
       { annotations: { readOnlyHint: true, idempotentHint: true } }
     ),
 
     tool(
       'get_plan_items',
-      'Fetch full details (including description, intent, acceptance_criteria, and code_refs) for 1-50 plan items by ID. Set include.parentTitle to add the parent\'s title, include.children to add immediate child summaries plus the total descendant count, and include.dependencies to add blockedBy/blocks/relatedTo summaries. Before deleting or moving an item, fetch it with all includes set to true to see what would be affected.',
+      `Fetch the full record of 1-50 plan items by ID: the Work Brief (title, description, intent, acceptance_criteria), its work_brief_revision, code_refs, and tracker fields. Use it before revise_work_brief, which needs the current brief and revision, and whenever an answer depends on what an item says rather than its title. include.children and include.dependencies show what deleting, moving, or finishing an item would affect.`,
       {
-        projectId: z.string().uuid().describe('The project UUID'),
         itemIds: z.array(z.string().uuid()).min(1).max(50).describe('Plan item UUIDs to fetch (1-50)'),
         include: z
           .object({
@@ -429,7 +414,7 @@ export function createPlanItemTools(
           .optional()
           .describe('Additional data to include per item. All flags default to false.'),
       },
-      async ({ projectId, itemIds, include }) => {
+      projectScoped(async ({ projectId, itemIds, include }) => {
         const allItems = planItemRepo.getMany(itemIds);
         const items = allItems.filter((i) => i.project_id === projectId);
         const itemMap = new Map(items.map((i) => [i.id, i]));
@@ -478,7 +463,7 @@ export function createPlanItemTools(
               const deps = dependencyMap.get(rel.from_item_id)!;
               const other = relatedItemMap.get(rel.to_item_id);
               const summary: DependencySummary = other
-                ? { id: other.id, title: other.title, status: other.status, external_key: other.external_key }
+                ? { id: other.id, title: other.title, status_category: other.status_category, external_key: other.external_key }
                 : { id: rel.to_item_id, title: '[deleted]' };
 
               if (rel.relation_type === 'blocks') deps.blocks.push(summary);
@@ -490,7 +475,7 @@ export function createPlanItemTools(
               const deps = dependencyMap.get(rel.to_item_id)!;
               const other = relatedItemMap.get(rel.from_item_id);
               const summary: DependencySummary = other
-                ? { id: other.id, title: other.title, status: other.status, external_key: other.external_key }
+                ? { id: other.id, title: other.title, status_category: other.status_category, external_key: other.external_key }
                 : { id: rel.from_item_id, title: '[deleted]' };
 
               if (rel.relation_type === 'blocks') deps.blockedBy.push(summary);
@@ -524,23 +509,14 @@ export function createPlanItemTools(
         }
 
         return jsonResult({ items: found, notFound, count: found.length });
-      },
+      }),
       { annotations: { readOnlyHint: true, idempotentHint: true } }
     ),
 
     tool(
       'bulk_modify_plan',
-      `Apply one bulk mutation to a set of plan items, selected by exactly one of itemIds (1-100) or filter (must set at least one of parentId, statusCategory, label, releaseTag, hasParent). Submits the resulting actions to KPM for approval or auto-apply.
-
-Action types:
-- set_status: { type: 'set_status', statusCategory } — set statusCategory on every selected item
-- set_label: { type: 'set_label', label } — set label on every selected item
-- set_release: { type: 'set_release', releaseTag } — set releaseTag on every selected item (null clears it)
-- reparent: { type: 'reparent', newParentId } — move every selected item under newParentId, or to root when null; Jira subtasks whose parent link mirrors the tracker hierarchy are skipped when moving to root
-- delete: { type: 'delete' } — delete every selected item; descendants are deleted too
-- clear_dependencies: { type: 'clear_dependencies', direction? } — remove dependency relations from every selected item ('all' default, or 'incoming'/'outgoing')`,
+      `Apply one change to many plan items at once: set status, label, or release tag, reparent, delete, or clear dependencies. Select the items with itemIds or with a filter, not both; a filter saves looking up IDs when the set is "every done item" or "all children of X". Use modify_plan instead for per-item changes or anything touching the Work Brief. KPM queues the change for review or applies it, per the user's setting. delete removes each item's descendants too. Moving Jira subtasks to root skips any whose parent mirrors the tracker hierarchy.`,
       {
-        projectId: z.string().uuid().describe('The project UUID'),
         itemIds: z
           .array(z.string().uuid())
           .min(1)
@@ -561,17 +537,17 @@ Action types:
           .discriminatedUnion('type', [
             z.object({ type: z.literal('set_status'), statusCategory: StatusCategoryEnum }),
             z.object({ type: z.literal('set_label'), label: LabelEnum }),
-            z.object({ type: z.literal('set_release'), releaseTag: z.string().nullable() }),
-            z.object({ type: z.literal('reparent'), newParentId: z.string().uuid().nullable() }),
+            z.object({ type: z.literal('set_release'), releaseTag: z.string().nullable().describe('null clears the tag') }),
+            z.object({ type: z.literal('reparent'), newParentId: z.string().uuid().nullable().describe('null moves items to root') }),
             z.object({ type: z.literal('delete') }),
             z.object({
               type: z.literal('clear_dependencies'),
-              direction: z.enum(['all', 'incoming', 'outgoing']).optional(),
+              direction: z.enum(['all', 'incoming', 'outgoing']).optional().describe('Which relations to remove; defaults to all'),
             }),
           ])
           .describe('The mutation to apply to the selected items'),
       },
-      async ({ projectId, itemIds, filter, action }) => {
+      projectScoped(async ({ projectId, itemIds, filter, action }) => {
         toolLog('[KPM Tools] bulk_modify_plan called:', { projectId, itemIds, filter, action: action.type });
         try {
           const selectorError = validateBulkSelector(itemIds, filter);
@@ -776,7 +752,7 @@ Action types:
           console.error('[KPM Tools] bulk_modify_plan error:', error);
           return toolError(`Failed to bulk modify plan items: ${error instanceof Error ? error.message : String(error)}`);
         }
-      },
+      }),
       { annotations: { destructiveHint: true } }
     ),
   ];

@@ -12,7 +12,7 @@ import { z } from 'zod';
 import * as path from 'path';
 import { promises as fs } from 'fs';
 import type { IPlanItemRepository, IProjectRepository } from '../../db/interfaces';
-import { tool, jsonResult, toolError } from './index';
+import { tool, jsonResult, toolError, projectScoped } from './index';
 import { expandPlanRefs } from '../../../shared/planRefs';
 
 export interface PlanRefToolDeps {
@@ -23,21 +23,15 @@ export interface PlanRefToolDeps {
 export function createPlanRefTools(deps: PlanRefToolDeps) {
   return [
     tool(
-      'extract_plan_items_from_doc',
-      [
-        'List every `@plan/<uuid>` token in a project file and report how each resolves.',
-        '**INPUT:** `projectId` + `filePath` (project-relative path, e.g. "design/export.md" — same format as `list_project_files` output).',
-        '**RETURNS:** `{ path, refs: [{ id, resolved, title?, status_category?, external_key? }], unresolvedCount }`. `resolved: false` means the UUID is unknown — the doc is referencing a deleted or hallucinated item.',
-        'Use this before proposing edits to a file with refs so you do not break tokens the user expects to remain stable.',
-      ].join('\n\n'),
+      'list_document_plan_refs',
+      'List every @plan/<uuid> reference in a project file with the title and status it resolves to. resolved: false means no plan item has that ID, so the reference is to a deleted item or was invented. Use it to check a document\'s references, or to see which plan items a document covers without reading the whole file.',
       {
-        projectId: z.string().uuid().describe('Project UUID'),
         filePath: z
           .string()
           .min(1)
-          .describe('Project-relative file path, e.g. "design/export.md". Same format as list_project_files output.'),
+          .describe('Project-relative file path, e.g. "design/export.md"'),
       },
-      async ({ projectId, filePath }) => {
+      projectScoped(async ({ projectId, filePath }) => {
         const project = deps.projects.get(projectId);
         if (!project?.folder_path) return toolError(`Project not found: ${projectId}`);
 
@@ -59,16 +53,16 @@ export function createPlanRefTools(deps: PlanRefToolDeps) {
         const refs = expanded.map((e) => ({
           id: e.id,
           resolved: e.item !== null,
-          title: e.item?.title ?? null,
-          status_category: e.item?.status_category ?? null,
-          external_key: e.item?.external_key ?? null,
+          title: e.item?.title,
+          status_category: e.item?.status_category,
+          external_key: e.item?.external_key ?? undefined,
         }));
         return jsonResult({
           path: filePath,
           refs,
           unresolvedCount: refs.filter((r) => !r.resolved).length,
         });
-      },
+      }),
       { annotations: { readOnlyHint: true, idempotentHint: true } },
     ),
   ];

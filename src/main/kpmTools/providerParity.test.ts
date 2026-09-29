@@ -321,12 +321,12 @@ describe('KPM provider tool adapter parity', () => {
 
     const result = await runWithToolExecutionContext(
       { projectId: PROJECT_ID, chatSessionId: CHAT_SESSION_ID },
-      () => tool!.handler({ projectId: PROJECT_ID }, { requestId: 'request-1' }),
+      () => tool!.handler({ label: 'task' }, { requestId: 'request-1' }),
     );
 
     expect(executeSpy).toHaveBeenCalledWith({
       name: 'query_plan_items',
-      args: { projectId: PROJECT_ID },
+      args: { label: 'task' },
       extra: { requestId: 'request-1' },
       projectId: PROJECT_ID,
       chatSessionId: CHAT_SESSION_ID,
@@ -380,7 +380,6 @@ describe('KPM provider tool adapter parity', () => {
     expect(tool).toBeDefined();
 
     const args = {
-      projectId: PROJECT_ID,
       filePath: 'notes/decision.md',
       content: '# Decision\n\nKeep runtime-routed proposals covered.\n',
     };
@@ -401,15 +400,14 @@ describe('KPM provider tool adapter parity', () => {
         chatSessionId: CHAT_SESSION_ID,
         scope: 'main',
       });
-      expect(proposals).toEqual([{ type: 'document-update', ...args, oldContent: null, chatSessionId: CHAT_SESSION_ID }]);
+      expect(proposals).toEqual([{ type: 'document-update', projectId: PROJECT_ID, ...args, oldContent: null, chatSessionId: CHAT_SESSION_ID }]);
       expect(result).toEqual({
         content: [{
           type: 'text',
           text: JSON.stringify({
             success: true,
             filePath: args.filePath,
-            contentPreview: '# Decision',
-            message: 'Submitted new file "notes/decision.md". Preview: # Decision',
+            message: 'Submitted "notes/decision.md" to KPM.',
           }),
         }],
       });
@@ -516,7 +514,7 @@ describe('KPM provider tool adapter parity', () => {
     }
   });
 
-  it('documents the deliberate unscoped Claude fallback by preserving tool argument errors instead of front-loading a generic project-context error', async () => {
+  it('refuses an unscoped Claude call without reaching the runtime, since the project comes only from the chat', async () => {
     warmRuntime();
     const runtime = getKpmToolRuntime();
     const executeSpy = vi.spyOn(runtime, 'executeTool');
@@ -524,7 +522,10 @@ describe('KPM provider tool adapter parity', () => {
     const tool = server.tools.find((candidate) => candidate.name === 'query_plan_items');
     expect(tool).toBeDefined();
 
-    await expect(tool!.handler({}, { requestId: 'request-1' })).rejects.toThrow('projectId is required');
+    await expect(tool!.handler({}, { requestId: 'request-1' })).resolves.toMatchObject({
+      isError: true,
+      content: [{ type: 'text', text: 'Error: No project is active for this chat.' }],
+    });
 
     expect(executeSpy).not.toHaveBeenCalled();
   });
@@ -542,11 +543,11 @@ describe('KPM provider tool adapter parity', () => {
     const tool = tools.find((candidate) => candidate.name === 'query_plan_items');
     expect(tool).toBeDefined();
 
-    const result = await tool!.execute('call-1', { projectId: PROJECT_ID }, undefined, undefined, {});
+    const result = await tool!.execute('call-1', { label: 'task' }, undefined, undefined, {});
 
     expect(executeSpy).toHaveBeenCalledWith({
       name: 'query_plan_items',
-      args: { projectId: PROJECT_ID },
+      args: { label: 'task' },
       extra: {},
       projectId: PROJECT_ID,
       chatSessionId: CHAT_SESSION_ID,

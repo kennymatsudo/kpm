@@ -19,7 +19,7 @@
 import path from 'path';
 import { z } from 'zod';
 import { isContextFile } from '../../../shared/contextFile';
-import { tool, jsonResult, toolError } from './index';
+import { tool, jsonResult, toolError, projectScoped } from './index';
 import type { FileExplorerService } from '../../services/files/FileExplorerService';
 
 export interface FileDeletePayload {
@@ -38,29 +38,7 @@ interface FileDeleteToolDeps {
   onFileDelete: FileDeleteCallback;
 }
 
-const TOOL_DESCRIPTION = `Submit deletion of a file or folder within the project files. KPM queues or applies it according to the user's approval setting.
-
-## When to Use
-Use when the user explicitly asks to delete, remove, or discard a file or folder from the project file tree.
-
-## Parameters
-- \`projectId\`: The project UUID
-- \`path\`: Relative path of the file or folder to delete (e.g., "drafts/old-spec.md", "archive").
-
-## Examples
-- Delete a file: path="notes/scratch.md"
-- Delete a folder and its contents: path="drafts"
-
-## Behavior
-- In review mode, KPM opens a confirmation in the approval panel; in auto-apply mode, KPM deletes immediately.
-- Deleting a folder removes it and everything inside it (recursive).
-- Deletion is permanent once applied — there is no undo.
-
-## Restrictions
-- Only operates on files inside the project file tree. Paths that escape the project (via \`..\` or symlinks pointing outside) are rejected.
-- Cannot delete the project root.
-- Cannot delete the project context file (AGENTS.md or CLAUDE.md).
-- For files inside connected code repositories, this tool does not apply.`;
+const TOOL_DESCRIPTION = `Propose deleting a file or folder from the KPM project folder. Use only when the user explicitly asks to delete, remove, or discard it. KPM queues the deletion for review or applies it, per the user's setting; once applied it is permanent, and a folder goes with everything inside it. The project root and the project context file (AGENTS.md or CLAUDE.md) cannot be deleted, and paths outside the project folder, including files in connected code repos, are rejected.`;
 
 export function createFileDeleteTools(deps: FileDeleteToolDeps) {
   return [
@@ -68,10 +46,9 @@ export function createFileDeleteTools(deps: FileDeleteToolDeps) {
       'delete_project_file',
       TOOL_DESCRIPTION,
       {
-        projectId: z.string().uuid().describe('The project UUID'),
         path: z.string().min(1).describe('Relative path of the file or folder to delete'),
       },
-      async ({ projectId, path: relativePath }) => {
+      projectScoped(async ({ projectId, path: relativePath }) => {
         const normalizedPath = path.normalize(relativePath);
         // Cheap up-front guards so Claude gets immediate feedback instead of
         // queuing a confirmation that would fail on approval. The authoritative
@@ -107,7 +84,7 @@ export function createFileDeleteTools(deps: FileDeleteToolDeps) {
           isDirectory: info.data.isDirectory,
           message: `Submitted deletion of "${normalizedPath}" to KPM.`,
         });
-      }
+      })
     ),
   ];
 }

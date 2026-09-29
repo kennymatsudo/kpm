@@ -252,6 +252,7 @@ export function createBoardTools(deps: BoardToolDeps) {
         }
         return jsonResult({ repos: listing });
       },
+      { annotations: { readOnlyHint: true, idempotentHint: true } }
     ),
     tool(
       'propose_board_change',

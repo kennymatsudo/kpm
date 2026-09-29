@@ -456,4 +456,34 @@ describe('default KPM tool runtime manifest', () => {
       expect.objectContaining({ name: 'propose_document_edit', capabilities: expect.arrayContaining(['documents.propose']) }),
     ]));
   });
+
+  it('keeps every tool description within the length Claude Code shows the model', () => {
+    // Claude Code cuts MCP tool descriptions at 2,048 characters without
+    // telling the model; schemas are not cut, so detail belongs there.
+    warmupKpmToolRuntime({
+      container: { projects: {}, planItems: {}, planRelations: {}, repos: {}, devSessions: {}, confluenceLinks: {} } as never,
+      services: { fileExplorerService: {} } as never,
+      getMainWindow: () => null,
+    });
+
+    const tooLong = getKpmToolRuntime().listToolManifest()
+      .filter((tool) => tool.description.length > 2048)
+      .map((tool) => `${tool.name} (${tool.description.length})`);
+
+    expect(tooLong).toEqual([]);
+  });
+
+  it('takes the project from the chat, never from the model', () => {
+    warmupKpmToolRuntime({
+      container: { projects: {}, planItems: {}, planRelations: {}, repos: {}, devSessions: {}, confluenceLinks: {} } as never,
+      services: { fileExplorerService: {} } as never,
+      getMainWindow: () => null,
+    });
+
+    const askingForProject = getKpmToolRuntime().listTools({ scope: 'main' })
+      .filter((tool) => 'projectId' in tool.inputSchema)
+      .map((tool) => tool.name);
+
+    expect(askingForProject).toEqual([]);
+  });
 });

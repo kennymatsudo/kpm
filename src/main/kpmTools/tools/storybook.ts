@@ -5,7 +5,7 @@
  */
 
 import { z } from 'zod';
-import { tool, jsonResult, toolError } from './index';
+import { tool, jsonResult, toolError, projectScoped } from './index';
 import type { IProjectRepository } from '../../db/interfaces';
 
 // Storybook type definitions
@@ -103,11 +103,10 @@ export function createStorybookTools(projectRepo: IProjectRepository) {
   return [
     tool(
       'storybook_list_components',
-      'List all components in the project Storybook. Use this to discover what UI components already exist before proposing new ones during planning. Returns component names, story counts, and available variants.',
+      'List every component in the project\'s Storybook with its story count and variant names. Use before planning new UI work, so the plan reuses an existing component instead of adding a duplicate. Needs a Storybook URL set on the project. When you know the kind of component you need, storybook_search returns less.',
       {
-        projectId: z.string().uuid().describe('The project UUID'),
       },
-      async ({ projectId }) => {
+      projectScoped(async ({ projectId }) => {
         const project = projectRepo.get(projectId);
         if (!project) {
           return toolError('Project not found');
@@ -134,18 +133,17 @@ export function createStorybookTools(projectRepo: IProjectRepository) {
         } catch (error) {
           return toolError(`Could not connect to Storybook at ${project.storybook_url}: ${error instanceof Error ? error.message : 'Unknown error'}. Ensure Storybook is running and accessible.`);
         }
-      },
+      }),
       { annotations: { readOnlyHint: true, idempotentHint: true } }
     ),
 
     tool(
       'storybook_get_component',
-      'Get details for a specific component including all its stories (variants). Use after storybook_list_components to see what variants exist for a component.',
+      'Read one Storybook component\'s stories (its variants). Use after storybook_list_components or storybook_search when the available variants affect the plan.',
       {
-        projectId: z.string().uuid().describe('The project UUID'),
-        componentTitle: z.string().describe('Component title from list_components (e.g., "Components/Button")'),
+        componentTitle: z.string().describe('Component title as listed, e.g. "Components/Button"'),
       },
-      async ({ projectId, componentTitle }) => {
+      projectScoped(async ({ projectId, componentTitle }) => {
         const project = projectRepo.get(projectId);
         if (!project) {
           return toolError('Project not found');
@@ -186,18 +184,17 @@ export function createStorybookTools(projectRepo: IProjectRepository) {
         } catch (error) {
           return toolError(`Could not fetch component from Storybook: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
-      },
+      }),
       { annotations: { readOnlyHint: true, idempotentHint: true } }
     ),
 
     tool(
       'storybook_search',
-      'Search for components by name. Use when looking for a specific type of component (e.g., "modal", "button", "form").',
+      'Find Storybook components whose title contains a word, such as "modal", "button", or "form". Use instead of storybook_list_components when you know the kind of component you need.',
       {
-        projectId: z.string().uuid().describe('The project UUID'),
         query: z.string().describe('Search query (case-insensitive, matches component titles)'),
       },
-      async ({ projectId, query }) => {
+      projectScoped(async ({ projectId, query }) => {
         const project = projectRepo.get(projectId);
         if (!project) {
           return toolError('Project not found');
@@ -231,7 +228,7 @@ export function createStorybookTools(projectRepo: IProjectRepository) {
         } catch (error) {
           return toolError(`Could not search Storybook: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
-      },
+      }),
       { annotations: { readOnlyHint: true, idempotentHint: true } }
     ),
   ];

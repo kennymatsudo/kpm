@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { runWithToolExecutionContext } from '../runtime';
 import { createGitPushTools } from './git-push';
 import type { WriteDecision } from '../../chat/writeGrants';
 
@@ -26,7 +27,7 @@ function makeTool(repos?: { path: string; active_worktree_path: string | null }[
 }
 
 function callTool(pushTool: ReturnType<typeof makeTool>['pushTool'], input: Record<string, unknown> = {}) {
-  return (pushTool as any).handler({ projectId: PROJECT_ID, remote: 'origin', ...input });
+  return runWithToolExecutionContext({ projectId: PROJECT_ID }, () => (pushTool as any).handler({ remote: 'origin', ...input }));
 }
 
 beforeEach(() => {

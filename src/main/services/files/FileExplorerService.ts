@@ -29,7 +29,7 @@ const MARKDOWN_EXT_REGEX = /\.(md|mdx|markdown)$/i;
 
 const MAX_BINARY_BYTES = 50 * 1024 * 1024; // 50MB
 const MAX_SUMMARY_BACKFILL_PER_LIST = 25;
-const DEFAULT_RECURSIVE_NODE_LIMIT = 500;
+const DEFAULT_RECURSIVE_NODE_LIMIT = 200;
 
 /** Flatten a nested FileNode tree into a DFS-ordered flat list, stripping the children field. */
 function flattenDFS(nodes: FileNode[]): FileNode[] {
@@ -900,7 +900,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
       // Flatten nested tree into a DFS-ordered list with the children field stripped.
       const allNodes = flattenDFS(directoryResult.data);
 
-      // Apply limit — default to 500 for recursive listings to prevent output overflow.
+      // Apply limit — default to 200 for recursive listings; 500 summarized nodes overflowed Claude Code's 25K-token tool result cap.
       const limit = options.limit ?? (options.recursive ? DEFAULT_RECURSIVE_NODE_LIMIT : undefined);
 
       // Decode cursor into a starting offset.

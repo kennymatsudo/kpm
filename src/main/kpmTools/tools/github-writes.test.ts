@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { runWithToolExecutionContext } from '../runtime';
 import { createGitHubWriteTools } from './github-writes';
 import type { WriteDecision } from '../../chat/writeGrants';
 import type * as GhUtils from '../../services/repo/ghUtils';
@@ -45,7 +46,7 @@ function makeTools(decision: WriteDecision = { allowed: true }) {
 }
 
 function call(tool: unknown, input: Record<string, unknown>) {
-  return (tool as any).handler({ projectId: PROJECT_ID, ...input });
+  return runWithToolExecutionContext({ projectId: PROJECT_ID }, () => (tool as any).handler(input));
 }
 
 beforeEach(() => {
@@ -58,10 +59,10 @@ beforeEach(() => {
 });
 
 describe('create_pull_request', () => {
-  it('opens a draft for the checked-out branch against the default branch', async () => {
+  it('opens a draft for the checked-out branch against the default branch when draft is omitted', async () => {
     const { createTool } = makeTools();
 
-    const result = await call(createTool, { title: 'Add thing', body: 'Body', draft: true });
+    const result = await call(createTool, { title: 'Add thing', body: 'Body' });
 
     expect(result.isError).toBeFalsy();
     expect(createPr).toHaveBeenCalledWith(

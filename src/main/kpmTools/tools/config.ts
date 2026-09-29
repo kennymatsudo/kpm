@@ -60,13 +60,7 @@ Rules:
 - A second findings check needs its own address step; pointing it at the first loop's address step sends the run back into that loop.
 - A subagent reviewer should be a different agent from the implementer where possible.`;
 
-const READ_DESCRIPTION = `Read KPM's own configuration.
-
-- \`read_config({ kind: "playbook" })\` lists execution playbooks (summaries) plus what a step can reference: board providers and their models, prompt keys with descriptions, and the step grammar.
-- \`read_config({ kind: "playbook", id })\` returns one playbook in full, with its \`version\` token and the same reference data.
-- \`read_config({ kind: "prompt" })\` lists the prompt keys a step can use; \`read_config({ kind: "prompt", id: key })\` returns one prompt's full text.
-
-Call this before \`propose_config_change\`: an update needs the playbook's current steps and \`version\`.`;
+const READ_DESCRIPTION = `Read KPM's execution playbooks and the prompts their steps use, before proposing a playbook change with propose_config_change. kind "playbook" with no id lists the playbooks plus what a step can reference: board providers and their models, prompt keys, and the step grammar. With an id it returns that playbook's full steps and the version token an update needs. kind "prompt" lists the prompt keys, and with an id returns one prompt's text.`;
 
 const PROPOSE_DESCRIPTION = `Propose creating or changing a KPM execution playbook. The proposal is validated first; if it has problems, this returns them so you can fix the payload and call again. A valid proposal always queues for the user's review, even when auto-apply is on, and nothing is saved until they approve it. Playbooks are global, so an approved change applies to every project.
 
@@ -109,12 +103,14 @@ export function createConfigTools(deps: ConfigToolDeps) {
   };
 
   const readPlaybooks = async (id?: string) => {
-    const reference = await playbookReference();
+    // The reference block is several thousand characters and the documented
+    // flow is list then get, so only the list carries it.
     if (id) {
       const result = deps.playbooks.get(id);
       if (!result.ok) return toolError(result.error);
-      return jsonResult({ playbook: { ...result.data, version: CONFIG_KIND_REGISTRY.playbook.version(result.data) }, reference });
+      return jsonResult({ playbook: { ...result.data, version: CONFIG_KIND_REGISTRY.playbook.version(result.data) } });
     }
+    const reference = await playbookReference();
     const list = deps.playbooks.list();
     if (!list.ok) return toolError(list.error);
     const defaultId = deps.playbooks.getDefault();
@@ -144,6 +140,7 @@ export function createConfigTools(deps: ConfigToolDeps) {
         id: z.string().min(1).optional().describe('Playbook id or prompt key; omit to list'),
       },
       async ({ kind, id }) => (kind === 'prompt' ? readPrompts(id) : readPlaybooks(id)),
+      { annotations: { readOnlyHint: true, idempotentHint: true } }
     ),
     tool(
       'propose_config_change',

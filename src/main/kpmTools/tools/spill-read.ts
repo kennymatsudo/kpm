@@ -17,7 +17,7 @@ import { z } from 'zod';
 import { promises as fs } from 'fs';
 import { homedir } from 'os';
 import { normalize, relative } from 'path';
-import { tool, jsonResult, toolError, toolLog } from './index';
+import { tool, toolResult, toolError, toolLog } from './index';
 
 /** Maximum characters returned per call — keeps context overhead bounded. */
 const MAX_READ_CHARS = 50_000;
@@ -42,11 +42,7 @@ export function createSpillReadTools() {
   return [
     tool(
       'read_spill_file',
-      `Read a Claude SDK tool-result spill file that was saved under ~/.claude/projects/ because an MCP tool result exceeded the token budget.
-
-Returns up to ${MAX_READ_CHARS.toLocaleString()} characters per call. Use \`offset\` and \`length\` to page through files larger than that. The response always includes \`totalChars\` so you know the total size, \`hasMore\` to indicate whether content continues, and \`nextOffset\` for the next page when \`hasMore\` is true.
-
-Access is read-only and limited to paths inside ~/.claude/projects/ — no other file system locations are reachable via this tool.`,
+      `Page through a tool result that was too large to return. When a tool call fails with "exceeds maximum allowed tokens" and names a file saved under ~/.claude/projects/, read that file here rather than dropping the data or re-querying another way. Call it with just file_path first, then continue from the offset it reports. Returns a header line with the character range and total size, then up to ${MAX_READ_CHARS.toLocaleString()} characters of the saved text. Reads only files under ~/.claude/projects/.`,
       {
         file_path: z
           .string()
@@ -97,16 +93,11 @@ Access is read-only and limited to paths inside ~/.claude/projects/ — no other
         const nextOffset = offset + slice.length;
         const hasMore = nextOffset < totalChars;
 
-        return jsonResult({
-          file_path,
-          offset,
-          length: slice.length,
-          totalChars,
-          hasMore,
-          nextOffset: hasMore ? nextOffset : null,
-          content: slice,
-        });
-      }
+        const range = `chars ${offset}-${nextOffset} of ${totalChars}`;
+        const header = hasMore ? `${range}; continue with offset ${nextOffset}` : `${range}; end of file`;
+        return toolResult(`${header}\n\n${slice}`);
+      },
+      { annotations: { readOnlyHint: true, idempotentHint: true } }
     ),
   ];
 }
