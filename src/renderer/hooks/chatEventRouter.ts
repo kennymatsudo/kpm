@@ -5,6 +5,7 @@ import type { ChatState } from '../stores/chat/types';
 import { isStreamStale } from '../stores/chat/chatStreamReducer';
 import type { StoreEvent } from '../stores/storeEvents';
 import type {
+  BoardChangeEventData,
   ConfigChangeEventData,
   FileDeleteEventData,
   FileMoveEventData,
@@ -34,6 +35,7 @@ export interface ChatEventHandlers {
   onFileMove: (data: FileMoveEventData) => void;
   onFileDelete: (data: FileDeleteEventData) => void;
   onConfigChange: (data: ConfigChangeEventData) => void;
+  onBoardChange: (data: BoardChangeEventData) => void;
   onDone: (data: TurnDoneEventData) => void;
   onQueued: (data: QueuedEventData) => void;
   onQueueCleared: (data: QueueClearedEventData) => void;
@@ -120,7 +122,8 @@ export type BufferedApprovalEvent =
   | { type: 'file-update'; data: FileUpdateEventData }
   | { type: 'file-move'; data: FileMoveEventData }
   | { type: 'file-delete'; data: FileDeleteEventData }
-  | { type: 'config-change'; data: ConfigChangeEventData };
+  | { type: 'config-change'; data: ConfigChangeEventData }
+  | { type: 'board-change'; data: BoardChangeEventData };
 
 /**
  * Approval events (plan actions, file updates/deletes) must never be dropped,
@@ -192,6 +195,10 @@ export function createChatEventRouter(deps: ChatEventRouterDeps): ChatEventRoute
     getApprovalQueue().propose({ type: 'config', projectId: data.projectId, change: data.change });
   };
 
+  const processBoardChangeEvent = (data: BoardChangeEventData) => {
+    getApprovalQueue().propose({ type: 'board', projectId: data.projectId, change: data.change });
+  };
+
   const flushBufferedApprovalEvents = (): void => {
     const bufferedApprovalEvents = approvalEventBuffer.get(projectId);
     if (!bufferedApprovalEvents || bufferedApprovalEvents.length === 0) return;
@@ -203,6 +210,7 @@ export function createChatEventRouter(deps: ChatEventRouterDeps): ChatEventRoute
       if (event.type === 'file-move') processFileMoveEvent(event.data);
       if (event.type === 'file-delete') processFileDeleteEvent(event.data);
       if (event.type === 'config-change') processConfigChangeEvent(event.data);
+      if (event.type === 'board-change') processBoardChangeEvent(event.data);
     }
   };
 
@@ -326,6 +334,14 @@ export function createChatEventRouter(deps: ChatEventRouterDeps): ChatEventRoute
         return;
       }
       processConfigChangeEvent(data);
+    },
+    onBoardChange: (data) => {
+      if (!active) return;
+      if (!isActiveForProject(data.projectId)) {
+        bufferApprovalEvent(data.projectId, { type: 'board-change', data });
+        return;
+      }
+      processBoardChangeEvent(data);
     },
     onDone: (data) => {
       void (async () => {

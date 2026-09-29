@@ -29,6 +29,8 @@ import { PendingMovePanel } from '../planning/PendingMovePanel';
 import { PendingDeletePanel } from '../planning/PendingDeletePanel';
 import { ReviewReplyApprovalPanel } from '../development/ReviewReplyApprovalPanel';
 import { PendingConfigPanel } from '../settings/PendingConfigPanel';
+import { PendingBoardChangePanel } from '../development/PendingBoardChangePanel';
+import { GitBranchIcon } from '../icons';
 import { CONFIG_KIND_REGISTRY } from '../../../shared/configKinds';
 import { Z_INDEX } from '../../constants/zIndex';
 
@@ -78,6 +80,8 @@ function getItemTypeIcon(type: ProposedChange['type']): React.ReactNode {
           <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" />
         </svg>
       );
+    case 'board':
+      return <GitBranchIcon className="w-4 h-4" />;
     default:
       return (
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -339,6 +343,20 @@ export function ApprovalOverlays() {
           error={currentItem.error}
           onApprove={() => void apply(currentItem, undefined, () => toast.success(`${CONFIG_KIND_REGISTRY[currentItem.change.kind].label} saved`))}
           onReject={() => handleDismiss(currentItem.id)}
+          isApplying={isApplying}
+        />
+      )}
+
+      {currentItem.type === 'board' && (
+        <PendingBoardChangePanel
+          change={currentItem.change}
+          error={currentItem.error}
+          onApprove={() => void apply(currentItem, undefined, () => toast.success(
+            currentItem.change.kind === 'attach_worktree'
+              ? `Attached ${currentItem.change.branchName}`
+              : `Linked PR #${currentItem.change.prNumber}`,
+          ))}
+          onDismiss={() => handleDismiss(currentItem.id)}
           isApplying={isApplying}
         />
       )}

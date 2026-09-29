@@ -25,6 +25,8 @@ import {
   type DevSessionAutomationPhase,
   type DevSessionStatus,
   type DevSessionWithPlanItem,
+  type PlanItem,
+  type Repo,
   type AgentEffortLevel,
   type AgentReviewPolicy,
   type RepoEnvironmentMode,
@@ -79,6 +81,8 @@ import {
   inspectAttachableWorktree,
 } from './worktreeScaffold';
 import { getPrForBranch } from './ghUtils';
+import { listGitWorktrees } from './worktreeList';
+import type { WorktreeCandidate } from '../../../shared/boardChanges';
 import { resolveDefaultBranch } from './branchFacts';
 import { deleteLocalBranch, deleteRemoteBranch } from './gitWrites';
 import {
@@ -124,15 +128,27 @@ export interface DevSessionServiceDeps {
 }
 const broadcastSessionStatusChange = createStatusBroadcaster<DevSession, typeof devSessionEvents.statusChanged>(devSessionEvents.statusChanged);
 
+function resolveDirectory(dir: string): string {
+  try {
+    return fs.realpathSync(dir);
+  } catch {
+    return path.resolve(dir);
+  }
+}
+
 function sameDirectory(a: string, b: string): boolean {
-  const resolve = (dir: string) => {
-    try {
-      return fs.realpathSync(dir);
-    } catch {
-      return path.resolve(dir);
-    }
-  };
-  return resolve(a) === resolve(b);
+  return resolveDirectory(a) === resolveDirectory(b);
+}
+
+export interface AttachWorktreePreview {
+  item: PlanItem;
+  projectId: string;
+  repo: Repo;
+  /** The worktree's real path, symlinks resolved. */
+  worktreePath: string;
+  branchName: string;
+  /** A PR-only session whose PR GitHub reports on this branch, folded in on attach. */
+  carriedPr?: DevSession;
 }
 
 interface PreparedWorkBriefUpdate {
@@ -717,16 +733,63 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
     },
 
     /**
-     * Attach a worktree made outside KPM to a plan item. The result is an
-     * ordinary inactive board session, so Start, Changes, Create PR, and
-     * delete treat it exactly like a worktree KPM created. A PR-only session
-     * left by "Link PR" is folded in rather than left beside it.
+     * Every worktree of a connected repo, each marked with why it cannot be
+     * attached, if it cannot. Chat and the Attach worktree dialog both read
+     * this, so they never disagree about which worktrees are on offer.
      */
-    async attachWorktree(
+    async listAttachableWorktrees(repoId: string): AsyncResult<WorktreeCandidate[]> {
+      try {
+        const repo = deps.repos.getById(repoId);
+        if (!repo) return failure(`Repository not found: ${repoId}`);
+        const repoProjectId = repo.project_id;
+        const owners = deps.devSessions.getWithWorktree()
+          .map((session) => ({ session, dir: resolveDirectory(session.worktree_path) }));
+        const connectedDir = resolveDirectory(repo.path);
+
+        const entries = await listGitWorktrees(repo.path);
+        return success(entries.map((entry): WorktreeCandidate => {
+          const dir = resolveDirectory(entry.path);
+          const owner = owners.find((candidate) => candidate.dir === dir)?.session;
+          const attachedTo = owner
+            ? {
+                planItemId: owner.plan_item_id,
+                title: owner.plan_item_id ? deps.planItems.get(owner.plan_item_id)?.title ?? null : null,
+                sameProject: owner.project_id === repoProjectId,
+              }
+            : undefined;
+          const unavailableReason = entry.isMain || dir === connectedDir
+            ? 'Main checkout'
+            : entry.bare
+              ? 'Bare repository'
+              : entry.prunable || !fs.existsSync(entry.path)
+                ? 'Missing on disk'
+                : !entry.branch
+                  ? 'No branch checked out'
+                  : attachedTo
+                    ? attachedTo.sameProject ? 'Attached to another task' : 'Attached to a task in another project'
+                    : undefined;
+          return {
+            path: entry.path,
+            branch: entry.branch,
+            ...(unavailableReason ? { unavailableReason } : {}),
+            ...(attachedTo ? { attachedTo } : {}),
+          };
+        }));
+      } catch (error) {
+        return failure(error instanceof Error ? error.message : String(error));
+      }
+    },
+
+    /**
+     * Every check Attach worktree makes, without writing anything. Chat calls
+     * this before proposing, so a request that would fail is refused in the
+     * conversation instead of at approval.
+     */
+    async previewAttachWorktree(
       planItemId: string,
       repoId: string,
       worktreePath: string,
-    ): AsyncResult<DevSession> {
+    ): AsyncResult<AttachWorktreePreview> {
       try {
         const item = deps.planItems.get(planItemId);
         if (!item?.project_id) return failure(`Plan item not found: ${planItemId}`);
@@ -738,15 +801,20 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         const { branchName } = inspected.data;
         const resolvedPath = inspected.data.worktreePath;
 
-        const projectSessions = deps.devSessions.getByProject(item.project_id);
-        const owner = projectSessions.find((session) =>
-          session.worktree_path && sameDirectory(session.worktree_path, resolvedPath));
+        // Any project: the same repo can be connected to two projects, and a
+        // worktree shared by two sessions would be deleted out from under one.
+        const owner = deps.devSessions.getWithWorktree().find((session) =>
+          sameDirectory(session.worktree_path, resolvedPath));
         if (owner) {
-          return failure(owner.plan_item_id === planItemId
-            ? 'This worktree is already attached to this task.'
-            : 'This worktree is already attached to another task.');
+          if (owner.plan_item_id === planItemId) return failure('This worktree is already attached to this task.');
+          const ownerTitle = owner.plan_item_id ? deps.planItems.get(owner.plan_item_id)?.title : undefined;
+          const where = owner.project_id === item.project_id ? '' : ' in another project';
+          return failure(ownerTitle
+            ? `This worktree is already attached to "${ownerTitle}"${where}.`
+            : `This worktree is already attached to another task${where}.`);
         }
-        const itemSessions = projectSessions.filter((session) => session.plan_item_id === planItemId);
+        const itemSessions = deps.devSessions.getByProject(item.project_id)
+          .filter((session) => session.plan_item_id === planItemId);
         const withWorktree = itemSessions.find((session) => session.worktree_path);
         if (withWorktree) {
           return failure(`This task already has a worktree at ${withWorktree.worktree_path}. Delete it first.`);
@@ -756,13 +824,36 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         const branchPr = prOnly ? await getPrForBranch(repo.path, branchName) : null;
         const carriedPr = prOnly && branchPr?.number === prOnly.pr_number ? prOnly : undefined;
 
+        return success({ item, projectId: item.project_id, repo, worktreePath: resolvedPath, branchName, carriedPr });
+      } catch (error) {
+        return failure(error instanceof Error ? error.message : String(error));
+      }
+    },
+
+    /**
+     * Attach a worktree made outside KPM to a plan item. The result is an
+     * ordinary inactive board session, so Start, Changes, Create PR, and
+     * delete treat it exactly like a worktree KPM created. A PR-only session
+     * left by "Link PR" is folded in rather than left beside it.
+     */
+    async attachWorktree(
+      planItemId: string,
+      repoId: string,
+      worktreePath: string,
+    ): AsyncResult<DevSession> {
+      try {
+        const preview = await service.previewAttachWorktree(planItemId, repoId, worktreePath);
+        if (!preview.ok) return preview;
+        const { item, projectId, repo, branchName, carriedPr } = preview.data;
+        const resolvedPath = preview.data.worktreePath;
+
         const instructions = service.buildBoardStartInstructions(planItemId);
         if (!instructions.ok) return instructions;
         const baseBranch = await resolveDefaultBranch(repo.path);
 
         const session = deps.devSessions.create({
           id: randomUUID(),
-          project_id: item.project_id,
+          project_id: projectId,
           plan_item_id: planItemId,
           repo_id: repoId,
           name: item.title,

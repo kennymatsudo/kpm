@@ -1189,6 +1189,15 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         return;
       }
 
+      if (proposal.type === 'board-change') {
+        emitAppEvent(mainWindow?.webContents, chatEvents.boardChange, {
+          projectId,
+          chatSessionId,
+          change: proposal.change,
+        });
+        return;
+      }
+
       const _exhaustive: never = proposal;
       void _exhaustive;
     });

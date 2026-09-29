@@ -156,6 +156,11 @@ export async function inspectAttachableWorktree(params: {
     if (common !== primaryCommon) {
       return failure(`${worktreePath} belongs to a different repository.`);
     }
+    // The connected path can itself be a linked worktree, so the check above
+    // does not catch git's own main checkout, which owns the shared .git dir.
+    if (path.basename(common) === '.git' && path.dirname(common) === worktreePath) {
+      return failure('The main checkout cannot be attached. Pick a separate worktree.');
+    }
   } catch {
     return failure(`${worktreePath} is not a git worktree.`);
   }

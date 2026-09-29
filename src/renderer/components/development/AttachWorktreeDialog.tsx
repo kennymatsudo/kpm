@@ -3,7 +3,7 @@
  * so the task picks up that branch as if KPM had started it.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Repo } from '../../../shared/types';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { MotionButton } from '../ui/MotionButton';
@@ -18,9 +18,7 @@ import {
   SelectValue,
 } from '../ui/Select';
 import { toast } from '../../stores/toastStore';
-import { useDevSessionsStore } from '../../stores/devSessions';
-import { attachWorktreeToPlanItem } from '../../services/devSessionService';
-import { listRepoWorktrees } from '../../services/repoService';
+import { attachWorktreeToPlanItem, listAttachableWorktrees } from '../../services/devSessionService';
 import { getBaseName } from '../../utils/path';
 
 interface AttachWorktreeDialogProps {
@@ -59,24 +57,19 @@ export function AttachWorktreeDialog({
   const [selectedPath, setSelectedPath] = useState('');
   const [isAttaching, setIsAttaching] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const sessions = useDevSessionsStore((state) => state.sessions);
 
   const selectedRepo = repos.find((repo) => repo.id === selectedRepoId);
-  const attachedPaths = useMemo(
-    () => new Set(sessions.map((session) => session.worktree_path).filter(Boolean)),
-    [sessions],
-  );
 
   useEffect(() => {
     if (!selectedRepo) return;
     let cancelled = false;
     setWorktrees(null);
     setSelectedPath('');
-    listRepoWorktrees(selectedRepo.path)
-      .then((all) => {
+    listAttachableWorktrees({ repoId: selectedRepo.id })
+      .then((result) => {
         if (cancelled) return;
-        const options = all
-          .filter((worktree) => !worktree.isMain && worktree.branch && !attachedPaths.has(worktree.path))
+        const options = (result.success ? result.worktrees : [])
+          .filter((worktree) => !worktree.unavailableReason && worktree.branch)
           .map((worktree) => ({ path: worktree.path, branch: worktree.branch! }));
         setWorktrees(options);
         setSelectedPath(options[0]?.path ?? '');
@@ -87,7 +80,7 @@ export function AttachWorktreeDialog({
     return () => {
       cancelled = true;
     };
-  }, [selectedRepo, attachedPaths]);
+  }, [selectedRepo]);
 
   const handleClose = () => {
     setError(null);

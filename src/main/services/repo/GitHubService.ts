@@ -11,12 +11,14 @@ import { runGeneration } from '../../generation';
 import { randomUUID } from 'crypto';
 import type { IDevSessionRepository, IRepoRepository, IPlanItemRepository } from '../../db/interfaces';
 import type {
+  DevSession,
   PlanItem,
   PrComment,
   PrReviewSnapshot,
   PrReviewThread,
   PrReviewThreadComment,
   PrStatus,
+  Repo,
 } from '../../../shared/types';
 import type { GhAuthState } from '../../../shared/ghAuth';
 import { success, failure, wrapAsync, type AsyncResult } from '../result';
@@ -30,6 +32,7 @@ import {
   getPrByNumber,
   getRepoSlug,
   parsePrIdentifier,
+  type GhPrStatus,
   getPrReviewSnapshot as fetchPrReviewSnapshot,
   probePrReviewState as fetchPrReviewProbe,
   type PrReviewProbe,
@@ -45,7 +48,7 @@ import {
   countCommitsAhead,
   readPrTemplate,
 } from './gitUtils';
-import { classifyPushTarget, resolveBaseBranch, resolveCurrentBranch } from './branchFacts';
+import { classifyPushTarget, resolveBaseBranch, resolveCurrentBranch, resolveUpstreamBranchName } from './branchFacts';
 import { publishBranch } from './gitWrites';
 import { collectLinkedRefKeys } from '../../documents/planRefResolver';
 import { toExternalMarkdown } from '../../documents/exportBoundary';
@@ -145,6 +148,28 @@ function truncateFeatureContextDoc(content: string): string {
   return `${content.slice(0, MAX_FEATURE_CONTEXT_DOC_CHARS)}\n\n... (feature context document truncated)`;
 }
 
+/**
+ * Where a session's PR commands run. PR operations need the session branch's
+ * HEAD, which lives in the worktree. A leftover directory is not a worktree:
+ * gh resolves its repository through git and otherwise fails before it can
+ * query the PR. Linked-PR stubs store an empty path, which `join` would resolve
+ * against the app's own cwd.
+ */
+function sessionCheckoutPath(session: DevSession, repoPath: string): string {
+  return session.worktree_path && existsSync(join(session.worktree_path, '.git'))
+    ? session.worktree_path
+    : repoPath;
+}
+
+export interface LinkPrPreview {
+  item: PlanItem;
+  projectId: string;
+  repo: Repo;
+  /** The session the PR joins; absent when linking creates a new one. */
+  session: DevSession | undefined;
+  pr: GhPrStatus;
+}
+
 // =============================================================================
 // Service Factory
 // =============================================================================
@@ -159,14 +184,75 @@ export function createGitHubService(deps: GitHubServiceDeps) {
     const repo = deps.repos.getById(session.repo_id);
     if (!repo) return { error: `Repo not found: ${session.repo_id}` };
 
-    // PR operations need the session branch's HEAD, which lives in the worktree.
-    // A leftover directory is not a worktree: gh resolves its repository through
-    // git and otherwise fails before it can query the PR. Linked-PR stubs store
-    // an empty path, which `join` would resolve against the app's own cwd.
-    const repoPath = session.worktree_path && existsSync(join(session.worktree_path, '.git'))
-      ? session.worktree_path
-      : repo.path;
-    return { repoPath, primaryRepoPath: repo.path, session };
+    return { repoPath: sessionCheckoutPath(session, repo.path), primaryRepoPath: repo.path, session };
+  }
+
+  /**
+   * The task's session a PR from this repo belongs on: the one with a worktree
+   * if there is one, else the newest. A task can hold sessions in several repos,
+   * so the repo decides, not recency alone.
+   */
+  function itemSessionForRepo(planItemId: string, projectId: string, repoId: string): DevSession | undefined {
+    const sessions = deps.devSessions.getByProject(projectId)
+      .filter((session) => session.plan_item_id === planItemId && session.repo_id === repoId);
+    return sessions.find((session) => session.worktree_path) ?? sessions[0];
+  }
+
+  /**
+   * Look up the PR a link names and check it can join `session` (or a new
+   * stub when there is none) without writing anything. A worktree session's PR
+   * must be on its branch, since PR sync, Create PR, and review polling all key
+   * off that branch; one PR cannot back two tasks.
+   */
+  async function lookUpLinkablePr(params: {
+    planItemId: string | null;
+    projectId: string;
+    repoId: string;
+    repoPath: string;
+    session: DevSession | undefined;
+    prIdentifier: string;
+  }): AsyncResult<GhPrStatus> {
+    const { planItemId, projectId, repoId, repoPath, session, prIdentifier } = params;
+    const pr = parsePrIdentifier(prIdentifier);
+    if (!pr) return failure('Invalid PR identifier. Provide a PR number or GitHub PR URL.');
+
+    try {
+      // gh looks a number up in the session's repo, so a URL from another
+      // repo would silently link that repo's PR with the same number.
+      let repoSlug: string | null = null;
+      if (pr.repo) {
+        repoSlug = await getRepoSlug(repoPath);
+        const urlSlug = `${pr.repo.owner}/${pr.repo.name}`;
+        if (urlSlug.toLowerCase() !== repoSlug.toLowerCase()) {
+          return failure(
+            `That pull request is in ${urlSlug}, but this session's repository is ${repoSlug}. Link a pull request from ${repoSlug}, or if this clone is a fork, run \`gh repo set-default ${urlSlug}\` in it first.`
+          );
+        }
+      }
+
+      const status = await getPrByNumber(repoPath, pr.number);
+      if (!status) return failure(`PR #${pr.number} not found in ${repoSlug ?? 'this repository'}.`);
+
+      const otherTaskSession = deps.devSessions.getByProject(projectId).find((candidate) =>
+        candidate.repo_id === repoId && candidate.pr_number === status.number && candidate.plan_item_id !== planItemId);
+      if (otherTaskSession) {
+        const title = otherTaskSession.plan_item_id ? deps.planItems.get(otherTaskSession.plan_item_id)?.title : undefined;
+        return failure(title
+          ? `PR #${status.number} is already linked to "${title}". Unlink it there first.`
+          : `PR #${status.number} is already linked to another task. Unlink it there first.`);
+      }
+
+      if (session?.worktree_path && session.branch_name && status.headRefName) {
+        const upstreamName = await resolveUpstreamBranchName(repoPath, session.branch_name);
+        if (status.headRefName !== session.branch_name && status.headRefName !== upstreamName) {
+          return failure(`PR #${status.number} is on branch ${status.headRefName}, but this task's worktree is on ${session.branch_name}.`);
+        }
+      }
+
+      return success(status);
+    } catch (error) {
+      return failure(await describeGhFailure(repoPath, error));
+    }
   }
 
   async function readSessionPrTemplate(repoPath: string, primaryRepoPath: string): Promise<string | null> {
@@ -825,56 +911,71 @@ ${effectivePrTemplate}`
     },
 
     /**
-     * Link an existing PR to a plan item, creating a stub session if none exists.
-     * Finds the most recent session for the item; if none exists, creates a minimal
-     * inactive session so the PR data has somewhere to live.
+     * Every check Link PR makes, without writing anything. Chat calls this
+     * before proposing a link, so a PR that would be refused never reaches the
+     * approval panel.
+     */
+    async previewLinkPrToItem(planItemId: string, repoId: string, prIdentifier: string): AsyncResult<LinkPrPreview> {
+      const planItem = deps.planItems.get(planItemId);
+      if (!planItem?.project_id) return failure(`Plan item not found: ${planItemId}`);
+      const repo = deps.repos.getById(repoId);
+      if (!repo) return failure(`Repo not found: ${repoId}`);
+
+      const session = itemSessionForRepo(planItemId, planItem.project_id, repoId);
+      const pr = await lookUpLinkablePr({
+        planItemId,
+        projectId: planItem.project_id,
+        repoId,
+        repoPath: session ? sessionCheckoutPath(session, repo.path) : repo.path,
+        session,
+        prIdentifier,
+      });
+      if (!pr.ok) return pr;
+      return success({ item: planItem, projectId: planItem.project_id, repo, session, pr: pr.data });
+    },
+
+    /**
+     * Link an existing PR to a plan item. It joins the task's session for that
+     * repo; with none, a minimal inactive session is created so the PR data has
+     * somewhere to live. The PR is checked before the stub exists, so a refused
+     * link leaves nothing behind.
      */
     async linkPrToItem(planItemId: string, repoId: string, prIdentifier: string): AsyncResult<PrStatus> {
-      const existingSession = deps.devSessions.getByPlanItem(planItemId);
+      const preview = await this.previewLinkPrToItem(planItemId, repoId, prIdentifier);
+      if (!preview.ok) return preview;
+      const { projectId, session, pr } = preview.data;
 
-      let sessionId: string;
-      if (existingSession) {
-        sessionId = existingSession.id;
-      } else {
-        const planItem = deps.planItems.get(planItemId);
-        if (!planItem) return failure(`Plan item not found: ${planItemId}`);
-        if (!planItem.project_id) return failure(`Plan item has no project ID: ${planItemId}`);
+      const target = session ?? deps.devSessions.create({
+        id: randomUUID(),
+        project_id: projectId,
+        plan_item_id: planItemId,
+        repo_id: repoId,
+        name: null,
+        worktree_path: '',
+        branch_name: '',
+        base_branch: '',
+        base_sha: null,
+        status: 'inactive',
+        agent_type: 'claude',
+        review_policy: 'auto',
+        automation_phase: null,
+        playbook_id: null,
+        playbook_snapshot: null,
+        current_step_id: null,
+        step_pass_counts: null,
+        paused_reason: null,
+        initial_instructions: '',
+        work_brief_revision: null,
+        pr_number: null,
+        pr_url: null,
+        pr_state: null,
+        review_state: null,
+        pr_is_draft: false,
+        merge_order: null,
+      });
 
-        const repo = deps.repos.getById(repoId);
-        if (!repo) return failure(`Repo not found: ${repoId}`);
-
-        const stub = deps.devSessions.create({
-          id: randomUUID(),
-          project_id: planItem.project_id,
-          plan_item_id: planItemId,
-          repo_id: repoId,
-          name: null,
-          worktree_path: '',
-          branch_name: '',
-          base_branch: '',
-          base_sha: null,
-          status: 'inactive',
-          agent_type: 'claude',
-          review_policy: 'auto',
-          automation_phase: null,
-          playbook_id: null,
-          playbook_snapshot: null,
-          current_step_id: null,
-          step_pass_counts: null,
-          paused_reason: null,
-          initial_instructions: '',
-          work_brief_revision: null,
-          pr_number: null,
-          pr_url: null,
-          pr_state: null,
-          review_state: null,
-          pr_is_draft: false,
-          merge_order: null,
-        });
-        sessionId = stub.id;
-      }
-
-      return this.linkPr(sessionId, prIdentifier);
+      deps.devSessions.updatePrInfo(target.id, pr.number, pr.url, pr.state, pr.reviewDecision, pr.isDraft);
+      return success(pr);
     },
 
     /**
@@ -883,41 +984,20 @@ ${effectivePrTemplate}`
     async linkPr(sessionId: string, prIdentifier: string): AsyncResult<PrStatus> {
       const resolved = resolveSessionRepo(sessionId);
       if ('error' in resolved) return failure(resolved.error);
-      const { repoPath } = resolved;
+      const { repoPath, session } = resolved;
 
-      const pr = parsePrIdentifier(prIdentifier);
-      if (!pr) return failure('Invalid PR identifier. Provide a PR number or GitHub PR URL.');
+      const pr = await lookUpLinkablePr({
+        planItemId: session.plan_item_id,
+        projectId: session.project_id,
+        repoId: session.repo_id,
+        repoPath,
+        session,
+        prIdentifier,
+      });
+      if (!pr.ok) return pr;
 
-      try {
-        // gh looks a number up in the session's repo, so a URL from another
-        // repo would silently link that repo's PR with the same number.
-        let repoSlug: string | null = null;
-        if (pr.repo) {
-          repoSlug = await getRepoSlug(repoPath);
-          const urlSlug = `${pr.repo.owner}/${pr.repo.name}`;
-          if (urlSlug.toLowerCase() !== repoSlug.toLowerCase()) {
-            return failure(
-              `That pull request is in ${urlSlug}, but this session's repository is ${repoSlug}. Link a pull request from ${repoSlug}, or if this clone is a fork, run \`gh repo set-default ${urlSlug}\` in it first.`
-            );
-          }
-        }
-
-        const status = await getPrByNumber(repoPath, pr.number);
-        if (!status) return failure(`PR #${pr.number} not found in ${repoSlug ?? 'this repository'}.`);
-
-        deps.devSessions.updatePrInfo(
-          sessionId,
-          status.number,
-          status.url,
-          status.state,
-          status.reviewDecision,
-          status.isDraft
-        );
-
-        return success(status);
-      } catch (error) {
-        return failure(await describeGhFailure(repoPath, error));
-      }
+      deps.devSessions.updatePrInfo(sessionId, pr.data.number, pr.data.url, pr.data.state, pr.data.reviewDecision, pr.data.isDraft);
+      return success(pr.data);
     },
   };
 }

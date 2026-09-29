@@ -5,6 +5,7 @@ import type { IRepoRepository } from '../../db/interfaces';
 import type { RepoWatcherService } from './RepoWatcherService';
 import { failure, success, wrap, type ServiceResult, type AsyncResult, wrapAsync } from '../result';
 import type { gitExec } from './gitUtils';
+import { parseWorktreeListPorcelain } from './worktreeList';
 import { openDirectoryInCodeEditor } from './editorLauncher';
 import { resolveEffectiveRepoPath } from '../../../shared/repoPath';
 
@@ -175,32 +176,7 @@ export function createRepoService(deps: RepoServiceDeps) {
     async listWorktrees(repoPath: string): AsyncResult<{ path: string; branch: string | null; isMain: boolean }[]> {
       return wrapAsync(async () => {
         const { stdout } = await deps.gitExec(['worktree', 'list', '--porcelain'], { cwd: repoPath });
-        const worktrees: { path: string; branch: string | null; isMain: boolean }[] = [];
-        let current: { path?: string; branch?: string | null } = {};
-        let isFirst = true;
-
-        for (const line of stdout.trim().split('\n')) {
-          if (line.startsWith('worktree ')) {
-            if (current.path !== undefined) {
-              worktrees.push({ path: current.path, branch: current.branch ?? null, isMain: isFirst });
-              isFirst = false;
-            }
-            current = { path: line.slice('worktree '.length) };
-          } else if (line.startsWith('branch ')) {
-            current.branch = line.slice('branch refs/heads/'.length);
-          } else if (line === '') {
-            if (current.path !== undefined) {
-              worktrees.push({ path: current.path, branch: current.branch ?? null, isMain: isFirst });
-              isFirst = false;
-              current = {};
-            }
-          }
-        }
-        if (current.path !== undefined) {
-          worktrees.push({ path: current.path, branch: current.branch ?? null, isMain: isFirst });
-        }
-
-        return worktrees;
+        return parseWorktreeListPorcelain(stdout).map(({ path, branch, isMain }) => ({ path, branch, isMain }));
       }, 'Failed to list worktrees');
     },
 

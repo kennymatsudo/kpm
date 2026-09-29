@@ -16,6 +16,7 @@ import { payloadOf, type EventDefinition } from './appEvents';
 import type { Activity, AgentBackgroundTask, PlanAction, SlashCommandInfo } from '../types';
 import type { ModelCatalog } from '../modelCatalog';
 import type { ConfigChange } from '../configKinds';
+import type { BoardChange } from '../boardChanges';
 
 export interface ChunkEventData {
   projectId: string;
@@ -52,6 +53,13 @@ export interface ConfigChangeEventData {
   projectId: string;
   chatSessionId?: string;
   change: ConfigChange;
+}
+
+/** A chat-proposed board change; follows the user's review setting. */
+export interface BoardChangeEventData {
+  projectId: string;
+  chatSessionId?: string;
+  change: BoardChange;
 }
 
 export interface FileDeleteEventData {
@@ -198,6 +206,7 @@ export const chatEvents = {
   fileMove: { channel: 'chat:file-move', payload: payloadOf<FileMoveEventData>() },
   fileDelete: { channel: 'chat:file-delete', payload: payloadOf<FileDeleteEventData>() },
   configChange: { channel: 'chat:config-change', payload: payloadOf<ConfigChangeEventData>() },
+  boardChange: { channel: 'chat:board-change', payload: payloadOf<BoardChangeEventData>() },
   sessionConnecting: { channel: 'chat:session-connecting', payload: payloadOf<SessionLifecycleEventData>() },
   sessionReady: { channel: 'chat:session-ready', payload: payloadOf<SessionReadyEventData>() },
   sessionTitle: { channel: 'chat:session-title', payload: payloadOf<SessionTitleEventData>() },

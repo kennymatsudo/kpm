@@ -66,11 +66,17 @@ describe('DevSessionService.attachWorktree', () => {
       completed_at: null,
     }));
     const deleteSession = vi.fn();
+    const items: Record<string, typeof item> = { 'item-1': item, 'item-2': { ...item, id: 'item-2', title: 'Other task' } };
     const service = createDevSessionService({
-      planItems: { get: vi.fn(() => item), getByProject: vi.fn(() => [item]) },
+      planItems: { get: vi.fn((id: string) => items[id]), getByProject: vi.fn(() => [item]) },
       projects: { get: vi.fn(() => ({ id: 'project-1', name: 'Project' })) },
-      repos: { getById: vi.fn(() => ({ id: 'repo-1', path: repoPath })) },
-      devSessions: { getByProject: vi.fn(() => existingSessions), create, delete: deleteSession },
+      repos: { getById: vi.fn(() => ({ id: 'repo-1', project_id: 'project-1', path: repoPath })) },
+      devSessions: {
+        getByProject: vi.fn(() => existingSessions.filter((session) => (session.project_id ?? 'project-1') === 'project-1')),
+        getWithWorktree: vi.fn(() => existingSessions.filter((session) => session.worktree_path)),
+        create,
+        delete: deleteSession,
+      },
       appSettings: { get: vi.fn() },
     } as never);
     return { service, create, deleteSession };
@@ -138,15 +144,43 @@ describe('DevSessionService.attachWorktree', () => {
     expect(create).not.toHaveBeenCalled();
   });
 
-  it('refuses a worktree another task already owns', async () => {
+  it.each([
+    ['in this project', 'project-1', 'already attached to "Other task".'],
+    ['in another project', 'project-2', 'already attached to "Other task" in another project.'],
+  ])('refuses a worktree another task already owns %s', async (_case, projectId, message) => {
     const { service, create } = buildService([
-      { id: 's-2', plan_item_id: 'item-2', repo_id: 'repo-1', worktree_path: worktreePath },
+      { id: 's-2', project_id: projectId, plan_item_id: 'item-2', repo_id: 'repo-1', worktree_path: worktreePath },
     ]);
 
     const result = await service.attachWorktree('item-1', 'repo-1', worktreePath);
 
-    expect(result).toMatchObject({ ok: false, error: expect.stringContaining('another task') });
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining(message) });
     expect(create).not.toHaveBeenCalled();
+  });
+
+  it('lists each worktree with the reason it cannot be attached', async () => {
+    const detachedPath = join(root, 'detached');
+    runGit(repoPath, ['worktree', 'add', '--detach', detachedPath]);
+    const ownedPath = join(root, 'owned');
+    runGit(repoPath, ['worktree', 'add', '-b', 'owned', ownedPath]);
+    const { service } = buildService([
+      { id: 's-2', project_id: 'project-2', plan_item_id: 'item-2', repo_id: 'repo-9', worktree_path: ownedPath },
+    ]);
+
+    const result = await service.listAttachableWorktrees('repo-1');
+
+    if (!result.ok) throw new Error(result.error);
+    expect(result.data).toEqual([
+      { path: repoPath, branch: 'main', unavailableReason: 'Main checkout' },
+      { path: detachedPath, branch: null, unavailableReason: 'No branch checked out' },
+      { path: worktreePath, branch: 'feature/outside' },
+      {
+        path: ownedPath,
+        branch: 'owned',
+        unavailableReason: 'Attached to a task in another project',
+        attachedTo: { planItemId: 'item-2', title: 'Other task', sameProject: false },
+      },
+    ]);
   });
 
   it.each([

@@ -3,6 +3,8 @@ import fs from 'fs';
 import { CONTEXT_FILE_NAMES, CONTEXT_FILE_PENDING_CACHE_KEY } from '../../shared/contextFile';
 import type { ChatSessionScope, PlanAction } from '../../shared/types';
 import type { ConfigChange } from '../../shared/configKinds';
+import type { BoardChange } from '../../shared/boardChanges';
+import { getRepoSlug } from '../services/repo/ghUtils';
 import type { IRepositoryContainer } from '../db/interfaces';
 import { projectWriteGrants, type WriteDecision } from '../chat/writeGrants';
 import { resolveScopedPath } from '../services/files/scopedFs';
@@ -21,6 +23,7 @@ import {
   type KpmToolExecutionResult,
   type KpmToolGroup,
 } from './runtime';
+import { createBoardTools } from './tools/board';
 import { createConfigTools } from './tools/config';
 import { createContextFileEditTools, type ContextFileUpdatePayload } from './tools/context-file-update';
 import { createConfluenceTools } from './tools/confluence';
@@ -56,7 +59,10 @@ export interface KpmToolRuntimeDeps {
     | 'devSessions'
     | 'confluenceLinks'
   >;
-  services: Pick<AppServices, 'fileExplorerService' | 'playbookService' | 'promptOverrideService'>;
+  services: Pick<
+    AppServices,
+    'fileExplorerService' | 'playbookService' | 'promptOverrideService' | 'devSessionService' | 'gitHubService'
+  >;
   getMainWindow: () => BrowserWindow | null;
 }
 
@@ -173,6 +179,21 @@ function emitConfigChange(change: ConfigChange): void {
   });
 }
 
+function emitBoardChange(change: BoardChange): void {
+  const context = getCurrentToolExecutionContext();
+  if (!context?.projectId || !context?.chatSessionId) {
+    console.warn('[KPM Tools] Skipping unscoped board change');
+    return;
+  }
+
+  context.proposalSink?.propose({
+    type: 'board-change',
+    projectId: context.projectId,
+    chatSessionId: context.chatSessionId,
+    change,
+  });
+}
+
 /**
  * Ask for the project's write grant on a KPM tool's behalf, using the same
  * grant and prompt as the built-in write tools so one answer covers both. A run
@@ -279,6 +300,14 @@ function planItemGroups(tools: KpmToolDefinition[]): KpmToolGroup[] {
   ];
 }
 
+/** Listing worktrees is a plain repo read; only proposing needs the board grant. */
+function boardGroups(tools: KpmToolDefinition[]): KpmToolGroup[] {
+  return [
+    group('board-read', MAIN_ONLY, ['repo.read'], tools.filter((tool) => tool.name === 'list_worktrees')),
+    group('board-changes', MAIN_ONLY, ['board.propose'], tools.filter((tool) => tool.name !== 'list_worktrees')),
+  ];
+}
+
 function buildToolGroups(): KpmToolGroup[] {
   const { container, services } = getKpmToolRuntimeDeps();
   const projectRepo = container.projects;
@@ -310,6 +339,17 @@ function buildToolGroups(): KpmToolGroup[] {
     })),
     // Services are read per call, not captured, so test fixtures that never
     // run these tools can omit them.
+    ...boardGroups(createBoardTools({
+      repos: repoRepo,
+      planItems: planItemRepo,
+      listAttachableWorktrees: (repoId) => services.devSessionService.listAttachableWorktrees(repoId),
+      previewAttachWorktree: (planItemId, repoId, worktreePath) =>
+        services.devSessionService.previewAttachWorktree(planItemId, repoId, worktreePath),
+      previewLinkPr: (planItemId, repoId, prIdentifier) =>
+        services.gitHubService.previewLinkPrToItem(planItemId, repoId, prIdentifier),
+      getRepoSlug,
+      onBoardChange: emitBoardChange,
+    })),
     group('kpm-config', MAIN_ONLY, ['config.propose'], createConfigTools({
       playbooks: {
         list: () => services.playbookService.list(),

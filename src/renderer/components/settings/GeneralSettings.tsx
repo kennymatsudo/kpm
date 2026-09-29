@@ -55,7 +55,7 @@ export function GeneralSettings() {
           <div className="space-y-1">
             <p className="text-sm font-medium text-text-primary">Review Claude changes before applying</p>
             <p className="text-xs text-text-muted">
-              Turn off to apply plan edits, document updates, context changes, and deletions as soon as they are proposed.
+              Turn off to apply plan edits, document updates, context changes, deletions, and task links to worktrees and pull requests as soon as they are proposed.
               Existing chat prompts update on the next new session.
             </p>
           </div>

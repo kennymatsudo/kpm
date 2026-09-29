@@ -79,7 +79,7 @@ describe('capability filtering in the tool runtime', () => {
     expect(names).not.toContain('modify_plan');
   });
 
-  it('never lets an action run reach the configuration tools, whatever it is granted', () => {
+  it('never lets an action run reach the configuration or board-change tools, whatever it is granted', () => {
     const names = getKpmToolRuntime()
       .listTools({ scope: 'main', grantedCapabilities: toolCapabilitiesFor(ACTION_CAPABILITIES) })
       .map((tool) => tool.name);
@@ -87,6 +87,7 @@ describe('capability filtering in the tool runtime', () => {
     expect(names).toContain('modify_plan');
     expect(names).not.toContain('read_config');
     expect(names).not.toContain('propose_config_change');
+    expect(names).not.toContain('propose_board_change');
   });
 
   it('offers the configuration tools to main chat only', () => {

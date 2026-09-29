@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import type { PlanAction } from '../../shared/types';
 import type { ConfigChange } from '../../shared/configKinds';
+import type { BoardChange } from '../../shared/boardChanges';
 
 export interface PlanActionsEvent {
   projectId: string;
@@ -53,9 +54,17 @@ export interface ConfigChangeProposal {
   change: ConfigChange;
 }
 
+export interface BoardChangeProposal {
+  type: 'board-change';
+  projectId: string;
+  chatSessionId?: string;
+  change: BoardChange;
+}
+
 export type KpmToolProposal =
   | PlanActionsProposal
   | ConfigChangeProposal
+  | BoardChangeProposal
   | ProjectContextUpdateProposal
   | DocumentUpdateProposal
   | FileMoveProposal

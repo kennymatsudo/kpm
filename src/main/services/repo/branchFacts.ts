@@ -137,3 +137,17 @@ export async function hasUpstream(repoPath: string, branch: string): Promise<boo
   );
   return upstream.exitCode === 0;
 }
+
+/**
+ * The name `branch` has on its remote, without the remote prefix, or null when
+ * it has no upstream. A branch checked out under a local name that differs from
+ * the one it was pushed as still opens its pull request under the remote name.
+ */
+export async function resolveUpstreamBranchName(repoPath: string, branch: string): Promise<string | null> {
+  const upstream = await gitExecCaptured(
+    ['for-each-ref', '--format=%(upstream:lstrip=3)', `refs/heads/${branch}`],
+    { cwd: repoPath }
+  );
+  const name = upstream.exitCode === 0 ? upstream.stdout.trim() : '';
+  return name || null;
+}

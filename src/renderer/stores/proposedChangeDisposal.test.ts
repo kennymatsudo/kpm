@@ -4,11 +4,18 @@ import { useGeneralSettingsStore } from './generalSettingsStore';
 import { useProposedChangeDisposal } from './proposedChangeDisposal';
 import type { ProposedChangeInput } from './proposedChangeDisposal';
 import { usePlanDomainStore } from './projectDomains';
+import { useDevSessionsStore } from './devSessions';
 
 const updatePlaybook = vi.fn();
 vi.mock('../services/playbookService', () => ({
   updatePlaybook: (...args: unknown[]) => updatePlaybook(...args),
   createPlaybook: vi.fn(),
+}));
+
+const attachWorktreeToPlanItem = vi.fn();
+vi.mock('../services/devSessionService', async (importOriginal) => ({
+  ...(await importOriginal()),
+  attachWorktreeToPlanItem: (...args: unknown[]) => attachWorktreeToPlanItem(...args),
 }));
 
 describe('Proposed Change disposal', () => {
@@ -81,6 +88,26 @@ describe('Proposed Change disposal', () => {
       expect(outcome).toEqual({ kind: 'failed', error: expect.stringContaining('changed since proposed') });
       expect(useProposedChangeDisposal.getState().pending).toMatchObject([{ type: 'config', error: expect.stringContaining('changed since proposed') }]);
     });
+  });
+
+  it('applies a board change at once under auto-apply, through the Attach worktree call, then reloads the board', async () => {
+    useGeneralSettingsStore.setState({ approvalMode: 'auto_apply', approvalModeLoaded: true });
+    attachWorktreeToPlanItem.mockResolvedValue({ success: true });
+    const loadSessions = vi.fn().mockResolvedValue(undefined);
+    useDevSessionsStore.setState({ loadSessions });
+
+    useProposedChangeDisposal.getState().propose({
+      type: 'board',
+      projectId: 'project-1',
+      change: {
+        kind: 'attach_worktree', planItemId: 'item-1', itemTitle: 'Task', repoId: 'repo-1', repoPath: '/code/a',
+        worktreePath: '/code/a-feature', branchName: 'feature/x', carriedPrNumber: null,
+      },
+    });
+
+    await vi.waitFor(() => expect(loadSessions).toHaveBeenCalledWith('project-1'));
+    expect(attachWorktreeToPlanItem).toHaveBeenCalledWith({ planItemId: 'item-1', repoId: 'repo-1', worktreePath: '/code/a-feature' });
+    expect(useProposedChangeDisposal.getState().pending).toEqual([]);
   });
 
   it('executes edited plan actions through the same disposal attempt', async () => {

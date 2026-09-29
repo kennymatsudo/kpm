@@ -267,6 +267,7 @@ const chat = {
   onFileMove: chatSubscriptions.fileMove,
   onFileDelete: chatSubscriptions.fileDelete,
   onConfigChange: chatSubscriptions.configChange,
+  onBoardChange: chatSubscriptions.boardChange,
 
   // ─── Streaming Session Methods ───
 
@@ -749,6 +750,8 @@ const devSessions = {
   delete: devSessionInvoke.delete,
 
   destroy: devSessionInvoke.destroy,
+
+  listAttachableWorktrees: devSessionInvoke.listAttachableWorktrees,
 
   attachWorktree: devSessionInvoke.attachWorktree,
 

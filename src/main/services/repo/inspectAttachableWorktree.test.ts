@@ -53,6 +53,17 @@ describe('inspectAttachableWorktree', () => {
     expect(result.ok).toBe(false);
   });
 
+  it('refuses the main checkout when the connected path is a linked worktree', async () => {
+    const root = makeRoot();
+    const repoPath = createRepo(root);
+    const connectedPath = join(root, 'connected');
+    runGit(repoPath, ['worktree', 'add', '-b', 'connected', connectedPath]);
+
+    const result = await inspectAttachableWorktree({ worktreePath: repoPath, repoPath: connectedPath });
+
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining('main checkout') });
+  });
+
   it('refuses a worktree with a detached HEAD', async () => {
     const root = makeRoot();
     const repoPath = createRepo(root);

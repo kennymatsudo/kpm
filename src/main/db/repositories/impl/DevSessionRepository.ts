@@ -29,6 +29,7 @@ interface PreparedStatements {
   getActiveSessions: Statement;
   getByPlanItem: Statement;
   getActiveByPlanItem: Statement;
+  getWithWorktree: Statement;
 
   // Write operations
   insert: Statement;
@@ -79,6 +80,7 @@ export class DevSessionRepository implements IDevSessionRepository {
         ORDER BY created_at DESC
       `),
       getByPlanItem: db.prepare('SELECT * FROM dev_sessions WHERE plan_item_id = ? ORDER BY created_at DESC LIMIT 1'),
+      getWithWorktree: db.prepare("SELECT * FROM dev_sessions WHERE worktree_path IS NOT NULL AND worktree_path != ''"),
       getActiveByPlanItem: db.prepare(`
         SELECT * FROM dev_sessions
         WHERE plan_item_id = ? AND status IN ('pending', 'active')
@@ -236,6 +238,10 @@ export class DevSessionRepository implements IDevSessionRepository {
 
   getActiveByPlanItem(planItemId: string): DevSession | undefined {
     return this.stmts.getActiveByPlanItem.get(planItemId) as DevSession | undefined;
+  }
+
+  getWithWorktree(): DevSession[] {
+    return this.stmts.getWithWorktree.all() as DevSession[];
   }
 
   create(session: Omit<DevSession, 'created_at' | 'updated_at' | 'completed_at'>): DevSession {

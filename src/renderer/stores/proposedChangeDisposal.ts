@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { PlanAction, ReviewInboxSnapshot } from '../../shared/types';
 import type { ConfigChange, ConfigKind } from '../../shared/configKinds';
+import type { BoardChange } from '../../shared/boardChanges';
 import type { ApplyPlanActionsResult } from './project/types';
 import { usePlanDomainStore } from './projectDomains';
 import { useGeneralSettingsStore } from './generalSettingsStore';
@@ -11,6 +12,9 @@ import { deleteProjectFile, writeProjectFile } from '../services/workspaceFileSe
 import { renameProjectEntry } from '../services/projectFileService';
 import { replyToSessionReviewThread } from '../services/reviewService';
 import { createPlaybook, updatePlaybook } from '../services/playbookService';
+import { attachWorktreeToPlanItem } from '../services/devSessionService';
+import { linkPullRequestToPlanItem } from '../services/githubService';
+import { useDevSessionsStore } from './devSessions';
 
 export type DisposalPolicy = 'follow_global_mode' | 'review_required';
 export type DisposalOutcome =
@@ -32,6 +36,7 @@ export type ProposedChange =
   | (ProposedChangeBase & { type: 'move'; sourcePath: string; targetPath: string })
   | (ProposedChangeBase & { type: 'delete'; filePath: string; isDirectory: boolean })
   | (ProposedChangeBase & { type: 'config'; change: ConfigChange })
+  | (ProposedChangeBase & { type: 'board'; change: BoardChange })
   | (ProposedChangeBase & {
       type: 'review-reply'; sessionId: string; threadId: string; threadUrl: string;
       threadTitle: string; threadLocation: string; latestCommentPreview: string | null;
@@ -132,6 +137,13 @@ const CONFIG_APPLIERS: { [K in ConfigKind]: (change: Extract<ConfigChange, { kin
   },
 };
 
+/** Board changes apply through the same calls as the board card's menu items. */
+function applyBoardChange(change: BoardChange): Promise<{ success: boolean; error?: string }> {
+  return change.kind === 'attach_worktree'
+    ? attachWorktreeToPlanItem({ planItemId: change.planItemId, repoId: change.repoId, worktreePath: change.worktreePath })
+    : linkPullRequestToPlanItem({ planItemId: change.planItemId, repoId: change.repoId, prIdentifier: change.prUrl });
+}
+
 const adapters = {
   'plan-actions': {
     defaultPolicy: 'follow_global_mode',
@@ -223,6 +235,15 @@ const adapters = {
     projectSuccess: () => {},
     presentation: { label: 'Configuration Change', editable: false },
   } satisfies ProposedChangeAdapter<Extract<ProposedChange, { type: 'config' }>>,
+  board: {
+    defaultPolicy: 'follow_global_mode',
+    identity: (change) => compoundIdentity(change.change.kind, change.change.planItemId, change.change.repoId),
+    merge: (current, incoming) => ({ ...current, change: incoming.change, error: undefined }),
+    applyEdits: (change, edits) => edits ? invalidEdits(change, edits) : change,
+    execute: (change) => resultOutcome(() => applyBoardChange(change.change)),
+    projectSuccess: (change) => useDevSessionsStore.getState().loadSessions(change.projectId),
+    presentation: { label: 'Board Change', editable: false },
+  } satisfies ProposedChangeAdapter<Extract<ProposedChange, { type: 'board' }>>,
 } satisfies { [Kind in ProposedChange['type']]: ProposedChangeAdapter<Extract<ProposedChange, { type: Kind }>> };
 
 function adapterFor(change: ProposedChange): ProposedChangeAdapter {

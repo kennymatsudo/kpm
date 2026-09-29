@@ -29,6 +29,8 @@ export interface IDevSessionRepository {
   getByPlanItem(planItemId: string): DevSession | undefined;
   /** Get non-inactive session for a plan item */
   getActiveByPlanItem(planItemId: string): DevSession | undefined;
+  /** Get every session, in any project, that owns a worktree directory */
+  getWithWorktree(): DevSession[];
   /** Create a new session */
   create(session: Omit<DevSession, 'created_at' | 'updated_at' | 'completed_at'>): DevSession;
   /** Update session status */
