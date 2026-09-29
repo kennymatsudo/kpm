@@ -52,6 +52,17 @@ function updatesFromChanges(changes: SyncUpdatedItem['changes']): ExternalItemUp
   return updates;
 }
 
+/**
+ * A fetched issue older than the snapshot predates our own last push: the fetch
+ * raced the export, or Linear served a lagging read. Diffing it would propose
+ * reverting what we just pushed.
+ */
+function predatesSnapshot(issue: ExternalIssue, snapshot: SyncSnapshot | null): boolean {
+  const fetchedAt = Date.parse(issue.updatedAt);
+  const snapshotAt = Date.parse(snapshot?.external_updated_at ?? '');
+  return fetchedAt < snapshotAt;
+}
+
 export function createSyncService(deps: SyncServiceDeps) {
   const getDatabase = () => deps.database;
   const PlanItemRepository = deps.planItems;
@@ -147,6 +158,8 @@ export function createSyncService(deps: SyncServiceDeps) {
           ...externalPeopleFields(issue),
         });
         preview.stats.new++;
+      } else if (predatesSnapshot(issue, snapshots.get(existing.id) ?? null)) {
+        preview.stats.unchanged++;
       } else {
         // Existing item - check for changes/conflicts
         const snapshot = snapshots.get(existing.id) ?? null;

@@ -360,4 +360,46 @@ describe('SyncService', () => {
       expect(updateStatusCategory).not.toHaveBeenCalled();
     });
   });
+
+  describe('fetched issue versus the last push', () => {
+    const pushedItem = {
+      id: 'plan-1',
+      title: 'Linear issue',
+      description: null,
+      status_category: 'done',
+      external_key: 'ENG-1',
+      external_status: 'Done',
+    } as PlanItem;
+    const snapshot = {
+      id: 'snap-1',
+      plan_item_id: 'plan-1',
+      snapshot_title: 'Linear issue',
+      snapshot_description: null,
+      snapshot_label: null,
+      snapshot_release_tag: null,
+      external_updated_at: '2026-09-29T21:58:22.750Z',
+      snapshot_at: '2026-09-29T21:58:22.977Z',
+    };
+
+    it.each([
+      { updatedAt: '2026-09-29T21:58:20.000Z', expected: [] },
+      {
+        updatedAt: '2026-09-29T22:05:00.000Z',
+        expected: [
+          { field: 'external_status', old_value: 'Done', new_value: 'In Review' },
+          { field: 'status_category', old_value: 'done', new_value: 'in_progress' },
+        ],
+      },
+    ])('pulls the status only when the issue changed after the push (updatedAt $updatedAt)', async ({ updatedAt, expected }) => {
+      const service = createService({
+        externalPlanItems: { getLinkedItems: vi.fn(() => [pushedItem]) },
+        sync: { getSnapshotsByItemIds: vi.fn(() => new Map([['plan-1', snapshot]])) },
+      });
+      const staleOrNewer = createIssue({ status: 'In Review', statusType: 'started', updatedAt });
+
+      const preview = await service.generateSyncPreview('project-1', 'assoc-1', createClient(staleOrNewer));
+
+      expect(preview.updated_items.flatMap((item) => item.changes)).toEqual(expected);
+    });
+  });
 });
