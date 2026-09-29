@@ -187,6 +187,12 @@ function getToolPreview(toolName: string, input: Record<string, unknown>): strin
   if (toolName === 'git_push' && typeof input.remote === 'string' && typeof input.branch === 'string') {
     return `git push ${input.remote} ${input.branch}`;
   }
+  if (toolName === 'create_pull_request' && typeof input.target === 'string') {
+    return `Open a pull request for ${input.target}`;
+  }
+  if (toolName === 'update_pull_request' && typeof input.target === 'string') {
+    return `Edit pull request ${input.target}`;
+  }
   return toolName;
 }
 

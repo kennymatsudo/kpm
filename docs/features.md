@@ -112,7 +112,7 @@ The chat system prompt is assembled from registry sections (grounding, tool guid
 - `src/main/services/core/PromptOverrideService.ts`, `TaskPromptTemplateService.ts`; `src/renderer/components/settings/PromptsSettings.tsx`
 
 ### KPM tools
-In-process tools chat uses to read and propose against KPM and connected systems: plan items and relations, plan changes, documents and AGENTS.md, project files (list, move, delete), git history and branches, `git_push`, pull requests (`read_pull_request`, `generate_pr_description`), Jira, Confluence, Storybook, and paging through oversized tool results. Mutating tools only emit proposals.
+In-process tools chat uses to read and propose against KPM and connected systems: plan items and relations, plan changes, documents and AGENTS.md, project files (list, move, delete), git history and branches, `git_push`, pull requests (find, read with reviews, create, edit, `generate_pr_description`), Jira, Confluence, Storybook, and paging through oversized tool results. Mutating tools emit proposals, except `git_push` and the pull request writes, which act directly once the project write grant is given.
 - `src/main/kpmTools/tools/`, registered in `src/main/kpmTools/runtimeRegistry.ts`; documented to the model in `src/main/chat/prompts/toolDocs.ts`
 - See the "Add a Claude tool" recipe in the root `CLAUDE.md`
 
@@ -184,8 +184,8 @@ When the playbook includes review, a reviewer agent inspects the diff and its fi
 - `src/main/services/agents/autoReview.ts`, `reviewOutputContract.ts`, `BoardAgentOrchestrator.ts`
 
 ### Pull requests
-From the detail pane the user can create a PR (draft by default) or link an existing one, and generate a reviewer-oriented title and description from the branch diff, commit log, PR template, Work Brief, and optionally a project document for feature context. Push failures lead with a plain reason. Chat can read any PR by URL or number.
-- `src/main/services/repo/GitHubService.ts`, `ghUtils.ts`; `src/main/kpmTools/tools/github.ts`, `git-push.ts`
+From the detail pane the user can create a PR (draft by default) or link an existing one, and generate a reviewer-oriented title and description from the branch diff, commit log, PR template, Work Brief, and optionally a project document for feature context. Push failures lead with a plain reason. Chat can find PRs by branch, author, state, or search text; read any PR by URL or number, optionally with its reviews, review threads, discussion, and CI checks and merge readiness; and open or edit a PR's title and description after the project write grant.
+- `src/main/services/repo/GitHubService.ts`, `ghUtils.ts`; `src/main/kpmTools/tools/github.ts`, `github-writes.ts`, `git-push.ts`
 - `src/renderer/components/development/` (`CreatePrModal.tsx`, `LinkPrDialog.tsx`, `LinkPrToItemDialog.tsx`, `GeneratePrContentModal.tsx`), `src/renderer/stores/devSessions/prSlice.ts`
 
 ### PR review threads

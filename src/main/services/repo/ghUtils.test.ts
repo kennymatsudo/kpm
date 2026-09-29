@@ -9,13 +9,18 @@ vi.mock('child_process', async (importOriginal) => ({
 
 import {
   buildCreatePrArgs,
+  buildEditPrArgs,
   buildGraphQLPayload,
+  buildListPrArgs,
   classifyGhAuthError,
   getPrByNumber,
+  listPrs,
   parsePrIdentifier,
   parseCreatePrOutput,
   parseGhAuthOutput,
   parsePrRef,
+  repoOfPrUrl,
+  summarizeChecks,
 } from './ghUtils';
 
 function execError(fields: { code?: string; stderr?: string }): Error {
@@ -112,6 +117,97 @@ describe('buildCreatePrArgs', () => {
   });
 });
 
+describe('buildListPrArgs', () => {
+  it('binds every filter value to its flag so a leading dash cannot become a flag', () => {
+    const args = buildListPrArgs({
+      repo: 'klaviyo/k-repo',
+      head: '--web',
+      author: '-x',
+      search: '--json=body',
+      state: 'all',
+      limit: 21,
+    });
+
+    expect(args.slice(0, 2)).toEqual(['pr', 'list']);
+    expect(args.slice(2).every((arg) => /^--[a-z]+=/.test(arg))).toBe(true);
+    expect(args).toEqual(expect.arrayContaining(['--head=--web', '--author=-x', '--search=--json=body']));
+  });
+});
+
+describe('summarizeChecks', () => {
+  it('reads check runs by conclusion and legacy statuses by state', () => {
+    const summary = summarizeChecks([
+      { name: 'Unit tests', status: 'COMPLETED', conclusion: 'SUCCESS' },
+      { name: 'Linting', status: 'COMPLETED', conclusion: 'FAILURE', detailsUrl: 'https://buildkite.com/b/1' },
+      { name: 'Optional', status: 'COMPLETED', conclusion: 'NEUTRAL' },
+      { name: 'Deploy preview', status: 'IN_PROGRESS', conclusion: null },
+      { context: 'coverage', state: 'SUCCESS' },
+      { context: 'legacy-ci', state: 'ERROR', targetUrl: 'https://ci.example.com/2' },
+    ]);
+
+    expect(summary).toEqual({
+      passed: 2,
+      failed: 2,
+      pending: 1,
+      skipped: 1,
+      failing: [
+        { name: 'Linting', url: 'https://buildkite.com/b/1' },
+        { name: 'legacy-ci', url: 'https://ci.example.com/2' },
+      ],
+      pendingNames: ['Deploy preview'],
+    });
+  });
+
+  it('returns null when the PR has no checks', () => {
+    expect(summarizeChecks([])).toBeNull();
+  });
+});
+
+describe('listPrs', () => {
+  it('flattens the author and reports an empty review decision as none', async () => {
+    execFileMock.mockImplementation((_file, _args, _options, callback: (err: null, out: { stdout: string; stderr: string }) => void) => {
+      callback(null, {
+        stdout: JSON.stringify([{
+          number: 7,
+          url: 'https://github.com/o/r/pull/7',
+          title: 'T',
+          state: 'OPEN',
+          isDraft: false,
+          author: { login: 'octo', name: 'Octo' },
+          headRefName: 'feature',
+          baseRefName: 'main',
+          reviewDecision: '',
+          updatedAt: '2026-09-25T00:00:00Z',
+          mergedAt: null,
+        }]),
+        stderr: '',
+      });
+    });
+
+    const [entry] = await listPrs('/repo', { state: 'open', limit: 5 });
+
+    expect(entry.author).toBe('octo');
+    expect(entry.reviewDecision).toBeNull();
+  });
+});
+
+describe('buildListPrArgs readiness', () => {
+  it('asks gh for the check rollup only when readiness is requested', () => {
+    const fieldsOf = (args: string[]) => args.find((arg) => arg.startsWith('--json='))!;
+
+    expect(fieldsOf(buildListPrArgs({ state: 'open', limit: 5 }))).not.toContain('statusCheckRollup');
+    expect(fieldsOf(buildListPrArgs({ state: 'open', limit: 5, includeReadiness: true }))).toContain('statusCheckRollup');
+  });
+});
+
+describe('buildEditPrArgs', () => {
+  it('sends the body over stdin rather than on the command line', () => {
+    expect(buildEditPrArgs('12', { title: 'New', body: 'Long body' })).toEqual([
+      'pr', 'edit', '12', '--title=New', '--body-file=-',
+    ]);
+  });
+});
+
 describe('parseCreatePrOutput', () => {
   it('parses the created PR URL from gh stdout', () => {
     expect(parseCreatePrOutput('https://github.com/acme/widgets/pull/123\n')).toEqual({
@@ -160,6 +256,16 @@ describe('buildGraphQLPayload', () => {
       cursor: undefined,
     });
     expect(JSON.parse(payload).variables).toEqual({});
+  });
+});
+
+describe('repoOfPrUrl', () => {
+  it.each([
+    ['github.com', 'https://github.com/klaviyo/k-repo/pull/71540', { owner: 'klaviyo', name: 'k-repo' }],
+    ['an Enterprise host', 'https://git.example.com/team/app/pull/3/files', { owner: 'team', name: 'app' }],
+    ['a non-PR URL', 'https://github.com/klaviyo/k-repo/issues/4', null],
+  ])('reads %s', (_case, url, expected) => {
+    expect(repoOfPrUrl(url)).toEqual(expected);
   });
 });
 
@@ -212,6 +318,21 @@ describe('getPrByNumber', () => {
       callback(error);
     });
   }
+
+  it('reports passing check runs as passing, not pending', async () => {
+    execFileMock.mockImplementation((_file, _args, _options, callback: (err: null, out: { stdout: string; stderr: string }) => void) => {
+      callback(null, {
+        stdout: JSON.stringify({
+          number: 12, url: 'https://github.com/o/r/pull/12', state: 'OPEN', reviewDecision: '', additions: 1, deletions: 0,
+          mergeable: 'MERGEABLE', isDraft: false,
+          statusCheckRollup: [{ __typename: 'CheckRun', name: 'Unit tests', status: 'COMPLETED', conclusion: 'SUCCESS' }],
+        }),
+        stderr: '',
+      });
+    });
+
+    await expect(getPrByNumber('/repo', 12)).resolves.toMatchObject({ checksStatus: 'SUCCESS' });
+  });
 
   it('returns null when the repository has no such PR', async () => {
     failGhWith(execError({ stderr: 'GraphQL: Could not resolve to a PullRequest with the number of 99. (repository.pullRequest)' }));

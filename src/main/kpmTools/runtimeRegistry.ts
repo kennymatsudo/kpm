@@ -35,6 +35,7 @@ import { createFileMoveTools } from './tools/file-move';
 import { createGitPushTools, type GitPushConsentRequest } from './tools/git-push';
 import { createGitReadTools } from './tools/git-read';
 import { createGitHubTools } from './tools/github';
+import { createGitHubWriteTools, type PullRequestWriteRequest } from './tools/github-writes';
 import { createJiraTools } from './tools/jira';
 import { createListProjectFilesTools } from './tools/list-project-files';
 import { createPlanChangeTools } from './tools/plan-changes';
@@ -200,7 +201,11 @@ function emitBoardChange(change: BoardChange): void {
  * with no chat session — a scheduled action — inherits an existing grant but
  * has nowhere to ask for one it does not have.
  */
-async function requestGitPushWriteAccess(request: GitPushConsentRequest): Promise<WriteDecision> {
+async function requestKpmToolWriteAccess(
+  toolName: string,
+  input: Record<string, unknown>,
+  title: string,
+): Promise<WriteDecision> {
   const context = getCurrentToolExecutionContext();
   const chatSessionId = context?.chatSessionId;
 
@@ -208,16 +213,26 @@ async function requestGitPushWriteAccess(request: GitPushConsentRequest): Promis
     const result = await promptUser(
       getKpmToolRuntimeDeps().getMainWindow(),
       context?.projectId ?? '',
-      'git_push',
-      { ...request },
+      toolName,
+      input,
       {
         chatSessionId,
         kind: 'write-access',
-        title: `Push ${request.branch} to ${request.remote}?`,
+        title,
       },
     );
     return result.behavior === 'allow';
   });
+}
+
+function requestGitPushWriteAccess(request: GitPushConsentRequest): Promise<WriteDecision> {
+  return requestKpmToolWriteAccess('git_push', { ...request }, `Push ${request.branch} to ${request.remote}?`);
+}
+
+function requestPullRequestWriteAccess(request: PullRequestWriteRequest): Promise<WriteDecision> {
+  return request.action === 'create'
+    ? requestKpmToolWriteAccess('create_pull_request', { ...request }, `Open a pull request for ${request.target}?`)
+    : requestKpmToolWriteAccess('update_pull_request', { ...request }, `Edit pull request ${request.target}?`);
 }
 
 function emitContextFileUpdate(update: ContextFileUpdatePayload): void {
@@ -336,6 +351,11 @@ function buildToolGroups(): KpmToolGroup[] {
     group('git-push', MAIN_ONLY, ['repo.push'], createGitPushTools({
       repos: repoRepo,
       requestWriteAccess: requestGitPushWriteAccess,
+    })),
+    group('github-writes', MAIN_ONLY, ['repo.push'], createGitHubWriteTools({
+      repos: repoRepo,
+      planItems: planItemRepo,
+      requestWriteAccess: requestPullRequestWriteAccess,
     })),
     // Services are read per call, not captured, so test fixtures that never
     // run these tools can omit them.
