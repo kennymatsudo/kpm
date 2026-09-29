@@ -4,7 +4,7 @@ import type { ChatChoiceView, ChatMessage } from '../../../shared/types';
 import { useProjectDomainStore } from '../../stores';
 import { cancelChatSession, changeChatChoice, getFocusDocumentChatSession, sendChatMessage, subscribeToChatEvents } from '../../services/chatService';
 import { useFocusModeStore } from '../../stores/focusModeStore';
-import { markdownOptions, transformPlanRefs } from '../../utils/markdown';
+import { markdownOptions, useLinkedPlanRefs } from '../../utils/markdown';
 import { ChevronRightIcon, CloseIcon } from '../icons';
 import { ChatChoiceControls } from '../chat/ChatChoiceControls';
 import { PermissionPrompt } from '../permission/PermissionPrompt';
@@ -209,6 +209,8 @@ export function FocusChatPanel({
     el.scrollTop = el.scrollHeight;
   }, [messages, streamingContent, isOpen]);
 
+  const streamingSource = useLinkedPlanRefs(streamingContent);
+
   useEffect(() => {
     if (isOpen) {
       window.setTimeout(() => textareaRef.current?.focus(), 0);
@@ -328,7 +330,7 @@ export function FocusChatPanel({
               {streamingContent ? (
                 <>
                   <div className="prose-document prose-panel text-sm">
-                    <Markdown options={markdownOptions}>{transformPlanRefs(streamingContent)}</Markdown>
+                    <Markdown options={markdownOptions}>{streamingSource}</Markdown>
                   </div>
                   {isStreaming && <FocusChatActivity className="mt-3 border-t border-border-subtle/60 pt-2" />}
                 </>
@@ -412,6 +414,7 @@ function FocusChatActivity({ className = '' }: { className?: string }) {
 }
 
 function FocusChatBubble({ message }: { message: FocusChatMessage }) {
+  const source = useLinkedPlanRefs(message.content);
   if (message.role === 'status') {
     return (
       <div className="min-w-0 overflow-hidden rounded-md border border-accent/20 bg-accent-subtle px-3 py-2 text-xs text-accent break-words">
@@ -434,7 +437,7 @@ function FocusChatBubble({ message }: { message: FocusChatMessage }) {
           <div className="whitespace-pre-wrap break-words">{message.content}</div>
         ) : (
           <div className="prose-document prose-panel">
-            <Markdown options={markdownOptions}>{transformPlanRefs(message.content)}</Markdown>
+            <Markdown options={markdownOptions}>{source}</Markdown>
           </div>
         )}
       </div>

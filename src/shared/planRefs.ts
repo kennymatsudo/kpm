@@ -80,6 +80,40 @@ export function findRefs(text: string): PlanRefMatch[] {
   return out;
 }
 
+/**
+ * One alternation per span a tracker key must not be rewritten inside (inline
+ * code, a link, an autolink, a bare URL), then a bare key. Inline code is
+ * matched whole so a key alone in backticks can still be rewritten. The key's
+ * lookarounds keep one embedded in a path, slug, or branch name from matching.
+ */
+const PLAN_ITEM_KEY_SCAN_REGEX = new RegExp(
+  [
+    '`[^`\\n]+`',
+    '!?\\[[^\\]]*\\]\\([^()]*\\)',
+    '<[^>\\s]+>',
+    'https?:\\/\\/[^\\s)>]+',
+    '(?<![\\w/.-])[A-Z][A-Z0-9]*-\\d+(?![\\w-])',
+  ].join('|'),
+  'g'
+);
+
+/**
+ * Rewrite each tracker key (`ASUP-537`) that names a plan item into that
+ * item's `@plan/<uuid>` ref, so a reply that names the ticket still renders
+ * the item's chip. A key alone in inline code is rewritten too; keys inside
+ * fenced code, links, URLs, and longer code spans are left alone.
+ */
+export function linkPlanItemKeys(text: string, idByExternalKey: ReadonlyMap<string, string>): string {
+  if (idByExternalKey.size === 0 || !/[A-Z]-\d/.test(text)) return text;
+  const skipRanges = computeFencedCodeRanges(text);
+  return text.replace(PLAN_ITEM_KEY_SCAN_REGEX, (match: string, offset: number) => {
+    if (isInRanges(offset, skipRanges)) return match;
+    const key = match.startsWith('`') ? match.slice(1, -1).trim() : match;
+    const id = idByExternalKey.get(key);
+    return id ? serializeRef(id) : match;
+  });
+}
+
 /** A markdown inline link `[label](target)` located in the source string. */
 export interface MarkdownLinkMatch {
   label: string;

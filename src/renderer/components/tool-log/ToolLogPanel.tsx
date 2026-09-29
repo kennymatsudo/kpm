@@ -70,7 +70,7 @@ function CategoryIcon({ type }: { type: ActivityType }) {
 
 function formatTimestamp(ts: number): string {
   const d = new Date(ts);
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
 }
 
 function formatDuration(ms: number): string {
@@ -131,7 +131,7 @@ function ToolLogEntryRow({ entry, isDuplicate, interEventGapMs }: ToolLogEntryRo
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center gap-2 px-3 py-1 text-xs min-w-0 hover:bg-surface-2/30 transition-colors text-left"
       >
-        <span className="text-text-quaternary w-[4.5rem] flex-shrink-0 font-mono whitespace-nowrap">
+        <span className="text-text-quaternary w-[5.5rem] flex-shrink-0 font-mono whitespace-nowrap">
           {formatTimestamp(entry.timestamp)}
         </span>
         {interEventGapMs != null && (

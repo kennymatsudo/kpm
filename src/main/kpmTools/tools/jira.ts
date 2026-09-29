@@ -32,6 +32,7 @@ function summarizeIssue(issue: ExternalIssue) {
     status: issue.status,
     parentKey: issue.parentKey ?? undefined,
     assignee: issue.assignee?.name ?? undefined,
+    url: issue.url,
   };
 }
 
@@ -63,7 +64,7 @@ export function createJiraTools() {
 
     tool(
       'jira_search',
-      'Search one Jira project\'s issues, optionally narrowed by a JQL fragment, using the Jira credentials configured in KPM. Returns key, title, type, status, parent, and assignee per issue, up to 100; read an issue\'s description with jira_get_issue. For a plan item\'s linked issue, its external_key is the issue key.',
+      'Search one Jira project\'s issues, optionally narrowed by a JQL fragment, using the Jira credentials configured in KPM. Returns key, title, type, status, parent, assignee, and url per issue, up to 100; read an issue\'s description with jira_get_issue. For a plan item\'s linked issue, its external_key is the issue key.',
       {
         projectKey: z.string().describe('Jira project key (e.g., "AUTH")'),
         jql: z.string().optional().describe('JQL fragment ANDed with the project, e.g. "status = Open"'),
@@ -158,6 +159,7 @@ export function createJiraTools() {
               title: i.title,
               issueType: i.issueType,
               status: i.status,
+              url: i.url,
             })),
             inPlanNotInJira: inPlanNotInJira.slice(0, MAX_GAP_LIST).map((i) => ({
               id: i.id,

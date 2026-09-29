@@ -18,6 +18,7 @@ export interface NormalizedPlanItems {
   byId: Map<string, PlanItem>;
   childrenByParentId: Map<string, PlanItem[]>;
   plannedItems: PlanItem[];
+  idByExternalKey: Map<string, string>;
 }
 
 const normalizedPlanItemsCache = new WeakMap<readonly PlanItem[], NormalizedPlanItems>();
@@ -32,9 +33,13 @@ export function selectNormalizedPlanItems(planItems: readonly PlanItem[]): Norma
   const byId = new Map<string, PlanItem>();
   const childrenByParentId = new Map<string, PlanItem[]>();
   const plannedItems: PlanItem[] = [];
+  const idByExternalKey = new Map<string, string>();
 
   for (const item of planItems) {
     byId.set(item.id, item);
+    if (item.external_key && !idByExternalKey.has(item.external_key)) {
+      idByExternalKey.set(item.external_key, item.id);
+    }
 
     const parentKey = item.parent_id ?? ROOT_PARENT_ID;
     const siblings = childrenByParentId.get(parentKey);
@@ -49,7 +54,7 @@ export function selectNormalizedPlanItems(planItems: readonly PlanItem[]): Norma
     }
   }
 
-  const normalized = { byId, childrenByParentId, plannedItems };
+  const normalized = { byId, childrenByParentId, plannedItems, idByExternalKey };
   normalizedPlanItemsCache.set(planItems, normalized);
   return normalized;
 }

@@ -17,7 +17,7 @@ import { Markdown } from 'markdown-to-jsx';
 import {
   growingBlockMarkdownOptions,
   markdownOptions,
-  transformPlanRefs,
+  useLinkedPlanRefs,
 } from '../../utils/markdown';
 import { splitMarkdownBlocks } from '../../utils/markdownBlocks';
 import { CopyIcon, CheckIcon, CloseIcon } from '../icons';
@@ -267,9 +267,10 @@ const MarkdownBlock = memo(function MarkdownBlock({
   block: string;
   growing?: boolean;
 }) {
+  const source = useLinkedPlanRefs(block);
   return (
     <Markdown options={growing ? growingBlockMarkdownOptions : markdownOptions}>
-      {transformPlanRefs(block)}
+      {source}
     </Markdown>
   );
 });
@@ -291,7 +292,8 @@ const StreamingMarkdown = memo(function StreamingMarkdown({ content }: { content
 
 /** Markdown for a text group that has stopped growing. */
 const StaticMarkdown = memo(function StaticMarkdown({ content }: { content: string }) {
-  return <Markdown options={markdownOptions}>{transformPlanRefs(content)}</Markdown>;
+  const source = useLinkedPlanRefs(content);
+  return <Markdown options={markdownOptions}>{source}</Markdown>;
 });
 
 /** One prose node. Owns the wrapper both the streaming and the finalized

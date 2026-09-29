@@ -4,6 +4,7 @@ import {
   expandPlanRefs,
   findMarkdownLinks,
   findRefs,
+  linkPlanItemKeys,
   serializeRef,
   tokenizeRefs,
 } from './planRefs';
@@ -335,5 +336,38 @@ describe('findMarkdownLinks', () => {
     expect(findMarkdownLinks('[x](https://a.test "Title")')[0].target).toBe(
       'https://a.test "Title"',
     );
+  });
+});
+
+describe('linkPlanItemKeys', () => {
+  const idByKey = new Map([['ASUP-537', A], ['ENG-12', B]]);
+  const link = (text: string) => linkPlanItemKeys(text, idByKey);
+
+  it.each([
+    ['a bare key', 'Fixes ASUP-537.', `Fixes @plan/${A}.`],
+    ['a key alone in inline code', 'See `ASUP-537` and `ENG-12`', `See @plan/${A} and @plan/${B}`],
+    ['a key in parentheses', 'the ticket (ASUP-537)', `the ticket (@plan/${A})`],
+  ])('rewrites %s into its plan ref', (_case, input, expected) => {
+    expect(link(input)).toBe(expected);
+  });
+
+  it.each([
+    ['a key that is not a plan item', 'ASUP-999 is open'],
+    ['a key inside a longer code span', '`git checkout ASUP-537`'],
+    ['a lowercase key in a branch name', '`asup-537_escalate_view`'],
+    ['a key inside a branch name', 'ASUP-537_escalate_view'],
+    ['a key that starts a range', 'ASUP-537-538'],
+    ['a key already linked', '[ASUP-537](https://linear.app/x/issue/ASUP-537)'],
+    ['a key inside a bare URL', 'https://linear.app/x/issue/ASUP-537/title'],
+    ['a key inside an autolink', '<https://corp.atlassian.net/browse/ASUP-537>'],
+    ['a key inside a path', 'docs/ASUP-537.md'],
+    ['a key inside a fenced code block', ['```', 'ASUP-537', '```'].join('\n')],
+  ])('leaves %s alone', (_case, input) => {
+    expect(link(input)).toBe(input);
+  });
+
+  it('rewrites a key after a fenced code block that mentions it', () => {
+    const text = ['```', 'ASUP-537', '```', 'Then ASUP-537'].join('\n');
+    expect(link(text)).toBe(['```', 'ASUP-537', '```', `Then @plan/${A}`].join('\n'));
   });
 });

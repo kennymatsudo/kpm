@@ -86,7 +86,7 @@ Everything chat proposes (plan actions, document creates and edits, AGENTS.md ed
 - Setting: `chat_approval_mode` in `src/shared/appSettings.ts`
 
 ### Plan references (`@plan/<uuid>`)
-Markdown anywhere in KPM can reference a plan item with `@plan/<uuid>`. References render as chips, fold to titles in the editor, expand to full item context for agents, and are rewritten to native links at every export boundary so they never leak. Plan actions with unresolved references are rejected.
+Markdown anywhere in KPM can reference a plan item with `@plan/<uuid>`. References render as chips, fold to titles in the editor, expand to full item context for agents, and are rewritten to native links at every export boundary so they never leak. Plan actions with unresolved references are rejected. In chat replies, a tracker key that belongs to a plan item (`ASUP-537`) renders as that item's chip too (`linkPlanItemKeys` in `src/shared/planRefs.ts`); other PRs, commits, branches, and tickets are written as markdown links by the model.
 - `src/shared/planRefs.ts`, `src/main/documents/exportBoundary.ts`, `src/main/claude/contextRefs.ts`, `src/renderer/components/plan-ref/PlanRefChip.tsx`, `src/renderer/components/ui/planRefMonaco.tsx`
 - See the "Touch `@plan/<uuid>` flow" recipe in the root `CLAUDE.md`
 
