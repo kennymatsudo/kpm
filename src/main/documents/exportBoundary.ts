@@ -1,5 +1,5 @@
 /**
- * The export boundary for markdown leaving KPM (P6: internal stays internal).
+ * The export boundary for markdown leaving KPM.
  *
  * `toExternalMarkdown` is the only way to produce `ExternalMarkdown`, so any
  * payload field typed as `ExternalMarkdown` (tracker create/update params)

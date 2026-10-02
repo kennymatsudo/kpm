@@ -1,5 +1,5 @@
 #!/bin/sh
-# Runs lint + typecheck before every commit (see CLAUDE.md "Git workflow").
+# Runs lint + typecheck before every commit (see AGENTS.md "Git workflow").
 # Wired via `git config core.hooksPath .githooks` in `make install`.
 set -e
 
