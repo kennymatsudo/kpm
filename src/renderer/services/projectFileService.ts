@@ -24,6 +24,11 @@ export function copyExternalProjectFile(payload: FileExplorerEndpointPayload<'co
   return window.api.fileExplorer.copyExternalFile(payload);
 }
 
+/** Where a file dropped from the OS lives on disk, or null for one with no backing file. */
+export function getDroppedFilePath(file: File): string | null {
+  return window.api.fileExplorer.getPathForFile(file) || null;
+}
+
 export function createProjectTextFile(payload: FileExplorerEndpointPayload<'createFile'>): Promise<FileNode> {
   return window.api.fileExplorer.createFile(payload);
 }

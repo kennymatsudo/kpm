@@ -171,6 +171,18 @@ describe('ExternalPlanItemRepository', () => {
     });
   });
 
+  describe('updateFromExternal', () => {
+    it('clears completed_at when the tracker moves an item off done', () => {
+      const created = repo.createFromExternal(externalIssue({ status_category: 'in_progress' }));
+      repo.updateFromExternal(created.id, { status_category: 'done' });
+      expect(rawRow(db, created.id).completed_at).not.toBeNull();
+
+      repo.updateFromExternal(created.id, { status_category: 'in_review', external_status: 'In Review' });
+
+      expect(rawRow(db, created.id)).toMatchObject({ status_category: 'in_review', completed_at: null });
+    });
+  });
+
   describe('unlinkFromExternal', () => {
     it('clears the tracker identity and leaves the plan item itself intact', () => {
       const created = repo.createFromExternal(externalIssue());

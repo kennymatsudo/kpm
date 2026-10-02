@@ -7,12 +7,35 @@ import type { DevSession } from '../../../shared/types';
 import type { IAgentReviewRepository } from '../../db/interfaces/review';
 import { toPlaybookSubagentSessionId } from './autoReview';
 
+/** Where a round's finding is saved, so the implementer's reply can be written back to it. */
+export interface FindingRef {
+  reviewSessionId: string;
+  order: number;
+}
+
+/**
+ * Tags findings with the review lens their run was launched under, unless the
+ * reviewer named one itself. The implementer prompt groups findings by lens.
+ */
+export function withRunAxis<T extends ReviewFinding>(
+  findings: T[],
+  step: PlaybookStep | undefined,
+  runIndex: number | null | undefined,
+): T[] {
+  const axis = runIndex == null ? undefined : step?.runOverrides?.[runIndex]?.axis;
+  if (!axis) return findings;
+  return findings.map((finding) => ({ ...finding, axis: finding.axis ?? axis }));
+}
+
+/** `ref` is absent only for a finding that never came from a saved review run. */
+export type RoundFinding = ReviewFinding & { ref?: FindingRef };
+
 export interface RunGroup {
   expected: number;
   attempt: number;
   succeeded: Set<number>;
   failed: Set<number>;
-  findings: ReviewFinding[];
+  findings: RoundFinding[];
   output: Map<number, string>;
 }
 
@@ -49,7 +72,11 @@ export function createPlaybookRoundStore(deps: PlaybookRoundStoreDeps) {
       if (run.run_index == null || run.run_index < 0 || run.run_index >= expected) continue;
       if (run.status === 'complete') {
         group.succeeded.add(run.run_index);
-        group.findings.push(...run.findings);
+        // Rows saved before findings stored their lens get it from the step.
+        group.findings.push(...withRunAxis(run.findings, step, run.run_index).map((finding) => ({
+          ...finding,
+          ref: { reviewSessionId: run.review_session_id, order: finding.order },
+        })));
         if (run.raw_output) group.output.set(run.run_index, run.raw_output);
       } else if (run.status === 'failed') {
         group.failed.add(run.run_index);

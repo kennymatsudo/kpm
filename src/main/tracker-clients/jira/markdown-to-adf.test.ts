@@ -103,6 +103,28 @@ describe('markdownToAdf', () => {
     });
   });
 
+  describe('task lists', () => {
+    it('turns a list of checkboxes into a Jira checklist', () => {
+      const result = markdownToAdf('- [ ] Write tests\n- [x] Ship');
+      expect(result?.content[0]).toMatchObject({
+        type: 'taskList',
+        content: [
+          { type: 'taskItem', attrs: { state: 'TODO' }, content: [{ type: 'text', text: 'Write tests' }] },
+          { type: 'taskItem', attrs: { state: 'DONE' }, content: [{ type: 'text', text: 'Ship' }] },
+        ],
+      });
+    });
+
+    it('keeps a list that only partly uses checkboxes as a bullet list', () => {
+      expect(markdownToAdf('- [ ] Write tests\n- Ship')?.content[0]?.type).toBe('bulletList');
+    });
+
+    it('round-trips checkbox state through ADF', () => {
+      const markdown = '- [ ] Write tests\n- [x] Ship';
+      expect(adfToMarkdown(markdownToAdf(markdown))).toBe(markdown);
+    });
+  });
+
   describe('code blocks', () => {
     it('converts code blocks with and without language metadata', () => {
       const plain = markdownToAdf('```\nconst x = 1;\n```');

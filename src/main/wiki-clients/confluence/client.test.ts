@@ -26,7 +26,7 @@ describe('ConfluenceClient', () => {
     vi.unstubAllGlobals();
   });
 
-  it('parses kpm_doc_format content into markdown when fetching a page', async () => {
+  it('parses atlas_doc_format content into markdown when fetching a page', async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -35,7 +35,7 @@ describe('ConfluenceClient', () => {
         spaceId: 'ENG',
         version: { number: 7 },
         body: {
-          kpm_doc_format: {
+          atlas_doc_format: {
             value: JSON.stringify({
               version: 1,
               type: 'doc',
@@ -60,6 +60,10 @@ describe('ConfluenceClient', () => {
     const client = new ConfluenceClient(credentials);
     const page = await client.getPage('123');
 
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'https://example.atlassian.net/wiki/api/v2/pages/123?body-format=atlas_doc_format'
+    );
+
     expect(page).toEqual({
       id: '123',
       title: 'Project Spec',
@@ -70,7 +74,7 @@ describe('ConfluenceClient', () => {
     });
   });
 
-  it('serializes markdown into kpm_doc_format when updating a page', async () => {
+  it('serializes markdown into atlas_doc_format when updating a page', async () => {
     fetchMock
       .mockResolvedValueOnce({
         ok: true,
@@ -80,7 +84,7 @@ describe('ConfluenceClient', () => {
           spaceId: 'ENG',
           version: { number: 7 },
           body: {
-            kpm_doc_format: {
+            atlas_doc_format: {
               value: JSON.stringify({
                 version: 1,
                 type: 'doc',
@@ -103,7 +107,7 @@ describe('ConfluenceClient', () => {
           spaceId: 'ENG',
           version: { number: 8 },
           body: {
-            kpm_doc_format: {
+            atlas_doc_format: {
               value: JSON.stringify({
                 version: 1,
                 type: 'doc',
@@ -138,13 +142,14 @@ describe('ConfluenceClient', () => {
     expect(typeof requestBody).toBe('string');
 
     const putBody = JSON.parse(requestBody as string) as {
-      body: { value: string };
+      body: { representation: string; value: string };
       version: { number: number };
       title: string;
       spaceId: string;
     };
     const parsedAdf = JSON.parse(putBody.body.value) as { type: string; content: { type: string }[] };
 
+    expect(putBody.body.representation).toBe('atlas_doc_format');
     expect(putBody.version.number).toBe(8);
     expect(putBody.title).toBe('Project Spec');
     expect(putBody.spaceId).toBe('ENG');

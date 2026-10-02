@@ -16,7 +16,7 @@ import {
 } from '../ui/Select';
 import { useTrackerStore } from '../../stores/trackerStore';
 import { useTrackerMetadataStore } from '../../stores';
-import type { TrackerIssueTypeOption } from '../../stores/tracker/useMetadataStore';
+import { trackerMetadataKey, type TrackerIssueTypeOption } from '../../stores/tracker/useMetadataStore';
 import { TrackerIcon, trackerLabelFor } from '../tracker/shared/trackerDisplay';
 import type { PlanItem, Repo } from '../../../shared/types';
 import { PLAN_ITEM_FIELDS } from '../../../shared/planItemFields';
@@ -80,14 +80,14 @@ export function TaskEditModal({
   // Get cached issue types + loader in a single subscription
   const { jiraIssueTypes, loadIssueTypes } = useTrackerMetadataStore(
     useShallow((state) => ({
-      jiraIssueTypes: projectKey && shouldUseTrackerIssueTypes ? state.issueTypesByProject[projectKey] ?? EMPTY_ISSUE_TYPES : EMPTY_ISSUE_TYPES,
+      jiraIssueTypes: projectKey && shouldUseTrackerIssueTypes ? state.issueTypesByProject[trackerMetadataKey('jira', projectKey)] ?? EMPTY_ISSUE_TYPES : EMPTY_ISSUE_TYPES,
       loadIssueTypes: state.loadIssueTypes,
     }))
   );
   // Load issue types when modal opens (if we have a project key)
   useEffect(() => {
     if (isOpen && projectKey && shouldUseTrackerIssueTypes) {
-      void loadIssueTypes(projectKey);
+      void loadIssueTypes(projectKey, 'jira');
     }
   }, [isOpen, projectKey, shouldUseTrackerIssueTypes, loadIssueTypes]);
 

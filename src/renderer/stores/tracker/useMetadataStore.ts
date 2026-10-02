@@ -8,9 +8,10 @@ import type { TrackerType } from '../../../shared/types';
 
 /**
  * Cache key combines trackerType + projectKey so Jira "ENG" and a Linear team
- * "ENG" don't collide. Used internally for all per-project caches.
+ * "ENG" don't collide. Every per-project cache is keyed by it, so readers must
+ * look entries up with it too.
  */
-function cacheKey(trackerType: TrackerType, projectKey: string): string {
+export function trackerMetadataKey(trackerType: TrackerType, projectKey: string): string {
   return `${trackerType}:${projectKey}`;
 }
 
@@ -127,7 +128,7 @@ export const useTrackerMetadataStore = create<TrackerMetadataState>((set, get) =
 
   loadStatuses: async (projectKey, trackerType = 'jira', force = false) => {
     const state = get();
-    const key = cacheKey(trackerType, projectKey);
+    const key = trackerMetadataKey(trackerType, projectKey);
 
     if (!force && state.statusesByProject[key]?.length > 0) {
       const lastFetched = state.statusesLastFetchedAt[key];
@@ -186,10 +187,11 @@ export const useTrackerMetadataStore = create<TrackerMetadataState>((set, get) =
   },
 
   loadIssueTypes: async (projectKey, trackerType = 'jira', force = false) => {
+    const key = trackerMetadataKey(trackerType, projectKey);
     const state = get();
 
-    if (!force && state.issueTypesByProject[projectKey]?.length > 0) {
-      const lastFetched = state.issueTypesLastFetchedAt[projectKey];
+    if (!force && state.issueTypesByProject[key]?.length > 0) {
+      const lastFetched = state.issueTypesLastFetchedAt[key];
       if (lastFetched && Date.now() - lastFetched < CACHE_TTL_MS) {
         return { success: true };
       }
@@ -198,18 +200,18 @@ export const useTrackerMetadataStore = create<TrackerMetadataState>((set, get) =
     // Don't retry permanent missing-project failures until the caller explicitly
     // forces a refresh. Transient auth/network/server errors should remain
     // retryable so they don't become sticky after one bad request.
-    const cachedError = state.issueTypesErrorByProject[projectKey];
+    const cachedError = state.issueTypesErrorByProject[key];
     if (!force && cachedError && isPermanentMissingProjectError(cachedError)) {
       return { success: false, error: cachedError };
     }
 
-    if (state.loadingIssueTypesFor.has(projectKey)) {
+    if (state.loadingIssueTypesFor.has(key)) {
       return { success: true };
     }
 
     set((s) => ({
-      loadingIssueTypesFor: new Set(s.loadingIssueTypesFor).add(projectKey),
-      issueTypesErrorByProject: { ...s.issueTypesErrorByProject, [projectKey]: '' },
+      loadingIssueTypesFor: new Set(s.loadingIssueTypesFor).add(key),
+      issueTypesErrorByProject: { ...s.issueTypesErrorByProject, [key]: '' },
     }));
 
     try {
@@ -218,11 +220,11 @@ export const useTrackerMetadataStore = create<TrackerMetadataState>((set, get) =
         const issueTypes = result.issueTypes;
         set((s) => {
           const nextLoading = new Set(s.loadingIssueTypesFor);
-          nextLoading.delete(projectKey);
+          nextLoading.delete(key);
           return {
-            issueTypesByProject: { ...s.issueTypesByProject, [projectKey]: issueTypes },
+            issueTypesByProject: { ...s.issueTypesByProject, [key]: issueTypes },
             loadingIssueTypesFor: nextLoading,
-            issueTypesLastFetchedAt: { ...s.issueTypesLastFetchedAt, [projectKey]: Date.now() },
+            issueTypesLastFetchedAt: { ...s.issueTypesLastFetchedAt, [key]: Date.now() },
           };
         });
         return { success: true };
@@ -231,10 +233,10 @@ export const useTrackerMetadataStore = create<TrackerMetadataState>((set, get) =
       const error = result.error || 'Failed to load issue types';
       set((s) => {
         const nextLoading = new Set(s.loadingIssueTypesFor);
-        nextLoading.delete(projectKey);
+        nextLoading.delete(key);
         return {
           loadingIssueTypesFor: nextLoading,
-          issueTypesErrorByProject: { ...s.issueTypesErrorByProject, [projectKey]: error },
+          issueTypesErrorByProject: { ...s.issueTypesErrorByProject, [key]: error },
         };
       });
       return { success: false, error };
@@ -242,10 +244,10 @@ export const useTrackerMetadataStore = create<TrackerMetadataState>((set, get) =
       const error = e instanceof Error ? e.message : 'Failed to load issue types';
       set((s) => {
         const nextLoading = new Set(s.loadingIssueTypesFor);
-        nextLoading.delete(projectKey);
+        nextLoading.delete(key);
         return {
           loadingIssueTypesFor: nextLoading,
-          issueTypesErrorByProject: { ...s.issueTypesErrorByProject, [projectKey]: error },
+          issueTypesErrorByProject: { ...s.issueTypesErrorByProject, [key]: error },
         };
       });
       return { success: false, error };

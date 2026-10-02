@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { adfToMarkdown } from './adf-to-markdown';
+import { adfToMarkdown, findUnrepresentableContent } from './adf-to-markdown';
 
 describe('adfToMarkdown', () => {
   describe('basic functionality', () => {
@@ -526,6 +526,93 @@ describe('adfToMarkdown', () => {
         ],
       };
       expect(adfToMarkdown(adf)).toBe('[Media attachment]');
+    });
+  });
+
+  describe('block types without a markdown equivalent', () => {
+    const text = (value: string) => ({ type: 'text', text: value });
+    const paragraph = (value: string) => ({ type: 'paragraph', content: [text(value)] });
+    const richDoc = {
+      version: 1,
+      type: 'doc',
+      content: [
+        paragraph('Intro'),
+        {
+          type: 'taskList',
+          attrs: { localId: 'list' },
+          content: [
+            { type: 'taskItem', attrs: { localId: 'a', state: 'TODO' }, content: [text('Write tests')] },
+            { type: 'taskItem', attrs: { localId: 'b', state: 'DONE' }, content: [text('Ship')] },
+          ],
+        },
+        { type: 'expand', attrs: { title: 'Details' }, content: [paragraph('Hidden detail')] },
+        {
+          type: 'layoutSection',
+          content: [
+            { type: 'layoutColumn', attrs: { width: 50 }, content: [paragraph('Left column')] },
+            { type: 'layoutColumn', attrs: { width: 50 }, content: [paragraph('Right column')] },
+          ],
+        },
+        {
+          type: 'decisionList',
+          attrs: { localId: 'd' },
+          content: [{ type: 'decisionItem', attrs: { localId: 'd1', state: 'DECIDED' }, content: [text('Use ADF')] }],
+        },
+        { type: 'blockCard', attrs: { url: 'https://example.com/card' } },
+        {
+          type: 'mediaSingle',
+          content: [{ type: 'media', attrs: { id: 'abc', type: 'file', alt: 'screenshot.png' } }],
+        },
+        paragraph('Outro'),
+      ],
+    };
+
+    it('keeps the text of every block instead of dropping it', () => {
+      expect(adfToMarkdown(richDoc)).toBe([
+        'Intro',
+        '- [ ] Write tests\n- [x] Ship',
+        '**Details**\n\nHidden detail',
+        'Left column\n\nRight column',
+        '- **Decision:** Use ADF',
+        'https://example.com/card',
+        '[Media attachment: screenshot.png]',
+        'Outro',
+      ].join('\n\n'));
+    });
+
+    it('recurses into unknown containers rather than reading their blocks as inline text', () => {
+      const adf = {
+        type: 'doc',
+        content: [{ type: 'bodiedExtension', content: [paragraph('Inside a macro')] }],
+      };
+      expect(adfToMarkdown(adf)).toBe('Inside a macro');
+    });
+
+    it('names what the markdown form cannot carry back', () => {
+      expect(findUnrepresentableContent(richDoc)).toEqual([
+        'expand sections',
+        'column layouts',
+        'decisions',
+        'smart links',
+        'attachments',
+      ]);
+      expect(findUnrepresentableContent({ type: 'doc', content: [paragraph('Plain')] })).toEqual([]);
+      expect(findUnrepresentableContent(null)).toEqual([]);
+    });
+
+    it('flags nested lists but not a flat one', () => {
+      const item = (text: string, ...nested: unknown[]) => ({
+        type: 'taskItem',
+        attrs: { state: 'TODO' },
+        content: [{ type: 'text', text }, ...nested],
+      });
+      const flat = { type: 'doc', content: [{ type: 'taskList', content: [item('One'), item('Two')] }] };
+      const nested = {
+        type: 'doc',
+        content: [{ type: 'taskList', content: [item('Parent'), { type: 'taskList', content: [item('Child')] }] }],
+      };
+      expect(findUnrepresentableContent(flat)).toEqual([]);
+      expect(findUnrepresentableContent(nested)).toEqual(['nested lists']);
     });
   });
 

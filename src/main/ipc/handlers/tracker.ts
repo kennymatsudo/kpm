@@ -185,6 +185,14 @@ function buildTrackerHandlers(
       return result.ok ? { success: true, preview: result.data } : { success: false, error: result.error };
     },
 
+    'sync.check': async ({ projectId, associationId }) => {
+      const result = await trackerService.checkSyncChanges(projectId, associationId);
+      if (!result.ok) return { success: false, error: result.error };
+      return result.data.unchanged
+        ? { success: true, unchanged: true }
+        : { success: true, unchanged: false, preview: result.data.preview };
+    },
+
     'sync.apply': async ({ projectId, preview, resolutions, deletedAction, deletedDecisions }) => {
       try {
         const result = trackerService.applySyncChanges(
@@ -194,7 +202,13 @@ function buildTrackerHandlers(
           deletedAction,
           new Map<string, 'keep' | 'delete'>(Object.entries(deletedDecisions ?? {}))
         );
-        return { success: result.success, result };
+        if (!result.success) {
+          // The transaction rolled back; surface why instead of a bare "Sync failed".
+          const error = result.errors.map((e) => e.error).join('; ');
+          console.error('[tracker:sync:apply] failed:', error);
+          return { success: false, result, error };
+        }
+        return { success: true, result };
       } catch (e) {
         return { success: false, error: e instanceof Error ? e.message : 'Failed to apply sync changes. Your local data is unchanged.' };
       }

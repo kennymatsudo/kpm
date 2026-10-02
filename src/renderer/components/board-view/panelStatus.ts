@@ -33,7 +33,7 @@ import {
   type DevSessionAutomationPhase,
   type StatusCategory,
 } from '../../../shared/types';
-import { isAgentActive } from '../../../shared/agent-types';
+import { isAgentActive, type AgentCompletionSummary } from '../../../shared/agent-types';
 import type { ReviewWorkFacts } from '../../../shared/reviewThreadSummary';
 import { isAddressingReview, selectReviewLadderRung } from '../development/reviewActions';
 
@@ -115,6 +115,12 @@ export interface DiffStats {
   files: number;
   additions: number;
   deletions: number;
+}
+
+/** A turn's completion stats as panel diff stats; null when there are none or git couldn't measure them. */
+export function toDiffStats(summary: AgentCompletionSummary | undefined): DiffStats | null {
+  if (!summary || summary.diffUnknown) return null;
+  return { files: summary.filesChanged, additions: summary.additions, deletions: summary.deletions };
 }
 
 export interface PanelStatusInputs {
@@ -309,7 +315,11 @@ function interruptedAction(reason: DevSessionAttentionReason): NextAction {
       primary: { label: 'Review changes', action: 'view_changes' },
     };
   }
-  if (reason === 'opposing-review-errored' || reason?.startsWith('all-runs-failed:')) {
+  if (
+    reason === 'opposing-review-errored'
+    || reason?.startsWith('all-runs-failed:')
+    || reason?.startsWith('some-runs-failed:')
+  ) {
     return {
       tone: 'warning',
       text: 'Automated review failed',
@@ -403,7 +413,9 @@ export function derivePanelStatus(i: PanelStatusInputs): PanelStatus {
       primary: { label: 'Answer', action: 'focus_input' },
     }, null);
   }
-  if (i.implAgentState === 'starting' || i.implAgentState === 'working') {
+  // A persisted main step with no agent state loaded yet is still implementing.
+  if (i.implAgentState === 'starting' || i.implAgentState === 'working'
+    || (i.automationPhase === 'running_step' && i.implAgentState == null)) {
     return withStep('implementing', {
       tone: 'accent',
       busy: true,

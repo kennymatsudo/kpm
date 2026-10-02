@@ -9,6 +9,8 @@
  * already resolved via the export boundary (`documents/exportBoundary.ts`).
  */
 
+import { randomUUID } from 'crypto';
+
 interface AdfNode {
   type: string;
   content?: AdfNode[];
@@ -106,7 +108,11 @@ export function markdownToAdf(markdown: string | null | undefined): AdfDocument 
         listItems.push(lines[i].replace(/^[-*+]\s/, ''));
         i++;
       }
-      content.push(createBulletList(listItems));
+      content.push(
+        listItems.every(item => TASK_ITEM_PATTERN.test(item))
+          ? createTaskList(listItems)
+          : createBulletList(listItems)
+      );
       continue;
     }
 
@@ -189,6 +195,24 @@ function createBulletList(items: string[]): AdfNode {
     content: items.map(item => ({
       type: 'listItem',
       content: [createParagraph(item)],
+    })),
+  };
+}
+
+const TASK_ITEM_PATTERN = /^\[([ xX])\]\s/;
+
+/** `- [ ]` / `- [x]` lists are Jira checklists, which is what they came from. */
+function createTaskList(items: string[]): AdfNode {
+  return {
+    type: 'taskList',
+    attrs: { localId: randomUUID() },
+    content: items.map(item => ({
+      type: 'taskItem',
+      attrs: {
+        localId: randomUUID(),
+        state: TASK_ITEM_PATTERN.exec(item)![1] === ' ' ? 'TODO' : 'DONE',
+      },
+      content: parseInlineContent(item.replace(TASK_ITEM_PATTERN, '')),
     })),
   };
 }

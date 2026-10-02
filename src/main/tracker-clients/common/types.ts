@@ -23,6 +23,12 @@ export interface ExternalIssue {
   creator?: ExternalPerson | null;
   updatedAt: string;
   url: string;
+  /**
+   * What the tracker's rich description holds that `description` cannot carry
+   * back (Jira attachments, expand sections, ...). Pushing `description`
+   * replaces it. Absent for trackers whose native format is markdown.
+   */
+  unrepresentableContent?: string[];
 }
 
 export interface TrackerIssueType {
@@ -47,7 +53,7 @@ export interface CreateIssueParams {
   projectKey: string;
   issueTypeId: string;
   summary: string;
-  /** Must cross the export boundary (`toExternalMarkdown`) so plan refs never leak (P6). */
+  /** Must cross the export boundary (`toExternalMarkdown`) so plan refs never leak. */
   description?: ExternalMarkdown;
   parentKey?: string;         // For sub-tasks or stories under epics
   labels?: string[];
@@ -120,6 +126,11 @@ export interface TrackerClient {
    */
   fetchIssuesByJql(filter: string): AsyncGenerator<ExternalIssue>;
   fetchIssue(issueKey: string): Promise<ExternalIssue>;
+  /**
+   * Whether any issue matching the tracker-native `filter` changed after `since`.
+   * One small request, used to skip a full project fetch when nothing moved.
+   */
+  hasIssuesUpdatedSince(filter: string, since: Date): Promise<boolean>;
   searchIssues(projectKey: string, filter?: string): Promise<ExternalIssue[]>;
   /**
    * Fuzzy text search over a project's issues (key + summary), for the browse UI's

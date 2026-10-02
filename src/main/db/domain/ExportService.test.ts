@@ -37,6 +37,7 @@ function createLinearClient(options: {
     async *fetchIssues() {},
     async *fetchIssuesByJql() {},
     fetchIssue: vi.fn(async () => createdIssue),
+    hasIssuesUpdatedSince: vi.fn(),
     searchIssues: vi.fn(),
     searchIssuesByText: vi.fn(async () => []),
     getRecentIssues: vi.fn(async () => []),
@@ -95,6 +96,7 @@ function createJiraClient(): TrackerClient {
     fetchIssue: vi.fn()
       .mockResolvedValueOnce(createdTodoIssue)
       .mockResolvedValueOnce(transitionedDoneIssue),
+    hasIssuesUpdatedSince: vi.fn(),
     searchIssues: vi.fn(),
     searchIssuesByText: vi.fn(async () => []),
     getRecentIssues: vi.fn(async () => []),
@@ -143,6 +145,7 @@ function createLinearUpdateClient(fetchIssueResults: ExternalIssue[]): TrackerCl
     async *fetchIssues() {},
     async *fetchIssuesByJql() {},
     fetchIssue,
+    hasIssuesUpdatedSince: vi.fn(),
     searchIssues: vi.fn(),
     searchIssuesByText: vi.fn(async () => []),
     getRecentIssues: vi.fn(async () => []),
@@ -377,6 +380,7 @@ describe('ExportService', () => {
       externalPlanItems: ctx.repos.externalPlanItems,
       sync: ctx.repos.sync,
       tracker: ctx.repos.tracker,
+      outboundChanges: ctx.repos.outboundChanges,
     }).analyzeChanges(exported!, assignedIssue, snapshot, null);
 
     expect(analysis.updates).toEqual([]);
@@ -764,6 +768,103 @@ describe('ExportService', () => {
     expect(ctx.repos.outboundChanges.get(queueEntry.id)).toBeUndefined();
   });
 
+  describe('settled queue entries', () => {
+    function queueLinkedUpdate(
+      ctx: ReturnType<typeof createTestRepositoryContext>,
+      item: { title: string; status_category: 'in_review' | 'done' },
+      target: 'in_review' | 'done' | null
+    ) {
+      const { project, association } = setupAssociation(ctx, 'Settled Queue Project');
+      ctx.repos.planItems.add(createPlanItem({
+        id: 'plan-1',
+        project_id: project.id,
+        association_id: association.id,
+        external_key: 'ENG-1',
+        external_status: 'In Review',
+        ...item,
+      }));
+      ctx.repos.sync.upsertSnapshot({
+        plan_item_id: 'plan-1',
+        snapshot_title: 'Linked issue',
+        snapshot_description: null,
+        external_updated_at: '2026-01-01T00:00:00.000Z',
+      });
+      ctx.repos.outboundChanges.add({
+        kpm_project_id: project.id,
+        plan_item_id: 'plan-1',
+        association_id: association.id,
+        operation: 'update',
+        target_issue_type_id: null,
+        target_issue_type_name: null,
+        target_parent_key: null,
+        target_status_category: target,
+        custom_field_overrides: null,
+        queued_by: 'claude',
+      });
+      return { project, association };
+    }
+
+    it('drops an update whose status was set back to the tracker value', () => {
+      const ctx = createTestRepositoryContext();
+      const { project } = queueLinkedUpdate(ctx, { title: 'Linked issue', status_category: 'in_review' }, 'in_review');
+
+      expect(createService(ctx).getQueue(project.id)).toEqual([]);
+    });
+
+    it('keeps an update whose status target still differs from the tracker', () => {
+      const ctx = createTestRepositoryContext();
+      const { project } = queueLinkedUpdate(ctx, { title: 'Linked issue', status_category: 'done' }, 'done');
+
+      expect(createService(ctx).getQueue(project.id)).toHaveLength(1);
+    });
+
+    it('keeps an update whose title differs from the last sync', () => {
+      const ctx = createTestRepositoryContext();
+      const { project } = queueLinkedUpdate(ctx, { title: 'Renamed locally', status_category: 'in_review' }, null);
+
+      expect(createService(ctx).getQueue(project.id)).toHaveLength(1);
+    });
+
+    it('leaves settled updates out of the export preview', async () => {
+      const ctx = createTestRepositoryContext();
+      const { project, association } = queueLinkedUpdate(ctx, { title: 'Linked issue', status_category: 'in_review' }, 'in_review');
+
+      const preview = await createService(ctx).generateExportPreview(project.id, association.id);
+
+      expect(preview.items).toEqual([]);
+    });
+  });
+
+  it('warns in the review when a queued description references a deleted plan item', async () => {
+    const ctx = createTestRepositoryContext();
+    const { project, association } = setupAssociation(ctx, 'Missing Ref Project');
+    const deleted = 'bbbbbbbb-bbbb-4bbb-9bbb-bbbbbbbbbbbb';
+
+    ctx.repos.planItems.add(createPlanItem({
+      id: 'plan-live',
+      project_id: project.id,
+      title: 'Live work',
+      description: `Blocked on @plan/${deleted}.`,
+    }));
+    ctx.repos.outboundChanges.add({
+      kpm_project_id: project.id,
+      plan_item_id: 'plan-live',
+      association_id: association.id,
+      operation: 'create',
+      target_issue_type_id: null,
+      target_issue_type_name: null,
+      target_parent_key: null,
+      target_status_category: null,
+      queued_by: 'user',
+    });
+
+    const review = await createService(ctx, createLinearClient()).generateSyncReview(project.id, association.id);
+
+    expect(review.warnings).toContain(
+      '1 plan reference(s) point to items that no longer exist and will export as "(plan item not found)"',
+    );
+  });
+
   describe('deletion drain', () => {
     it('calls deleteIssue with the snapshotted external key and drains the queue row on success', async () => {
       const ctx = createTestRepositoryContext();
@@ -857,6 +958,102 @@ describe('ExportService', () => {
       expect(preview.items[0]?.validationErrors[0]).toContain('Failed to fetch issue types');
       expect(preview.items[0]?.resolvedType).toBeNull();
       expect(preview.deleteItems.map(d => d.queueEntry.id)).toEqual([deleteRow.id]);
+    });
+  });
+
+  describe('update payload', () => {
+    function queueSyncedUpdate(
+      ctx: ReturnType<typeof createTestRepositoryContext>,
+      item: { title?: string; description?: string | null; status_category?: 'in_review' | 'done' }
+    ) {
+      const { project, association } = setupAssociation(ctx, 'Update Payload Project');
+      ctx.repos.tracker.updateStatusMapping(association.id, { in_review: 'In Review', done: 'Done' });
+      ctx.repos.planItems.add(createPlanItem({
+        id: 'plan-1',
+        project_id: project.id,
+        title: 'Linked issue',
+        description: 'Synced body',
+        association_id: association.id,
+        external_key: 'ENG-1',
+        external_status: 'In Review',
+        status_category: 'in_review',
+        last_synced_at: '2026-01-01T00:00:00.000Z',
+        ...item,
+      }));
+      ctx.repos.sync.upsertSnapshot({
+        plan_item_id: 'plan-1',
+        snapshot_title: 'Linked issue',
+        snapshot_description: 'Synced body',
+        external_updated_at: '2026-01-01T00:00:00.000Z',
+      });
+      ctx.repos.outboundChanges.add({
+        kpm_project_id: project.id,
+        plan_item_id: 'plan-1',
+        association_id: association.id,
+        operation: 'update',
+        target_issue_type_id: null,
+        target_issue_type_name: null,
+        target_parent_key: null,
+        target_status_category: item.status_category ?? null,
+        custom_field_overrides: null,
+        queued_by: 'user',
+      });
+      return { project, association };
+    }
+
+    const syncedIssue: ExternalIssue = { ...linearInReviewIssue, description: 'Synced body' };
+
+    it('sends only the status when the title and description match the last sync', async () => {
+      const ctx = createTestRepositoryContext();
+      const { project, association } = queueSyncedUpdate(ctx, { status_category: 'done' });
+      const client = createLinearUpdateClient([syncedIssue, syncedIssue, { ...linearDoneIssue, description: 'Synced body' }]);
+
+      const result = await createService(ctx, client).executeApprovedExport(project.id, association.id, ['plan-1']);
+
+      expect(result.success).toBe(true);
+      expect(client.updateIssue).not.toHaveBeenCalled();
+      expect(client.transitionIssue).toHaveBeenCalledWith('ENG-1', 'state-done', true);
+    });
+
+    it('sends the description alone when only the description changed locally', async () => {
+      const ctx = createTestRepositoryContext();
+      const { project, association } = queueSyncedUpdate(ctx, { description: 'Edited body' });
+      const client = createLinearUpdateClient([syncedIssue]);
+
+      await createService(ctx, client).executeApprovedExport(project.id, association.id, ['plan-1']);
+
+      expect(client.updateIssue).toHaveBeenCalledWith('ENG-1', { description: 'Edited body', customFields: undefined });
+    });
+
+    it('neither diffs nor warns about a description the push leaves alone', async () => {
+      const ctx = createTestRepositoryContext();
+      const { project, association } = queueSyncedUpdate(ctx, { status_category: 'done' });
+      const client = createLinearUpdateClient([{
+        ...syncedIssue,
+        description: 'Rich body edited in the tracker',
+        updatedAt: '2026-02-01T00:00:00.000Z',
+        unrepresentableContent: ['attachments'],
+      }]);
+
+      const review = await createService(ctx, client).generateSyncReview(project.id, association.id);
+
+      expect(review.items[0]?.diffs?.description).toBeNull();
+      expect(review.items[0]?.hasConflict).toBe(false);
+      expect(review.items[0]?.contentLossWarning).toBeUndefined();
+    });
+
+    it('warns when a pushed description would erase content KPM cannot represent', async () => {
+      const ctx = createTestRepositoryContext();
+      const { project, association } = queueSyncedUpdate(ctx, { description: 'Edited body' });
+      const client = createLinearUpdateClient([{
+        ...syncedIssue,
+        unrepresentableContent: ['attachments', 'expand sections'],
+      }]);
+
+      const review = await createService(ctx, client).generateSyncReview(project.id, association.id);
+
+      expect(review.items[0]?.diffs?.description?.hasChanges).toBe(true);
+      expect(review.items[0]?.contentLossWarning).toContain('attachments, expand sections');
     });
   });
 

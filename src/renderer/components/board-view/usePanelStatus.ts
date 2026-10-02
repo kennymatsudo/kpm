@@ -14,7 +14,7 @@ import { usePlanDomainStore } from '../../stores';
 import { resolveStatusCategory } from '../../constants/statusConfig';
 import { getStats } from '../development/reviewStats';
 import type { DevSessionWithPlanItem } from '../../../shared/types';
-import { derivePanelStatus, type PanelStatus } from './panelStatus';
+import { derivePanelStatus, toDiffStats, type PanelStatus } from './panelStatus';
 import { useReviewRuntime } from './useReviewRuntime';
 
 export function usePanelStatus(session: DevSessionWithPlanItem): PanelStatus {
@@ -55,13 +55,7 @@ export function usePanelStatus(session: DevSessionWithPlanItem): PanelStatus {
   // While the review agent is running, its narration is the "current step".
   const latestActivitySummary = (reviewRuntime.isActive ? review.latestActivity : impl.latestActivity)?.summary ?? null;
 
-  const diffStats = impl.completionStats
-    ? {
-        files: impl.completionStats.filesChanged,
-        additions: impl.completionStats.additions,
-        deletions: impl.completionStats.deletions,
-      }
-    : null;
+  const diffStats = toDiffStats(impl.completionStats);
 
   return useMemo(
     () =>

@@ -2,7 +2,7 @@ import { admitExplicitQueue } from './OutboundChangePolicy';
 import { getConfig } from '../../config';
 import type { CustomFieldValues, ExportPreview, ExportResult, SyncReviewData } from '../../../shared/types';
 import { inferCategoryWithMapping } from '../../trackers/statusTransitions';
-import { executePlan, previewOf, resolveExportPlan, reviewOf, type ExportPlanDeps } from './ExportPlan';
+import { executePlan, previewOf, pruneSettledChanges, resolveExportPlan, reviewOf, type ExportPlanDeps } from './ExportPlan';
 
 export type ExportServiceDeps = ExportPlanDeps;
 
@@ -16,6 +16,15 @@ export function createExportService(deps: ExportServiceDeps) {
   const TrackerRepository = deps.tracker;
 
   return {
+  /**
+   * The project's outbound queue, minus updates that no longer differ from
+   * the tracker.
+   */
+  getQueue(kpmProjectId: string) {
+    pruneSettledChanges(kpmProjectId, deps);
+    return OutboundChangeRepository.getByProject(kpmProjectId);
+  },
+
   /**
    * Add items to the sync queue.
    * Determines operation type (create vs update) based on external_key.

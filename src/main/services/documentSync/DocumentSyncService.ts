@@ -8,6 +8,7 @@ import {
   type ExternalDestination,
 } from '../../documents/exportBoundary';
 import { StaleContentError } from './types';
+import { countMissingRefs } from '../../../shared/planRefs';
 import type {
   DocumentLinkStore,
   DocumentSyncPreview,
@@ -153,6 +154,7 @@ export function createDocumentSyncService(deps: DocumentSyncDeps) {
           remoteVersion: remoteDocument.revision,
           pushReceipt: createReceipt(projectId, documentPath, 'push', remoteHash),
           pullReceipt: createReceipt(projectId, documentPath, 'pull', localHash),
+          missingRefCount: countMissingRefs(localContent, deps.planItems.getByProject(projectId)),
         };
       }, 'Failed to generate sync preview');
     },
@@ -176,6 +178,18 @@ export function createDocumentSyncService(deps: DocumentSyncDeps) {
           throw new StaleContentError(
             `The ${deps.label} copy changed while you were looking at it. Review the differences again before pushing.`
           );
+        }
+
+        // Neither side changed since the last sync, so there is nothing to send.
+        // Writing anyway would replace rich remote content (attachments, expand
+        // sections, layouts) with the flattened markdown KPM holds. A deliberate
+        // restore over a changed remote still goes through.
+        if (
+          link.localContentHash !== null &&
+          hashContent(localContent) === link.localContentHash &&
+          link.remoteContentHash === expectedRemoteHash
+        ) {
+          return current;
         }
 
         const resolved = toExternalMarkdown(

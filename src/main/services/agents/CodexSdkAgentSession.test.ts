@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ThreadOptions } from '@openai/codex-sdk';
 import { CodexSdkAgentSession } from './CodexSdkAgentSession';
 import type { AgentEffortLevel } from '../../../shared/types';
-import type { AgentActivity } from '../../../shared/agent-types';
+import type { AgentActivity, AgentSessionUsage } from '../../../shared/agent-types';
 
 vi.mock('@openai/codex-sdk', () => ({
   Codex: vi.fn(function Codex() {
@@ -153,6 +153,28 @@ describe('CodexSdkAgentSession activity kind + call id', () => {
 
     expect(activities).toEqual([
       expect.objectContaining({ type: 'tool_result', kind: 'edit', callId: 'patch-1' }),
+    ]);
+  });
+});
+
+describe('CodexSdkAgentSession usage', () => {
+  interface EventHarness {
+    handleEvent(event: unknown): Promise<void>;
+  }
+
+  it('reports each turn as the growth of the thread total, with input excluding cached tokens and cost unknown', async () => {
+    const session = new CodexSdkAgentSession({ id: 'test-codex-session', role: 'implement', model: 'gpt-5.5' });
+    const usages: AgentSessionUsage[] = [];
+    session.on('onUsage', (usage) => usages.push(usage));
+    const harness = session as unknown as EventHarness;
+
+    // Totals observed from a real two-turn thread: output 5 then 10.
+    await harness.handleEvent({ type: 'turn.completed', usage: { input_tokens: 15_094, cached_input_tokens: 2_816, cache_write_input_tokens: 0, output_tokens: 5, reasoning_output_tokens: 0 } });
+    await harness.handleEvent({ type: 'turn.completed', usage: { input_tokens: 34_422, cached_input_tokens: 16_896, cache_write_input_tokens: 0, output_tokens: 10, reasoning_output_tokens: 0 } });
+
+    expect(usages).toEqual([
+      expect.objectContaining({ model: 'gpt-5.5', inputTokens: 12_278, cacheReadTokens: 2_816, outputTokens: 5, totalCostUsd: null, costUnknown: true }),
+      expect.objectContaining({ model: 'gpt-5.5', inputTokens: 5_248, cacheReadTokens: 14_080, outputTokens: 5, totalCostUsd: null, costUnknown: true }),
     ]);
   });
 });

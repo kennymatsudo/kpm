@@ -124,12 +124,14 @@ export interface CreateSessionParams {
   role: AgentSessionRole;
   /** SDK options (for Claude sessions) */
   sdkOptions?: SDKOptions;
-  /** Model override for agent sessions (e.g. 'gpt-5.5' for Codex or 'openai/gpt-5.6-sol' for Pi) */
+  /** Model override for agent sessions (a Codex model id, or a '<provider>/<model>' selector for Pi) */
   model?: string;
   /** Provider-neutral role instructions used by Pi board sessions. */
   systemPrompt?: string;
   effort?: AgentEffortLevel;
   expectsFindings?: boolean;
+  /** Commit the completion stats measure from, so they cover the whole run. */
+  diffBase?: string | null;
   readOnly?: boolean;
   implementationSessionId?: string;
   stepId?: string;
@@ -170,6 +172,7 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
         role,
         sdkOptions,
         expectsFindings: params.expectsFindings,
+        diffBase: params.diffBase,
         readOnly: params.readOnly,
       });
     } else if (agentType === 'codex') {
@@ -179,6 +182,7 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
         model,
         effort: params.effort,
         expectsFindings: params.expectsFindings,
+        diffBase: params.diffBase,
         readOnly: params.readOnly,
       });
     } else if (agentType === 'pi') {
@@ -189,6 +193,7 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
         systemPrompt: params.systemPrompt ?? '',
         effort: params.effort,
         expectsFindings: params.expectsFindings,
+        diffBase: params.diffBase,
         readOnly: params.readOnly,
       });
     } else {
@@ -202,6 +207,7 @@ export function createAgentSessionManager(deps: AgentSessionManagerDeps) {
         role,
         hookPort,
         expectsFindings: params.expectsFindings,
+        diffBase: params.diffBase,
       });
     }
 
