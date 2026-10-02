@@ -17,8 +17,7 @@ function makeManaged(): Parameters<typeof markSessionReady>[0] {
     projectId: 'project-1',
     session: {} as unknown as Parameters<typeof markSessionReady>[0]['session'],
     state: 'connecting',
-    provider: 'claude',
-    model: 'sonnet',
+    selection: { provider: 'claude', model: 'sonnet' },
     lastActivity: Date.now(),
     mcpHealthStatus: 'healthy',
     mcpRecoveryAttempts: 0,
@@ -41,10 +40,9 @@ function makeRepo() {
   return {
     get: vi.fn(),
     create: vi.fn(),
-    updateClaudeSessionId: vi.fn(),
     updateProviderSessionId: vi.fn(),
     updateTitle: vi.fn(),
-    clearClaudeSessionIdsByProject: vi.fn(),
+    clearProviderSessionIdsByProject: vi.fn(),
   };
 }
 
@@ -59,51 +57,51 @@ function fakeWindow(): { sent: { channel: string; payload: unknown }[]; window: 
 describe('CHAT_PROVIDER_CONFIG', () => {
   describe('usageModel', () => {
     it('claude reports the selected model', () => {
-      expect(CHAT_PROVIDER_CONFIG.claude.usageModel({ model: 'opus' })).toBe('opus');
+      expect(CHAT_PROVIDER_CONFIG.claude.usageModel({ selection: { provider: 'claude', model: 'opus' } })).toBe('opus');
     });
 
-    it('codex always reports the fixed "codex" label regardless of model', () => {
-      expect(CHAT_PROVIDER_CONFIG.codex.usageModel({ model: 'opus' })).toBe('codex');
+    it('codex reports the selected model', () => {
+      expect(CHAT_PROVIDER_CONFIG.codex.usageModel({ selection: { provider: 'codex', model: 'gpt-5.6-terra' } })).toBe('gpt-5.6-terra');
     });
 
     it('pi always reports the fixed "pi" label regardless of model', () => {
-      expect(CHAT_PROVIDER_CONFIG.pi.usageModel({ model: 'opus' })).toBe('pi');
+      expect(CHAT_PROVIDER_CONFIG.pi.usageModel({ selection: { provider: 'pi', model: 'cursor/auto' } })).toBe('pi');
     });
   });
 
   describe('resolveResumeSessionId', () => {
-    it('claude resumes from claude_session_id when the stored provider is claude', () => {
-      const chatSession = { claude_session_id: 'sdk-session-1', provider: 'claude' as const, title: null };
+    it('claude resumes from provider_session_id when the stored provider is claude', () => {
+      const chatSession = { provider: 'claude' as const, provider_session_id: 'sdk-session-1', title: null };
       expect(CHAT_PROVIDER_CONFIG.claude.resolveResumeSessionId(chatSession)).toBe('sdk-session-1');
     });
 
     it('claude does not resume its old session after another provider handled a turn', () => {
-      const chatSession = { claude_session_id: 'sdk-session-1', provider: 'codex' as const, title: null };
+      const chatSession = { provider: 'codex' as const, provider_session_id: 'sdk-session-1', title: null };
       expect(CHAT_PROVIDER_CONFIG.claude.resolveResumeSessionId(chatSession)).toBeUndefined();
     });
 
-    it('claude returns undefined when claude_session_id is null', () => {
-      const chatSession = { claude_session_id: null, provider: 'claude' as const, title: null };
+    it('claude returns undefined when provider_session_id is null', () => {
+      const chatSession = { provider: 'claude' as const, provider_session_id: null, title: null };
       expect(CHAT_PROVIDER_CONFIG.claude.resolveResumeSessionId(chatSession)).toBeUndefined();
     });
 
     it('codex resumes from provider_session_id when the stored provider is codex', () => {
-      const chatSession = { claude_session_id: null, provider: 'codex' as const, provider_session_id: 'codex-thread-1', title: null };
+      const chatSession = { provider: 'codex' as const, provider_session_id: 'codex-thread-1', title: null };
       expect(CHAT_PROVIDER_CONFIG.codex.resolveResumeSessionId(chatSession)).toBe('codex-thread-1');
     });
 
     it('codex does not resume from a claude-provider row even if provider_session_id is set', () => {
-      const chatSession = { claude_session_id: null, provider: 'claude' as const, provider_session_id: 'stale', title: null };
+      const chatSession = { provider: 'claude' as const, provider_session_id: 'stale', title: null };
       expect(CHAT_PROVIDER_CONFIG.codex.resolveResumeSessionId(chatSession)).toBeUndefined();
     });
 
     it('pi resumes from provider_session_id when the stored provider is pi', () => {
-      const chatSession = { claude_session_id: null, provider: 'pi' as const, provider_session_id: 'pi-thread-1', title: null };
+      const chatSession = { provider: 'pi' as const, provider_session_id: 'pi-thread-1', title: null };
       expect(CHAT_PROVIDER_CONFIG.pi.resolveResumeSessionId(chatSession)).toBe('pi-thread-1');
     });
 
     it('pi does not resume from a claude-provider row even if provider_session_id is set', () => {
-      const chatSession = { claude_session_id: null, provider: 'claude' as const, provider_session_id: 'stale', title: null };
+      const chatSession = { provider: 'claude' as const, provider_session_id: 'stale', title: null };
       expect(CHAT_PROVIDER_CONFIG.pi.resolveResumeSessionId(chatSession)).toBeUndefined();
     });
 
@@ -115,24 +113,21 @@ describe('CHAT_PROVIDER_CONFIG', () => {
   });
 
   describe('persistSessionId', () => {
-    it('claude writes both the legacy and generalized columns', () => {
+    it('claude writes the provider session column', () => {
       const repo = makeRepo();
       CHAT_PROVIDER_CONFIG.claude.persistSessionId(repo, 'chat-session-1', 'sdk-session-1');
-      expect(repo.updateClaudeSessionId).toHaveBeenCalledWith('chat-session-1', 'sdk-session-1');
       expect(repo.updateProviderSessionId).toHaveBeenCalledWith('chat-session-1', 'claude', 'sdk-session-1');
     });
 
-    it('codex writes only the generalized column', () => {
+    it('codex writes the provider session column', () => {
       const repo = makeRepo();
       CHAT_PROVIDER_CONFIG.codex.persistSessionId(repo, 'chat-session-1', 'codex-thread-1');
-      expect(repo.updateClaudeSessionId).not.toHaveBeenCalled();
       expect(repo.updateProviderSessionId).toHaveBeenCalledWith('chat-session-1', 'codex', 'codex-thread-1');
     });
 
-    it('pi writes only the generalized column', () => {
+    it('pi writes the provider session column', () => {
       const repo = makeRepo();
       CHAT_PROVIDER_CONFIG.pi.persistSessionId(repo, 'chat-session-1', 'pi-thread-1');
-      expect(repo.updateClaudeSessionId).not.toHaveBeenCalled();
       expect(repo.updateProviderSessionId).toHaveBeenCalledWith('chat-session-1', 'pi', 'pi-thread-1');
     });
   });
@@ -192,7 +187,6 @@ describe('markSessionReady', () => {
       chatSessionRepository: repo,
     });
 
-    expect(repo.updateClaudeSessionId).toHaveBeenCalledWith('session-1', 'sdk-session-1');
     expect(repo.updateProviderSessionId).toHaveBeenCalledWith('session-1', 'claude', 'sdk-session-1');
   });
 
@@ -211,7 +205,6 @@ describe('markSessionReady', () => {
       chatSessionRepository: repo,
     });
 
-    expect(repo.updateClaudeSessionId).not.toHaveBeenCalled();
     expect(repo.updateProviderSessionId).toHaveBeenCalledWith('session-1', 'codex', 'codex-thread-1');
   });
 
@@ -230,7 +223,6 @@ describe('markSessionReady', () => {
       chatSessionRepository: repo,
     });
 
-    expect(repo.updateClaudeSessionId).not.toHaveBeenCalled();
     expect(repo.updateProviderSessionId).not.toHaveBeenCalled();
   });
 

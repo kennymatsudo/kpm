@@ -35,7 +35,7 @@ function makeSession(overrides: Partial<PerSessionState> = {}): PerSessionState 
     title: null,
     firstMessage: null,
     pendingTitle: null,
-    claudeSessionId: null,
+    providerSessionId: null,
     mcpDegraded: false,
     mcpError: null,
     hydrated: true,
@@ -62,7 +62,7 @@ function makeChatState(overrides: Partial<ChatStoreView> = {}): ChatStoreView {
     markSessionInactive: vi.fn(),
     setViewedSession: vi.fn(),
     getOrCreateSession: vi.fn(() => makeSession()),
-    setClaudeSessionId: vi.fn(),
+    setProviderSessionId: vi.fn(),
     setSessionTitle: vi.fn(),
     loadTabLabels: vi.fn(async () => {}),
     setMcpStatus: vi.fn(),
@@ -322,11 +322,16 @@ describe('approval event buffering', () => {
     const router = createChatEventRouter(deps);
     const actions = [{ type: 'update_item', item_id: 'x' } as never];
 
-    router.handlers.onPlanActions({ projectId: PROJECT_ID, actions });
-    router.handlers.onFileUpdate({ projectId: PROJECT_ID, filePath: 'notes.md', content: 'new', oldContent: 'old' });
-    router.handlers.onFileUpdate({ projectId: PROJECT_ID, filePath: 'AGENTS.md', content: 'ctx', oldContent: 'old ctx' });
-    router.handlers.onFileMove({ projectId: PROJECT_ID, sourcePath: 'draft.md', targetPath: 'archive/draft.md' });
-    router.handlers.onFileDelete({ projectId: PROJECT_ID, path: 'old.md', isDirectory: false });
+    const configChange = { kind: 'playbook', op: 'create', before: null, after: { id: 'p' } } as never;
+    const boardChange = { kind: 'link_pr', planItemId: 'item-1' } as never;
+
+    router.handlers.onProposal({ kind: 'plan-actions', projectId: PROJECT_ID, actions });
+    router.handlers.onProposal({ kind: 'file-update', projectId: PROJECT_ID, filePath: 'notes.md', content: 'new', oldContent: 'old' });
+    router.handlers.onProposal({ kind: 'file-update', projectId: PROJECT_ID, filePath: 'AGENTS.md', content: 'ctx', oldContent: 'old ctx' });
+    router.handlers.onProposal({ kind: 'file-move', projectId: PROJECT_ID, sourcePath: 'draft.md', targetPath: 'archive/draft.md' });
+    router.handlers.onProposal({ kind: 'file-delete', projectId: PROJECT_ID, path: 'old.md', isDirectory: false });
+    router.handlers.onProposal({ kind: 'config-change', projectId: PROJECT_ID, change: configChange });
+    router.handlers.onProposal({ kind: 'board-change', projectId: PROJECT_ID, change: boardChange });
 
     expect(approvalQueue.propose).toHaveBeenCalledWith({ type: 'plan-actions', projectId: PROJECT_ID, actions });
     expect(approvalQueue.propose).toHaveBeenCalledWith(
@@ -337,6 +342,20 @@ describe('approval event buffering', () => {
     );
     expect(approvalQueue.propose).toHaveBeenCalledWith({ type: 'move', projectId: PROJECT_ID, sourcePath: 'draft.md', targetPath: 'archive/draft.md' });
     expect(approvalQueue.propose).toHaveBeenCalledWith({ type: 'delete', projectId: PROJECT_ID, filePath: 'old.md', isDirectory: false });
+    expect(approvalQueue.propose).toHaveBeenCalledWith({ type: 'config', projectId: PROJECT_ID, change: configChange });
+    expect(approvalQueue.propose).toHaveBeenCalledWith({ type: 'board', projectId: PROJECT_ID, change: boardChange });
+  });
+
+  it('forces review on a file update that asks for it', () => {
+    const { deps, approvalQueue } = makeDeps(makeChatState());
+    const router = createChatEventRouter(deps);
+
+    router.handlers.onProposal({ kind: 'file-update', projectId: PROJECT_ID, filePath: 'notes.md', content: 'new', oldContent: 'old', forceReview: true });
+
+    expect(approvalQueue.propose).toHaveBeenCalledWith(
+      { type: 'document', projectId: PROJECT_ID, filePath: 'notes.md', content: 'new', oldContent: 'old' },
+      { policy: 'review_required' },
+    );
   });
 
   it('emits chat-file-updated after processing a file update', () => {
@@ -345,7 +364,7 @@ describe('approval event buffering', () => {
     const router = createChatEventRouter(deps);
 
     const data = { projectId: PROJECT_ID, filePath: 'notes.md', content: 'new', oldContent: 'old' };
-    router.handlers.onFileUpdate(data);
+    router.handlers.onProposal({ kind: 'file-update', ...data });
 
     expect(approvalQueue.propose).toHaveBeenCalledWith(
       { type: 'document', projectId: PROJECT_ID, filePath: 'notes.md', content: 'new', oldContent: 'old' }, undefined,
@@ -360,14 +379,13 @@ describe('approval event buffering', () => {
     const routerA = createChatEventRouter(depsA);
 
     const planActionsData = {
+      kind: 'plan-actions' as const,
       projectId: OTHER_PROJECT_ID,
       actions: [{ type: 'update_item', item_id: 'x' } as never],
     };
-    const fileMoveData = { projectId: OTHER_PROJECT_ID, sourcePath: 'draft.md', targetPath: 'archive/draft.md' };
-    const fileDeleteData = { projectId: OTHER_PROJECT_ID, path: 'old.md', isDirectory: false };
-    routerA.handlers.onPlanActions(planActionsData);
-    routerA.handlers.onFileMove(fileMoveData);
-    routerA.handlers.onFileDelete(fileDeleteData);
+    routerA.handlers.onProposal(planActionsData);
+    routerA.handlers.onProposal({ kind: 'file-move', projectId: OTHER_PROJECT_ID, sourcePath: 'draft.md', targetPath: 'archive/draft.md' });
+    routerA.handlers.onProposal({ kind: 'file-delete', projectId: OTHER_PROJECT_ID, path: 'old.md', isDirectory: false });
     expect(buffer.get(OTHER_PROJECT_ID)).toHaveLength(3);
 
     const chatStateB = makeChatState();
@@ -390,7 +408,7 @@ describe('approval event buffering', () => {
     const { deps } = makeDeps(chatState, { buffer });
     const router = createChatEventRouter(deps);
 
-    router.handlers.onPlanActions({ projectId: OTHER_PROJECT_ID, actions: [] });
+    router.handlers.onProposal({ kind: 'plan-actions', projectId: OTHER_PROJECT_ID, actions: [] });
 
     expect(buffer.size).toBe(0);
   });

@@ -6,7 +6,6 @@ import type {
   ChatMessage,
   ChatProvider,
   ChatViewMode,
-  ClaudeModel,
   FocusChatDocument,
   FocusedResource,
 } from '../../../shared/types';
@@ -22,8 +21,7 @@ export interface ChatServiceDeps {
   repos: Pick<IRepoRepository, 'getByProject'>;
   chatMessages: IChatMessageRepository;
   chatSessions: IChatSessionRepository;
-  modelChoice?: ChatModelChoiceService;
-  getDefaultChatProvider?: () => ChatProvider;
+  modelChoice: ChatModelChoiceService;
   streamingSessionService: Pick<
     StreamingSessionService,
     'sendChatMessage' | 'disconnectChatSession'
@@ -35,14 +33,6 @@ export interface ChatServiceDeps {
 export interface SendChatMessageInput {
   projectId: string;
   message: string;
-  /** @deprecated Ignored when the authoritative model-choice module is configured. */
-  provider?: ChatProvider;
-  /** @deprecated Ignored when the authoritative model-choice module is configured. */
-  model?: ClaudeModel;
-  /** @deprecated Ignored when the authoritative model-choice module is configured. */
-  providerModel?: string;
-  /** @deprecated Ignored when the authoritative model-choice module is configured. */
-  effort?: 'low' | 'medium' | 'high' | 'max';
   attachments?: ChatAttachment[];
   chatSessionId?: string;
   clientMessageId?: string;
@@ -71,7 +61,7 @@ export interface FocusDocumentSessionInput {
 export interface FocusDocumentSessionResult {
   chatSessionId: string;
   messages: ChatMessage[];
-  choice?: ChatChoiceView;
+  choice: ChatChoiceView;
 }
 
 /**
@@ -172,14 +162,7 @@ export function createChatService(deps: ChatServiceDeps) {
             return failure(errorText);
           }
         }
-        const resolvedChoice = deps.modelChoice
-          ? await deps.modelChoice.resolveForTurn(projectId, chatSessionId)
-          : success({
-              provider: input.provider ?? deps.getDefaultChatProvider?.() ?? 'claude',
-              model: input.providerModel ?? input.model ?? 'sonnet',
-              effort: input.effort ?? null,
-              revision: 0,
-            });
+        const resolvedChoice = await deps.modelChoice.resolveForTurn(projectId, chatSessionId);
         if (!resolvedChoice.ok) {
           emitError(projectId, chatSessionId, resolvedChoice.error);
           return failure(resolvedChoice.error);
@@ -194,13 +177,7 @@ export function createChatService(deps: ChatServiceDeps) {
           projectId,
           messageForModel,
           {
-            authoritativeChoice: resolvedChoice.data,
-            ...(!deps.modelChoice ? {
-              provider: resolvedChoice.data.provider,
-              model: input.model,
-              providerModel: input.providerModel,
-              effort: input.effort,
-            } : {}),
+            choice: resolvedChoice.data,
             focusedResources: resolveFocusedResources(projectId, promptContext?.focusedResources ?? []),
             chatSessionId,
             currentView: promptContext?.currentView,
@@ -290,7 +267,7 @@ export function createChatService(deps: ChatServiceDeps) {
           );
         }
 
-        const openedChoice = deps.modelChoice ? await deps.modelChoice.open({
+        const openedChoice = await deps.modelChoice.open({
           projectId,
           chatSessionId: chatSession.id,
           scope: 'focus_document',
@@ -299,14 +276,14 @@ export function createChatService(deps: ChatServiceDeps) {
             title: trimmedTitle,
             contentHash,
           },
-        }) : null;
-        if (openedChoice && !openedChoice.ok) return failure(openedChoice.error);
+        });
+        if (!openedChoice.ok) return failure(openedChoice.error);
 
         const messages = deps.chatMessages.getMessagesByChatSession(projectId, chatSession.id);
         return success({
           chatSessionId: chatSession.id,
           messages,
-          ...(openedChoice?.ok ? { choice: openedChoice.data } : {}),
+          choice: openedChoice.data,
         });
       } catch (error) {
         return failure(error instanceof Error ? error.message : String(error));

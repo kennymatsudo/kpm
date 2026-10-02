@@ -64,10 +64,8 @@ export interface IChatSessionRepository {
     id: string,
     title: string,
     contentHash: string,
-    clearClaudeSessionId: boolean,
+    clearProviderSessionId: boolean,
   ): ChatSession;
-  /** Update the Claude SDK session ID for resume functionality */
-  updateClaudeSessionId(id: string, claudeSessionId: string): void;
   /** Update the native provider session/thread ID for resume functionality. */
   updateProviderSessionId(id: string, provider: ChatProvider, providerSessionId: string): void;
   /** Atomically persist the versioned model-choice aggregate at an expected revision. */
@@ -75,12 +73,10 @@ export interface IChatSessionRepository {
   /** Replace the display title; `turn` is the completed-turn count it was written at. */
   updateTitle(id: string, title: string | null, source: ChatTitleSource | null, turn: number | null): void;
   /**
-   * Null out claude_session_id for every chat session in a project.
-   * Forces the next send to spawn a fresh SDK session instead of resuming
-   * one whose cwd was baked in at spawn time (e.g. after a worktree switch).
+   * Null out provider_session_id for every chat session in a project.
+   * Forces the next send to spawn a fresh session instead of resuming one
+   * whose cwd was baked in at spawn time (e.g. after a worktree switch).
    */
-  clearClaudeSessionIdsByProject(projectId: string): void;
-  /** Null out native provider session IDs for every chat session in a project. */
   clearProviderSessionIdsByProject(projectId: string): void;
   /** Delete a chat session */
   delete(id: string): void;

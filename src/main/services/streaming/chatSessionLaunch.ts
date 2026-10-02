@@ -30,8 +30,9 @@ import { createTurnLifecycle, type TurnLifecycle } from './turnLifecycle';
 import { createTurnReport, type TurnReport } from './turnReport';
 import type { McpElicitationDecision, McpElicitationRequest } from './mcpElicitation';
 import type { ModelType } from '../../claude/sdkOptionsBuilder';
+import type { ChatModelSelection } from '../../chat/modelChoice';
 import type { PlanContext } from '../../chat/prompts';
-import type { Activity, ChatChoiceEffort, ChatProvider } from '../../../shared/types';
+import type { Activity, ChatChoiceEffort } from '../../../shared/types';
 
 export type SessionState = 'idle' | 'connecting' | 'ready' | 'processing' | 'error' | 'closing';
 
@@ -41,10 +42,7 @@ export interface ManagedSession {
   projectId: string;
   session: IChatSession;
   state: SessionState;
-  provider: ChatProvider;
-  model: ModelType;
-  /** pi-only `"<provider>/<modelId>"` selector used by this native session. */
-  providerModel?: string;
+  selection: ChatModelSelection;
   effort?: ChatChoiceEffort | null;
   lastActivity: number;
   sessionId?: string; // SDK session ID for resume
@@ -145,10 +143,7 @@ export interface ChatLaunchRequest {
   key: string;
   projectId: string;
   chatSessionId?: string;
-  provider: ChatProvider;
-  /** Claude's model. Other providers select with `providerModel`. */
-  model: ModelType;
-  providerModel?: string;
+  selection: ChatModelSelection;
   effort?: ChatChoiceEffort | null;
   context: PlanContext;
   resumeSessionId?: string;
@@ -212,15 +207,15 @@ export function buildChatSessionLaunch(
   request: ChatLaunchRequest,
   factories: ChatSessionFactories = defaultChatSessionFactories,
 ): { session: IChatSession; managed: ManagedSession } {
-  const { provider, context, chatSessionId, projectId, host } = request;
+  const { selection, context, chatSessionId, projectId, host } = request;
   const focus = Boolean(context.focusDocument);
 
-  const session = provider === 'codex'
+  const session = selection.provider === 'codex'
     ? factories.codex({
         context,
         chatSessionId,
         resumeThreadId: request.resumeSessionId,
-        model: request.providerModel,
+        model: selection.model,
         modelReasoningEffort: narrowEffort<CodexEffort>(CODEX_EFFORT_LEVELS, request.effort),
         onMessage: host.onMessage,
         onSessionEnd: host.onSessionEnd,
@@ -229,12 +224,12 @@ export function buildChatSessionLaunch(
         requestExternalApproval: host.requestApproval,
         onMcpElicitation: (elicitation) => host.onElicitation(elicitation),
       })
-    : provider === 'pi'
+    : selection.provider === 'pi'
     ? factories.pi({
         context,
         chatSessionId,
         resumeSessionId: request.resumeSessionId,
-        model: request.providerModel,
+        model: selection.model,
         thinkingLevel: request.effort ?? undefined,
         onMessage: host.onMessage,
         onSessionEnd: host.onSessionEnd,
@@ -243,7 +238,7 @@ export function buildChatSessionLaunch(
       })
     : factories.claude({
         sdkOptions: request.buildClaudeSdkOptions(context, {
-          model: request.model,
+          model: selection.model,
           effort: narrowEffort<ClaudeEffort>(CLAUDE_EFFORT_LEVELS, request.effort),
           resumeSessionId: request.resumeSessionId,
           mainWindow: request.mainWindow,
@@ -270,9 +265,7 @@ export function buildChatSessionLaunch(
       chatSessionId,
       session,
       state: 'connecting',
-      provider,
-      model: request.model,
-      providerModel: request.providerModel,
+      selection,
       effort: request.effort,
       lastActivity: now,
       turnStartedAt: now,

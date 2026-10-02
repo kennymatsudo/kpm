@@ -1012,11 +1012,10 @@ export interface ChatSessionLabel {
 /** `provider`: the chat provider's own summary. `generated`: KPM's cheap-model title. `user`: renamed by hand, never replaced. */
 export type ChatTitleSource = 'provider' | 'generated' | 'user';
 
-/** Chat session entity - stores Claude SDK session ID for resume functionality */
+/** Chat session entity - stores the native provider session ID for resume */
 export interface ChatSession {
   id: string;  // Same as chat_session_id in chat_messages
   project_id: string;
-  claude_session_id: string | null;  // Claude SDK session ID for resume
   provider: ChatProvider;
   provider_session_id: string | null; // Native provider thread/session ID for resume
   scope: ChatSessionScope;

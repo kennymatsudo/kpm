@@ -23,6 +23,8 @@ interface DiffViewerProps {
   diffLines?: DiffLine[];
   /** Auto-scroll the nearest scrollable parent to the first changed line on mount */
   autoScrollToFirstChange?: boolean;
+  /** Fold unchanged lines away from each change, so a large file renders only what changed */
+  changesOnly?: boolean;
 }
 
 function findScrollableParent(element: HTMLElement): HTMLElement | null {
@@ -56,7 +58,7 @@ export function computeDiff(oldContent: string | null, newContent: string): Diff
  * DiffViewer component displays inline diffs using a packaged renderer while
  * keeping KPM's existing diff helpers for summary counts and compatibility.
  */
-export function DiffViewer({ oldContent, newContent, diffLines: diffLinesProp, autoScrollToFirstChange }: DiffViewerProps) {
+export function DiffViewer({ oldContent, newContent, diffLines: diffLinesProp, autoScrollToFirstChange, changesOnly = false }: DiffViewerProps) {
   const diffLines = useMemo(() => {
     if (diffLinesProp) return diffLinesProp;
     return computeDiff(oldContent, newContent);
@@ -111,7 +113,7 @@ export function DiffViewer({ oldContent, newContent, diffLines: diffLinesProp, a
         newValue={newContent}
         splitView={false}
         compareMethod={DiffMethod.LINES}
-        showDiffOnly={false}
+        showDiffOnly={changesOnly}
         hideLineNumbers
         hideSummary
         styles={diffViewerStyles}

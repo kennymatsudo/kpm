@@ -7,5 +7,6 @@ export type {
   ChatChoiceChangeInput,
   ChatChoiceOpenInput,
   ChatModelChoiceService,
+  ChatModelSelection,
   ResolvedChatChoice,
 } from './types';

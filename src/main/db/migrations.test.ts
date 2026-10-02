@@ -234,7 +234,7 @@ describe('101_drop_chat_sessions_provider_check', () => {
       const columns = db.prepare('PRAGMA table_info(chat_sessions)').all() as { name: string }[];
       expect(columns.map((column) => column.name)).toEqual(
         expect.arrayContaining([
-          'id', 'project_id', 'claude_session_id', 'created_at', 'title', 'scope',
+          'id', 'project_id', 'created_at', 'title', 'scope',
           'focus_document_path', 'focus_document_title', 'focus_document_hash',
           'last_opened_at', 'provider', 'provider_session_id',
         ])
@@ -1141,6 +1141,39 @@ describe('133_dev_session_running_step_phase', () => {
         (db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'dev_sessions' AND sql IS NOT NULL ORDER BY name").all() as { name: string }[])
           .map((row) => row.name)
       ).toEqual(['idx_dev_sessions_plan_item', 'idx_dev_sessions_project', 'idx_dev_sessions_status']);
+    } finally {
+      db.close();
+    }
+  });
+});
+
+describe('134_drop_chat_sessions_claude_session_id', () => {
+  const MIGRATION_ID = 1134;
+
+  it('keeps a Claude resume id that only the old column held, then drops the column', () => {
+    const db = new BetterSqlite3(':memory:');
+    try {
+      for (const migration of migrations) {
+        if (migration.id >= MIGRATION_ID) break;
+        migration.up(db);
+      }
+      db.exec(`
+        INSERT INTO projects (id, name, folder_path) VALUES ('proj-1', 'Project One', '/tmp/proj-1');
+        INSERT INTO chat_sessions (id, project_id, provider, claude_session_id, provider_session_id) VALUES
+          ('only-old', 'proj-1', 'claude', 'sdk-old', NULL),
+          ('both', 'proj-1', 'claude', 'sdk-stale', 'sdk-current'),
+          ('codex', 'proj-1', 'codex', 'sdk-before-codex', NULL);
+      `);
+
+      applyMigration(db, migrations.find((m) => m.id === MIGRATION_ID)!);
+
+      expect(db.prepare('SELECT id, provider_session_id FROM chat_sessions ORDER BY id').all()).toEqual([
+        { id: 'both', provider_session_id: 'sdk-current' },
+        { id: 'codex', provider_session_id: null },
+        { id: 'only-old', provider_session_id: 'sdk-old' },
+      ]);
+      expect((db.prepare('PRAGMA table_info(chat_sessions)').all() as { name: string }[]).map((c) => c.name))
+        .not.toContain('claude_session_id');
     } finally {
       db.close();
     }

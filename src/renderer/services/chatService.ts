@@ -8,15 +8,9 @@ import type {
 
 import type {
   ChunkEventData,
-  PlanActionsEventData,
-  FileUpdateEventData,
-  FileMoveEventData,
-  FileDeleteEventData,
-  ConfigChangeEventData,
-  BoardChangeEventData,
+  ChatProposalEventData,
   TurnDoneEventData,
   SessionLifecycleEventData,
-  QueuedEventData,
   QueueClearedEventData,
   ErrorEventData,
   ActivityEventData,
@@ -156,12 +150,7 @@ export function getFocusDocumentChatSession(
 
 export function subscribeToChatEvents(handlers: {
   onChunk?: (data: ChunkEventData) => void;
-  onPlanActions?: (data: PlanActionsEventData) => void;
-  onFileUpdate?: (data: FileUpdateEventData) => void;
-  onFileMove?: (data: FileMoveEventData) => void;
-  onFileDelete?: (data: FileDeleteEventData) => void;
-  onConfigChange?: (data: ConfigChangeEventData) => void;
-  onBoardChange?: (data: BoardChangeEventData) => void;
+  onProposal?: (data: ChatProposalEventData) => void;
   onDone?: (data: TurnDoneEventData) => void;
   onError?: (data: ErrorEventData) => void;
   onActivity?: (data: ActivityEventData) => void;
@@ -175,17 +164,11 @@ export function subscribeToChatEvents(handlers: {
   onSlashCommands?: (data: SlashCommandsEventData) => void;
   onMcpStatus?: (data: McpStatusEventData) => void;
   onBackgroundTasks?: (data: BackgroundTasksEventData) => void;
-  onQueued?: (data: QueuedEventData) => void;
   onQueueCleared?: (data: QueueClearedEventData) => void;
 }): () => void {
   const cleanups = [
     handlers.onChunk ? window.api.chat.onChunk(handlers.onChunk) : null,
-    handlers.onPlanActions ? window.api.chat.onPlanActions(handlers.onPlanActions) : null,
-    handlers.onFileUpdate ? window.api.chat.onFileUpdate(handlers.onFileUpdate) : null,
-    handlers.onFileMove ? window.api.chat.onFileMove(handlers.onFileMove) : null,
-    handlers.onFileDelete ? window.api.chat.onFileDelete(handlers.onFileDelete) : null,
-    handlers.onConfigChange ? window.api.chat.onConfigChange(handlers.onConfigChange) : null,
-    handlers.onBoardChange ? window.api.chat.onBoardChange(handlers.onBoardChange) : null,
+    handlers.onProposal ? window.api.chat.onProposal(handlers.onProposal) : null,
     handlers.onDone ? window.api.chat.onDone(handlers.onDone) : null,
     handlers.onError ? window.api.chat.onError(handlers.onError) : null,
     handlers.onActivity ? window.api.chat.onActivity(handlers.onActivity) : null,
@@ -199,7 +182,6 @@ export function subscribeToChatEvents(handlers: {
     handlers.onSuggestions ? window.api.chat.onSuggestions(handlers.onSuggestions) : null,
     handlers.onSlashCommands ? window.api.chat.onSlashCommands(handlers.onSlashCommands) : null,
     handlers.onMcpStatus ? window.api.chat.onMcpStatus(handlers.onMcpStatus) : null,
-    handlers.onQueued ? window.api.chat.onQueued(handlers.onQueued) : null,
     handlers.onQueueCleared ? window.api.chat.onQueueCleared(handlers.onQueueCleared) : null,
   ].filter((cleanup): cleanup is (() => void) => Boolean(cleanup));
 

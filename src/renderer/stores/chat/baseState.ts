@@ -16,7 +16,7 @@ export const createInitialPerSessionState = (sessionNumber: number): PerSessionS
   suggestions: [],
   sessionNumber,
   choice: null,
-  claudeSessionId: null,
+  providerSessionId: null,
   title: null,
   firstMessage: null,
   pendingTitle: null,

@@ -39,7 +39,7 @@ function harness(
   const db = new BetterSqlite3(':memory:');
   db.exec(`
     CREATE TABLE chat_sessions (
-      id TEXT PRIMARY KEY, project_id TEXT NOT NULL, claude_session_id TEXT,
+      id TEXT PRIMARY KEY, project_id TEXT NOT NULL,
       provider TEXT NOT NULL DEFAULT 'claude', provider_session_id TEXT,
       scope TEXT NOT NULL DEFAULT 'main', focus_document_path TEXT,
       focus_document_title TEXT, focus_document_hash TEXT, last_opened_at TEXT,
@@ -230,6 +230,17 @@ describe('ChatModelChoiceService', () => {
     const resolved = await h.service.resolveForTurn('p1', 'focus-1');
     expect(resolved.ok).toBe(false);
     if (!resolved.ok) expect(resolved.error).toContain('no longer available');
+    h.db.close();
+  });
+
+  it('refuses a turn on a saved Claude model KPM cannot launch', async () => {
+    const h = harness('claude');
+    h.defaults.models.claude = 'haiku';
+    await h.service.open({ projectId: 'p1', chatSessionId: 'c-haiku', scope: 'main' });
+
+    const resolved = await h.service.resolveForTurn('p1', 'c-haiku');
+
+    expect(resolved.ok).toBe(false);
     h.db.close();
   });
 

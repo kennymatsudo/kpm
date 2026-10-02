@@ -33,8 +33,7 @@ function makeManaged(overrides: Partial<ManagedSessionArg> = {}): ManagedSession
     projectId: 'project-1',
     session: { pendingQueuedCount: () => 0 } as unknown as ManagedSessionArg['session'],
     state: 'processing',
-    provider: 'claude',
-    model: 'sonnet',
+    selection: { provider: 'claude', model: 'sonnet' },
     lastActivity: Date.now(),
     mcpHealthStatus: 'healthy',
     mcpRecoveryAttempts: 0,
@@ -65,9 +64,9 @@ function makeDeps(overrides: Partial<Parameters<typeof finalizeTurnResult>[6]> =
     chatSessionRepository: {
       get: vi.fn(),
       create: vi.fn(),
-      updateClaudeSessionId: vi.fn(),
+      updateProviderSessionId: vi.fn(),
       updateTitle: vi.fn(),
-      clearClaudeSessionIdsByProject: vi.fn(),
+      clearProviderSessionIdsByProject: vi.fn(),
     },
     toolCallLogger: { logToolCall: vi.fn(), finalizeTurn: vi.fn(), getCurrentTurnIndex: vi.fn(() => 0) },
     recordUsage: vi.fn(),
@@ -131,10 +130,9 @@ describe('finalizeTurnResult', () => {
     it('tells the user when an adapter reports the output limit', () => {
       const { sent, window } = fakeWindow();
 
-      finalizeTurnResult('key', 'project-1', 'session-1', makeManaged({ provider: 'pi' }), { type: 'result', usage: undefined, outputLimitReached: true }, window, makeDeps());
+      finalizeTurnResult('key', 'project-1', 'session-1', makeManaged({ selection: { provider: 'pi', model: 'cursor/auto' } }), { type: 'result', usage: undefined, outputLimitReached: true }, window, makeDeps());
 
       expect(errors(sent)).toEqual(['Response reached the output limit. Send another message to continue.']);
-      expect(sent.some((e) => e.channel === 'chat:truncated')).toBe(true);
     });
 
     it.each(['api_error', 'turn_setup_failed', 'malformed_tool_use_exhausted', 'image_error', 'tool_deferred_unavailable', 'budget_exhausted'])(
@@ -249,7 +247,7 @@ describe('finalizeTurnResult', () => {
     });
 
     it('reports a context window from an adapter-built provider result', () => {
-      const contextWindow = doneContextWindow(makeManaged({ provider: 'codex', resolvedModel: undefined }), {
+      const contextWindow = doneContextWindow(makeManaged({ selection: { provider: 'codex', model: 'gpt-5.5' }, resolvedModel: undefined }), {
         type: 'result',
         usage: { input_tokens: 10, output_tokens: 20 },
         contextWindow: 1_050_000,
@@ -309,7 +307,7 @@ describe('finalizeTurnResult', () => {
     it('records an unpriced turn under the model that answered, and fills the context bar from the last request', () => {
       const deps = makeDeps();
       const { sent, window } = fakeWindow();
-      const managed = makeManaged({ provider: 'codex', providerModel: 'gpt-5.5' });
+      const managed = makeManaged({ selection: { provider: 'codex', model: 'gpt-5.5' } });
 
       finalizeTurnResult('key', 'project-1', 'session-1', managed, {
         type: 'result',

@@ -31,6 +31,7 @@ import { buildTurnRenderPlan, type TurnRenderNode } from './turnRenderPlan';
 import { sessionModelId } from '../../stores/chat/chatChoice';
 import { canMergeAssistantTurn } from '../../stores/chat/messageMerge';
 import { prefersReducedMotion } from '../../utils/reducedMotion';
+import { findPinnedPromptId, type TranscriptRow } from './pinnedPrompt';
 
 /** Extract text content from message segments for copy/display */
 function getTextContent(segments: MessageSegment[]): string {
@@ -643,6 +644,54 @@ export const MessageRow = memo(function MessageRow({
   );
 });
 
+/** The question behind the answer being read, held at the top of the
+ * transcript once its own note has scrolled away. Clicking it scrolls back to
+ * that note. */
+const PinnedPrompt = memo(function PinnedPrompt({
+  message,
+  scrollbarWidth,
+  onJump,
+}: {
+  message: Message;
+  scrollbarWidth: number;
+  onJump: () => void;
+}) {
+  const text = useMemo(() => {
+    const content = getTextContent(message.segments);
+    if (message.attachments && message.attachments.length > 0) return content;
+    return parseUserMessage(content).cleanContent || content;
+  }, [message.segments, message.attachments]);
+
+  // Filled like the note it stands in for, and shadowed rather than ruled so
+  // the answer reads as scrolling under it instead of continuing from it.
+  return (
+    <div
+      className="absolute top-0 left-0 px-3 py-1.5 bg-surface-3 shadow-md"
+      style={{ right: scrollbarWidth }}
+    >
+      <Tooltip
+        content={
+          <div className="max-w-md whitespace-pre-wrap line-clamp-[12]">{text}</div>
+        }
+      >
+        <button
+          type="button"
+          onClick={onJump}
+          className="w-full flex items-baseline gap-2 text-left rounded-sm text-xs text-text-secondary hover:text-text-primary transition-colors"
+          aria-label="Scroll to your message"
+        >
+          <span className="flex-shrink-0 font-mono text-tiny text-text-muted">
+            you · {formatClockTime(message.timestamp)}
+          </span>
+          <span className="min-w-0 truncate">
+            <UserMessageText content={text} />
+          </span>
+        </button>
+      </Tooltip>
+    </div>
+  );
+});
+
 /** Pre-measurement fallbacks for the virtualizer, split by role because an
  * answer at reading size runs far taller than the turn that prompted it. */
 const EMPTY_BACKGROUND_TASKS: AgentBackgroundTask[] = [];
@@ -748,6 +797,8 @@ export function MessageList({
   const streamStartedAt = viewedSession?.streamStartedAt ?? null;
 
   const listRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const rowsRef = useRef<TranscriptRow[]>([]);
   const messageHeightsRef = useRef<Map<string, number>>(new Map());
   const isInitialMount = useRef(true);
   const prevMessagesRef = useRef(messages);
@@ -762,6 +813,17 @@ export function MessageList({
   const [viewportHeight, setViewportHeight] = useState(0);
   const [measurementVersion, setMeasurementVersion] = useState(0);
   const [timeNow, setTimeNow] = useState(() => Date.now());
+  const [pinnedPromptId, setPinnedPromptId] = useState<string | null>(null);
+  const [scrollbarWidth, setScrollbarWidth] = useState(0);
+
+  // Row tops are relative to the content box, which the scroller's top
+  // padding pushes down, so the viewport top is translated into that frame.
+  const updatePinnedPrompt = useCallback(() => {
+    const list = listRef.current;
+    const content = contentRef.current;
+    if (!list || !content) return;
+    setPinnedPromptId(findPinnedPromptId(rowsRef.current, list.scrollTop - content.offsetTop));
+  }, []);
 
   useEffect(() => {
     if (!isStreaming) return;
@@ -807,16 +869,17 @@ export function MessageList({
     return list.scrollHeight - (list.scrollTop + list.clientHeight) <= threshold;
   };
 
-  // `scrollTop` only feeds the virtualizer's visible-window math, so short
-  // conversations never need it, and long ones need it at most once a frame —
-  // writing it on every scroll event re-renders the whole list per event.
+  // Scroll position is read at most once a frame — writing it on every scroll
+  // event re-renders the whole list per event. `scrollTop` only feeds the
+  // virtualizer's visible-window math, so short conversations skip it.
   const scrollFrameRef = useRef<number | null>(null);
   const trackScrollTop = (list: HTMLDivElement) => {
-    if (staticMessages.length < VIRTUALIZATION_MIN_MESSAGES) return;
     if (scrollFrameRef.current !== null) return;
+    const virtualized = staticMessages.length >= VIRTUALIZATION_MIN_MESSAGES;
     scrollFrameRef.current = requestAnimationFrame(() => {
       scrollFrameRef.current = null;
-      setScrollTop(list.scrollTop);
+      if (virtualized) setScrollTop(list.scrollTop);
+      updatePinnedPrompt();
     });
   };
 
@@ -846,6 +909,7 @@ export function MessageList({
 
     const updateViewport = () => {
       setViewportHeight(list.clientHeight);
+      setScrollbarWidth(list.offsetWidth - list.clientWidth);
     };
 
     updateViewport();
@@ -878,7 +942,7 @@ export function MessageList({
     }
   }, [messages]);
 
-  const { totalStaticHeight, virtualizedMessages } = useMemo(() => {
+  const { totalStaticHeight, virtualizedMessages, rows } = useMemo(() => {
     let runningTop = 0;
     const measurements = staticMessages.map((message) => {
       const measuredHeight =
@@ -903,6 +967,7 @@ export function MessageList({
       return {
         totalStaticHeight: runningTop,
         virtualizedMessages: measurements,
+        rows: measurements,
       };
     }
 
@@ -915,8 +980,36 @@ export function MessageList({
     return {
       totalStaticHeight: runningTop,
       virtualizedMessages: visibleItems,
+      rows: measurements,
     };
   }, [staticMessages, measurementVersion, scrollTop, viewportHeight]);
+
+  // Rows move without a scroll event when a turn above the viewport grows or a
+  // late measurement lands, so the pin is re-read whenever the rows change.
+  useLayoutEffect(() => {
+    rowsRef.current = rows.map(({ message, top, height }) => ({
+      id: message.id,
+      role: message.role,
+      top,
+      height,
+    }));
+    updatePinnedPrompt();
+  }, [rows, updatePinnedPrompt]);
+
+  const pinnedPrompt = pinnedPromptId
+    ? messages.find((message) => message.id === pinnedPromptId) ?? null
+    : null;
+
+  const jumpToPinnedPrompt = () => {
+    const list = listRef.current;
+    const content = contentRef.current;
+    const row = rowsRef.current.find((r) => r.id === pinnedPromptId);
+    if (!list || !content || !row) return;
+    list.scrollTo({
+      top: content.offsetTop + row.top,
+      behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+    });
+  };
 
   // Smart autoscroll:
   // - Follow while user is at bottom
@@ -1001,7 +1094,7 @@ export function MessageList({
         className="h-full overflow-y-auto px-3 pt-3 pb-10"
         style={{ scrollbarGutter: 'stable' }}
       >
-        <div className="relative" style={{ height: totalStaticHeight }}>
+        <div ref={contentRef} className="relative" style={{ height: totalStaticHeight }}>
           {virtualizedMessages.map(({ message, top }) => (
             <VirtualizedMessageRow
               key={message.id}
@@ -1043,6 +1136,14 @@ export function MessageList({
           <TurnError error={error} onRetry={onRetry} onDismiss={onDismissError} />
         )}
       </div>
+
+      {pinnedPrompt && (
+        <PinnedPrompt
+          message={pinnedPrompt}
+          scrollbarWidth={scrollbarWidth}
+          onJump={jumpToPinnedPrompt}
+        />
+      )}
 
       {/* Only the control itself takes pointer events: a strip across the foot
           of the scroller would swallow selection and link clicks on whatever

@@ -146,8 +146,8 @@ export function FocusChatPanel({
         setStreamingContent(streamRef.current);
         setIsStreaming(true);
       },
-      onFileUpdate: (data) => {
-        if (data.projectId !== projectId || data.chatSessionId !== sessionId) return;
+      onProposal: (data) => {
+        if (data.kind !== 'file-update' || data.projectId !== projectId || data.chatSessionId !== sessionId) return;
         setMessages((current) => [
           ...current,
           {

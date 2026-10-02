@@ -27,6 +27,7 @@ import {
   type SessionState,
 } from './chatSessionLaunch';
 import { decideMcpElicitation, isAutoApprovedCodexMcpServer } from './mcpElicitation';
+import { createFileUpdateOutbox } from './fileUpdateOutbox';
 import type { ModelType } from '../../claude/sdkOptionsBuilder';
 import {
   runWithToolExecutionContext,
@@ -39,7 +40,7 @@ import { buildFocusedReminder, buildFocusedSection } from '../../chat/prompts/fo
 import { type ServiceResult, type AsyncResult, success, failure } from '../result';
 import type { PlanContext } from '../../chat/prompts';
 import type { ChatChoiceEffort, ChatProvider, ChatTitleSource, FocusChatDocument, FocusedResource, PlanItem, Project, Activity, ToolCallLogEntry, ChatAttachment, ChatSessionScope, SlashCommandInfo } from '../../../shared/types';
-import type { ChatModelChoiceService, ResolvedChatChoice } from '../../chat/modelChoice';
+import type { ChatModelSelection, ResolvedChatChoice } from '../../chat/modelChoice';
 import { getConfig } from '../../config';
 import { isMaxTokensReached, isMaxTurnsReached, getTerminalReason, describeTerminalReason } from '../../claude/sdkTypeGuards';
 import { interpretSdkMessage } from './interpretSdkMessage';
@@ -53,7 +54,7 @@ import { randomUUID } from 'crypto';
 import { emitAppEvent } from '../../../shared/ipc/appEvents';
 import { runGeneration } from '../../generation';
 import { createChatTitler, type ChatTitler, type ProviderSessionSummary } from './chatTitles';
-import { chatEvents } from '../../../shared/ipc/chatEvents';
+import { chatEvents, type ChatProposalEventData } from '../../../shared/ipc/chatEvents';
 import type { TurnCost } from './providerChatMessage';
 
 /**
@@ -215,9 +216,6 @@ const getSessionConfig = () => getConfig().session;
 // =============================================================================
 
 export interface StreamingSessionServiceDeps {
-  /** Authoritative per-Chat choice resolver. Optional only for legacy unit-test construction. */
-  modelChoice?: Pick<ChatModelChoiceService, 'resolveForTurn'>;
-
   /** Project repository for session persistence */
   projectRepository: {
     get(id: string): Project | undefined;
@@ -266,10 +264,9 @@ export interface StreamingSessionServiceDeps {
     countAssistantMessages(sessionId: string, chatSessionId: string): number;
   };
 
-  /** Chat session repository for Claude SDK session ID storage */
+  /** Chat session repository for native provider session ID storage */
   chatSessionRepository: {
     get(id: string): {
-      claude_session_id: string | null;
       provider?: ChatProvider | null;
       provider_session_id?: string | null;
       title: string | null;
@@ -278,11 +275,9 @@ export interface StreamingSessionServiceDeps {
       scope?: ChatSessionScope | null;
     } | undefined;
     create(id: string, projectId: string, provider?: ChatProvider): { id: string };
-    updateClaudeSessionId(id: string, claudeSessionId: string): void;
-    updateProviderSessionId?(id: string, provider: ChatProvider, providerSessionId: string): void;
+    updateProviderSessionId(id: string, provider: ChatProvider, providerSessionId: string): void;
     updateTitle(id: string, title: string | null, source: ChatTitleSource | null, turn: number | null): void;
-    clearClaudeSessionIdsByProject(projectId: string): void;
-    clearProviderSessionIdsByProject?(projectId: string): void;
+    clearProviderSessionIdsByProject(projectId: string): void;
   };
 
   /** Function to get the main window for IPC */
@@ -344,7 +339,7 @@ export interface StreamingSessionServiceDeps {
  * table instead of branching on `provider === 'claude' | 'codex'`.
  */
 interface ChatProviderConfig {
-  usageModel: (managed: Pick<ManagedSession, 'model' | 'providerModel'>) => string;
+  usageModel: (managed: Pick<ManagedSession, 'selection'>) => string;
   resolveResumeSessionId: (
     chatSession: ReturnType<StreamingSessionServiceDeps['chatSessionRepository']['get']>
   ) => string | undefined;
@@ -357,8 +352,13 @@ interface ChatProviderConfig {
   fetchSessionSummary?: (sdkSessionId: string) => Promise<ProviderSessionSummary | undefined>;
 }
 
-function getManagedDisplayModel(managed: Pick<ManagedSession, 'provider' | 'model' | 'providerModel'>): string {
-  return managed.provider !== 'claude' && managed.providerModel ? managed.providerModel : managed.model;
+/** The launch-relevant part of a turn's choice; effort and revision are tracked apart. */
+function choiceSelection(choice: ResolvedChatChoice): ChatModelSelection {
+  switch (choice.provider) {
+    case 'claude': return { provider: 'claude', model: choice.model };
+    case 'codex': return { provider: 'codex', model: choice.model };
+    case 'pi': return { provider: 'pi', model: choice.model };
+  }
 }
 
 /**
@@ -410,21 +410,20 @@ function authErrorMessage(provider: ChatProvider): string {
 
 export const CHAT_PROVIDER_CONFIG: Record<ChatProvider, ChatProviderConfig> = {
   claude: {
-    usageModel: (managed) => managed.model,
+    usageModel: (managed) => managed.selection.model,
     resolveResumeSessionId: (chatSession) =>
-      chatSession?.provider === 'claude' ? chatSession.claude_session_id ?? undefined : undefined,
+      chatSession?.provider === 'claude' ? chatSession.provider_session_id ?? undefined : undefined,
     persistSessionId: (repo, chatSessionId, sessionId) => {
-      repo.updateClaudeSessionId(chatSessionId, sessionId);
-      repo.updateProviderSessionId?.(chatSessionId, 'claude', sessionId);
+      repo.updateProviderSessionId(chatSessionId, 'claude', sessionId);
     },
     fetchSessionSummary: getSessionInfo,
   },
   codex: {
-    usageModel: (managed) => managed.providerModel ?? 'codex',
+    usageModel: (managed) => managed.selection.model,
     resolveResumeSessionId: (chatSession) =>
       chatSession?.provider === 'codex' ? chatSession.provider_session_id ?? undefined : undefined,
     persistSessionId: (repo, chatSessionId, sessionId) => {
-      repo.updateProviderSessionId?.(chatSessionId, 'codex', sessionId);
+      repo.updateProviderSessionId(chatSessionId, 'codex', sessionId);
     },
   },
   pi: {
@@ -432,7 +431,7 @@ export const CHAT_PROVIDER_CONFIG: Record<ChatProvider, ChatProviderConfig> = {
     resolveResumeSessionId: (chatSession) =>
       chatSession?.provider === 'pi' ? chatSession.provider_session_id ?? undefined : undefined,
     persistSessionId: (repo, chatSessionId, sessionId) => {
-      repo.updateProviderSessionId?.(chatSessionId, 'pi', sessionId);
+      repo.updateProviderSessionId(chatSessionId, 'pi', sessionId);
     },
   },
 };
@@ -568,11 +567,6 @@ export function finalizeTurnResult(
   // Check if response was truncated
   if (maxTokensReached) {
     console.log(`[StreamingSessionService] Response truncated (max_tokens) for ${key}`);
-    emitAppEvent(mainWindow?.webContents, chatEvents.truncated, {
-      projectId,
-      chatSessionId,
-      reason: 'max_tokens',
-    });
   }
 
   // End-of-turn banners are sent after the turn is finalized below: an error
@@ -611,8 +605,8 @@ export function finalizeTurnResult(
         finalResponse,
         managed.chatSessionId,
         undefined,
-        managed.provider,
-        managed.resolvedModel ?? getManagedDisplayModel(managed),
+        managed.selection.provider,
+        managed.resolvedModel ?? managed.selection.model,
       );
     }
   } catch (dbError) {
@@ -656,7 +650,7 @@ export function finalizeTurnResult(
     cause: 'result',
     hasQueuedFollowUp,
     outcome: {
-      model: managed.resolvedModel ?? getManagedDisplayModel(managed),
+      model: managed.resolvedModel ?? managed.selection.model,
       hasQueuedFollowUp,
       queuedClientMessageId: nextQueuedClientMessageId,
       consumedQueuedClientMessageId: firstLiveFollowUpClientMessageId,
@@ -694,7 +688,7 @@ export function finalizeTurnResult(
     managed.resolvedModel = undefined;
   }
 
-  const fetchSessionSummary = CHAT_PROVIDER_CONFIG[managed.provider].fetchSessionSummary;
+  const fetchSessionSummary = CHAT_PROVIDER_CONFIG[managed.selection.provider].fetchSessionSummary;
   const sdkSessionId = managed.sessionId;
   if (managed.persistHistory) {
     void deps.titler.onTurnCompleted({
@@ -715,7 +709,7 @@ export function finalizeTurnResult(
   // actionable banner naming how to reconnect the failing provider.
   if (isAuthError) {
     console.log(`[StreamingSessionService] Auth error detected for ${key} — tearing down session`);
-    sendChatError(mainWindow, projectId, chatSessionId, authErrorMessage(managed.provider));
+    sendChatError(mainWindow, projectId, chatSessionId, authErrorMessage(managed.selection.provider));
     void deps.disconnectSession(key, { silent: true });
   }
 
@@ -779,7 +773,7 @@ export function finalizeTurnResult(
         } else {
           deps.recordUsage({
             projectId,
-            model: resultMsg.model ?? CHAT_PROVIDER_CONFIG[managed.provider].usageModel(managed),
+            model: resultMsg.model ?? CHAT_PROVIDER_CONFIG[managed.selection.provider].usageModel(managed),
             usage: sdkMsg.usage,
             totalCostUsd: totalCostUsd ?? null,
             ...(resultMsg.costUnknown ? { costUnknown: true } : {}),
@@ -821,6 +815,19 @@ export function finalizeTurnResult(
 
 export function createStreamingSessionService(deps: StreamingSessionServiceDeps) {
   const sessions = new Map<string, ManagedSession>();
+  const fileUpdates = createFileUpdateOutbox(
+    (update) => emitAppEvent(deps.getMainWindow()?.webContents, chatEvents.proposal, { kind: 'file-update', ...update }),
+    getConfig().session.fileUpdateQuietMs,
+  );
+
+  /**
+   * End of a turn's edits: later edits start again from disk, and any edits
+   * still held go to the approval queue as one proposal per file.
+   */
+  function settleTurnEdits(key: string, chatSessionId: string | undefined): void {
+    if (chatSessionId) clearPendingDocumentContent(chatSessionId);
+    void fileUpdates.flush(key);
+  }
   let cleanupInterval: NodeJS.Timeout | null = null;
   let cleanupTaskRegistered = false;
 
@@ -1054,7 +1061,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
     // Clear pending document content cache from prior turns so edits
     // in this new message start fresh against on-disk content.
-    if (managed.chatSessionId) clearPendingDocumentContent(managed.chatSessionId);
+    settleTurnEdits(key, managed.chatSessionId);
 
     managed.hasStreamedResponseText = false;
     managed.resolvedModel = undefined;
@@ -1092,11 +1099,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     key: string;
     projectId: string;
     chatSessionId?: string;
-    provider: ChatProvider;
+    selection: ChatModelSelection;
     initialMessage: MessageEnvelope;
-    model: ModelType;
-    /** pi-only `"<provider>/<modelId>"` selection; ignored unless `provider` is `'pi'`. */
-    providerModel?: string;
     effort?: ChatChoiceEffort | null;
     resumeSessionId?: string;
     context: PlanContext;
@@ -1122,8 +1126,12 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
       if (proposal.projectId !== projectId || !matchesSession) return;
 
+      const emitProposal = (data: ChatProposalEventData) =>
+        emitAppEvent(mainWindow?.webContents, chatEvents.proposal, data);
+
       if (proposal.type === 'plan-actions') {
-        emitAppEvent(mainWindow?.webContents, chatEvents.planActions, {
+        emitProposal({
+          kind: 'plan-actions',
           projectId: proposal.projectId,
           chatSessionId: proposal.chatSessionId,
           actions: proposal.actions,
@@ -1134,7 +1142,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       if (proposal.type === 'project-context-update') {
         // The tool already read the file to validate old_string; reuse what
         // it captured rather than reading disk a second time.
-        emitAppEvent(mainWindow?.webContents, chatEvents.fileUpdate, {
+        fileUpdates.stage(key, {
           projectId,
           chatSessionId,
           filePath: proposal.filename ?? DEFAULT_CONTEXT_FILENAME,
@@ -1148,7 +1156,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       if (proposal.type === 'document-update') {
         // The tool already has the pre-edit content (or null for create);
         // forward it instead of re-reading disk.
-        emitAppEvent(mainWindow?.webContents, chatEvents.fileUpdate, {
+        fileUpdates.stage(key, {
           projectId,
           chatSessionId,
           filePath: proposal.filePath,
@@ -1160,7 +1168,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       }
 
       if (proposal.type === 'file-move') {
-        emitAppEvent(mainWindow?.webContents, chatEvents.fileMove, {
+        emitProposal({
+          kind: 'file-move',
           projectId,
           chatSessionId,
           sourcePath: proposal.sourcePath,
@@ -1170,7 +1179,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       }
 
       if (proposal.type === 'file-delete') {
-        emitAppEvent(mainWindow?.webContents, chatEvents.fileDelete, {
+        emitProposal({
+          kind: 'file-delete',
           projectId,
           chatSessionId,
           path: proposal.path,
@@ -1180,7 +1190,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       }
 
       if (proposal.type === 'config-change') {
-        emitAppEvent(mainWindow?.webContents, chatEvents.configChange, {
+        emitProposal({
+          kind: 'config-change',
           projectId,
           chatSessionId,
           change: proposal.change,
@@ -1189,7 +1200,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       }
 
       if (proposal.type === 'board-change') {
-        emitAppEvent(mainWindow?.webContents, chatEvents.boardChange, {
+        emitProposal({
+          kind: 'board-change',
           projectId,
           chatSessionId,
           change: proposal.change,
@@ -1212,7 +1224,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     mainWindow: BrowserWindow | null,
     launched: { session?: IChatSession },
   ): ChatSessionHost {
-    const { key, projectId, chatSessionId, provider, persistHistory, forceApprovalReview, onMessage } = config;
+    const { key, projectId, chatSessionId, persistHistory, forceApprovalReview, onMessage } = config;
+    const { provider } = config.selection;
 
     /**
      * The registry entry this launch owns, or nothing once a reconnect has
@@ -1306,35 +1319,31 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         // this turn builds on this content instead of stale disk — the
         // interception denies the write, so disk never reflects it.
         recordPendingDocumentContent(chatSessionId, CONTEXT_FILE_PENDING_CACHE_KEY, newContent);
-        void (async () => {
+        fileUpdates.stage(key, (async () => {
           const currentContent = await deps.readProjectContextFile(editProjectId);
-          emitAppEvent(mainWindow?.webContents, chatEvents.fileUpdate, {
+          return {
             projectId: editProjectId,
             chatSessionId,
             filePath: currentContent.filename ?? DEFAULT_CONTEXT_FILENAME,
             content: newContent,
             oldContent: currentContent.success ? currentContent.content : null,
             forceReview: sessions.get(key)?.forceApprovalReview ?? forceApprovalReview,
-          });
-        })().catch((error) => {
-          console.error('[StreamingSessionService] Failed to read context file for intercepted edit:', error);
-        });
+          };
+        })());
       },
       onProjectFileWrite: (writeProjectId, filePath, content) => {
         recordPendingDocumentContent(chatSessionId, filePath, content);
-        void (async () => {
+        fileUpdates.stage(key, (async () => {
           const currentContent = await deps.readDocumentFile(writeProjectId, filePath);
-          emitAppEvent(mainWindow?.webContents, chatEvents.fileUpdate, {
+          return {
             projectId: writeProjectId,
             chatSessionId,
             filePath,
             content,
             oldContent: currentContent.success ? currentContent.content : null,
-            forceReview: forceApprovalReview,
-          });
-        })().catch((error) => {
-          console.error('[StreamingSessionService] Failed to read file for intercepted write:', error);
-        });
+            forceReview: sessions.get(key)?.forceApprovalReview ?? forceApprovalReview,
+          };
+        })());
       },
       // Successive Edit/Write calls to one file in a turn must accumulate;
       // the interception denies each write, so disk stays unchanged.
@@ -1374,9 +1383,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         key,
         projectId,
         chatSessionId,
-        provider: config.provider,
-        model: config.model,
-        providerModel: config.providerModel,
+        selection: config.selection,
         effort: config.effort,
         context: config.context,
         resumeSessionId: config.resumeSessionId,
@@ -1420,7 +1427,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       if (managed) {
         managed.state = 'error';
         managed.suppressLifecycleEventsOnEnd = true;
-        if (managed.chatSessionId) clearPendingDocumentContent(managed.chatSessionId);
+        settleTurnEdits(key, managed.chatSessionId);
         managed.unsubscribeToolProposals();
         try {
           await managed.session.close();
@@ -1464,32 +1471,23 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       });
     } else {
       // Disconnect all sessions for project (worktree switch / project close).
-      // Also null out persisted claude_session_ids so the next send spawns a
-      // fresh SDK session: resuming would re-use the old spawn-time cwd even
+      // Also null out persisted provider session ids so the next send spawns a
+      // fresh session: resuming would re-use the old spawn-time cwd even
       // after the repo's active_worktree_path has changed.
       const keys = getSessionKeysForProject(projectId);
       await Promise.all(keys.map(key => disconnectSession(key, {
         reason: 'disconnect_all_sessions',
         source: 'disconnectChatSession',
       })));
-      deps.chatSessionRepository.clearClaudeSessionIdsByProject(projectId);
-      deps.chatSessionRepository.clearProviderSessionIdsByProject?.(projectId);
+      deps.chatSessionRepository.clearProviderSessionIdsByProject(projectId);
     }
     return success(undefined);
   }
 
   /** Options for sending a chat message */
   interface SendChatMessageOptions {
-    /** Main-process-only snapshot resolved by ChatService at turn acceptance. */
-    authoritativeChoice?: ResolvedChatChoice;
-    /** @deprecated Main-process callers use modelChoice; retained for headless tests. */
-    provider?: ChatProvider;
-    /** @deprecated Main-process callers use modelChoice; retained for headless tests. */
-    model?: ModelType;
-    /** @deprecated Main-process callers use modelChoice; retained for headless tests. */
-    providerModel?: string;
-    /** @deprecated Main-process callers use modelChoice; retained for headless tests. */
-    effort?: ChatChoiceEffort | null;
+    /** Resolved by ChatService when it accepts the turn. */
+    choice: ResolvedChatChoice;
     focusedResources?: FocusedResource[];
     chatSessionId?: string;
     /** Current UI view - injected as a per-message `[Context: …]` hint */
@@ -1512,7 +1510,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
   async function sendChatMessage(
     projectId: string,
     message: string,
-    options: SendChatMessageOptions = {}
+    options: SendChatMessageOptions,
   ): AsyncResult<void> {
     // chatSessionId is required for multi-session support
     const chatSessionId = options.chatSessionId;
@@ -1520,46 +1518,26 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       return failure('chatSessionId is required');
     }
 
-    let selected = options.authoritativeChoice;
-    if (!selected && deps.modelChoice) {
-      const resolved = await deps.modelChoice.resolveForTurn(projectId, chatSessionId);
-      if (!resolved.ok) return failure(resolved.error);
-      selected = resolved.data;
-    }
-    if (selected) {
-      if (selected.provider === 'claude' && selected.model !== 'sonnet' && selected.model !== 'opus') {
-        return failure(`The saved Claude model “${selected.model}” is unavailable. Choose another model.`);
-      }
-      options = {
-        ...options,
-        provider: selected.provider,
-        model: selected.provider === 'claude' ? selected.model as ModelType : 'sonnet',
-        providerModel: selected.provider === 'claude' ? undefined : selected.model,
-        effort: selected.effort,
-      };
-    }
-
-    const provider = options.provider ?? 'claude';
-    const desiredModel = options.model ?? 'sonnet';
+    const { choice } = options;
     const key = buildSessionKey(projectId, chatSessionId);
     const managed = sessions.get(key);
 
     if (managed) {
-      const providerChanged = managed.provider !== provider;
-      const nativeOptionsChanged = provider !== 'claude' && (
-        managed.providerModel !== options.providerModel || managed.effort !== options.effort
-      );
-      const claudeEffortChanged = provider === 'claude' && managed.effort !== options.effort;
-      if (providerChanged || nativeOptionsChanged || claudeEffortChanged) {
+      const live = managed.selection;
+      const providerChanged = live.provider !== choice.provider;
+      const effortChanged = managed.effort !== choice.effort;
+      // Claude can switch models in place; Codex and pi bake theirs in at launch.
+      const nativeModelChanged = choice.provider !== 'claude' && live.model !== choice.model;
+      if (providerChanged || nativeModelChanged || effortChanged) {
         await disconnectSession(key, {
           reason: providerChanged ? 'provider_changed' : 'provider_model_or_effort_changed',
           source: 'sendChatMessage',
         });
-      } else if (provider === 'claude' && managed.model !== desiredModel) {
+      } else if (choice.provider === 'claude' && live.model !== choice.model) {
         if (managed.session.setModel) {
           try {
-            await managed.session.setModel(desiredModel);
-            managed.model = desiredModel;
+            await managed.session.setModel(choice.model);
+            managed.selection = { provider: 'claude', model: choice.model };
           } catch (error) {
             return failure(`Failed to apply Chat model choice: ${(error as Error).message}`);
           }
@@ -1628,7 +1606,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
   async function createChatSession(
     projectId: string,
     initialMessage: MessageEnvelope,
-    options: SendChatMessageOptions = {}
+    options: SendChatMessageOptions,
   ): AsyncResult<{ sessionId: string }> {
     const project = deps.projectRepository.get(projectId);
     if (!project) {
@@ -1655,7 +1633,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
     // Get or create chat session for Claude SDK session tracking
     let resumeSessionId: string | undefined;
-    const provider = options.provider ?? 'claude';
+    const { choice } = options;
+    const { provider } = choice;
 
     if (persistHistory) {
       // Look up existing chat session for resume
@@ -1669,7 +1648,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     }
 
     // When spawning a fresh SDK session for a chat that already has KPM-side
-    // history (e.g. after a worktree switch cleared the claude_session_id),
+    // history (e.g. after a worktree switch cleared the provider session id),
     // seed the fresh session with a replay of prior turns so the conversation
     // keeps its thread. Skipped for normal resumes — the SDK's own transcript
     // carries that context.
@@ -1685,11 +1664,9 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       key: sessionKey,
       projectId,
       chatSessionId,
-      provider,
+      selection: choiceSelection(choice),
       initialMessage,
-      model: options.model ?? 'sonnet',
-      providerModel: options.providerModel,
-      effort: options.effort,
+      effort: choice.effort,
       resumeSessionId,
       context,
       persistHistory,
@@ -1754,6 +1731,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
       // Reset state to ready so new messages can be sent
       resetToReady(managed);
+      settleTurnEdits(sessionKey, managed.chatSessionId);
       return success(undefined);
     } catch (error) {
       // If interrupt fails, try to disconnect the session
@@ -1800,14 +1778,6 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     }
 
     managed.queuedFollowUpAt = Date.now();
-
-    const mainWindow = deps.getMainWindow();
-    emitAppEvent(mainWindow?.webContents, chatEvents.queued, {
-      projectId: managed.projectId,
-      chatSessionId: managed.chatSessionId,
-      clientMessageId,
-    });
-
     return success(undefined);
   }
 
@@ -1849,24 +1819,6 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
   }
 
   /**
-   * Change the model for a session.
-   */
-  async function setModel(sessionKey: string, model: ModelType): AsyncResult<void> {
-    const managed = sessions.get(sessionKey);
-    if (!managed) {
-      return failure('No active session');
-    }
-
-    try {
-      await managed.session.setModel?.(model);
-      managed.model = model;
-      return success(undefined);
-    } catch (error) {
-      return failure(`Failed to set model: ${(error as Error).message}`);
-    }
-  }
-
-  /**
    * Dispose all sessions.
    * Called on app quit.
    */
@@ -1898,7 +1850,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     if (!managed) return;
     const stateBefore = managed.state;
 
-    if (managed.chatSessionId) clearPendingDocumentContent(managed.chatSessionId);
+    settleTurnEdits(key, managed.chatSessionId);
     managed.state = 'closing';
     managed.unsubscribeToolProposals();
     managed.suppressLifecycleEventsOnEnd = !!options.silent;
@@ -2052,6 +2004,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
             titler,
             disconnectSession,
           });
+          settleTurnEdits(key, chatSessionId);
           break;
       }
     }
@@ -2066,7 +2019,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
   ): void {
     const stateBefore = managed.state;
 
-    if (managed.chatSessionId) clearPendingDocumentContent(managed.chatSessionId);
+    settleTurnEdits(key, managed.chatSessionId);
     managed.unsubscribeToolProposals();
 
     sessions.delete(key);
@@ -2277,8 +2230,6 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       interrupt(buildSessionKey(projectId, chatSessionId)),
     cancelQueuedChatMessage: (projectId: string, chatSessionId: string, clientMessageId?: string) =>
       cancelQueuedMessage(projectId, chatSessionId, clientMessageId),
-    setChatModel: (projectId: string, chatSessionId: string, model: ModelType) =>
-      setModel(buildSessionKey(projectId, chatSessionId), model),
     disposeAll,
   };
 }

@@ -50,7 +50,7 @@ function makeSession(overrides: Partial<PerSessionState> = {}): PerSessionState 
     title: null,
     firstMessage: null,
     pendingTitle: null,
-    claudeSessionId: null,
+    providerSessionId: null,
     mcpDegraded: false,
     mcpError: null,
     hydrated: true,

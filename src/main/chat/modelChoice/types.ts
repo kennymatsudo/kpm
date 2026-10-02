@@ -2,8 +2,9 @@ import type { ServiceResult } from '../../services/result';
 import type {
   ChatChoiceIntent,
   ChatChoiceView,
-  ChatProvider,
   ChatSessionScope,
+  ClaudeModel,
+  CodexChatModel,
   PersistedChatModelChoice,
 } from '../../../shared/types';
 
@@ -30,12 +31,17 @@ export interface ChatChoiceChangeInput {
   responding?: boolean;
 }
 
-export interface ResolvedChatChoice {
-  provider: ChatProvider;
-  model: string;
+/** The provider a chat runs on and that provider's own kind of model id. */
+export type ChatModelSelection =
+  | { provider: 'claude'; model: ClaudeModel }
+  | { provider: 'codex'; model: CodexChatModel }
+  /** `"<provider>/<modelId>"`, as pi names its models. */
+  | { provider: 'pi'; model: string };
+
+export type ResolvedChatChoice = ChatModelSelection & {
   effort: ChatChoiceView['selected']['effort'];
   revision: number;
-}
+};
 
 export interface ChatChoiceSessionRow {
   id: string;

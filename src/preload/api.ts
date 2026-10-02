@@ -249,19 +249,13 @@ const chat = {
       { projectId, path, title, contentHash },
     ),
   onChunk: chatSubscriptions.chunk,
-  onPlanActions: chatSubscriptions.planActions,
+  onProposal: chatSubscriptions.proposal,
   onDone: chatSubscriptions.done,
-  onQueued: chatSubscriptions.queued,
   onQueueCleared: chatSubscriptions.queueCleared,
   onError: chatSubscriptions.error,
   onActivity: chatSubscriptions.activity,
   onThinking: chatSubscriptions.thinking,
   onBackgroundTasks: chatSubscriptions.backgroundTasks,
-  onFileUpdate: chatSubscriptions.fileUpdate,
-  onFileMove: chatSubscriptions.fileMove,
-  onFileDelete: chatSubscriptions.fileDelete,
-  onConfigChange: chatSubscriptions.configChange,
-  onBoardChange: chatSubscriptions.boardChange,
 
   // ─── Streaming Session Methods ───
 

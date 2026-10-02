@@ -26,48 +26,31 @@ export interface ChunkEventData {
   precedingActivities?: Activity[];
 }
 
-export interface PlanActionsEventData {
+/** The project and chat a proposal came from. */
+interface ProposalScope {
   projectId: string;
   chatSessionId?: string;
-  actions: PlanAction[];
 }
 
-export interface FileUpdateEventData {
-  projectId: string;
-  chatSessionId?: string;
+export interface FileUpdateEventData extends ProposalScope {
   filePath: string;
   content: string;
   oldContent?: string | null;
   forceReview?: boolean;
 }
 
-export interface FileMoveEventData {
-  projectId: string;
-  chatSessionId?: string;
-  sourcePath: string;
-  targetPath: string;
-}
-
-/** A chat-proposed configuration change; always queued for review. */
-export interface ConfigChangeEventData {
-  projectId: string;
-  chatSessionId?: string;
-  change: ConfigChange;
-}
-
-/** A chat-proposed board change; follows the user's review setting. */
-export interface BoardChangeEventData {
-  projectId: string;
-  chatSessionId?: string;
-  change: BoardChange;
-}
-
-export interface FileDeleteEventData {
-  projectId: string;
-  chatSessionId?: string;
-  path: string;
-  isDirectory: boolean;
-}
+/**
+ * One change a chat turn proposes, bound for the approval queue. Every kind
+ * follows the user's review setting except `config-change`, which always
+ * queues for review (P8), and a file update with `forceReview`.
+ */
+export type ChatProposalEventData =
+  | (ProposalScope & { kind: 'plan-actions'; actions: PlanAction[] })
+  | ({ kind: 'file-update' } & FileUpdateEventData)
+  | (ProposalScope & { kind: 'file-move'; sourcePath: string; targetPath: string })
+  | (ProposalScope & { kind: 'file-delete'; path: string; isDirectory: boolean })
+  | (ProposalScope & { kind: 'config-change'; change: ConfigChange })
+  | (ProposalScope & { kind: 'board-change'; change: BoardChange });
 
 /** Payload for `chat:done` — a turn's result fields, no lifecycle metadata. */
 export interface TurnDoneEventData {
@@ -106,12 +89,6 @@ export interface SessionLifecycleEventData {
   reason?: string;
   source?: string;
   previousState?: string;
-}
-
-export interface QueuedEventData {
-  projectId: string;
-  chatSessionId?: string;
-  clientMessageId?: string;
 }
 
 export interface QueueClearedEventData {
@@ -194,19 +171,13 @@ export interface McpStatusEventData {
 
 export const chatEvents = {
   chunk: { channel: 'chat:chunk', payload: payloadOf<ChunkEventData>() },
-  planActions: { channel: 'chat:plan-actions', payload: payloadOf<PlanActionsEventData>() },
+  proposal: { channel: 'chat:proposal', payload: payloadOf<ChatProposalEventData>() },
   done: { channel: 'chat:done', payload: payloadOf<TurnDoneEventData>() },
-  queued: { channel: 'chat:queued', payload: payloadOf<QueuedEventData>() },
   queueCleared: { channel: 'chat:queue-cleared', payload: payloadOf<QueueClearedEventData>() },
   error: { channel: 'chat:error', payload: payloadOf<ErrorEventData>() },
   activity: { channel: 'chat:activity', payload: payloadOf<ActivityEventData>() },
   thinking: { channel: 'chat:thinking', payload: payloadOf<ThinkingEventData>() },
   backgroundTasks: { channel: 'chat:background-tasks', payload: payloadOf<BackgroundTasksEventData>() },
-  fileUpdate: { channel: 'chat:file-update', payload: payloadOf<FileUpdateEventData>() },
-  fileMove: { channel: 'chat:file-move', payload: payloadOf<FileMoveEventData>() },
-  fileDelete: { channel: 'chat:file-delete', payload: payloadOf<FileDeleteEventData>() },
-  configChange: { channel: 'chat:config-change', payload: payloadOf<ConfigChangeEventData>() },
-  boardChange: { channel: 'chat:board-change', payload: payloadOf<BoardChangeEventData>() },
   sessionConnecting: { channel: 'chat:session-connecting', payload: payloadOf<SessionLifecycleEventData>() },
   sessionReady: { channel: 'chat:session-ready', payload: payloadOf<SessionReadyEventData>() },
   sessionTitle: { channel: 'chat:session-title', payload: payloadOf<SessionTitleEventData>() },
@@ -217,12 +188,6 @@ export const chatEvents = {
   mcpStatus: { channel: 'chat:mcp-status', payload: payloadOf<McpStatusEventData>() },
   /** Claude's or Codex's model list changed after the launch-time refresh. */
   modelCatalog: { channel: 'chat:model-catalog', payload: payloadOf<ModelCatalog>() },
-  /**
-   * Emitted when a turn's response was truncated by hitting the max_tokens
-   * limit. No preload subscriber exists today — kept wired per the
-   * migration's "don't silently delete a dead event" rule.
-   */
-  truncated: { channel: 'chat:truncated', payload: payloadOf<{ projectId: string; chatSessionId: string; reason: 'max_tokens' }>() },
 } satisfies Record<string, EventDefinition>;
 
 export type ChatEvents = typeof chatEvents;

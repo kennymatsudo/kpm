@@ -8,7 +8,7 @@ import type {
   PiProviderOption,
   ProvidersReadiness,
 } from '../../../shared/types';
-import type { ModelCatalog } from '../../../shared/modelCatalog';
+import { CLAUDE_CHAT_MODEL_IDS, type ModelCatalog } from '../../../shared/modelCatalog';
 import { failure, success, type AsyncResult, type ServiceResult } from '../../services/result';
 import {
   buildChatChoiceCatalog,
@@ -334,7 +334,12 @@ export function createChatModelChoiceService(deps: ChatModelChoiceDeps): ChatMod
     const opened = await open(input);
     if (!opened.ok) return opened;
     if (!opened.data.send.allowed) return failure(opened.data.send.reason ?? 'The saved Chat model choice is unavailable.');
-    return success({ ...opened.data.selected, revision: opened.data.revision });
+    const { provider, model, effort } = opened.data.selected;
+    const revision = opened.data.revision;
+    if (provider !== 'claude') return success({ provider, model, effort, revision });
+    const claudeModel = CLAUDE_CHAT_MODEL_IDS.find((id) => id === model);
+    if (!claudeModel) return failure(`The saved Claude model “${model}” is unavailable. Choose another model.`);
+    return success({ provider, model: claudeModel, effort, revision });
   }
 
   return { open, change, resolveForTurn };

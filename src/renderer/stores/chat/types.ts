@@ -25,7 +25,7 @@ export interface Message {
   attachments?: ChatAttachment[];
   /**
    * Renderer-supplied id used to correlate user messages with backend
-   * `chat:queued` / `chat:queue-cleared` events. Only set on user messages.
+   * `chat:done` / `chat:queue-cleared` events. Only set on user messages.
    */
   clientMessageId?: string;
   /**
@@ -81,8 +81,8 @@ export interface PerSessionState {
   firstMessage: string | null;
   /** A retitle that arrived while this chat was on screen; applied once the user looks away. */
   pendingTitle: string | null;
-  /** Claude SDK session ID (for debugging) */
-  claudeSessionId: string | null;
+  /** The provider's native session ID, for the copy button */
+  providerSessionId: string | null;
   /** Whether the KPM MCP server is degraded (tools unavailable) */
   mcpDegraded: boolean;
   /** Error message when MCP is degraded */
@@ -213,7 +213,7 @@ export interface ChatState {
   setDraftMessage: (chatSessionId: string, message: string) => void;
   setPendingAttachments: (chatSessionId: string, attachments: ChatAttachment[]) => void;
   setSuggestions: (chatSessionId: string, suggestions: string[]) => void;
-  setClaudeSessionId: (chatSessionId: string, claudeSessionId: string) => void;
+  setProviderSessionId: (chatSessionId: string, providerSessionId: string) => void;
   /** A retitle of the chat on screen waits in `pendingTitle` so its tab doesn't change under the user. */
   setSessionTitle: (chatSessionId: string, title: string) => void;
   setMcpStatus: (chatSessionId: string, degraded: boolean, error?: string | null) => void;

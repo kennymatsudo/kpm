@@ -70,6 +70,8 @@ export interface ClaudeConfig {
 export interface SessionConfig {
   /** Main chat idle timeout (ms) - disconnect after inactivity */
   mainIdleTimeoutMs: number;
+  /** How long a chat's intercepted file edits must go quiet before they reach the approval queue mid-turn (ms) */
+  fileUpdateQuietMs: number;
   /** Max time for single response processing (ms) - hard cap */
   processingTimeoutMs: number;
   /** Max time with no SDK activity while processing (ms) - detects hung sessions */
@@ -248,6 +250,7 @@ function createDefaultConfig(): AppConfig {
 
     session: {
       mainIdleTimeoutMs: 30 * 60 * 1000, // 30 minutes
+      fileUpdateQuietMs: 1000,
       processingTimeoutMs: 60 * 60 * 1000, // 60 minutes (hard cap for very long turns)
       processingIdleTimeoutMs: 30 * 60 * 1000, // 30 minutes with no SDK activity = likely hung
       permissionRequestTimeoutMs: 60 * 60 * 1000, // 60 minutes for permission prompts

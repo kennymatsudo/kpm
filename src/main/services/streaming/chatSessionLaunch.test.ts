@@ -7,6 +7,7 @@ import {
 } from './chatSessionLaunch';
 import type { IChatSession } from './IChatSession';
 import type { PlanContext } from '../../chat/prompts';
+import type { ChatModelSelection } from '../../chat/modelChoice';
 import type { ChatChoiceEffort, ChatProvider } from '../../../shared/types';
 
 vi.mock('../../codex/KpmCodexMcpServer', () => ({
@@ -68,8 +69,7 @@ function makeRequest(overrides: Partial<ChatLaunchRequest> = {}): ChatLaunchRequ
     key: 'chat:project-1:session-1',
     projectId: 'project-1',
     chatSessionId: 'session-1',
-    provider: 'claude',
-    model: 'sonnet',
+    selection: { provider: 'claude', model: 'sonnet' },
     context: {} as PlanContext,
     persistHistory: true,
     forceApprovalReview: false,
@@ -96,8 +96,7 @@ describe('buildChatSessionLaunch', () => {
   it('gives Claude its SDK options, with no window and no SDK client', () => {
     const host = makeHost();
     const { captured } = launchWith({
-      provider: 'claude',
-      model: 'opus',
+      selection: { provider: 'claude', model: 'opus' },
       effort: 'high',
       resumeSessionId: 'sdk-session-9',
       host,
@@ -123,9 +122,7 @@ describe('buildChatSessionLaunch', () => {
   it('selects a Codex model and thread through the provider-native fields', () => {
     const host = makeHost();
     const { captured } = launchWith({
-      provider: 'codex',
-      model: 'sonnet',
-      providerModel: 'gpt-5.4-codex',
+      selection: { provider: 'codex', model: 'gpt-5.4-codex' },
       effort: 'xhigh',
       resumeSessionId: 'thread-4',
       host,
@@ -142,8 +139,7 @@ describe('buildChatSessionLaunch', () => {
 
   it('gives pi its tool set and passes the effort through as a thinking level', () => {
     const { captured } = launchWith({
-      provider: 'pi',
-      providerModel: 'anthropic/claude-opus-5',
+      selection: { provider: 'pi', model: 'anthropic/claude-opus-5' },
       effort: 'off',
       resumeSessionId: 'pi-session-2',
     });
@@ -164,10 +160,10 @@ describe('buildChatSessionLaunch', () => {
   it('scopes the tool set to the focused document when the context carries one', async () => {
     const focusContext = { focusDocument: { path: 'docs/spec.md' } } as unknown as PlanContext;
 
-    launchWith({ provider: 'pi', context: focusContext });
+    launchWith({ selection: { provider: 'pi', model: 'cursor/auto' }, context: focusContext });
     expect(buildPiKpmTools).toHaveBeenCalledWith(expect.objectContaining({ focus: true }));
 
-    const { captured } = launchWith({ provider: 'codex', context: focusContext });
+    const { captured } = launchWith({ selection: { provider: 'codex', model: 'gpt-5.4-codex' }, context: focusContext });
     await captured.codex?.registerMcpSession?.();
     expect(registerCodexMcpSession).toHaveBeenCalledWith({
       projectId: 'project-1',
@@ -188,13 +184,13 @@ describe('buildChatSessionLaunch', () => {
     ];
 
     it.each(cases)('narrows $effort per provider', ({ effort, claude, codex }) => {
-      launchWith({ provider: 'claude', effort });
+      launchWith({ selection: { provider: 'claude', model: 'sonnet' }, effort });
       expect(buildClaudeSdkOptions).toHaveBeenLastCalledWith({}, expect.objectContaining({ effort: claude }));
 
-      const codexLaunch = launchWith({ provider: 'codex', effort });
+      const codexLaunch = launchWith({ selection: { provider: 'codex', model: 'gpt-5.4-codex' }, effort });
       expect(codexLaunch.captured.codex?.modelReasoningEffort).toBe(codex);
 
-      const piLaunch = launchWith({ provider: 'pi', effort });
+      const piLaunch = launchWith({ selection: { provider: 'pi', model: 'cursor/auto' }, effort });
       expect(piLaunch.captured.pi?.thinkingLevel).toBe(effort);
     });
   });
@@ -202,7 +198,7 @@ describe('buildChatSessionLaunch', () => {
   describe('elicitation reaches the host from either provider', () => {
     it('forwards Claude elicitations with the turn abort signal', async () => {
       const host = makeHost();
-      const { captured } = launchWith({ provider: 'claude', host });
+      const { captured } = launchWith({ selection: { provider: 'claude', model: 'sonnet' }, host });
       const onElicitation = (captured.claude?.sdkOptions as unknown as {
         claudeOptions: { onElicitation: (request: unknown, options: unknown) => Promise<unknown> };
       }).claudeOptions.onElicitation;
@@ -215,7 +211,7 @@ describe('buildChatSessionLaunch', () => {
 
     it('forwards Codex elicitations', async () => {
       const host = makeHost();
-      const { captured } = launchWith({ provider: 'codex', host });
+      const { captured } = launchWith({ selection: { provider: 'codex', model: 'gpt-5.4-codex' }, host });
 
       await captured.codex?.onMcpElicitation?.({ mode: 'form', serverName: 'playwright' });
 
@@ -226,10 +222,11 @@ describe('buildChatSessionLaunch', () => {
   describe('the registry record', () => {
     it.each<ChatProvider>(['claude', 'codex', 'pi'])('describes a connecting %s session', (provider) => {
       const unsubscribeToolProposals = vi.fn();
+      const selection: ChatModelSelection = provider === 'claude'
+        ? { provider, model: 'opus' }
+        : { provider, model: 'provider-model' };
       const { session, managed } = launchWith({
-        provider,
-        model: 'opus',
-        providerModel: provider === 'claude' ? undefined : 'provider-model',
+        selection,
         effort: 'medium',
         persistHistory: false,
         forceApprovalReview: true,
@@ -242,8 +239,7 @@ describe('buildChatSessionLaunch', () => {
         chatSessionId: 'session-1',
         session,
         state: 'connecting',
-        provider,
-        model: 'opus',
+        selection,
         effort: 'medium',
         persistHistory: false,
         forceApprovalReview: true,

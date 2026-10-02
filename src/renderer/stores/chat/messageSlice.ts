@@ -4,7 +4,7 @@ import { streamingBuffer } from './utils';
 import { applyStreamEvent } from './chatStreamReducer';
 
 export function createMessageSlice(set: ChatSet, _get: ChatGet): Pick<ChatState,
-  'addUserMessage' | 'markFollowUpDelivered' | 'withdrawFollowUp' | 'setRetrying' | 'setError' | 'clearError' | 'setDraftMessage' | 'setPendingAttachments' | 'setSuggestions' | 'setClaudeSessionId' | 'setSessionTitle' | 'setMcpStatus' | 'setBackgroundTasks' | 'setLastTurnUsage' | 'setSessionState' | 'reset' | 'resetProjectState'
+  'addUserMessage' | 'markFollowUpDelivered' | 'withdrawFollowUp' | 'setRetrying' | 'setError' | 'clearError' | 'setDraftMessage' | 'setPendingAttachments' | 'setSuggestions' | 'setProviderSessionId' | 'setSessionTitle' | 'setMcpStatus' | 'setBackgroundTasks' | 'setLastTurnUsage' | 'setSessionState' | 'reset' | 'resetProjectState'
 > {
   return {
     addUserMessage: (chatSessionId, content, attachments, options) => set((state) => {
@@ -121,12 +121,12 @@ export function createMessageSlice(set: ChatSet, _get: ChatGet): Pick<ChatState,
       return { sessions };
     }),
 
-    setClaudeSessionId: (chatSessionId, claudeSessionId) => set((state) => {
+    setProviderSessionId: (chatSessionId, providerSessionId) => set((state) => {
       const sessions = new Map(state.sessions);
       const session = sessions.get(chatSessionId);
       if (!session) return state;
 
-      sessions.set(chatSessionId, { ...session, claudeSessionId });
+      sessions.set(chatSessionId, { ...session, providerSessionId });
       return { sessions };
     }),
 

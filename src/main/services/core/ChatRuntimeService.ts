@@ -69,7 +69,6 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
   });
 
   const streamingSessionService = createStreamingSessionService({
-    modelChoice,
     projectRepository: {
       get: container.projects.get.bind(container.projects),
       updateTokens: container.projects.updateTokens.bind(container.projects),
@@ -98,10 +97,8 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
     chatSessionRepository: {
       get: container.chatSessions.get.bind(container.chatSessions),
       create: container.chatSessions.create.bind(container.chatSessions),
-      updateClaudeSessionId: container.chatSessions.updateClaudeSessionId.bind(container.chatSessions),
       updateProviderSessionId: container.chatSessions.updateProviderSessionId.bind(container.chatSessions),
       updateTitle: container.chatSessions.updateTitle.bind(container.chatSessions),
-      clearClaudeSessionIdsByProject: container.chatSessions.clearClaudeSessionIdsByProject.bind(container.chatSessions),
       clearProviderSessionIdsByProject: container.chatSessions.clearProviderSessionIdsByProject.bind(container.chatSessions),
     },
     getMainWindow,

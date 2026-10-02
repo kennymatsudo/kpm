@@ -4869,6 +4869,21 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    id: 1134,
+    name: '134_drop_chat_sessions_claude_session_id',
+    up: (db: BetterSqliteDatabase) => {
+      // Since 094 every write sets provider_session_id beside the Claude-only
+      // column, so this copy should find nothing. It covers a row cleared on
+      // one column but not the other before the column goes.
+      db.exec(`
+        UPDATE chat_sessions
+        SET provider_session_id = claude_session_id
+        WHERE provider = 'claude' AND provider_session_id IS NULL AND claude_session_id IS NOT NULL;
+        ALTER TABLE chat_sessions DROP COLUMN claude_session_id;
+      `);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {
