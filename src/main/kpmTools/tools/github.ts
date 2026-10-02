@@ -28,18 +28,12 @@ import {
   listPrs,
   parsePrRef,
   repoOfPrUrl,
-  type PrReviewActivity,
 } from '../../services/repo/ghUtils';
-import type { GitHubAuthorType } from '../../../shared/types';
+import { MAX_DIFF_CHARS, MAX_REVIEW_COMMENT_CHARS, renderPullRequest } from './pullRequestText';
 import { resolveConnectedRepoPath } from './connectedRepo';
 import { resolveEffectiveRepoPath } from '../../../shared/repoPath';
 
-const MAX_DIFF_CHARS = 60_000;
 const MAX_CONTEXT_DIFF_CHARS = 50_000;
-const MAX_REVIEW_COMMENT_CHARS = 4_000;
-// Bots post their findings as review threads; what they leave in the discussion
-// is walkthroughs, coverage, and artifact lists, so it gets a tighter cut.
-const MAX_BOT_DISCUSSION_CHARS = 1_000;
 const DEFAULT_PR_SEARCH_LIMIT = 20;
 const MAX_PR_SEARCH_LIMIT = 100;
 /** Rejects anything that is not a plain `owner/name` slug before it reaches gh. */
@@ -47,72 +41,7 @@ const REPO_SLUG = /^[A-Za-z0-9][\w.-]*\/[\w.-]+$/;
 
 const READ_PR_DESCRIPTION = `Read a GitHub pull request: title, body, state, author, branches, and changed files, plus on request the diff, the review activity, and CI status. Use it whenever the user names a PR by URL, #123, or number, including PRs in repos not connected to this project. It is the only way to reach GitHub, because gh and git fetch in Bash have no network or credentials and fail however the user is logged in, so do not call a PR unreachable until this tool fails. With no PR number, use find_pull_requests first.
 
-Set only the parts the question needs: includeDiff for questions about the code, includeReviews for what reviewers or bots said, includeChecks for CI and merge readiness. A diff over ${MAX_DIFF_CHARS.toLocaleString()} characters is cut and says so, and each comment over ${MAX_REVIEW_COMMENT_CHARS.toLocaleString()} characters is marked truncated; report either instead of treating what you see as complete. Reviews and checks are a snapshot, so read again after the user says they pushed, replied, or re-ran CI. mergeable reads UNKNOWN while GitHub is still computing it, which is not the same as blocked. A failing check's url points at its CI run, for a CI tool to open.`;
-
-interface ChatReviewComment {
-  author: string;
-  bot?: true;
-  body: string;
-  truncated?: true;
-  at: string | null;
-}
-
-const HTML_COMMENT = /<!--[\s\S]*?-->/g;
-// Named tags only, so a generic like `Array<string>` in a code sample survives.
-const PRESENTATION_TAG = /<\/?(?:a|img|picture|source|details|summary|div|span|p|br|hr|sub|sup|b|i|strong|em|table|thead|tbody|tr|td|th)\b[^>]*>/gi;
-
-/**
- * Review bots (Bugbot, CodeRabbit, CI reporters) wrap their text in hidden
- * markers, badge images, and multi-kilobyte deep links. GitHub never shows the
- * markers and the link targets are opaque, so dropping them keeps the text a
- * reader sees at a fraction of the tokens.
- */
-function condenseCommentBody(body: string): string {
-  return body.replace(HTML_COMMENT, '').replace(PRESENTATION_TAG, '').replace(/\n{3,}/g, '\n\n').trim();
-}
-
-function toChatComment(
-  comment: { author: string; authorType: GitHubAuthorType; body: string },
-  at: string | null,
-  maxChars = MAX_REVIEW_COMMENT_CHARS,
-): ChatReviewComment {
-  const body = condenseCommentBody(comment.body);
-  const truncated = body.length > maxChars;
-  return {
-    author: comment.author,
-    ...(comment.authorType === 'Bot' && { bot: true as const }),
-    body: truncated ? body.slice(0, maxChars) : body,
-    ...(truncated && { truncated: true as const }),
-    at,
-  };
-}
-
-/**
- * The review activity trimmed to what a reader needs: GraphQL ids, permission
- * flags, and derived previews are dropped, as are the empty COMMENTED reviews
- * GitHub creates to hold inline comments, which the threads already carry.
- */
-function toChatReviews(activity: PrReviewActivity, includeResolvedThreads: boolean) {
-  const threads = activity.threads.filter((thread) => includeResolvedThreads || !thread.isResolved);
-  return {
-    summary: activity.summary,
-    reviews: activity.topLevelReviews
-      .filter((review) => review.state !== 'COMMENTED' || review.body.trim())
-      .map((review) => ({ ...toChatComment(review, review.submittedAt), state: review.state })),
-    threads: threads.map((thread) => ({
-      path: thread.path,
-      line: thread.line,
-      ...(thread.isOutdated && { outdated: true }),
-      ...(thread.isResolved && { resolvedBy: thread.resolvedBy }),
-      url: thread.url,
-      comments: thread.comments.map((comment) => toChatComment(comment, comment.createdAt)),
-    })),
-    discussion: activity.conversationComments.map((comment) =>
-      toChatComment(comment, comment.createdAt, comment.authorType === 'Bot' ? MAX_BOT_DISCUSSION_CHARS : MAX_REVIEW_COMMENT_CHARS)
-    ),
-    ...(threads.length < activity.threads.length && { resolvedThreadsOmitted: activity.threads.length - threads.length }),
-  };
-}
+Set only the parts the question needs: includeDiff for questions about the code (with paths when the question is about some files), includeReviews for what reviewers or bots said, includeChecks for CI and merge readiness. A diff over ${MAX_DIFF_CHARS.toLocaleString()} characters is cut and says so; read the rest by paths, and each comment over ${MAX_REVIEW_COMMENT_CHARS.toLocaleString()} characters is marked truncated; report either instead of treating what you see as complete. Reviews and checks are a snapshot, so read again after the user says they pushed, replied, or re-ran CI. mergeable reads UNKNOWN while GitHub is still computing it, which is not the same as blocked. A failing check's url points at its CI run, for a CI tool to open.`;
 
 const FIND_PRS_DESCRIPTION = `Search a repository's GitHub pull requests by head branch, author, state, or GitHub search text. Use it whenever you need a PR but have no number: which PR carries this branch, what someone opened, what merged this week, whether a PR already exists for the current branch. Never scan PR numbers or compare commits to PR heads to find one. Returns number, title, state, draft flag, author, branches, review decision, and updated or merged time, newest first, with no bodies or diffs; read a hit in full with read_pull_request. includeChecks adds CI and merge readiness per PR, for comparing several. When truncated is true, narrow the filters before concluding a PR does not exist, and widen state to all before saying a branch has no PR.`;
 
@@ -253,11 +182,12 @@ export function createGitHubTools(
           .optional()
           .describe('Absolute path of a connected repo (or a path inside it) whose gh setup to use; optional when exactly one repo is connected'),
         includeDiff: z.boolean().default(false).describe('Include the unified diff, usually most of the response'),
+        paths: z.array(z.string().min(1)).max(50).optional().describe('With includeDiff, only the diff of these files or directories, as repo-relative paths from the Files list'),
         includeReviews: z.boolean().default(false).describe('Include reviews, unresolved inline threads with file and line, and discussion comments'),
         includeResolvedThreads: z.boolean().default(false).describe('With includeReviews, also return resolved threads'),
         includeChecks: z.boolean().default(false).describe('Include CI check counts with failing and pending names, review decision, and mergeable state'),
       },
-      projectScoped(async ({ projectId, pr, repoPath, includeDiff, includeReviews, includeResolvedThreads, includeChecks }) => {
+      projectScoped(async ({ projectId, pr, repoPath, includeDiff, paths, includeReviews, includeResolvedThreads, includeChecks }) => {
         const resolution = resolveConnectedRepoPath(repoRepo.getByProject(projectId), repoPath);
         if (!resolution.ok) return toolError(resolution.reason);
         const cwd = resolution.repoPath;
@@ -281,26 +211,11 @@ export function createGitHubTools(
             includeReviews && prRepo ? getPrReviewActivity(cwd, prRepo, details.number, details.url) : undefined,
           ]);
 
-          const reviews = reviewActivity && toChatReviews(reviewActivity, includeResolvedThreads);
-          const pullRequest = { ...details, body: condenseCommentBody(details.body) };
-          if (diff === undefined) {
-            return jsonResult({ success: true, ...pullRequest, ...(reviews && { reviews }) });
-          }
-
-          const truncated = diff.length > MAX_DIFF_CHARS;
-          return jsonResult({
-            success: true,
-            ...pullRequest,
-            ...(reviews && { reviews }),
-            diff: truncated ? diff.slice(0, MAX_DIFF_CHARS) : diff,
-            diffTruncated: truncated,
-            ...(truncated && {
-              truncationNote:
-                `Diff cut at ${MAX_DIFF_CHARS.toLocaleString()} characters; the file list is complete. ` +
-                `If this repo is the PR's, read one file in full with git_read fetch ["origin", "pull/${details.number}/head"] ` +
-                `then git_read diff ["origin/${details.baseRefName}...FETCH_HEAD", "--", "<path>"].`,
-            }),
-          });
+          return toolResult(renderPullRequest({
+            details,
+            ...(reviewActivity && { reviews: { activity: reviewActivity, includeResolvedThreads } }),
+            ...(diff !== undefined && { diff: { text: diff, paths } }),
+          }));
         } catch (error) {
           return toolError(await describeGhFailure(cwd, error));
         }

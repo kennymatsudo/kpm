@@ -75,7 +75,7 @@ export function buildFocusedSection(
 
   const planItemHint = hasPlanItem
     ? truncatedPlanItemIds.length > 0
-      ? `\nSome focused plan items were truncated above. Use \`get_plan_items({ projectId, itemIds: [...] })\` to fetch full details (description, code_refs, dependencies) for: ${truncatedPlanItemIds.map((id) => `\`${id}\``).join(', ')}.\n`
+      ? `\nSome focused plan items were truncated above. Use \`get_plan_items({ itemIds: [...] })\` to fetch full details (description, code_refs, dependencies) for: ${truncatedPlanItemIds.map((id) => `\`${id}\``).join(', ')}.\n`
       : `\nThe focused plan item details above are sufficient — do not call \`get_plan_items\` again unless you need code_refs or dependencies.\n`
     : '';
 

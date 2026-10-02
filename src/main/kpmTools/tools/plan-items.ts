@@ -46,7 +46,51 @@ interface ItemDependencies {
 }
 
 /** Extended plan item with optional parent title, children, and dependencies */
-interface PlanItemWithExtras extends PlanItem {
+/**
+ * The item fields chat can act on. The rest of a PlanItem (avatars, tracker
+ * internal IDs, sync bookkeeping, ordering, timestamps) is never used to answer
+ * a question and used to make up most of each record.
+ */
+const PLAN_ITEM_READ_FIELDS = [
+  'parent_id',
+  'title',
+  'description',
+  'intent',
+  'acceptance_criteria',
+  'work_brief_revision',
+  'source_document_id',
+  'label',
+  'status_category',
+  'release_tag',
+  'code_refs',
+  'primary_repo_id',
+  'affected_repo_ids',
+  'external_key',
+  'external_type',
+  'external_issue_type',
+  'external_status',
+  'external_url',
+  'external_parent_key',
+  'external_epic_key',
+  'external_assignee_name',
+  'completed_at',
+] as const satisfies readonly (keyof PlanItem)[];
+
+type PlanItemReadField = (typeof PLAN_ITEM_READ_FIELDS)[number];
+
+/** Picks the requested fields and leaves out empty ones, so an unset field costs nothing. */
+function toReadRecord(item: PlanItem, fields: readonly PlanItemReadField[]): Partial<PlanItem> & { id: string } {
+  const record: Partial<PlanItem> & { id: string } = { id: item.id };
+  for (const field of fields) {
+    const value = item[field];
+    if (value === null || value === undefined || (Array.isArray(value) && value.length === 0)) continue;
+    (record as Record<string, unknown>)[field] = value;
+  }
+  return record;
+}
+
+interface PlanItemWithExtras extends Partial<PlanItem> {
+  id: string;
   parentTitle?: string;
   children?: PlanItemSummary[];
   descendantCount?: number;
@@ -402,9 +446,9 @@ export function createPlanItemTools(
 
     tool(
       'get_plan_items',
-      `Fetch the full record of 1-50 plan items by ID: the Work Brief (title, description, intent, acceptance_criteria), its work_brief_revision, code_refs, and tracker fields. Use it before revise_work_brief, which needs the current brief and revision, and whenever an answer depends on what an item says rather than its title. include.children and include.dependencies show what deleting, moving, or finishing an item would affect.`,
+      `Fetch the full record of 1-50 plan items by ID: the Work Brief (title, description, intent, acceptance_criteria), its work_brief_revision, code_refs, and tracker fields. Empty fields are left out. Use it before revise_work_brief, which needs the current brief and revision, and whenever an answer depends on what an item says rather than its title. Pass fields to read only some of them, such as status_category and external_key across many items. include.children and include.dependencies show what deleting, moving, or finishing an item would affect.`,
       {
-        itemIds: z.array(z.string().uuid()).min(1).max(50).describe('Plan item UUIDs to fetch (1-50)'),
+        itemIds: z.array(z.string().min(1)).min(1).max(50).describe('Plan item UUIDs to fetch (1-50)'),
         include: z
           .object({
             parentTitle: z.boolean().optional().describe("Include the parent item's title"),
@@ -413,8 +457,9 @@ export function createPlanItemTools(
           })
           .optional()
           .describe('Additional data to include per item. All flags default to false.'),
+        fields: z.array(z.enum(PLAN_ITEM_READ_FIELDS)).min(1).optional().describe('Only these fields per item, besides id; omit for all'),
       },
-      projectScoped(async ({ projectId, itemIds, include }) => {
+      projectScoped(async ({ projectId, itemIds, include, fields }) => {
         const allItems = planItemRepo.getMany(itemIds);
         const items = allItems.filter((i) => i.project_id === projectId);
         const itemMap = new Map(items.map((i) => [i.id, i]));
@@ -491,7 +536,7 @@ export function createPlanItemTools(
         for (const id of itemIds) {
           const item = itemMap.get(id);
           if (item) {
-            const result: PlanItemWithExtras = { ...item };
+            const result: PlanItemWithExtras = toReadRecord(item, fields ?? PLAN_ITEM_READ_FIELDS);
             if (include?.parentTitle && item.parent_id) {
               result.parentTitle = parentTitleMap.get(item.parent_id) ?? '[deleted]';
             }
@@ -518,14 +563,14 @@ export function createPlanItemTools(
       `Apply one change to many plan items at once: set status, label, or release tag, reparent, delete, or clear dependencies. Select the items with itemIds or with a filter, not both; a filter saves looking up IDs when the set is "every done item" or "all children of X". Use modify_plan instead for per-item changes or anything touching the Work Brief. KPM queues the change for review or applies it, per the user's setting. delete removes each item's descendants too. Moving Jira subtasks to root skips any whose parent mirrors the tracker hierarchy.`,
       {
         itemIds: z
-          .array(z.string().uuid())
+          .array(z.string().min(1))
           .min(1)
           .max(100)
           .optional()
           .describe('Specific item IDs to target (1-100). Provide this or filter, not both.'),
         filter: z
           .object({
-            parentId: z.string().uuid().optional().describe('Target children of this parent'),
+            parentId: z.string().min(1).optional().describe('Target children of this parent'),
             statusCategory: StatusCategoryEnum.optional().describe('Target items currently in this status category'),
             label: LabelEnum.optional().describe('Target items with this label'),
             releaseTag: z.string().optional().describe('Target items with this release tag'),
@@ -538,7 +583,7 @@ export function createPlanItemTools(
             z.object({ type: z.literal('set_status'), statusCategory: StatusCategoryEnum }),
             z.object({ type: z.literal('set_label'), label: LabelEnum }),
             z.object({ type: z.literal('set_release'), releaseTag: z.string().nullable().describe('null clears the tag') }),
-            z.object({ type: z.literal('reparent'), newParentId: z.string().uuid().nullable().describe('null moves items to root') }),
+            z.object({ type: z.literal('reparent'), newParentId: z.string().min(1).nullable().describe('null moves items to root') }),
             z.object({ type: z.literal('delete') }),
             z.object({
               type: z.literal('clear_dependencies'),

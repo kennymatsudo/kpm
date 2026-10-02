@@ -32,7 +32,7 @@ function thread(overrides: Record<string, unknown> = {}) {
 }
 
 function activity(overrides: Partial<Record<keyof PrReviewActivity, unknown>> = {}) {
-  return { summary: { totalThreads: 0 }, threads: [], topLevelReviews: [], conversationComments: [], ...overrides };
+  return { summary: { totalThreads: 0, unresolvedThreads: 0, resolvedThreads: 0, outdatedThreads: 0, humanThreads: 0, botOnlyThreads: 0 }, threads: [], topLevelReviews: [], conversationComments: [], ...overrides };
 }
 
 async function readPr(input: Record<string, unknown>) {
@@ -43,14 +43,73 @@ async function readPr(input: Record<string, unknown>) {
   const result = await runWithToolExecutionContext({ projectId: PROJECT_ID }, () => read.handler({
     includeDiff: false, includeReviews: true, includeResolvedThreads: false, ...input,
   }));
-  return { result, body: result.isError ? null : JSON.parse(result.content[0].text) };
+  return { result, text: result.content[0].text as string };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
-  getPrDetails.mockResolvedValue({ number: 7, url: 'https://github.com/other-org/other-repo/pull/7', baseRefName: 'main', body: '' });
+  getPrDetails.mockResolvedValue({
+    number: 7, url: 'https://github.com/other-org/other-repo/pull/7', title: 'Fix login', state: 'OPEN', isDraft: false,
+    author: 'alice', baseRefName: 'main', headRefName: 'fix-login', body: '', additions: 3, deletions: 1, changedFiles: 2,
+    files: [{ path: 'src/a.ts', additions: 2, deletions: 1 }, { path: 'docs/b.md', additions: 1, deletions: 0 }],
+  });
   getPrDiff.mockResolvedValue('diff');
   getPrReviewActivity.mockResolvedValue(activity());
+});
+
+const TWO_FILE_DIFF = [
+  'diff --git a/src/a.ts b/src/a.ts',
+  '--- a/src/a.ts',
+  '+++ b/src/a.ts',
+  '@@ -1 +1 @@',
+  '-old',
+  '+new',
+  'diff --git a/docs/b.md b/docs/b.md',
+  '--- a/docs/b.md',
+  '+++ b/docs/b.md',
+  '@@ -0,0 +1 @@',
+  '+doc',
+].join('\n');
+
+describe('read_pull_request', () => {
+  it('lists the header, an empty description, and one line per changed file', async () => {
+    const { text } = await readPr({ pr: '7', includeReviews: false });
+
+    expect(text).toBe([
+      'PR #7: Fix login',
+      'https://github.com/other-org/other-repo/pull/7',
+      'OPEN · by alice · fix-login into main · +3 -1 across 2 files',
+      '',
+      '[Description]',
+      '(empty)',
+      '',
+      '[Files]',
+      '+2 -1 src/a.ts',
+      '+1 -0 docs/b.md',
+    ].join('\n'));
+  });
+
+  it('returns only the diff sections under the requested paths', async () => {
+    getPrDiff.mockResolvedValue(TWO_FILE_DIFF);
+
+    const { text } = await readPr({ pr: '7', includeReviews: false, includeDiff: true, paths: ['docs/'] });
+
+    expect(text.split('[Diff]\n')[1]).toBe([
+      'diff --git a/docs/b.md b/docs/b.md',
+      '--- a/docs/b.md',
+      '+++ b/docs/b.md',
+      '@@ -0,0 +1 @@',
+      '+doc',
+    ].join('\n'));
+  });
+
+  it('says so when no changed file matches the requested paths', async () => {
+    getPrDiff.mockResolvedValue(TWO_FILE_DIFF);
+
+    const { text } = await readPr({ pr: '7', includeReviews: false, includeDiff: true, paths: ['src/missing.ts'] });
+
+    expect(text).toContain('[Diff]\nNo changed file matches src/missing.ts; the Files list above has every path.');
+  });
 });
 
 describe('read_pull_request reviews', () => {
@@ -63,45 +122,46 @@ describe('read_pull_request reviews', () => {
   });
 
   it('skips the review calls unless asked', async () => {
-    const { body } = await readPr({ pr: '7', includeReviews: false });
+    const { text } = await readPr({ pr: '7', includeReviews: false });
 
     expect(getPrReviewActivity).not.toHaveBeenCalled();
-    expect(body.reviews).toBeUndefined();
+    expect(text).not.toContain('[Reviews]');
   });
 
   it('leaves resolved threads out by default but says how many', async () => {
     getPrReviewActivity.mockResolvedValue(activity({
-      threads: [thread(), thread({ isResolved: true, resolvedBy: 'author' })],
+      threads: [thread(), thread({ path: 'src/resolved.ts', isResolved: true, resolvedBy: 'author' })],
     }));
 
-    const { body } = await readPr({ pr: '7' });
+    const { text } = await readPr({ pr: '7' });
 
-    expect(body.reviews.threads).toHaveLength(1);
-    expect(body.reviews.resolvedThreadsOmitted).toBe(1);
+    expect(text).toContain('Thread src/a.ts:3 · https://github.com/o/r/pull/7#discussion_r1');
+    expect(text).not.toContain('src/resolved.ts');
+    expect(text).toContain('1 resolved thread omitted; set includeResolvedThreads to read them.');
   });
 
   it('returns resolved threads when asked', async () => {
     getPrReviewActivity.mockResolvedValue(activity({
-      threads: [thread(), thread({ isResolved: true, resolvedBy: 'author' })],
+      threads: [thread(), thread({ path: 'src/resolved.ts', isResolved: true, resolvedBy: 'author' })],
     }));
 
-    const { body } = await readPr({ pr: '7', includeResolvedThreads: true });
+    const { text } = await readPr({ pr: '7', includeResolvedThreads: true });
 
-    expect(body.reviews.threads).toHaveLength(2);
-    expect(body.reviews.threads[1].resolvedBy).toBe('author');
+    expect(text).toContain('Thread src/resolved.ts:3 · resolved by author · https://github.com/o/r/pull/7#discussion_r1');
   });
 
   it('drops the empty COMMENTED shells GitHub creates for inline comments', async () => {
     getPrReviewActivity.mockResolvedValue(activity({
       topLevelReviews: [
-        { ...comment({ body: '' }), state: 'COMMENTED', submittedAt: null },
-        { ...comment({ body: '' }), state: 'APPROVED', submittedAt: null },
+        { ...comment({ author: 'shell', body: '' }), state: 'COMMENTED', submittedAt: null },
+        { ...comment({ author: 'bob', body: '' }), state: 'APPROVED', submittedAt: null },
       ],
     }));
 
-    const { body } = await readPr({ pr: '7' });
+    const { text } = await readPr({ pr: '7' });
 
-    expect(body.reviews.reviews.map((review: { state: string }) => review.state)).toEqual(['APPROVED']);
+    expect(text).toContain('bob · APPROVED: (no text)');
+    expect(text).not.toContain('shell');
   });
 
   it('strips hidden markers and HTML wrappers but keeps generics in code', async () => {
@@ -114,12 +174,9 @@ describe('read_pull_request reviews', () => {
       })],
     }));
 
-    const { body } = await readPr({ pr: '7' });
+    const { text } = await readPr({ pr: '7' });
 
-    expect(body.reviews.threads[0].comments[0]).toMatchObject({
-      bot: true,
-      body: '### Finding\n\nUse `Array<string>` here',
-    });
+    expect(text).toContain('reviewer [bot] · 2026-09-29 00:00:\n### Finding\n\nUse `Array<string>` here');
   });
 
   it('cuts bot discussion comments shorter than review threads', async () => {
@@ -129,10 +186,9 @@ describe('read_pull_request reviews', () => {
       conversationComments: [comment({ authorType: 'Bot', body: long })],
     }));
 
-    const { body } = await readPr({ pr: '7' });
+    const { text } = await readPr({ pr: '7' });
 
-    expect(body.reviews.threads[0].comments[0].truncated).toBeUndefined();
-    expect(body.reviews.discussion[0]).toMatchObject({ truncated: true });
-    expect(body.reviews.discussion[0].body).toHaveLength(1_000);
+    expect(text).toContain(`[bot] · 2026-09-29 00:00:\n${long}\n\n`);
+    expect(text).toContain(`${'x'.repeat(1_000)}\n[truncated at 1,000 characters]`);
   });
 });

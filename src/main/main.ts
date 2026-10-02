@@ -5,6 +5,7 @@ import { registerAllIpcHandlers } from './ipc';
 import * as TempImageService from './services/files/TempImageService';
 import { initializeRepositoryContainer } from './db/container';
 import { warmupMcpSdk } from './kpmTools/createKpmServer';
+import { TrackerClientService } from './trackers/TrackerClientService';
 import { initializeServices } from './services/container';
 import { getCommonDevToolPaths } from './claude/findClaude';
 import { initClaudeAvailability } from './claude/availabilityState';
@@ -148,6 +149,8 @@ void app.whenReady().then(async () => {
     services,
     getMainWindow,
   });
+  // Chat lists the Jira tools only when Jira is set up; learn that before the first chat.
+  void TrackerClientService.hasJiraCredentials().catch(() => {});
 
   registerAllIpcHandlers(getMainWindow, services);
   createWindow();

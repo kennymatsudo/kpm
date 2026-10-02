@@ -11,6 +11,7 @@ import {
 import { createPlanChangeTools } from './tools/plan-changes';
 import type { PlanAction } from '../../shared/types';
 import { getKpmToolRuntime, warmupKpmToolRuntime } from './runtimeRegistry';
+import { DEFERRED_KPM_TOOLS } from './createKpmServer';
 
 vi.mock('../db/connection', () => ({
   getDatabase: () => ({}),
@@ -402,6 +403,21 @@ describe('KpmToolRuntime', () => {
       message: 'KPM tool "modify_plan" is not available for focus_document chat sessions.',
     });
   });
+
+  it('lists a group only while its integration is set up', () => {
+    let configured = false;
+    const runtime = new KpmToolRuntime(() => [
+      makeToolGroup({
+        id: 'jira',
+        tools: [{ name: 'jira_search', description: 'Search Jira', inputSchema: {}, handler: vi.fn() }],
+        isEnabled: () => configured,
+      }),
+    ]);
+
+    expect(runtime.listTools({ scope: 'main' })).toEqual([]);
+    configured = true;
+    expect(runtime.listTools({ scope: 'main' }).map((tool) => tool.name)).toEqual(['jira_search']);
+  });
 });
 
 describe('default KPM tool runtime manifest', () => {
@@ -485,5 +501,17 @@ describe('default KPM tool runtime manifest', () => {
       .map((tool) => tool.name);
 
     expect(askingForProject).toEqual([]);
+  });
+
+  it('defers only tools that exist', () => {
+    warmupKpmToolRuntime({
+      container: { projects: {}, planItems: {}, planRelations: {}, repos: {}, devSessions: {}, confluenceLinks: {} } as never,
+      services: { fileExplorerService: {} } as never,
+      getMainWindow: () => null,
+    });
+
+    const names = new Set(getKpmToolRuntime().listToolManifest().map((tool) => tool.name));
+
+    expect([...DEFERRED_KPM_TOOLS].filter((name) => !names.has(name))).toEqual([]);
   });
 });

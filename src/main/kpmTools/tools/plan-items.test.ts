@@ -405,6 +405,18 @@ describe('plan item tools', () => {
       expect(result.notFound).toEqual(['missing-id']);
     });
 
+    it('leaves out empty and bookkeeping fields, and narrows to the requested fields', async () => {
+      insertItem(db, { id: 'a', title: 'Item A', statusCategory: 'in_progress', externalKey: 'ASUP-1', itemOrder: 4 });
+
+      const full = parseJson(await call('get_plan_items', { projectId: 'project-1', itemIds: ['a'] }));
+      const narrow = parseJson(
+        await call('get_plan_items', { projectId: 'project-1', itemIds: ['a'], fields: ['status_category', 'external_key'] })
+      );
+
+      expect(Object.keys(full.items[0]).sort()).toEqual(['external_key', 'id', 'status_category', 'title']);
+      expect(narrow.items[0]).toEqual({ id: 'a', status_category: 'in_progress', external_key: 'ASUP-1' });
+    });
+
     it('include.parentTitle adds the parent title', async () => {
       insertItem(db, { id: 'root', title: 'Root Item' });
       insertItem(db, { id: 'child', parentId: 'root' });

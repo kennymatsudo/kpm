@@ -259,7 +259,7 @@ export function createBoardTools(deps: BoardToolDeps) {
       PROPOSE_DESCRIPTION,
       {
         change: z.enum(['attach_worktree', 'link_pr']).describe('"attach_worktree" or "link_pr"'),
-        itemId: z.string().uuid().describe('The task UUID'),
+        itemId: z.string().min(1).describe('The task UUID'),
         branch: z.string().min(1).optional().describe('attach_worktree: branch checked out in the worktree'),
         worktreePath: z.string().min(1).optional().describe('attach_worktree: absolute path of the worktree'),
         pr: z.string().min(1).optional().describe('link_pr: PR number, #123, or URL'),

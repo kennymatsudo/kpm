@@ -23,7 +23,7 @@ export function createRelationTools(
       'get_enriched_relations',
       `List dependency relations as "from_item relation_type to_item" (blocks, depends_on, relates_to), with each item's title and status. Use it for "what blocks X", for the project's whole dependency graph (omit itemId), or to get the relation_id that modify_plan's remove_dependency needs. For one item's dependencies alongside its full record, get_plan_items with include.dependencies is enough.`,
       {
-        itemId: z.string().uuid().optional().describe('Only relations involving this item; omit for every relation in the project'),
+        itemId: z.string().min(1).optional().describe('Only relations involving this item; omit for every relation in the project'),
       },
       projectScoped(async ({ projectId, itemId }) => {
         const where: string[] = ['project_id = ?'];

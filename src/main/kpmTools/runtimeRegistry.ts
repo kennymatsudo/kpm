@@ -37,6 +37,7 @@ import { createGitReadTools } from './tools/git-read';
 import { createGitHubTools } from './tools/github';
 import { createGitHubWriteTools, type PullRequestWriteRequest } from './tools/github-writes';
 import { createJiraTools } from './tools/jira';
+import { TrackerClientService } from '../trackers/TrackerClientService';
 import { createListProjectFilesTools } from './tools/list-project-files';
 import { createPlanChangeTools } from './tools/plan-changes';
 import { createPlanItemTools } from './tools/plan-items';
@@ -292,8 +293,9 @@ function group(
   availability: KpmToolAvailability,
   capabilities: KpmToolCapability[],
   tools: KpmToolDefinition[],
+  isEnabled?: () => boolean,
 ): KpmToolGroup {
-  return { id, availability, capabilities, tools };
+  return { id, availability, capabilities, tools, ...(isEnabled && { isEnabled }) };
 }
 
 /**
@@ -333,7 +335,7 @@ function buildToolGroups(): KpmToolGroup[] {
     ...planItemGroups(createPlanItemTools(planItemRepo, planRelationRepo, emitPlanActions)),
     group('plan-relations', MAIN_ONLY, ['plan_relations.read'], createRelationTools(planItemRepo)),
     group('plan-changes', MAIN_ONLY, ['plan_items.propose'], createPlanChangeTools(emitPlanActions, repoRepo, planItemRepo)),
-    group('jira', MAIN_ONLY, ['integrations.read'], createJiraTools()),
+    group('jira', MAIN_ONLY, ['integrations.read'], createJiraTools(), () => TrackerClientService.isJiraConfigured()),
     group('project-context', ALL_CHAT_SCOPES, ['project_context.propose'], createContextFileEditTools(readProjectContextFileWithPending, emitContextFileUpdate)),
     group('document-read', ALL_CHAT_SCOPES, ['documents.read'], createDocumentReadTools(readProjectFileWithPending)),
     group('document-create', ALL_CHAT_SCOPES, ['documents.propose'], createDocumentCreateTools(emitDocumentUpdate)),

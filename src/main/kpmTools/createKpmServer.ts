@@ -17,8 +17,35 @@ import { toKpmToolInputJsonSchema } from './toolInputSchema';
 
 type ClaudeMcpToolDefinitions = Parameters<typeof createSdkMcpServer>[0]['tools'];
 
-let cachedTools: ClaudeMcpToolDefinitions | null = null;
-let cachedFocusTools: ClaudeMcpToolDefinitions | null = null;
+/**
+ * Tools chat reaches for in a small share of sessions. Claude sees only their
+ * names until it looks one up through tool search, which spares every API call
+ * their full schemas; the rest load up front so common work never waits on a
+ * search. Picked from real chat usage, not guessed. Codex and pi load every
+ * tool regardless.
+ */
+export const DEFERRED_KPM_TOOLS: ReadonlySet<string> = new Set([
+  'bulk_modify_plan',
+  'propose_config_change',
+  'read_config',
+  'get_pr_context',
+  'list_worktrees',
+  'get_enriched_relations',
+  'move_project_file',
+  'delete_project_file',
+  'list_document_plan_refs',
+  'get_confluence_url',
+  'jira_list_projects',
+  'jira_search',
+  'jira_get_issue',
+  'jira_compare_plan',
+]);
+
+const ALWAYS_LOAD_META = { 'anthropic/alwaysLoad': true } as const;
+
+// Keyed by the listed tool names, because which tools list can change while
+// the app runs (Jira credentials added or removed).
+const cachedProviderTools = new Map<string, NonNullable<ClaudeMcpToolDefinitions>>();
 
 function toProviderToolDefinitions(
   tools: KpmToolDefinition[],
@@ -29,7 +56,7 @@ function toProviderToolDefinitions(
     description,
     inputSchema,
     annotations,
-    _meta,
+    _meta: DEFERRED_KPM_TOOLS.has(name) ? _meta : { ...ALWAYS_LOAD_META, ..._meta },
     handler: (args: unknown, extra: unknown) => {
       const context = getCurrentToolExecutionContext();
       if (!context?.projectId) return handler(args, extra);
@@ -79,30 +106,26 @@ function logToolDefinitionFootprint(tools: NonNullable<ClaudeMcpToolDefinitions>
   }
 }
 
-function collectTools() {
-  if (cachedTools) return cachedTools;
-
-  const tools = toProviderToolDefinitions(getKpmToolDefinitions({ scope: 'main' }), 'main');
-  cachedTools = tools;
-
-  if (getConfig().claude.debug) {
-    console.log('[KPM Server] Registered tools:', tools.map((t) => t.name).join(', '));
-    logToolDefinitionFootprint(tools);
+function providerTools(definitions: KpmToolDefinition[], scope: ChatSessionScope, label: string) {
+  const key = `${scope}:${definitions.map((tool) => tool.name).join(',')}`;
+  let tools = cachedProviderTools.get(key);
+  if (!tools) {
+    tools = toProviderToolDefinitions(definitions, scope);
+    cachedProviderTools.set(key, tools);
+    if (getConfig().claude.debug) {
+      console.log(`[KPM Server] Registered ${label}:`, tools.map((t) => t.name).join(', '));
+      logToolDefinitionFootprint(tools);
+    }
   }
   return tools;
 }
 
+function collectTools() {
+  return providerTools(getKpmToolDefinitions({ scope: 'main' }), 'main', 'tools');
+}
+
 function collectFocusTools() {
-  if (cachedFocusTools) return cachedFocusTools;
-
-  const tools = toProviderToolDefinitions(getKpmToolDefinitions({ scope: 'focus_document' }), 'focus_document');
-  cachedFocusTools = tools;
-
-  if (getConfig().claude.debug) {
-    console.log('[KPM Server] Registered focus tools:', tools.map((t) => t.name).join(', '));
-    logToolDefinitionFootprint(tools);
-  }
-  return tools;
+  return providerTools(getKpmToolDefinitions({ scope: 'focus_document' }), 'focus_document', 'focus tools');
 }
 
 /**
@@ -112,8 +135,7 @@ function collectFocusTools() {
  */
 export function warmupMcpSdk(deps: KpmToolRuntimeDeps): void {
   warmupKpmToolRuntime(deps);
-  cachedTools = null;
-  cachedFocusTools = null;
+  cachedProviderTools.clear();
 
   const startTime = Date.now();
   const tools = collectTools();
@@ -122,49 +144,24 @@ export function warmupMcpSdk(deps: KpmToolRuntimeDeps): void {
   console.log(`[KPM Server] ${tools.length} tools ready (${focusTools.length} in focus mode) in ${elapsed}ms`);
 }
 
+// Each tool carries its own always-load flag (see DEFERRED_KPM_TOOLS), so the
+// servers set none: a server-wide flag would load the deferred tools too.
 export function getKpmServer() {
-  return createSdkMcpServer({
-    name: 'kpm',
-    version: '1.0.0',
-    tools: collectTools(),
-    // Ensures KPM tools are always present in Claude's context (not deferred
-    // behind tool search) and that the server is connected before the first
-    // turn — required since the init message would otherwise report kpm as
-    // 'pending' under the SDK's background-connection default.
-    alwaysLoad: true,
-  });
+  return createSdkMcpServer({ name: 'kpm', version: '1.0.0', tools: collectTools() });
 }
 
 export function getFocusKpmServer() {
-  return createSdkMcpServer({
-    name: 'kpm',
-    version: '1.0.0',
-    tools: collectFocusTools(),
-    alwaysLoad: true,
-  });
+  return createSdkMcpServer({ name: 'kpm', version: '1.0.0', tools: collectFocusTools() });
 }
-
-const cachedGrantedTools = new Map<string, NonNullable<ClaudeMcpToolDefinitions>>();
 
 /**
  * A server exposing only the tools a granted capability set reaches — used by
- * action runs, where the grant is the boundary. Cached per distinct grant, since
- * actions reuse a small number of combinations.
+ * action runs, where the grant is the boundary.
  */
 export function getGrantedKpmServer(grantedCapabilities: readonly KpmToolCapability[]) {
-  const key = [...grantedCapabilities].sort().join(',');
-  let tools = cachedGrantedTools.get(key);
-  if (!tools) {
-    tools = toProviderToolDefinitions(
-      getKpmToolDefinitions({ scope: 'main', grantedCapabilities }),
-      'main',
-    );
-    cachedGrantedTools.set(key, tools);
-  }
   return createSdkMcpServer({
     name: 'kpm',
     version: '1.0.0',
-    tools,
-    alwaysLoad: true,
+    tools: providerTools(getKpmToolDefinitions({ scope: 'main', grantedCapabilities }), 'main', 'granted tools'),
   });
 }
