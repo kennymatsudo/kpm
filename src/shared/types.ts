@@ -1154,6 +1154,7 @@ export type DevSessionAutomationPhase =
   | 'idle'
   | 'reviewing'
   | 'addressing_review'
+  | 'running_step'
   | 'fixing_commit_hooks'
   | 'paused'
   | 'ready_for_review'
@@ -1197,6 +1198,7 @@ export function isLiveAutomationPhase(
   return (
     phase === 'reviewing'
     || phase === 'addressing_review'
+    || phase === 'running_step'
     || phase === 'paused'
     || phase === 'needs_attention'
     || isCommitHookRepairPhase(phase)

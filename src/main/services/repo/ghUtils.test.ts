@@ -7,6 +7,7 @@ vi.mock('child_process', async (importOriginal) => ({
   execFile: execFileMock,
 }));
 
+import { toExternalMarkdown } from '../../documents/exportBoundary';
 import {
   buildCreatePrArgs,
   buildEditPrArgs,
@@ -98,13 +99,15 @@ describe('classifyGhAuthError', () => {
   });
 });
 
+const md = (text: string) => toExternalMarkdown(text, [], 'github');
+
 describe('buildCreatePrArgs', () => {
   it('builds gh pr create args without unsupported json output flags', () => {
     expect(buildCreatePrArgs({
       head: 'feature/test-pr',
       base: 'main',
-      title: 'Test PR',
-      body: 'Body',
+      title: md('Test PR'),
+      body: md('Body'),
       draft: true,
     })).toEqual([
       'pr', 'create',
@@ -202,7 +205,7 @@ describe('buildListPrArgs readiness', () => {
 
 describe('buildEditPrArgs', () => {
   it('sends the body over stdin rather than on the command line', () => {
-    expect(buildEditPrArgs('12', { title: 'New', body: 'Long body' })).toEqual([
+    expect(buildEditPrArgs('12', { title: md('New'), body: md('Long body') })).toEqual([
       'pr', 'edit', '12', '--title=New', '--body-file=-',
     ]);
   });
@@ -305,6 +308,14 @@ describe('parsePrIdentifier', () => {
 
   it.each(['12', '#12', ' 12 '])('leaves the repository open for %j', (input) => {
     expect(parsePrIdentifier(input)).toEqual({ number: 12, repo: null });
+  });
+
+  it.each([
+    'https://notgithub.com/a/b/pull/1',
+    'https://evil.example/github.com/a/b/pull/1',
+    'http://github.com/a/b/pull/1',
+  ])('rejects the look-alike URL %j', (input) => {
+    expect(parsePrIdentifier(input)).toBeNull();
   });
 
   it('rejects anything else', () => {

@@ -33,7 +33,7 @@ type RegistryResponse<T = void> =
   | { success: false; error: string };
 
 /** Mirrors `ActiveSessionInfo` from `main/services/streaming/StreamingSessionService.ts`. */
-interface ActiveSessionInfo {
+export interface ActiveSessionInfo {
   chatSessionId: string;
   scope: ChatSessionScope;
   state: SessionState;
@@ -148,11 +148,6 @@ export const chatEndpoints = {
     params: z.object({ projectId: uuid }),
     result: resultOf<RegistryResponse>(),
   },
-  connectSession: {
-    channel: 'chat:connect-session',
-    params: z.object({ projectId: uuid }),
-    result: resultOf<RegistryResponse>(),
-  },
   disconnectSession: {
     channel: 'chat:disconnect-session',
     params: z.object({ projectId: uuid }),
@@ -177,11 +172,6 @@ export const chatEndpoints = {
     channel: 'chat:get-usage',
     params: z.object({ projectId: uuid }),
     result: resultOf<RegistryResponse<{ usage: { totalTokens: number; inputTokens: number; outputTokens: number } }>>(),
-  },
-  getMessages: {
-    channel: 'chat:get-messages',
-    params: z.object({ projectId: uuid }),
-    result: resultOf<RegistryResponse<{ messages: ChatMessage[] }>>(),
   },
   getSessionHistory: {
     channel: 'chat:get-session-history',

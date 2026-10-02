@@ -51,7 +51,7 @@ import {
 import { classifyPushTarget, resolveBaseBranch, resolveCurrentBranch, resolveUpstreamBranchName } from './branchFacts';
 import { publishBranch } from './gitWrites';
 import { collectLinkedRefKeys } from '../../documents/planRefResolver';
-import { toExternalMarkdown } from '../../documents/exportBoundary';
+import { toExternalMarkdown, type ExternalMarkdown } from '../../documents/exportBoundary';
 
 // =============================================================================
 // Types
@@ -426,25 +426,23 @@ ${input.commitLog || 'No commit log provided.'}`;
         // Jira/Linear unfurl-on-paste works), and append `Closes <key>` lines
         // for any linked refs so tracker integrations auto-transition on
         // merge. Pulls plan items from the session's project.
-        let resolvedBody = body;
-        if (session.project_id) {
-          const projectPlanItems = deps.planItems.getByProject(session.project_id);
-          resolvedBody = toExternalMarkdown(body, projectPlanItems, 'github');
-          const closeKeys = collectLinkedRefKeys(body, projectPlanItems);
-          if (closeKeys.length > 0) {
-            // Avoid duplicating `Closes …` if the author already wrote it.
-            const closesPattern = /(?:^|\n)\s*(?:closes|fixes|resolves)\s+/i;
-            if (!closesPattern.test(resolvedBody)) {
-              const closesLine = `Closes ${closeKeys.join(', ')}`;
-              resolvedBody = `${resolvedBody.replace(/\s+$/, '')}\n\n${closesLine}\n`;
-            }
+        const projectPlanItems = deps.planItems.getByProject(session.project_id);
+        let resolvedBody = toExternalMarkdown(body, projectPlanItems, 'github');
+        const closeKeys = collectLinkedRefKeys(body, projectPlanItems);
+        if (closeKeys.length > 0) {
+          // Avoid duplicating `Closes …` if the author already wrote it.
+          const closesPattern = /(?:^|\n)\s*(?:closes|fixes|resolves)\s+/i;
+          if (!closesPattern.test(resolvedBody)) {
+            const closesLine = `Closes ${closeKeys.join(', ')}`;
+            // Tracker keys carry no @plan refs, so the appended text stays translated.
+            resolvedBody = `${resolvedBody.replace(/\s+$/, '')}\n\n${closesLine}\n` as ExternalMarkdown;
           }
         }
 
         const result = await createPr(repoPath, {
           head: session.branch_name,
           base: baseBranch,
-          title,
+          title: toExternalMarkdown(title, projectPlanItems, 'github'),
           body: resolvedBody,
           draft,
         }, getConfig().agentSession.prCreateTimeoutMs).catch(async (error: unknown) => {

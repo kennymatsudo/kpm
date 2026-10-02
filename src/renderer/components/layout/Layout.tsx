@@ -32,7 +32,7 @@ import {
 } from '../../stores';
 import { getBaseName } from '../../utils/path';
 import { TerminalPanel } from '../terminal';
-import { cancelChatSession, disconnectChatSession } from '../../services/chatService';
+import { closeChatSession } from '../../services/chatService';
 import { useToolLog } from '../../hooks/useToolLog';
 import { useChatIpcBridge } from '../../hooks/useChatIpcBridge';
 import { usePermissionIpcBridge } from '../../hooks/usePermissionIpcBridge';
@@ -220,17 +220,12 @@ export const Layout = memo(function Layout({
     }
 
     const chatState = useChatStore.getState();
-    const { viewedSessionId, sessions, activeSessionIds } = chatState;
+    const { viewedSessionId, sessions } = chatState;
     if (viewedSessionId) {
       const session = sessions.get(viewedSessionId);
       void (async () => {
         if (currentProjectId && session) {
-          if (activeSessionIds.has(viewedSessionId) && session.isStreaming) {
-            await cancelChatSession(currentProjectId, viewedSessionId);
-          }
-          if (activeSessionIds.has(viewedSessionId)) {
-            await disconnectChatSession(currentProjectId, viewedSessionId);
-          }
+          await closeChatSession(currentProjectId, viewedSessionId, session.isStreaming);
         }
         chatState.removeSession(viewedSessionId);
       })();

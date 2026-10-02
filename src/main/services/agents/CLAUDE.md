@@ -7,7 +7,7 @@ Read [`../CLAUDE.md`](../CLAUDE.md) for service conventions first.
 ## How a run flows
 
 1. **Start.** `Play` calls `agent-session:create-and-start`, which runs `DevSessionService.createAndStartFromBoard`. It reuses the plan item's latest session when it is on the same repo and `inactive` or `pending` (same worktree, same playbook snapshot, refreshed Work Brief); otherwise `createPendingSession` makes a new one and snapshots the selected playbook into `dev_sessions.playbook_snapshot`. If the reused session is resumable (live cursor, parked at `paused` or `needs_attention`), it resumes the cursor through `resumePlaybook` instead of starting over.
-2. **First turn.** `resolvePlaybookPlan` (`src/shared/playbookRuntime.ts`) resolves each step's candidate chain against `listBoardProviders()` and the user's default model. The first main step runs through `runMainStep` into `startAgentSession`, which scaffolds the worktree, pins `base_sha`, and builds the provider session through `createBoardAgentSession` (`agentLaunch.ts`) and `AgentSessionManager.create`.
+2. **First turn.** `resolvePlaybookPlan` (`src/shared/playbookRuntime.ts`) resolves each step's candidate chain against `listBoardProviders()` and the user's default model. The first main step runs through `runMainStep` into `startAgentSession`, which scaffolds the worktree, pins `base_sha`, and builds the provider session through `createBoardAgentSession` (`agentLaunch.ts`) and `AgentSessionManager.create`. Only after the agent is built does it send `sessionStarted`, which moves the cursor to the step launched (a playbook may lead with a subagent step, so it is not always `steps[0]`). The first turn runs at its step's live phase, like every later turn. An agent that then fails to start is sent `agentTerminatedUnexpectedly`, which parks a resumed turn's live phase.
 3. **Turn ends.** `AgentSessionManager` calls the orchestrator's `onSessionComplete`. For a main step, `BoardAgentOrchestrator` commits the worktree onto the task branch (agents are told never to commit; see Commit capture), reconciles a changed Work Brief, and hands the step to `playbookStepRunner.settle`, which calls the pure `advancePlaybook` and then dispatches the next step, pauses, or completes.
 4. **Subagent steps** (reviewers, or a writing helper) launch one session per entry in `runs` through `launchPlaybookSubagent`. Their results collect in a run group (`playbookRoundStore.ts`) and settle once every run has reported.
 5. **Completion.** When the playbook completes, the step runner first flushes queued PR review tasks (when the session has a PR); only if none were queued does it move the plan item to `In Review` and the phase to `ready_for_review`.
@@ -46,7 +46,7 @@ A step is `session: 'main'` (a turn on the implementation agent) or `session: 's
 - **Harness steps stay out of `playbook.steps` on purpose.** `advancePlaybook` completes the run when the finished step is not in the playbook, which is what makes an injected turn end instead of restarting at step one.
 - **Injected turns go through `harnessTurn.ts`.** `requestHarnessTurn` moves the cursor only after the agent accepts the turn, and defers (sends nothing) when the agent is mid-turn. `requestHarnessReview` moves the cursor first, because the review can finish before launch returns, and restores the snapshot if the launch fails. Writing a cursor for a turn that never ran silently drops the run's remaining steps.
 - **A parked `needs_attention` survives automated injected turns**; only the user's own action (`ReviewService.triggerReviewAutomation`, or dismissing) clears it. The cursor still moves.
-- **Ask what a step does, not the phase.** `readSessionRun(...).cursor.addressesFindings` tells you whether a step addresses review findings; `addressing_review` is the live phase of every main step.
+- **Ask what a step does, not the phase.** `readSessionRun(...).cursor.addressesFindings` tells you whether a step addresses review findings. `phaseForPlaybookStep` uses it to pick `addressing_review` or `running_step`, but a phase can outlive its step (hook repair, a parked follow-up), so ask the cursor.
 - **"Run review"** (`DevSessionService.runAdHocReview`) runs the playbook's own findings step as a new pass when it has one (`startPlaybookReviewPass`); run ids are keyed on the pass count, so reusing the count would settle the new review on the previous round's rows. Only a playbook without a findings step falls back to `launchAutoReview`.
 - **Restarts re-enter at the same step.** The registry evicts a finished session after `agentSession.terminalSessionTtlMs` (30 minutes), so a follow-up often has to start a fresh agent. `sendAgentFollowUp`'s `restartAs` carries the step's `systemPromptKey` and live phase into `startAgentSession`; without it an address turn would run under the implementation role at `idle`, where a crash never reaches `needs_attention`.
 
@@ -57,7 +57,8 @@ A step is `session: 'main'` (a turn on the implementation agent) or `session: 's
 | Phase | Meaning |
 |---|---|
 | `idle` | No automation in flight. |
-| `addressing_review` | A main step is running. Not only review work; see Cursor rules. |
+| `running_step` | A main step that does not address findings is running (implementation, or any custom main step). |
+| `addressing_review` | A main step that addresses review findings is running, or the PR-review follow-up. |
 | `reviewing` | A subagent step is running. |
 | `fixing_commit_hooks` | The one automated repair turn after the capture commit failed. |
 | `paused` | Waiting on the user. `paused_reason`: `gate`, `max_passes`, `stalled`, or `stopped` (the user pressed Stop). |
@@ -65,7 +66,7 @@ A step is `session: 'main'` (a turn on the implementation agent) or `session: 's
 | `needs_attention` | Automation could not continue. `attention_reason` names why, and the board turns it into a specific label and recovery action. |
 
 - **Notifications come from the machine.** A transition into `ready_for_review`, `needs_attention`, or `paused` emits a `board_agent` event on the `UpdateEventBus` (`BOARD_AGENT_NOTIFY_PHASES`), except a `stopped` pause. Do not emit board notifications from the orchestrator or session manager.
-- **Unexpected termination** during `reviewing`, `addressing_review`, `paused`, or hook repair becomes `needs_attention` / `agent-terminated`; a user Stop becomes `paused` / `stopped`.
+- **Unexpected termination** during `reviewing`, `addressing_review`, `running_step`, `paused`, or hook repair becomes `needs_attention` / `agent-terminated`; a user Stop becomes `paused` / `stopped`, except an ad-hoc turn with no cursor, which stays where it was. A crash reports no termination, so at startup `recoverAfterRestart` sends `appRestarted`, which moves `reviewing`, `addressing_review`, `running_step`, and hook repair (not `paused`) to `needs_attention` / `agent-terminated`.
 
 ### Recipe: change the machine
 

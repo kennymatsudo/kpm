@@ -65,12 +65,7 @@ export type KpmToolCapability =
   | 'integrations.read'
   | 'file_changes.propose'
   | 'spill.read'
-  // Deliberately absent from the action grant map: linking a task to a
-  // worktree or PR is something the user asks for, not something a
-  // scheduled run discovers.
   | 'board.propose'
-  // Deliberately absent from the action grant map (actionCapabilities.ts):
-  // an action run must never create actions or rewrite playbooks.
   | 'config.propose';
 
 export type KpmToolAvailability = Record<ChatSessionScope, boolean>;

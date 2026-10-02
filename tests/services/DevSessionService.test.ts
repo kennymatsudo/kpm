@@ -30,6 +30,7 @@ function createDeps(session: Record<string, unknown>, repoPath: string) {
       updateName: vi.fn(),
       delete: vi.fn(),
       markActiveAsInactive: vi.fn(),
+      getWithAutomationPhase: vi.fn(() => []),
     },
     planItems: {
       get: vi.fn(),

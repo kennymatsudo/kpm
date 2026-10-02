@@ -208,7 +208,6 @@ export interface ChatState {
   ) => void;
   setError: (chatSessionId: string, error: string) => void;
   addActivity: (chatSessionId: string, activity: Activity) => void;
-  updateActivity: (chatSessionId: string, activity: Activity) => void;
   clearError: (chatSessionId: string) => void;
   setSessionState: (chatSessionId: string, state: SessionState) => void;
   setDraftMessage: (chatSessionId: string, message: string) => void;

@@ -104,7 +104,7 @@ export function createPlaybookStepRunner(deps: PlaybookStepRunnerDeps) {
       type: 'stepCompleted',
       stepId: step.id,
       nextStepId: advance.stepId,
-      nextPhase: next ? phaseForPlaybookStep(next) : undefined,
+      nextPhase: next ? phaseForPlaybookStep(playbook, next) : undefined,
       stepPassCounts: advance.passCounts,
     });
     if (!next) {

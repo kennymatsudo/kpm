@@ -29,28 +29,6 @@ import type {
   McpStatusEventData,
 } from '../../shared/ipc/chatEvents';
 
-export type {
-  ChunkEventData,
-  PlanActionsEventData,
-  FileUpdateEventData,
-  FileMoveEventData,
-  FileDeleteEventData,
-  ConfigChangeEventData,
-  BoardChangeEventData,
-  TurnDoneEventData,
-  SessionLifecycleEventData,
-  QueuedEventData,
-  QueueClearedEventData,
-  ErrorEventData,
-  ActivityEventData,
-  SessionReadyEventData,
-  SessionTitleEventData,
-  ThinkingEventData,
-  BackgroundTasksEventData,
-  SuggestionsEventData,
-  SlashCommandsEventData,
-  McpStatusEventData,
-};
 
 export function getChatUsage(projectId: string) {
   return window.api.chat.getUsage(projectId);
@@ -137,6 +115,14 @@ export function startNewBackendChatSession(projectId: string) {
 
 export function cancelChatSession(projectId: string, chatSessionId: string) {
   return window.api.chat.cancel({ projectId, chatSessionId });
+}
+
+/** Cancel only while a turn is streaming; disconnect is idempotent in main, so it always runs. */
+export async function closeChatSession(projectId: string, chatSessionId: string, isStreaming: boolean) {
+  if (isStreaming) {
+    await cancelChatSession(projectId, chatSessionId);
+  }
+  await disconnectChatSession(projectId, chatSessionId);
 }
 
 export function cancelQueuedChatMessage(projectId: string, chatSessionId: string, clientMessageId?: string) {

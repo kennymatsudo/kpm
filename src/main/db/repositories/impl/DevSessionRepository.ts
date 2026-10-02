@@ -30,6 +30,7 @@ interface PreparedStatements {
   getByPlanItem: Statement;
   getActiveByPlanItem: Statement;
   getWithWorktree: Statement;
+  getWithAutomationPhase: Statement;
 
   // Write operations
   insert: Statement;
@@ -81,6 +82,7 @@ export class DevSessionRepository implements IDevSessionRepository {
       `),
       getByPlanItem: db.prepare('SELECT * FROM dev_sessions WHERE plan_item_id = ? ORDER BY created_at DESC LIMIT 1'),
       getWithWorktree: db.prepare("SELECT * FROM dev_sessions WHERE worktree_path IS NOT NULL AND worktree_path != ''"),
+      getWithAutomationPhase: db.prepare('SELECT * FROM dev_sessions WHERE automation_phase IS NOT NULL'),
       getActiveByPlanItem: db.prepare(`
         SELECT * FROM dev_sessions
         WHERE plan_item_id = ? AND status IN ('pending', 'active')
@@ -242,6 +244,10 @@ export class DevSessionRepository implements IDevSessionRepository {
 
   getWithWorktree(): DevSession[] {
     return this.stmts.getWithWorktree.all() as DevSession[];
+  }
+
+  getWithAutomationPhase(): DevSession[] {
+    return this.stmts.getWithAutomationPhase.all() as DevSession[];
   }
 
   create(session: Omit<DevSession, 'created_at' | 'updated_at' | 'completed_at'>): DevSession {

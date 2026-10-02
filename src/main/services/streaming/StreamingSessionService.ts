@@ -1308,11 +1308,13 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         recordPendingDocumentContent(chatSessionId, CONTEXT_FILE_PENDING_CACHE_KEY, newContent);
         void (async () => {
           const currentContent = await deps.readProjectContextFile(editProjectId);
-          emitAppEvent(mainWindow?.webContents, chatEvents.contextFileUpdate, {
+          emitAppEvent(mainWindow?.webContents, chatEvents.fileUpdate, {
             projectId: editProjectId,
+            chatSessionId,
+            filePath: currentContent.filename ?? DEFAULT_CONTEXT_FILENAME,
+            content: newContent,
             oldContent: currentContent.success ? currentContent.content : null,
-            newContent,
-            forceReview: forceApprovalReview,
+            forceReview: sessions.get(key)?.forceApprovalReview ?? forceApprovalReview,
           });
         })().catch((error) => {
           console.error('[StreamingSessionService] Failed to read context file for intercepted edit:', error);

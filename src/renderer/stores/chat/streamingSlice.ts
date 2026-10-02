@@ -18,7 +18,7 @@ function updateSession(set: ChatSet, chatSessionId: string, event: Parameters<ty
 }
 
 export function createStreamingSlice(set: ChatSet, get: ChatGet): Pick<ChatState,
-  'appendChunk' | 'appendThinking' | 'flushStreamingContent' | 'finalizeMessage' | 'addActivity' | 'updateActivity'
+  'appendChunk' | 'appendThinking' | 'flushStreamingContent' | 'finalizeMessage' | 'addActivity'
 > {
   return {
     appendChunk: (chatSessionId, chunk, _segmentId = 0, precedingActivities) => {
@@ -64,6 +64,5 @@ export function createStreamingSlice(set: ChatSet, get: ChatGet): Pick<ChatState
 
     addActivity: (chatSessionId, activity) => updateSession(set, chatSessionId, { type: 'activity-start', activity }),
 
-    updateActivity: (chatSessionId, activity) => updateSession(set, chatSessionId, { type: 'activity-update', activity }),
   };
 }

@@ -13,7 +13,7 @@ import type { FileSummaryService } from '../files/FileSummaryService';
 
 export interface AppLifecycleServiceDeps {
   searchService: Pick<SearchService, 'startBackgroundIndexing' | 'disposeBackgroundIndexing'>;
-  devSessionService: Pick<DevSessionService, 'markActiveAsInactive'>;
+  devSessionService: Pick<DevSessionService, 'recoverAfterRestart'>;
   pollScheduler: Pick<PollScheduler, 'stopAll'>;
   repoWatcherService?: Pick<RepoWatcherService, 'unwatchAll'>;
   projectWatcherService?: Pick<ProjectWatcherService, 'unwatchProject'>;
@@ -43,7 +43,7 @@ export function createAppLifecycleService(deps: AppLifecycleServiceDeps) {
       startupApplied = true;
 
       deps.searchService.startBackgroundIndexing();
-      deps.devSessionService.markActiveAsInactive();
+      deps.devSessionService.recoverAfterRestart();
     },
 
     async shutdown(): Promise<void> {

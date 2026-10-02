@@ -40,11 +40,10 @@ export interface BuildSdkOptionsParams {
   enabledPluginPaths?: string[];
   /** Tool names to disallow (for disabled managed MCP servers) */
   disabledMcpTools?: string[];
-  /** Server names to deny in canUseTool (for disabled managed MCP servers) */
+  /** Server names the PreToolUse hook denies (for disabled managed MCP servers) */
   disabledMcpServerNames?: string[];
   /** Callback for MCP elicitation requests (auth flows, form input) */
   onElicitation?: OnElicitation;
-  /** When true, skip permission prompts and auto-allow all non-denied tool calls */
   /**
    * Narrows the KPM tool set to the capabilities this run was granted. Action
    * runs pass their grant; chat and focus sessions omit it and get the full set.

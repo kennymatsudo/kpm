@@ -78,6 +78,17 @@ describe('runMainStep', () => {
     );
   });
 
+  it('re-enters an implementation step as running a step, not addressing review', async () => {
+    const deps = createDeps();
+    const implement = BUILT_IN_PLAYBOOKS.implementCodeReview.steps[0];
+
+    await runMainStep(deps, { session: createSession(), step: implement, provider: PROVIDER });
+
+    expect(deps.sendAgentFollowUp.mock.calls[0][2]).toEqual({
+      restartAs: { systemPromptKey: 'agents.implementation_tdd_system', phase: 'running_step' },
+    });
+  });
+
   it('opens a run with the task context and the write policy', async () => {
     const deps = createDeps();
     const implement = BUILT_IN_PLAYBOOKS.implementCodeReview.steps[0];
@@ -95,6 +106,8 @@ describe('runMainStep', () => {
       prompt: expect.stringContaining('Task contract'),
       model: 'sonnet',
       systemPromptKey: 'agents.implementation_tdd_system',
+      // A live phase restart recovery parks, which does not read as review work.
+      resumePhase: 'running_step',
     }));
     expect(deps.startAgentSession.mock.calls[0][1].prompt).toContain('Do not create commits');
   });

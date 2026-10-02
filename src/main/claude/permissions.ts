@@ -165,6 +165,8 @@ function getToolPreview(toolName: string, input: Record<string, unknown>): strin
   return toolName;
 }
 
+const KPM_TOOL_PREFIX = 'mcp__kpm__';
+
 function extractMcpServerName(toolName: string): string | null {
   const match = /^mcp__(.+?)__/.exec(toolName);
   return match?.[1] ?? null;
@@ -342,6 +344,11 @@ export async function evaluateKpmToolCall(
  * permission mode, including bypassPermissions where `canUseTool` is never
  * called, so document capture and disabled servers hold whatever mode the
  * user runs Claude Code in.
+ *
+ * KPM's own tools are allowed here. Claude Code otherwise asks before every
+ * MCP call in default mode, read-only ones included, and an action run has no
+ * chat to ask in. They only propose changes, and the publishing tools ask for
+ * their own grant.
  */
 export function createKpmToolHook(context: PermissionContext): HookCallbackMatcher {
   return {
@@ -349,7 +356,10 @@ export function createKpmToolHook(context: PermissionContext): HookCallbackMatch
       if (hookInput.hook_event_name !== 'PreToolUse') return { continue: true };
       const toolInput = (hookInput.tool_input ?? {}) as Record<string, unknown>;
       const denial = await evaluateKpmToolCall(context, hookInput.tool_name, toolInput);
-      if (!denial) return { continue: true };
+      if (!denial) {
+        if (!hookInput.tool_name.startsWith(KPM_TOOL_PREFIX)) return { continue: true };
+        return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } };
+      }
       permLog(`[Permissions] ${hookInput.tool_name} handled by KPM: ${denial}`);
       return {
         hookSpecificOutput: {

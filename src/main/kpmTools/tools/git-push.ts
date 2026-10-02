@@ -1,13 +1,14 @@
 /**
  * git_push Tool
  *
- * Chat's shell runs in a sandbox that denies the credential paths and every host
- * except localhost, so `git push` there can never authenticate to a remote. This
- * tool performs the push from the main process, where the user's existing git
- * credential helper applies and the agent never sees a secret.
+ * The user's shell sandbox may deny credential paths and network hosts, so
+ * `git push` in Bash can fail to authenticate. This tool performs the push from
+ * the main process, where the user's existing git credential helper applies and
+ * the agent never sees a secret.
  *
- * KPM MCP tools are auto-allowed by `canUseTool`, so this one hands
- * `publishBranch` a `projectWriteGrant` authorization; nothing upstream will ask.
+ * `createKpmToolHook` (claude/permissions.ts) auto-allows KPM MCP tools, so this
+ * one hands `publishBranch` a `projectWriteGrant` authorization; nothing
+ * upstream will ask.
  */
 
 import { z } from 'zod';

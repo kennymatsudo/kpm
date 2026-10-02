@@ -54,7 +54,7 @@ import { userPermissionModeOptions } from '../../claude/userPermissionMode';
 import { runClaudeQuery } from '../../claude/runClaudeQuery';
 import { createContextBuilder } from '../../claude/contextBuilders';
 import { runWithToolExecutionContext } from '../../kpmTools/runtimeRegistry';
-import { toolCapabilitiesFor } from '../core/actionCapabilities';
+import { builtinToolsDeniedFor, toolCapabilitiesFor } from '../core/actionCapabilities';
 
 const ACTION_TIMEOUT_MS = 10 * 60 * 1000;
 const RUN_HISTORY_LIMIT = 50;
@@ -275,15 +275,17 @@ export function createActionRunnerService(deps: ActionRunnerDeps) {
     const context = buildContext(projectId);
     if (!context) return failed('Project context could not be built');
 
+    const built = buildSdkOptions({
+      context,
+      model: action.model ?? deps.getDefaultClaudeModel(),
+      mainWindow: deps.getMainWindow(),
+      grantedCapabilities: toolCapabilitiesFor(action.capabilities),
+      ...mcpConfigs(),
+    });
     const sdkOptions = {
       ...await userPermissionModeOptions(),
-      ...buildSdkOptions({
-        context,
-        model: action.model ?? deps.getDefaultClaudeModel(),
-        mainWindow: deps.getMainWindow(),
-        grantedCapabilities: toolCapabilitiesFor(action.capabilities),
-        ...mcpConfigs(),
-      }),
+      ...built,
+      disallowedTools: [...(built.disallowedTools ?? []), ...builtinToolsDeniedFor(action.capabilities)],
     };
 
     const result = await runWithToolExecutionContext(

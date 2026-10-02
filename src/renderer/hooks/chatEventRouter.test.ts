@@ -54,7 +54,6 @@ function makeChatState(overrides: Partial<ChatStoreView> = {}): ChatStoreView {
     setError: vi.fn(),
     setTokens: vi.fn(),
     addActivity: vi.fn(),
-    updateActivity: vi.fn(),
     setSuggestions: vi.fn(),
     setSlashCommands: vi.fn(),
     setSessionState: vi.fn(),
@@ -134,43 +133,6 @@ describe('event routing', () => {
     router.handlers.onChunk({ projectId: OTHER_PROJECT_ID, chatSessionId: SESSION_ID, text: 'x' });
 
     expect(chatState.appendChunk).not.toHaveBeenCalled();
-  });
-
-  it('routes result-side activity updates (with diff data) to updateActivity, not addActivity', () => {
-    const chatState = makeChatState();
-    const { deps } = makeDeps(chatState);
-    const router = createChatEventRouter(deps);
-
-    const baseActivity = { id: 'a1', type: 'tool', name: 'Edit', status: 'complete' };
-    router.handlers.onActivity({
-      projectId: PROJECT_ID,
-      chatSessionId: SESSION_ID,
-      activity: { ...baseActivity, diffStats: { additions: 1, deletions: 0 } } as never,
-    });
-    router.handlers.onActivity({
-      projectId: PROJECT_ID,
-      chatSessionId: SESSION_ID,
-      activity: baseActivity as never,
-    });
-
-    expect(chatState.updateActivity).toHaveBeenCalledTimes(1);
-    expect(chatState.addActivity).toHaveBeenCalledTimes(1);
-  });
-
-  it('treats a "still responding" error as a retry, not a failure', () => {
-    const chatState = makeChatState();
-    const { deps } = makeDeps(chatState);
-    const router = createChatEventRouter(deps);
-
-    router.handlers.onError({
-      projectId: PROJECT_ID,
-      chatSessionId: SESSION_ID,
-      error: 'Claude is still responding',
-    });
-
-    expect(chatState.setRetrying).toHaveBeenCalledWith(SESSION_ID);
-    expect(chatState.setSessionState).toHaveBeenCalledWith(SESSION_ID, 'processing');
-    expect(chatState.setError).not.toHaveBeenCalled();
   });
 
   it('falls back to the viewed session for errors without a chatSessionId', () => {
@@ -441,8 +403,8 @@ describe('initialize', () => {
     services.getActiveChatSessions.mockResolvedValue({
       success: true,
       sessions: [
-        { chatSessionId: 's-live', scope: 'main', state: 'processing', title: 'Refactor plan' },
-        { chatSessionId: 's-focus', scope: 'focus_document', state: 'ready', title: null },
+        { chatSessionId: 's-live', scope: 'main', state: 'processing', isProcessing: true, title: 'Refactor plan' },
+        { chatSessionId: 's-focus', scope: 'focus_document', state: 'ready', isProcessing: false, title: null },
       ],
     });
     const router = createChatEventRouter(deps);
@@ -470,6 +432,7 @@ describe('initialize', () => {
           chatSessionId: 's-live',
           scope: 'main',
           state: 'processing',
+          isProcessing: true,
           title: null,
           partialResponse: 'Half an answ',
           partialActivities: [activity],
@@ -488,7 +451,7 @@ describe('initialize', () => {
     const { deps, services } = makeDeps(chatState);
     services.getActiveChatSessions.mockResolvedValue({
       success: true,
-      sessions: [{ chatSessionId: 's-idle', scope: 'main', state: 'ready', title: null }],
+      sessions: [{ chatSessionId: 's-idle', scope: 'main', state: 'ready', isProcessing: false, title: null }],
     });
     const router = createChatEventRouter(deps);
 
@@ -502,7 +465,7 @@ describe('initialize', () => {
     const { deps, services } = makeDeps(chatState);
     services.getActiveChatSessions.mockResolvedValue({
       success: true,
-      sessions: [{ chatSessionId: 's-live', scope: 'main', state: 'ready', title: null }],
+      sessions: [{ chatSessionId: 's-live', scope: 'main', state: 'ready', isProcessing: false, title: null }],
     });
     const router = createChatEventRouter(deps);
 

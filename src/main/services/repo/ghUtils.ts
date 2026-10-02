@@ -20,6 +20,7 @@ import type {
 import type { GhAuthState } from '../../../shared/ghAuth';
 import { describeGhAuth } from '../../../shared/ghAuth';
 import { gitExec } from './gitUtils';
+import type { ExternalMarkdown } from '../../documents/exportBoundary';
 
 const execFileAsync = promisify(execFile);
 
@@ -131,8 +132,8 @@ export interface GhReviewThreadState {
 export interface GhPrCreateOptions {
   head: string;
   base: string;
-  title: string;
-  body: string;
+  title: ExternalMarkdown;
+  body: ExternalMarkdown;
   draft?: boolean;
 }
 
@@ -574,8 +575,8 @@ export async function listPrs(cwd: string, filters: GhPrListFilters): Promise<Gh
 }
 
 export interface GhPrEdit {
-  title?: string;
-  body?: string;
+  title?: ExternalMarkdown;
+  body?: ExternalMarkdown;
 }
 
 export function buildEditPrArgs(prRef: string, edit: GhPrEdit): string[] {
@@ -1436,9 +1437,9 @@ export function parsePrIdentifier(input: string): PrIdentifier | null {
   const trimmed = input.trim();
   if (/^\d+$/.test(trimmed)) return { number: parseInt(trimmed, 10), repo: null };
   if (/^#\d+$/.test(trimmed)) return { number: parseInt(trimmed.slice(1), 10), repo: null };
-  const urlMatch = /github\.com\/([^/\s]+)\/([^/\s]+)\/pull\/(\d+)/.exec(trimmed);
+  const urlMatch = /^https:\/\/([\w-]+\.)*github\.com\/([^/\s]+)\/([^/\s]+)\/pull\/(\d+)/.exec(trimmed);
   if (urlMatch) {
-    return { number: parseInt(urlMatch[3], 10), repo: { owner: urlMatch[1], name: urlMatch[2] } };
+    return { number: parseInt(urlMatch[4], 10), repo: { owner: urlMatch[2], name: urlMatch[3] } };
   }
   return null;
 }

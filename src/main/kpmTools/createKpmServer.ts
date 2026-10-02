@@ -14,6 +14,7 @@ import {
   type KpmToolDefinition,
 } from './runtime';
 import { toKpmToolInputJsonSchema } from './toolInputSchema';
+import { toolError } from './tools';
 
 type ClaudeMcpToolDefinitions = Parameters<typeof createSdkMcpServer>[0]['tools'];
 
@@ -51,7 +52,7 @@ function toProviderToolDefinitions(
   tools: KpmToolDefinition[],
   scope: ChatSessionScope,
 ): NonNullable<ClaudeMcpToolDefinitions> {
-  return tools.map(({ name, description, inputSchema, annotations, _meta, handler }) => ({
+  return tools.map(({ name, description, inputSchema, annotations, _meta }) => ({
     name,
     description,
     inputSchema,
@@ -59,7 +60,9 @@ function toProviderToolDefinitions(
     _meta: DEFERRED_KPM_TOOLS.has(name) ? _meta : { ...ALWAYS_LOAD_META, ..._meta },
     handler: (args: unknown, extra: unknown) => {
       const context = getCurrentToolExecutionContext();
-      if (!context?.projectId) return handler(args, extra);
+      // Every production path (chat sessions, action runs) sets a context. The
+      // raw handler would skip the scope and grant checks, so refuse instead.
+      if (!context?.projectId) return Promise.resolve(toolError('No project is active for this chat.'));
 
       return executeKpmTool({
         name,

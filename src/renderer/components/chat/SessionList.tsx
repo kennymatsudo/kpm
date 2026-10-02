@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useChatStore, usePermissionStore, useProjectDomainStore } from '../../stores';
 import type { Message, PerSessionState } from '../../stores/chat/types';
-import { cancelChatSession, disconnectChatSession } from '../../services/chatService';
+import { closeChatSession } from '../../services/chatService';
 import { useShallow } from 'zustand/react/shallow';
 import { CloseIcon } from '../icons';
 import { Tooltip } from '../ui/Tooltip';
@@ -178,14 +178,7 @@ function SessionTab({
   const closeSession = async () => {
     if (!currentProjectId) return;
 
-    // If streaming, cancel first (interrupt with timeout + force-disconnect fallback)
-    if (isActive && isStreaming) {
-      await cancelChatSession(currentProjectId, sessionId);
-    }
-
-    // Always call disconnect — streaming-layer cleanup is idempotent for
-    // inactive sessions, ensuring any active subprocess is torn down cleanly.
-    await disconnectChatSession(currentProjectId, sessionId);
+    await closeChatSession(currentProjectId, sessionId, isStreaming);
 
     // Remove session entirely (handles view switching internally)
     removeSession(sessionId);

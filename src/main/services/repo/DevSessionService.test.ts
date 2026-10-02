@@ -121,6 +121,50 @@ describe('DevSessionService playbook migration boundary', () => {
   });
 });
 
+describe('DevSessionService first board turn', () => {
+  it('launches the first main step under its live phase, even when a subagent step leads the playbook', async () => {
+    const playbook = {
+      id: 'review-first', name: 'Review first', builtIn: false,
+      steps: [
+        { id: 'pre-review', session: 'subagent', agents: [{ provider: 'claude' }], systemPromptKey: 'agents.review_system', directive: { kind: 'prompt', text: 'Look first' } },
+        { id: 'build', session: 'main', agents: [{ provider: 'claude' }], systemPromptKey: 'agents.implementation_system', directive: { kind: 'prompt', text: 'Build' } },
+      ],
+    };
+    const existing = {
+      id: 'session-1', project_id: 'project-1', plan_item_id: 'item-1', repo_id: 'repo-1',
+      status: 'inactive', initial_instructions: 'Do the work', work_brief_revision: 1,
+      playbook_snapshot: JSON.stringify(playbook), current_step_id: 'pre-review', automation_phase: null,
+    };
+    const item = {
+      id: 'item-1', project_id: 'project-1', parent_id: null, title: 'Task', description: null, intent: null,
+      acceptance_criteria: [], external_key: null, code_refs: null, work_brief_revision: 1,
+    };
+    const startAgentSession = vi.fn().mockResolvedValue({ ok: true, data: { session: existing } });
+    const service = createDevSessionService({
+      planItems: { get: vi.fn(() => item), getByProject: vi.fn(() => [item]) },
+      projects: { get: vi.fn(() => ({ id: 'project-1', name: 'Project' })) },
+      devSessions: { getByPlanItem: vi.fn(() => existing), get: vi.fn(() => existing), updateReviewPolicy: vi.fn(), updateWorkBriefSnapshot: vi.fn() },
+      listBoardProviders: vi.fn(async () => [{
+        id: 'claude', name: 'Claude', available: true,
+        models: [{ id: 'sonnet', name: 'Sonnet', isDefault: true }],
+        capabilities: { nativeSkills: true, reviewSandbox: false },
+      }]),
+      appSettings: { get: vi.fn() },
+      readProjectContextFile: vi.fn(async () => ({ ok: true, data: { content: null } })),
+      buildContextPrefix: vi.fn(),
+      getPromptContent: vi.fn(() => ''),
+      getSkillBody: vi.fn(),
+    } as never);
+    (service as unknown as { startAgentSession: typeof startAgentSession }).startAgentSession = startAgentSession;
+
+    await service.createAndStartFromBoard({ planItemId: 'item-1', repoId: 'repo-1' });
+
+    expect(startAgentSession).toHaveBeenCalledWith('session-1', expect.objectContaining({
+      startStepId: 'build',
+    }));
+  });
+});
+
 describe('DevSessionService.buildSubagentTaskContext', () => {
   it('gives a reviewer the project context file and resolved plan refs around the stored Work Brief', async () => {
     const refId = '11111111-1111-4111-8111-111111111111';

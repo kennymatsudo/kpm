@@ -413,7 +413,9 @@ export function derivePanelStatus(i: PanelStatusInputs): PanelStatus {
       primary: { label: 'Answer', action: 'focus_input' },
     }, null);
   }
-  if (i.implAgentState === 'starting' || i.implAgentState === 'working') {
+  // A persisted main step with no agent state loaded yet is still implementing.
+  if (i.implAgentState === 'starting' || i.implAgentState === 'working'
+    || (i.automationPhase === 'running_step' && i.implAgentState == null)) {
     return withStep('implementing', {
       tone: 'accent',
       busy: true,

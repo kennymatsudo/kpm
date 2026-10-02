@@ -34,7 +34,7 @@ import { searchEndpoints } from '../shared/ipc/searchEndpoints';
 import { mcpServersEndpoints } from '../shared/ipc/mcpServersEndpoints';
 import { usageEndpoints } from '../shared/ipc/usageEndpoints';
 import { activityEndpoints } from '../shared/ipc/activityEndpoints';
-import { chatEndpoints } from '../shared/ipc/chatEndpoints';
+import { chatEndpoints, type ActiveSessionInfo } from '../shared/ipc/chatEndpoints';
 import { terminalEndpoints } from '../shared/ipc/terminalEndpoints';
 import { settingsEndpoints } from '../shared/ipc/settingsEndpoints';
 import { permissionEndpoints } from '../shared/ipc/permissionEndpoints';
@@ -97,7 +97,6 @@ import type {
   DevSession,
   DevSessionWithPlanItem,
   ClaudeModel,
-  ChatSessionScope,
   ChatViewMode,
   FileNode,
   ConfluencePageLink,
@@ -226,10 +225,6 @@ const chat = {
       { usage: { totalTokens: number; inputTokens: number; outputTokens: number } },
       { totalTokens: number; inputTokens: number; outputTokens: number }
     >(IPC_CHANNELS.chat.getUsage, { projectId }, ({ usage }) => usage),
-  getMessages: (projectId: string): Promise<{ success: boolean; messages?: ChatMessage[]; error?: string }> =>
-    invokeFlat<{ messages: ChatMessage[] }>(IPC_CHANNELS.chat.getMessages, { projectId }).then((result) =>
-      result.success ? { success: true, messages: result.messages } : result
-    ),
   getSlashCommands: chatInvoke.getSlashCommands,
   piProviders: chatInvoke.piProviders,
   modelCatalog: chatInvoke.modelCatalog,
@@ -247,12 +242,12 @@ const chat = {
     invokeFlat<{ messages: ChatMessage[]; chatSessionId: string; choice: ChatChoiceView; title: string | null }>(
       IPC_CHANNELS.chat.loadSession,
       { projectId, chatSessionId },
-    ).then((result) => (result.success ? result : result)),
+    ),
   getFocusDocumentSession: (projectId: string, path: string, title: string, contentHash: string): Promise<{ success: boolean; messages?: ChatMessage[]; chatSessionId?: string; choice?: ChatChoiceView; error?: string }> =>
     invokeFlat<{ messages: ChatMessage[]; chatSessionId: string; choice: ChatChoiceView }>(
       IPC_CHANNELS.chat.getFocusDocumentSession,
       { projectId, path, title, contentHash },
-    ).then((result) => (result.success ? result : result)),
+    ),
   onChunk: chatSubscriptions.chunk,
   onPlanActions: chatSubscriptions.planActions,
   onDone: chatSubscriptions.done,
@@ -270,21 +265,14 @@ const chat = {
 
   // ─── Streaming Session Methods ───
 
-  /** Connect streaming session for a project (called on project open) */
-  connectSession: chatInvoke.connectSession,
-
   /** Disconnect streaming session for a project (all sessions) */
   disconnectSession: chatInvoke.disconnectSession,
 
   /** Get all active sessions for a project (multi-session support) */
-  getActiveSessions: (projectId: string): Promise<{
-    success: boolean;
-    sessions?: { chatSessionId: string; scope: ChatSessionScope; state: SessionState; isProcessing: boolean; title?: string | null }[];
-    error?: string;
-  }> => invokeFlat<{ sessions: { chatSessionId: string; scope: ChatSessionScope; state: SessionState; isProcessing: boolean; title?: string | null }[] }>(
-    IPC_CHANNELS.chat.getActiveSessions,
-    { projectId },
-  ).then((result) => (result.success ? { success: true, sessions: result.sessions } : result)),
+  getActiveSessions: (projectId: string): Promise<{ success: boolean; sessions?: ActiveSessionInfo[]; error?: string }> =>
+    invokeFlat<{ sessions: ActiveSessionInfo[] }>(IPC_CHANNELS.chat.getActiveSessions, { projectId }).then((result) =>
+      result.success ? { success: true, sessions: result.sessions } : result
+    ),
 
   /** Disconnect a specific session (multi-session support) */
   disconnectSpecificSession: chatInvoke.disconnectSpecificSession,

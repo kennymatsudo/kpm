@@ -219,6 +219,7 @@ vi.mock('../../kpmTools/runtimeRegistry', () => ({
   clearPendingDocumentContent: (chatSessionId: string) => {
     clearPendingDocumentContentCalls.push(chatSessionId);
   },
+  recordPendingDocumentContent: () => {},
   getKpmToolDefinitions: () => [],
 }));
 
@@ -659,6 +660,37 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
       projectId: 'project-1',
       chatSessionId: 'chat-1',
       filePath: 'CLAUDE.md',
+      content: '# Updated context',
+      oldContent: '# Existing context',
+    });
+  });
+
+  it('sends a context file edit intercepted from Claude Write or Edit to the approval queue', async () => {
+    let onContextFileEdit: ((projectId: string, newContent: string) => void) | undefined;
+    service = createStreamingSessionService({
+      ...createDeps(sendSpy),
+      buildSdkOptions: (_ctx, options) => {
+        onContextFileEdit = options?.onContextFileEdit;
+        return {};
+      },
+      readProjectContextFile: async () => ({ success: true, content: '# Existing context', filename: 'AGENTS.md' }),
+    });
+
+    const sendResult = await service.sendChatMessage('project-1', 'hello', {
+      chatSessionId: 'chat-1',
+      model: 'sonnet',
+    });
+    expect(sendResult.ok).toBe(true);
+
+    sentEvents.length = 0;
+    onContextFileEdit?.('project-1', '# Updated context');
+    await vi.waitFor(() => expect(sentEvents.some((event) => event.channel === 'chat:file-update')).toBe(true));
+
+    const fileUpdate = sentEvents.find((event) => event.channel === 'chat:file-update');
+    expect(fileUpdate?.payload).toMatchObject({
+      projectId: 'project-1',
+      chatSessionId: 'chat-1',
+      filePath: 'AGENTS.md',
       content: '# Updated context',
       oldContent: '# Existing context',
     });

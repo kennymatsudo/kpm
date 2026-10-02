@@ -240,7 +240,8 @@ Rules:
 - Only use UUIDs from the **Item Reference** above, the **Focused Selection** section, or a KPM plan tool result (for items the reference does not list, such as closed ones). KPM rejects unknown UUIDs at save — do not invent or guess.
 - Refs work mid-prose: "After @plan/<uuid>, we can…" is fine.
 - Don't put refs inside fenced code blocks — they won't resolve.
-- Prefer a ref over restating the item's title or external key in prose; readers get a live chip.`;
+- Prefer a ref over restating the item's title or external key in prose; readers get a live chip.
+- Only KPM's own export paths rewrite refs, such as \`create_pull_request\` and \`update_pull_request\`. Anything you send out through MCP servers or the shell (PR text, comments, issues, tickets, pages) must not contain them; write the item's tracker key, or its title when it has none.`;
 }
 
 export function buildFocusSystemPrompt(context: PlanContext): string {

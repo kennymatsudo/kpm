@@ -91,6 +91,7 @@ describe('create_pull_request', () => {
 
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toMatch(/git_push/);
+    expect(result.content[0].text).toMatch(/another remote cannot be opened/);
     expect(requestWriteAccess).not.toHaveBeenCalled();
     expect(createPr).not.toHaveBeenCalled();
   });
@@ -106,12 +107,12 @@ describe('create_pull_request', () => {
   });
 
   it('creates nothing when the user declines writes', async () => {
-    const { createTool } = makeTools({ allowed: false, reason: 'The user did not allow writes.' });
+    const { createTool } = makeTools({ allowed: false, reason: 'The user declined publishing.' });
 
     const result = await call(createTool, { title: 'T', body: 'B', draft: true });
 
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toMatch(/did not allow/);
+    expect(result.content[0].text).toMatch(/declined publishing/);
     expect(createPr).not.toHaveBeenCalled();
   });
 

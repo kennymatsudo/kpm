@@ -109,7 +109,7 @@ function isRunning(step: PlaybookStep, input: RunOutlineInput): boolean {
   if (input.currentStepId !== step.id) return false;
   return step.session === 'subagent'
     ? input.automationPhase === 'reviewing'
-    : input.automationPhase === 'addressing_review';
+    : input.automationPhase === 'addressing_review' || input.automationPhase === 'running_step';
 }
 
 /**

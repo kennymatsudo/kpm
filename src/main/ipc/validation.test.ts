@@ -45,8 +45,6 @@ const ExportSchemas = {
   saveMapping: exportEndpoints['mappings.save'].params,
 };
 const StreamingSessionSchemas = {
-  connectSession: chatEndpoints.connectSession.params,
-  disconnectSession: chatEndpoints.disconnectSession.params,
   getSessionState: chatEndpoints.getSessionState.params,
 };
 const ShellSchemas = {
@@ -462,8 +460,6 @@ describe('ExportSchemas', () => {
 
 describe('StreamingSessionSchemas', () => {
   it('accepts valid session operation payloads', () => {
-    expectValid(StreamingSessionSchemas.connectSession, { projectId: randomUUID() });
-    expectValid(StreamingSessionSchemas.disconnectSession, { projectId: randomUUID() });
     expectValid(StreamingSessionSchemas.getSessionState, {
       projectId: randomUUID(),
       chatSessionId: randomUUID(),
@@ -471,9 +467,6 @@ describe('StreamingSessionSchemas', () => {
   });
 
   it('rejects invalid or missing session IDs', () => {
-    expectInvalid(StreamingSessionSchemas.connectSession, { projectId: 'not-a-uuid' });
-    expectInvalid(StreamingSessionSchemas.connectSession, {});
-    expectInvalid(StreamingSessionSchemas.disconnectSession, { projectId: 'invalid' });
     expectInvalid(StreamingSessionSchemas.getSessionState, {
       projectId: '',
       chatSessionId: randomUUID(),

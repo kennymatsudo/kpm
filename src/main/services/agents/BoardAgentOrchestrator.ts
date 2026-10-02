@@ -176,9 +176,8 @@ async function captureWorkOnBranch(
   phaseMachine: Pick<AutomationPhaseMachine, 'transition'>,
   session: DevSession,
 ): Promise<CaptureWorkOutcome> {
-  // Ask the step what it was doing, not the phase: `addressing_review` is the
-  // live phase of every main step, so reading it here titles a plain resumed
-  // implementation turn as review work.
+  // Ask the step what it was doing, not the phase: under hook repair the phase
+  // is `fixing_commit_hooks`, which no longer says which step it came from.
   const subject = readSessionRun(session).cursor?.addressesFindings
     ? 'Address review findings'
     : session.name?.trim() || 'KPM task changes';
@@ -255,7 +254,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
     deps.phaseMachine.transition(session.id, {
       type: 'stepStarted',
       stepId: step.id,
-      phase: phaseForPlaybookStep(step),
+      phase: phaseForPlaybookStep(playbook, step),
     });
     const providers = await (deps.listBoardProviders ?? detectBoardProviders)();
     const plan = resolvePlaybookPlan(playbook, providers, deps.getDefaultModel?.());
@@ -517,7 +516,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
         counts[step.id] = (counts[step.id] ?? 0) + 1;
         deps.phaseMachine.transition(sessionId, {
           type: 'stepCompleted', stepId: step.id, nextStepId: target.id,
-          nextPhase: phaseForPlaybookStep(target), stepPassCounts: counts,
+          nextPhase: phaseForPlaybookStep(playbook, target), stepPassCounts: counts,
         });
         const surviving = rounds.outputsFor(session)[step.id]?.join('\n\n');
         const note = [options.note, surviving ? `Surviving reviewer output:\n${surviving}` : ''].filter(Boolean).join('\n\n');
@@ -552,7 +551,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
         type: 'stepCompleted',
         stepId: step.id,
         nextStepId: step.id,
-        nextPhase: phaseForPlaybookStep(step),
+        nextPhase: phaseForPlaybookStep(playbook, step),
         stepPassCounts: passCounts,
       });
 
@@ -624,7 +623,11 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
           await stepRunner.finish(session);
           return;
         }
-        const completed = resolveRunStep(playbook, session.current_step_id) ?? playbook.steps[0];
+        const completed = resolveRunStep(playbook, session.current_step_id);
+        if (!completed) {
+          deps.phaseMachine.transition(session.id, { type: 'automationFailed', reason: 'unknown-completed-step' });
+          return;
+        }
         const sessionOutputs = rounds.outputsFor(session);
         const closesLoop = Boolean(sessionOutputs[SUGGESTIONS_ONLY_ROUND_KEY]?.length);
         delete sessionOutputs[SUGGESTIONS_ONLY_ROUND_KEY];
@@ -681,9 +684,12 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
       }
 
       if (state === 'stopped') {
+        // A null cursor is an ad-hoc turn after the run ended; pausing it on a
+        // made-up step would let Play rerun the whole playbook.
+        if (!session.current_step_id) return;
         deps.phaseMachine.transition(implementationSessionId, {
           type: 'paused',
-          stepId: session.current_step_id ?? 'implement',
+          stepId: session.current_step_id,
           reason: 'stopped',
         });
         return;

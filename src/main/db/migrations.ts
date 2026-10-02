@@ -4778,6 +4778,97 @@ export const migrations: Migration[] = [
       db.exec('ALTER TABLE projects DROP COLUMN storybook_url;');
     },
   },
+  {
+    id: 1133,
+    name: '133_dev_session_running_step_phase',
+    foreignKeysOff: true,
+    up: (db: BetterSqliteDatabase) => {
+      // Every main step ran as 'addressing_review', so a plain implementation
+      // turn read on the card as review work. Its first turn ran at 'idle'
+      // instead to dodge that label, which a crash leaves stranded: restart
+      // recovery only parks phases that need a live agent. 'running_step' is
+      // a main step that is not addressing findings.
+      //
+      // Widening the CHECK needs a rebuild; foreignKeysOff for the same reason
+      // as 126 (review_tasks, review_ownership, agent_review_runs cascade).
+      db.exec(`
+        CREATE TABLE dev_sessions_new (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          plan_item_id TEXT REFERENCES plan_items(id) ON DELETE CASCADE,
+          repo_id TEXT NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+          worktree_path TEXT NOT NULL,
+          branch_name TEXT NOT NULL,
+          base_branch TEXT NOT NULL DEFAULT 'main',
+          base_sha TEXT,
+          status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'active', 'inactive')),
+          initial_instructions TEXT NOT NULL DEFAULT '',
+          pr_number INTEGER,
+          pr_url TEXT,
+          pr_state TEXT,
+          review_state TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          completed_at DATETIME,
+          name TEXT,
+          agent_type TEXT NOT NULL DEFAULT 'claude',
+          agent_state TEXT NOT NULL DEFAULT 'inactive',
+          automation_phase TEXT CHECK(automation_phase IN (
+            'idle',
+            'reviewing',
+            'addressing_review',
+            'running_step',
+            'fixing_commit_hooks',
+            'paused',
+            'ready_for_review',
+            'needs_attention'
+          )),
+          merge_order INTEGER,
+          execution_mode TEXT NOT NULL DEFAULT 'standard'
+            CHECK(execution_mode IN ('standard', 'workflow')),
+          review_policy TEXT NOT NULL DEFAULT 'auto'
+            CHECK(review_policy IN ('auto', 'skip')),
+          playbook_id TEXT,
+          playbook_snapshot TEXT,
+          current_step_id TEXT,
+          step_pass_counts TEXT,
+          paused_reason TEXT CHECK(paused_reason IN ('gate', 'max_passes', 'stalled', 'stopped')),
+          step_outputs TEXT,
+          work_brief_revision INTEGER
+            CHECK(work_brief_revision IS NULL OR work_brief_revision >= 1),
+          attention_reason TEXT,
+          auto_address_pr_reviews INTEGER NOT NULL DEFAULT 0,
+          pr_is_draft INTEGER NOT NULL DEFAULT 0,
+          worktree_origin TEXT NOT NULL DEFAULT 'kpm'
+            CHECK(worktree_origin IN ('kpm', 'attached'))
+        );
+
+        INSERT INTO dev_sessions_new (
+          id, project_id, plan_item_id, repo_id, worktree_path, branch_name, base_branch, base_sha,
+          status, initial_instructions, pr_number, pr_url, pr_state, review_state, created_at,
+          updated_at, completed_at, name, agent_type, agent_state, automation_phase, merge_order,
+          execution_mode, review_policy, playbook_id, playbook_snapshot, current_step_id,
+          step_pass_counts, paused_reason, step_outputs, work_brief_revision, attention_reason,
+          auto_address_pr_reviews, pr_is_draft, worktree_origin
+        )
+        SELECT
+          id, project_id, plan_item_id, repo_id, worktree_path, branch_name, base_branch, base_sha,
+          status, initial_instructions, pr_number, pr_url, pr_state, review_state, created_at,
+          updated_at, completed_at, name, agent_type, agent_state, automation_phase, merge_order,
+          execution_mode, review_policy, playbook_id, playbook_snapshot, current_step_id,
+          step_pass_counts, paused_reason, step_outputs, work_brief_revision, attention_reason,
+          auto_address_pr_reviews, pr_is_draft, worktree_origin
+        FROM dev_sessions;
+
+        DROP TABLE dev_sessions;
+        ALTER TABLE dev_sessions_new RENAME TO dev_sessions;
+
+        CREATE INDEX idx_dev_sessions_project ON dev_sessions(project_id);
+        CREATE INDEX idx_dev_sessions_plan_item ON dev_sessions(plan_item_id);
+        CREATE INDEX idx_dev_sessions_status ON dev_sessions(status);
+      `);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

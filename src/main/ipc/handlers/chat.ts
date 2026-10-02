@@ -108,11 +108,6 @@ function buildChatHandlers(deps: ChatHandlerDeps): ChatHandlers {
       if (!result.ok) throw new Error(result.error);
     },
 
-    connectSession: async () => {
-      // Nothing to load: the project's write grant is hydrated once at
-      // startup and outlives every session, so connecting is a no-op.
-    },
-
     disconnectSession: async ({ projectId }) => {
       const result = await chatService.disconnectSession(projectId);
       if (!result.ok) throw new Error(result.error);
@@ -143,11 +138,6 @@ function buildChatHandlers(deps: ChatHandlerDeps): ChatHandlers {
           outputTokens: project.session_output_tokens,
         },
       };
-    },
-
-    getMessages: async ({ projectId }) => {
-      requireProject(projects, projectId);
-      return { messages: chatMessages.getMessages(projectId) };
     },
 
     getSessionHistory: async ({ projectId, limit }) => {

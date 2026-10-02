@@ -372,6 +372,25 @@ describe('permissions', () => {
       });
       expect(onProjectFileWrite).toHaveBeenCalledWith('p1', 'notes.md', 'hi');
     });
+
+    it.each([
+      ['allows KPM tools without asking', 'mcp__kpm__search_plan', { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } }],
+      ['leaves other tools to the user\'s permissions', 'mcp__github__get_issue', { continue: true }],
+      ['leaves built-in tools to the user\'s permissions', 'Bash', { continue: true }],
+    ])('%s', async (_name, toolName, expected) => {
+      const [hook] = createKpmToolHook({ projectPath: '/test/project', projectId: 'p1' }).hooks;
+      const output = await hook({
+        hook_event_name: 'PreToolUse',
+        tool_name: toolName,
+        tool_input: { command: 'ls' },
+        tool_use_id: 't1',
+        session_id: 's1',
+        transcript_path: '',
+        cwd: '/test/project',
+      } as never, 't1', { signal: new AbortController().signal });
+
+      expect(output).toEqual(expected);
+    });
   });
 
   describe('createPermissionPrompt', () => {

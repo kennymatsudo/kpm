@@ -622,6 +622,32 @@ describe('BoardAgentOrchestrator', () => {
     expect(session.current_step_id).toBeNull();
   });
 
+  it.each([
+    ['keeps an ad-hoc turn after the run ended off the playbook', null, 'idle', null],
+    ['pauses a playbook turn on the step it was running', 'implement', 'paused', 'implement'],
+  ] as const)('Stop %s', async (_name, cursor, expectedPhase, expectedCursor) => {
+    const session = createSession({ current_step_id: cursor, automation_phase: 'idle' });
+    const callbacks = createBoardAgentOrchestrator({
+      agentReviews: {
+        persistStartedReview: vi.fn(), persistCompletedReview: vi.fn(), persistFailedReview: vi.fn(),
+        getByReviewSessionIds: vi.fn(() => []),
+        recordFindingDispositions: vi.fn(),
+      },
+      planService: { updateItem: vi.fn() }, phaseMachine: createTestPhaseMachine(session),
+      getDevSessionService: () => devSessionDouble({ get: vi.fn(() => session) }),
+      getReviewService: () => null,
+      getAgentSessionManager: () => ({ isSessionBusy: vi.fn(() => false) } as never),
+      getPromptContent: vi.fn(), claudeUsageService: { recordUsage: vi.fn() }, requestPlanRefresh: vi.fn(),
+    });
+
+    await callbacks.onSessionStateChange?.({
+      devSessionId: session.id, implementationSessionId: session.id, role: 'implement', state: 'stopped',
+    } as never);
+
+    expect(session.automation_phase).toBe(expectedPhase);
+    expect(session.current_step_id).toBe(expectedCursor);
+  });
+
   it('finishes a terminal playbook without flushing PR review tasks when no PR exists', async () => {
     const playbook = {
       id: 'custom-terminal', name: 'Terminal', builtIn: false,

@@ -35,10 +35,16 @@ export type AutomationPhaseEvent =
   | { type: 'prReviewThreadsQueued'; stepId: string }
   | { type: 'movedToReview' }
   | { type: 'agentTerminatedUnexpectedly' }
+  | { type: 'appRestarted' }
   | { type: 'commitHookRepairStarted' }
   | { type: 'manualCommitResolved' }
   | { type: 'automationDismissed' }
-  | { type: 'sessionStarted'; phase?: DevSessionAutomationPhase }
+  | {
+      type: 'sessionStarted';
+      phase?: DevSessionAutomationPhase;
+      /** The step this start launches; the cursor moves there with the phase. */
+      stepId?: string;
+    }
   | { type: 'automationFailed'; reason: DevSessionAttentionReason };
 
 export interface AutomationPhaseRepository {
@@ -84,8 +90,12 @@ export function captureAutomationState(session: DevSession): AutomationStateSnap
   };
 }
 
+function isAgentTurnPhase(phase: DevSessionAutomationPhase | null): boolean {
+  return phase === 'reviewing' || phase === 'addressing_review' || phase === 'running_step' || isCommitHookRepairPhase(phase);
+}
+
 function isTerminationGuardedPhase(phase: DevSessionAutomationPhase | null): boolean {
-  return phase === 'reviewing' || phase === 'addressing_review' || phase === 'paused' || isCommitHookRepairPhase(phase);
+  return isAgentTurnPhase(phase) || phase === 'paused';
 }
 
 /**
@@ -100,7 +110,7 @@ export function effectivePhase(
     // Resolve the parked cursor rather than matching the built-in step id: a
     // custom playbook's findings step is named whatever its author chose.
     const addressing = session ? readSessionRun(session).cursor?.addressesFindings : false;
-    return addressing ? 'addressing_review' : 'idle';
+    return addressing ? 'addressing_review' : 'running_step';
   }
   return phase;
 }
@@ -175,6 +185,14 @@ function nextState(
         ? { phase: 'needs_attention', attentionReason: 'agent-terminated' }
         : { phase: current };
 
+    case 'appRestarted':
+      // No agent survives a restart, and a crash never reports its exit, so a
+      // phase that needs a running agent would otherwise show busy forever with
+      // no Stop or Retry. A pause is the user's own and holds.
+      return isAgentTurnPhase(current)
+        ? { phase: 'needs_attention', pausedReason: null, attentionReason: 'agent-terminated' }
+        : { phase: current };
+
     case 'commitHookRepairStarted':
       return {
         phase: 'fixing_commit_hooks',
@@ -206,7 +224,7 @@ function nextState(
         // New sessions already persist their first cursor. Preserve null for a
         // terminal snapshotted playbook receiving an allowed ad-hoc follow-up;
         // inventing `implement` here would restart the completed playbook.
-        currentStepId: session.current_step_id,
+        currentStepId: event.stepId ?? session.current_step_id,
         pausedReason: null,
         attentionReason: null,
       };

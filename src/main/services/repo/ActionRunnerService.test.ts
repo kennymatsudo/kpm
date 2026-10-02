@@ -3,7 +3,7 @@ import type { ActionDefinition } from '../../../shared/actions';
 
 const mocks = vi.hoisted(() => ({
   runClaudeQuery: vi.fn<(options: unknown) => Promise<{ text: string }>>(),
-  buildSdkOptions: vi.fn<(params: { grantedCapabilities?: string[] }) => object>(),
+  buildSdkOptions: vi.fn<(params: { grantedCapabilities?: string[] }) => { disallowedTools?: string[] }>(),
 }));
 const { runClaudeQuery, buildSdkOptions } = mocks;
 
@@ -105,6 +105,20 @@ describe('ActionRunnerService', () => {
     expect(granted).toContain('plan_items.read');
     expect(granted).not.toContain('plan_items.propose');
     expect(granted).not.toContain('documents.propose');
+  });
+
+  it('denies built-in write tools even when the user permission mode would allow them', async () => {
+    runClaudeQuery.mockResolvedValue({ text: 'Something broke\nDetails here.' });
+    buildSdkOptions.mockReturnValue({ disallowedTools: ['AskUserQuestion'] });
+    const { runner } = harness();
+
+    await runner.runNow('a1');
+    await vi.waitFor(() => expect(runClaudeQuery).toHaveBeenCalled());
+
+    const { sdkOptions } = runClaudeQuery.mock.calls[0]?.[0] as { sdkOptions: { disallowedTools: string[] } };
+    expect(sdkOptions.disallowedTools).toEqual(
+      expect.arrayContaining(['AskUserQuestion', 'Edit', 'Write', 'NotebookEdit', 'Bash'])
+    );
   });
 
   it('records a finding and broadcasts the run', async () => {

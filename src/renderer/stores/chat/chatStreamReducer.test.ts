@@ -105,7 +105,7 @@ describe('applyStreamEvent thinking/activity', () => {
     expect(next.activities).toEqual([makeActivity('a1', 'Running: npm test')]);
   });
 
-  it('activity-update patches the activity in place across activities, pendingActivities, streamingSegments, and messages', () => {
+  it('activity-start re-sent under a known id patches it in place across activities, pendingActivities, streamingSegments, and messages', () => {
     const activity = makeActivity('a1', 'Running: npm test');
     const updated: Activity = { ...activity, detail: 'done', diffStats: { additions: 1, deletions: 0 } };
     const session = {
@@ -123,7 +123,7 @@ describe('applyStreamEvent thinking/activity', () => {
       ],
     };
 
-    const next = applyStreamEvent(session, { type: 'activity-update', activity: updated });
+    const next = applyStreamEvent(session, { type: 'activity-start', activity: updated });
 
     expect(next.activities).toEqual([updated]);
     expect(next.pendingActivities).toEqual([updated]);

@@ -489,6 +489,21 @@ describe('default KPM tool runtime manifest', () => {
     expect(tooLong).toEqual([]);
   });
 
+  it('marks every tool in a read-only capability group as read-only so Claude Code can run it in parallel', () => {
+    warmupKpmToolRuntime({
+      container: { projects: {}, planItems: {}, planRelations: {}, repos: {}, devSessions: {}, confluenceLinks: {} } as never,
+      services: { fileExplorerService: {} } as never,
+      getMainWindow: () => null,
+    });
+
+    const unmarked = getKpmToolRuntime().listTools({ scope: 'main' })
+      .filter((tool) => tool.capabilities.length > 0 && tool.capabilities.every((capability) => capability.endsWith('.read')))
+      .filter((tool) => tool.annotations?.readOnlyHint !== true)
+      .map((tool) => tool.name);
+
+    expect(unmarked).toEqual([]);
+  });
+
   it('takes the project from the chat, never from the model', () => {
     warmupKpmToolRuntime({
       container: { projects: {}, planItems: {}, planRelations: {}, repos: {}, devSessions: {}, confluenceLinks: {} } as never,

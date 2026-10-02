@@ -4,10 +4,9 @@
  * PR description generation from project context, reading a pull request that
  * is not the current branch's, and searching pull requests.
  *
- * All run `gh` from the main process. That is the whole point of the read tools:
- * chat's Bash is sandboxed away from `~/.config/gh` and from every host but
- * localhost, so `gh` in the shell can never see a PR, whatever the user's gh
- * login says. See sdkOptionsBuilder.ts.
+ * All run `gh` from the main process, which is why the read tools exist beside
+ * `gh` in Bash: the user's own sandbox often cuts the shell off from GitHub
+ * (Codex's workspace-write sandbox has no network unless the user enables it).
  */
 
 import { z } from 'zod';
@@ -39,7 +38,7 @@ const MAX_PR_SEARCH_LIMIT = 100;
 /** Rejects anything that is not a plain `owner/name` slug before it reaches gh. */
 const REPO_SLUG = /^[A-Za-z0-9][\w.-]*\/[\w.-]+$/;
 
-const READ_PR_DESCRIPTION = `Read a GitHub pull request: title, body, state, author, branches, and changed files, plus on request the diff, the review activity, and CI status. Use it whenever the user names a PR by URL, #123, or number, including PRs in repos not connected to this project. It is the only way to reach GitHub, because gh and git fetch in Bash have no network or credentials and fail however the user is logged in, so do not call a PR unreachable until this tool fails. With no PR number, use find_pull_requests first.
+const READ_PR_DESCRIPTION = `Read a GitHub pull request: title, body, state, author, branches, and changed files, plus on request the diff, the review activity, and CI status. Use it whenever the user names a PR by URL, #123, or number, including PRs in repos not connected to this project. It works even when the user's sandbox cuts gh in Bash off from GitHub, so do not call a PR unreachable until this tool fails. With no PR number, use find_pull_requests first.
 
 Set only the parts the question needs: includeDiff for questions about the code (with paths when the question is about some files), includeReviews for what reviewers or bots said, includeChecks for CI and merge readiness. A diff over ${MAX_DIFF_CHARS.toLocaleString()} characters is cut and says so; read the rest by paths, and each comment over ${MAX_REVIEW_COMMENT_CHARS.toLocaleString()} characters is marked truncated; report either instead of treating what you see as complete. Reviews and checks are a snapshot, so read again after the user says they pushed, replied, or re-ran CI. mergeable reads UNKNOWN while GitHub is still computing it, which is not the same as blocked. A failing check's url points at its CI run, for a CI tool to open.`;
 

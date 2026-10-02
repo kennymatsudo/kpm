@@ -165,7 +165,7 @@ describe('automationPhaseMachine.transition', () => {
     expect(transitionFrom('addressing_review', { type: 'movedToReview' })).toBe('ready_for_review');
   });
 
-  it.each(['reviewing', 'addressing_review', 'fixing_commit_hooks', 'paused'] satisfies DevSessionAutomationPhase[])(
+  it.each(['reviewing', 'addressing_review', 'running_step', 'fixing_commit_hooks', 'paused'] satisfies DevSessionAutomationPhase[])(
     'agentTerminatedUnexpectedly moves %s to needs_attention',
     (phase) => {
       expect(transitionFrom(phase, { type: 'agentTerminatedUnexpectedly' })).toBe('needs_attention');
@@ -176,6 +176,22 @@ describe('automationPhaseMachine.transition', () => {
     'agentTerminatedUnexpectedly leaves %s unchanged',
     (phase) => {
       expect(transitionFrom(phase, { type: 'agentTerminatedUnexpectedly' })).toBe(phase);
+    },
+  );
+
+  it.each([
+    ['reviewing', 'needs_attention'],
+    ['addressing_review', 'needs_attention'],
+    ['running_step', 'needs_attention'],
+    ['fixing_commit_hooks', 'needs_attention'],
+    ['paused', 'paused'],
+    ['idle', 'idle'],
+    ['ready_for_review', 'ready_for_review'],
+    ['needs_attention', 'needs_attention'],
+  ] satisfies [DevSessionAutomationPhase, DevSessionAutomationPhase][])(
+    'appRestarted moves %s to %s',
+    (phase, expected) => {
+      expect(transitionFrom(phase, { type: 'appRestarted' })).toBe(expected);
     },
   );
 
@@ -216,6 +232,30 @@ describe('automationPhaseMachine.transition', () => {
 
   it('automationDismissed leaves other phases unchanged', () => {
     expect(transitionFrom('reviewing', { type: 'automationDismissed' })).toBe('reviewing');
+  });
+
+  it('sessionStarted moves the cursor to the step it launches', () => {
+    let session = {
+      id: 's1', project_id: 'p1', status: 'pending', automation_phase: null,
+      current_step_id: 'review-first', step_pass_counts: null, paused_reason: null,
+    } as DevSession;
+    const machine = createAutomationPhaseMachine({
+      devSessions: {
+        get: () => session,
+        updateAutomationPhase: vi.fn(),
+        updateAutomationState: (_id, state) => {
+          session = {
+            ...session,
+            automation_phase: state.phase,
+            current_step_id: state.currentStepId === undefined ? session.current_step_id : state.currentStepId,
+            attention_reason: state.attentionReason === undefined ? session.attention_reason : state.attentionReason,
+          };
+        },
+      },
+    });
+
+    machine.transition('s1', { type: 'sessionStarted', stepId: 'implement' });
+    expect(session).toMatchObject({ automation_phase: 'idle', current_step_id: 'implement' });
   });
 
   it('sessionStarted resets to idle without inventing a cursor for a terminal playbook', () => {
@@ -397,13 +437,13 @@ describe('effectivePhase', () => {
   };
 
   it('unwraps commit-hook-repair phases to where they were entered from', () => {
-    expect(effectivePhase('fixing_commit_hooks')).toBe('idle');
+    expect(effectivePhase('fixing_commit_hooks')).toBe('running_step');
     expect(effectivePhase('fixing_commit_hooks', sessionAt('repair', reviewPlaybook))).toBe('addressing_review');
   });
 
   it('unwraps a custom findings step by its route, not by the built-in step id', () => {
     // 'repair' is this playbook's address step; 'build' is not.
-    expect(effectivePhase('fixing_commit_hooks', sessionAt('build', reviewPlaybook))).toBe('idle');
+    expect(effectivePhase('fixing_commit_hooks', sessionAt('build', reviewPlaybook))).toBe('running_step');
   });
 
   it('treats a parked PR-review follow-up as addressing review', () => {

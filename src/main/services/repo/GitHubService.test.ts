@@ -465,6 +465,30 @@ describe('GitHubService.createPr after gh times out', () => {
   });
 });
 
+describe('GitHubService.createPr export boundary', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    branchMocks.resolveBaseBranch.mockResolvedValue('main');
+    branchMocks.classifyPushTarget.mockResolvedValue({ ok: true, branch: 'feature/support-attachments' });
+    gitMocks.countCommitsAhead.mockResolvedValue(1);
+    ghMocks.isBranchPushed.mockResolvedValue(true);
+    ghMocks.createPr.mockResolvedValue({ number: 7, url: 'https://github.com/example/repo/pull/7' });
+  });
+
+  it('rewrites plan refs in the title as well as the body', async () => {
+    const planItem = { id: '11111111-1111-4111-8111-111111111111', project_id: 'project-1', title: 'Task', external_key: 'PROJ-184' };
+    const { service } = buildService({
+      planItems: { getByProject: vi.fn(() => [planItem]) } as unknown as IPlanItemRepository,
+    });
+
+    await service.createPr('session-1', `Fix @plan/${planItem.id}`, `Part of @plan/${planItem.id}`);
+
+    const sent = ghMocks.createPr.mock.calls[0][1];
+    expect(sent.title).toBe('Fix Task');
+    expect(sent.body).toBe('Part of Task\n\nCloses PROJ-184\n');
+  });
+});
+
 describe('GitHubService.linkPr', () => {
   const pr12 = {
     number: 12,

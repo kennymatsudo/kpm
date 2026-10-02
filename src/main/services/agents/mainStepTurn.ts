@@ -21,7 +21,7 @@ import type {
   RepoEnvironmentMode,
 } from '../../../shared/types';
 import { success, type AsyncResult, type ServiceResult } from '../result';
-import { phaseForPlaybookStep } from './sessionPlaybook';
+import { phaseForPlaybookStep, playbookForSession } from './sessionPlaybook';
 import { CRITERIA_STATUS_FENCE, FINDING_REPLIES_FENCE } from '../../../shared/agentReportBlocks';
 
 // Appended by the harness rather than left to a playbook's prompts, so every
@@ -67,6 +67,8 @@ export interface MainStepTurnDeps {
       effort?: AgentEffortLevel;
       environmentMode?: RepoEnvironmentMode;
       systemPromptKey?: string;
+      resumePhase?: DevSessionAutomationPhase;
+      startStepId?: string;
     },
   ) => AsyncResult<{ session: DevSession }>;
 }
@@ -126,6 +128,7 @@ export async function runMainStep(
     harnessNote,
   });
 
+  const phase = phaseForPlaybookStep(playbookForSession(session), step);
   if (launch) {
     const started = await deps.startAgentSession(session.id, {
       prompt,
@@ -133,6 +136,10 @@ export async function runMainStep(
       effort: launch.effort,
       environmentMode: launch.environmentMode,
       systemPromptKey: step.systemPromptKey,
+      resumePhase: phase,
+      // The cursor names the step actually launched, which is not steps[0]
+      // when a playbook opens with a subagent step.
+      startStepId: step.id,
     });
     return started.ok ? success({ status: 'started' }) : started;
   }
@@ -140,7 +147,7 @@ export async function runMainStep(
   const sent = await deps.sendAgentFollowUp(
     session.id,
     prompt || `Continue with playbook step: ${step.id}`,
-    { restartAs: { systemPromptKey: step.systemPromptKey, phase: phaseForPlaybookStep(step) } },
+    { restartAs: { systemPromptKey: step.systemPromptKey, phase } },
   );
   return sent.ok ? success({ status: 'started' }) : sent;
 }

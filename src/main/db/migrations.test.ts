@@ -1073,3 +1073,76 @@ describe('127_allow_pi_review_runs', () => {
     }
   });
 });
+
+describe('133_dev_session_running_step_phase', () => {
+  const MIGRATION_ID = 1133;
+
+  function migrateToJustBefore(db: BetterSqlite3.Database): void {
+    for (const migration of migrations) {
+      if (migration.id >= MIGRATION_ID) break;
+      migration.up(db);
+    }
+  }
+
+  function migration133() {
+    const found = migrations.find((m) => m.id === MIGRATION_ID);
+    if (!found) throw new Error('migration 133 not found');
+    return found;
+  }
+
+  function seed(db: BetterSqlite3.Database): void {
+    db.exec(`
+      INSERT INTO projects (id, name, folder_path) VALUES ('proj-1', 'Project One', '/tmp/proj-1');
+      INSERT INTO repos (id, project_id, path) VALUES ('repo-1', 'proj-1', '/tmp/repo-1');
+      INSERT INTO dev_sessions (
+        id, project_id, repo_id, worktree_path, branch_name, status, automation_phase,
+        current_step_id, paused_reason, worktree_origin
+      ) VALUES (
+        'sess-1', 'proj-1', 'repo-1', '/tmp/wt', 'feature/x', 'active', 'addressing_review',
+        'implement', NULL, 'attached'
+      );
+      INSERT INTO agent_review_runs (id, implementation_session_id, review_session_id, reviewer_agent, status)
+        VALUES ('run-1', 'sess-1', 'review-sess-1', 'codex', 'complete');
+    `);
+  }
+
+  it('accepts running_step and still rejects unknown phases', () => {
+    const db = new BetterSqlite3(':memory:');
+    try {
+      migrateToJustBefore(db);
+      db.pragma('foreign_keys = ON');
+      seed(db);
+      const setPhase = db.prepare("UPDATE dev_sessions SET automation_phase = ? WHERE id = 'sess-1'");
+      expect(() => setPhase.run('running_step')).toThrow(/CHECK/);
+
+      applyMigration(db, migration133());
+
+      expect(() => setPhase.run('running_step')).not.toThrow();
+      expect(() => setPhase.run('bogus')).toThrow(/CHECK/);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('keeps every session field, including worktree_origin, and the review history under it', () => {
+    const db = new BetterSqlite3(':memory:');
+    try {
+      migrateToJustBefore(db);
+      db.pragma('foreign_keys = ON');
+      seed(db);
+      const before = db.prepare("SELECT * FROM dev_sessions WHERE id = 'sess-1'").get();
+
+      applyMigration(db, migration133());
+
+      expect(db.prepare("SELECT * FROM dev_sessions WHERE id = 'sess-1'").get()).toEqual(before);
+      expect(db.prepare('SELECT id FROM agent_review_runs').all()).toEqual([{ id: 'run-1' }]);
+      expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+      expect(
+        (db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'dev_sessions' AND sql IS NOT NULL ORDER BY name").all() as { name: string }[])
+          .map((row) => row.name)
+      ).toEqual(['idx_dev_sessions_plan_item', 'idx_dev_sessions_project', 'idx_dev_sessions_status']);
+    } finally {
+      db.close();
+    }
+  });
+});

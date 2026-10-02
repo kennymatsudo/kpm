@@ -8,7 +8,6 @@ export type ChatStreamEvent =
   | { type: 'queue-activities'; activities: Activity[] }
   | { type: 'thinking'; text: string }
   | { type: 'activity-start'; activity: Activity }
-  | { type: 'activity-update'; activity: Activity }
   | { type: 'flush'; text: string }
   | { type: 'retry' }
   | { type: 'error'; error: string; buffered?: string }
@@ -388,6 +387,44 @@ function finalize(session: PerSessionState, options: FinalizeOptions | undefined
   };
 }
 
+function hasActivity(session: PerSessionState, activityId: string): boolean {
+  const inSegments = (segments: readonly MessageSegment[]) =>
+    segments.some((segment) => segment.type === 'activity' && segment.activities.some((activity) => activity.id === activityId));
+  return session.activities.some((activity) => activity.id === activityId)
+    || session.pendingActivities.some((activity) => activity.id === activityId)
+    || inSegments(session.streamingSegments)
+    || session.messages.some((message) => inSegments(message.segments));
+}
+
+function replaceActivity(session: PerSessionState, activity: Activity): PerSessionState {
+  const replaceById = (existing: Activity) => (existing.id === activity.id ? activity : existing);
+
+  const messages: Message[] = session.messages.map((message) => {
+    let touched = false;
+    const segments = message.segments.map((segment) => {
+      if (segment.type !== 'activity') return segment;
+      if (!segment.activities.some((existing) => existing.id === activity.id)) return segment;
+      touched = true;
+      return { ...segment, activities: segment.activities.map(replaceById) };
+    });
+    return touched ? { ...message, segments } : message;
+  });
+
+  const streamingSegments = session.streamingSegments.map((segment) => {
+    if (segment.type !== 'activity') return segment;
+    if (!segment.activities.some((existing) => existing.id === activity.id)) return segment;
+    return { ...segment, activities: segment.activities.map(replaceById) };
+  });
+
+  return {
+    ...session,
+    activities: session.activities.map(replaceById),
+    pendingActivities: session.pendingActivities.map(replaceById),
+    streamingSegments,
+    messages,
+  };
+}
+
 export function applyStreamEvent(session: PerSessionState, event: ChatStreamEvent): PerSessionState {
   const now = Date.now();
 
@@ -424,6 +461,9 @@ export function applyStreamEvent(session: PerSessionState, event: ChatStreamEven
       };
 
     case 'activity-start':
+      // Main re-sends an activity under its original id with a live timer,
+      // subagent progress, or diff stats; that replaces the card it already has.
+      if (hasActivity(session, event.activity.id)) return replaceActivity(session, event.activity);
       // Uncapped on purpose. A turn that never emits text never ships
       // `precedingActivities` (those only ride on chunk events), so this list
       // is the whole record finalize has to commit for tool-only turns.
@@ -436,35 +476,6 @@ export function applyStreamEvent(session: PerSessionState, event: ChatStreamEven
         streamStartedAt: session.streamStartedAt ?? now,
         lastStreamUpdateAt: now,
       };
-
-    case 'activity-update': {
-      const replaceById = (activity: Activity) => (activity.id === event.activity.id ? event.activity : activity);
-
-      const messages: Message[] = session.messages.map((message) => {
-        let touched = false;
-        const segments = message.segments.map((segment) => {
-          if (segment.type !== 'activity') return segment;
-          if (!segment.activities.some((activity) => activity.id === event.activity.id)) return segment;
-          touched = true;
-          return { ...segment, activities: segment.activities.map(replaceById) };
-        });
-        return touched ? { ...message, segments } : message;
-      });
-
-      const streamingSegments = session.streamingSegments.map((segment) => {
-        if (segment.type !== 'activity') return segment;
-        if (!segment.activities.some((activity) => activity.id === event.activity.id)) return segment;
-        return { ...segment, activities: segment.activities.map(replaceById) };
-      });
-
-      return {
-        ...session,
-        activities: session.activities.map(replaceById),
-        pendingActivities: session.pendingActivities.map(replaceById),
-        streamingSegments,
-        messages,
-      };
-    }
 
     case 'retry':
       return {

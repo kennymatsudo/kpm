@@ -135,6 +135,7 @@ export const DetailPane = memo(function DetailPane({
   const canRunReview = (implIsTerminal || session.status === 'inactive')
     && !reviewIsActive
     && session.automation_phase !== 'addressing_review'
+    && session.automation_phase !== 'running_step'
     && !isCommitHookRepairPhase(session.automation_phase)
     && commitState?.status !== 'running';
   const isMountedRef = useRef(true);

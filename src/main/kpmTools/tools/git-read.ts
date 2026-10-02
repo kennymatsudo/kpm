@@ -1,11 +1,9 @@
 /**
  * git_read Tool
  *
- * Runs read-only git commands against a connected repository. Chat's Bash can
- * also run git that `classifyGitShellCommand` proves is read-only (permissions.ts
- * Rule -1); this tool is the structured path, and the only one that works when
- * the shell sandbox is unavailable — or when the command needs the network or
- * the user's credentials, which the sandbox denies Bash outright. It invokes git via execFile
+ * Runs read-only git commands against a connected repository. It works when the
+ * user's shell sandbox is unavailable, or when the command needs the network or
+ * credentials the sandbox denies Bash. It invokes git via execFile
  * (no shell — no pipes, redirects, or command substitution) and validates the
  * subcommand + arguments against `classifyGitInvocation` before running, so the
  * call is read-only by construction rather than by parsing a shell string.

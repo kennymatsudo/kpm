@@ -11,7 +11,7 @@ import { resolveScopedPath } from '../services/files/scopedFs';
 import { promptUser } from '../services/core/PermissionPromptService';
 import type { AppServices } from '../services/appServices';
 import { listBoardProviders } from '../services/agents/boardProviderRegistry';
-import { processKpmToolProposalSink } from './proposals';
+import { processKpmToolProposalSink, type KpmToolProposal } from './proposals';
 import { assertKpmToolInputSchemas } from './toolInputSchema';
 import {
   getCurrentKpmToolProposalSink,
@@ -150,55 +150,35 @@ async function readProjectContextFileWithPending(projectId: string): Promise<{ c
   return readProjectContextFile(projectId);
 }
 
-function emitPlanActions(actions: PlanAction[]): void {
+/** Proposals need a chat to review them in; a run without one drops them. */
+function emitScopedProposal(
+  label: string,
+  build: (scope: { projectId: string; chatSessionId: string }) => KpmToolProposal,
+): void {
   const context = getCurrentToolExecutionContext();
   if (!context?.projectId || !context?.chatSessionId) {
-    console.warn('[KPM Tools] Skipping unscoped plan actions event');
+    console.warn(`[KPM Tools] Skipping unscoped ${label}`);
     return;
   }
 
-  context.proposalSink?.propose({
-    type: 'plan-actions',
-    projectId: context.projectId,
-    chatSessionId: context.chatSessionId,
-    actions,
-  });
+  context.proposalSink?.propose(build({ projectId: context.projectId, chatSessionId: context.chatSessionId }));
+}
+
+function emitPlanActions(actions: PlanAction[]): void {
+  emitScopedProposal('plan actions event', (scope) => ({ type: 'plan-actions', ...scope, actions }));
 }
 
 function emitConfigChange(change: ConfigChange): void {
-  const context = getCurrentToolExecutionContext();
-  if (!context?.projectId || !context?.chatSessionId) {
-    console.warn('[KPM Tools] Skipping unscoped config change');
-    return;
-  }
-
-  context.proposalSink?.propose({
-    type: 'config-change',
-    projectId: context.projectId,
-    chatSessionId: context.chatSessionId,
-    change,
-  });
+  emitScopedProposal('config change', (scope) => ({ type: 'config-change', ...scope, change }));
 }
 
 function emitBoardChange(change: BoardChange): void {
-  const context = getCurrentToolExecutionContext();
-  if (!context?.projectId || !context?.chatSessionId) {
-    console.warn('[KPM Tools] Skipping unscoped board change');
-    return;
-  }
-
-  context.proposalSink?.propose({
-    type: 'board-change',
-    projectId: context.projectId,
-    chatSessionId: context.chatSessionId,
-    change,
-  });
+  emitScopedProposal('board change', (scope) => ({ type: 'board-change', ...scope, change }));
 }
 
 /**
- * Ask for the project's write grant on a KPM tool's behalf, using the same
- * grant and prompt as the built-in write tools so one answer covers both. A run
- * with no chat session — a scheduled action — inherits an existing grant but
+ * Ask for the project's publishing grant on a KPM tool's behalf, using the
+ * grant's own prompt. A run with no chat session — a scheduled action — inherits an existing grant but
  * has nowhere to ask for one it does not have.
  */
 async function requestKpmToolWriteAccess(

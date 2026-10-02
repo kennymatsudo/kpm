@@ -74,7 +74,7 @@ export function createGitHubWriteTools(deps: GitHubWriteToolDeps) {
         const head = headCheck.branch;
 
         if (!(await isBranchPushed(cwd, head))) {
-          return toolError(`"${head}" is not on origin yet. Push it with git_push, then create the PR.`);
+          return toolError(`"${head}" is not on origin. A pull request can only be opened from a branch on origin, so push it there with git_push (remote origin). A branch pushed only to another remote cannot be opened from here.`);
         }
 
         const baseBranch = base ?? (await resolveDefaultBranch(cwd));

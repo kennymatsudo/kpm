@@ -1,5 +1,6 @@
-import type { Activity, SessionState } from '../../shared/types';
+import type { SessionState } from '../../shared/types';
 import type { ProposedChangeInput, DisposalPolicy } from '../stores/proposedChangeDisposal';
+import type { ActiveSessionInfo } from '../../shared/ipc/chatEndpoints';
 import { isContextFile } from '../../shared/contextFile';
 import type { ChatState } from '../stores/chat/types';
 import { isStreamStale } from '../stores/chat/chatStreamReducer';
@@ -64,7 +65,6 @@ export type ChatStoreView = Pick<
   | 'setError'
   | 'setTokens'
   | 'addActivity'
-  | 'updateActivity'
   | 'setSuggestions'
   | 'setSlashCommands'
   | 'setSessionState'
@@ -91,14 +91,7 @@ export interface ChatEventRouterServices {
   getChatUsage: (projectId: string) => Promise<{ totalTokens: number }>;
   getActiveChatSessions: (projectId: string) => Promise<{
     success: boolean;
-    sessions?: {
-      chatSessionId: string;
-      scope: string;
-      state: SessionState;
-      title?: string | null;
-      partialResponse?: string;
-      partialActivities?: Activity[];
-    }[];
+    sessions?: ActiveSessionInfo[];
   }>;
   getChatSessionState: (
     projectId: string,
@@ -412,12 +405,6 @@ export function createChatEventRouter(deps: ChatEventRouterDeps): ChatEventRoute
       const sessionId = data.chatSessionId ?? state.viewedSessionId ?? undefined;
       if (data.chatSessionId && !isKnownChatSession(data.chatSessionId)) return;
       if (isKnownChatSession(sessionId)) {
-        if (data.error.includes('still responding')) {
-          state.setRetrying(sessionId);
-          state.setSessionState(sessionId, 'processing');
-          return;
-        }
-
         state.setError(sessionId, data.error);
       }
     },
@@ -425,14 +412,7 @@ export function createChatEventRouter(deps: ChatEventRouterDeps): ChatEventRoute
       if (!isActiveForProject(data.projectId)) return;
       const sessionId = data.chatSessionId;
       if (!isKnownChatSession(sessionId)) return;
-      // Result-side updates carry diffStats/diffHunks and reuse the original
-      // activity id — route them to updateActivity so we don't duplicate cards.
-      const isResultUpdate = !!(data.activity.diffStats || data.activity.diffHunks);
-      if (isResultUpdate) {
-        getChatState().updateActivity(sessionId, data.activity);
-      } else {
-        getChatState().addActivity(sessionId, data.activity);
-      }
+      getChatState().addActivity(sessionId, data.activity);
     },
     onThinking: (data) => {
       if (!isActiveForProject(data.projectId)) return;

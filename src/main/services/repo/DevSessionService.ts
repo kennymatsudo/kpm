@@ -905,8 +905,10 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         model?: string;
         /** Role prompt for the step this turn runs, instead of the playbook's first main step. */
         systemPromptKey?: string;
-        /** Phase to re-enter at; omitted when the start begins a run rather than resuming one. */
+        /** Live phase the started turn runs under; without it the phase lands on `idle`. */
         resumePhase?: DevSessionAutomationPhase;
+        /** The step this turn launches. The cursor moves to it with the phase, only once the launch is accepted. */
+        startStepId?: string;
       },
     ): AsyncResult<{ session: DevSession }> {
       try {
@@ -975,10 +977,6 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         const prompt = options?.prompt || session.initial_instructions;
 
         deps.agentReviews.markLatestCompletedStale(sessionId);
-        deps.phaseMachine.transition(sessionId, {
-          type: 'sessionStarted',
-          ...(options?.resumePhase ? { phase: options.resumePhase } : {}),
-        });
 
         const sessionPlaybook = playbookSnapshotOf(session);
         const firstMainStep = sessionPlaybook?.steps.find((step) => step.session === 'main');
@@ -1003,6 +1001,14 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           environmentMode: options?.environmentMode ?? repo.environment_mode ?? 'auto',
         }, deps.agentSessionManager);
 
+        // After the agent is built, so a launch that throws leaves no live
+        // phase behind with nobody running.
+        deps.phaseMachine.transition(sessionId, {
+          type: 'sessionStarted',
+          ...(options?.resumePhase ? { phase: options.resumePhase } : {}),
+          ...(options?.startStepId ? { stepId: options.startStepId } : {}),
+        });
+
         // Update DB status to active
         deps.devSessions.updateStatus(sessionId, 'active');
         const updatedSession = deps.devSessions.get(sessionId)!;
@@ -1017,6 +1023,8 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           } finally {
             deps.agentSessionManager?.remove(agentSession.id);
           }
+          // A live phase with no agent would show busy forever.
+          deps.phaseMachine.transition(sessionId, { type: 'agentTerminatedUnexpectedly' });
           deps.devSessions.updateStatus(sessionId, 'inactive');
           const failedSession = deps.devSessions.get(sessionId);
           if (failedSession) {
@@ -1387,8 +1395,12 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
     /**
      * Mark all active sessions as inactive (called on app startup)
      */
-    markActiveAsInactive(): void {
+    /** Settles what a previous run of the app left behind: no agent is running yet. */
+    recoverAfterRestart(): void {
       deps.devSessions.markActiveAsInactive();
+      for (const session of deps.devSessions.getWithAutomationPhase()) {
+        deps.phaseMachine.transition(session.id, { type: 'appRestarted' });
+      }
     },
   };
 
