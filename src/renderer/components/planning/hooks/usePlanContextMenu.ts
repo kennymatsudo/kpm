@@ -83,8 +83,8 @@ export function usePlanContextMenu({
     [planItemsById, addFocusedResource]
   );
 
-  // Handle tree/board view context menu
-  const handleTreeContextMenu = useCallback(
+  // Right-click on a board card, which carries its own selection
+  const handleItemContextMenu = useCallback(
     (e: React.MouseEvent, ids: Set<string>) => {
       e.preventDefault();
       const singleItemId = ids.size === 1 ? Array.from(ids)[0] : null;
@@ -100,6 +100,6 @@ export function usePlanContextMenu({
     handleQueueForTracker,
     handleAddToContext,
     handleAddItemToContext,
-    handleTreeContextMenu,
+    handleItemContextMenu,
   };
 }

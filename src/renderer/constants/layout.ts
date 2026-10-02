@@ -2,9 +2,6 @@
  * Layout constants for PlanView components.
  */
 
-/** Maximum nesting depth for plan items (0-indexed, so 4 = 5 levels) */
-export const MAX_DEPTH = 4;
-
 export interface PanelSizeConfig {
   storageKey: string;
   min: number;

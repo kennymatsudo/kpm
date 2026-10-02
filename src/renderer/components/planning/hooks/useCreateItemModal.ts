@@ -21,15 +21,6 @@ export function useCreateItemModal({
 }: CreateItemModalDeps) {
   const [createItemContext, setCreateItemContext] = useState<CreateItemContext | null>(null);
 
-  // Open from TreeView (with optional parent)
-  const handleCreateItemFromTree = useCallback((parentId: string | null) => {
-    setCreateItemContext({
-      isOpen: true,
-      parentId,
-      status: null,
-    });
-  }, []);
-
   // Open from BoardView (with status)
   const handleCreateItemFromBoard = useCallback((status: StatusCategory) => {
     setCreateItemContext({
@@ -68,7 +59,6 @@ export function useCreateItemModal({
 
   return {
     createItemContext,
-    handleCreateItemFromTree,
     handleCreateItemFromBoard,
     closeCreateItemModal,
     handleCreateItemSubmit,

@@ -169,28 +169,6 @@ async function benchmarkAtCheckpoint(page: Page, cdp: CDPSession, itemCount: num
 }> {
   const measurements: Measurement[] = [];
 
-  // Start from the Board, the default view
-  const boardBtn = page.locator('button[title="Board view (kanban)"]');
-  if (await boardBtn.isVisible().catch(() => false)) {
-    await boardBtn.click();
-    await sleep(100);
-  }
-
-  // Benchmark: Switch to Tree view
-  measurements.push(await measure('Switch to Tree view', async () => {
-    await page.locator('button[title="Tree view (outline)"]').click();
-    // Wait for the view to actually render — look for tree-specific content
-    await sleep(50);
-    await page.waitForLoadState('networkidle');
-  }));
-
-  // Benchmark: Switch back to Board view
-  measurements.push(await measure('Switch to Board view', async () => {
-    await page.locator('button[title="Board view (kanban)"]').click();
-    await sleep(50);
-    await page.waitForLoadState('networkidle');
-  }));
-
   // Benchmark: Open and close edit modal
   const firstCard = page.getByRole('group').first();
   if (await firstCard.isVisible().catch(() => false)) {

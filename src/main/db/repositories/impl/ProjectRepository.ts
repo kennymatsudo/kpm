@@ -9,7 +9,7 @@ import { randomUUID } from 'crypto';
 import type { Stats } from 'fs';
 import type { Project } from '../../../../shared/types';
 import type { IProjectRepository, ProjectCreateInput } from '../../interfaces/project';
-import { writeInitialProjectContextFilesSync } from '../../../project-context/contextFileCompat';
+import { writeInitialProjectContextFileSync } from '../../../project-context/projectContextFile';
 import { buildPlaceholderContext } from '../../../../shared/contextFile';
 import { deriveProjectFolderPath, projectsRootPath } from '../../../project-context/projectFolder';
 
@@ -45,7 +45,6 @@ interface PreparedStatements {
   insert: Statement;
   updateTokens: Statement;
   resetTokens: Statement;
-  updateStorybookUrl: Statement;
   updateContextDirectories: Statement;
   delete: Statement;
 }
@@ -86,9 +85,6 @@ export class ProjectRepository implements IProjectRepository {
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `),
-      updateStorybookUrl: db.prepare(`
-        UPDATE projects SET storybook_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
-      `),
       updateContextDirectories: db.prepare(`
         UPDATE projects SET context_directories = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
       `),
@@ -103,7 +99,7 @@ export class ProjectRepository implements IProjectRepository {
 
     this.fs.mkdirSync(folderPath, { recursive: true });
 
-    writeInitialProjectContextFilesSync(this.fs, folderPath, buildPlaceholderContext(name));
+    writeInitialProjectContextFileSync(this.fs, folderPath, buildPlaceholderContext(name));
 
     return this.stmts.insert.get(id, name, folderPath) as Project;
   }
@@ -156,10 +152,6 @@ export class ProjectRepository implements IProjectRepository {
 
   resetTokens(projectId: string): void {
     this.stmts.resetTokens.run(projectId);
-  }
-
-  updateStorybookUrl(projectId: string, url: string | null): void {
-    this.stmts.updateStorybookUrl.run(url, projectId);
   }
 
   updateContextDirectories(projectId: string, directories: Record<string, string[]>): void {

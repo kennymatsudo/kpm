@@ -57,10 +57,9 @@ export function createMockApi() {
       newSession: vi.fn().mockResolvedValue({ success: true }),
       cancel: vi.fn().mockResolvedValue({ success: true }),
       getUsage: vi.fn().mockResolvedValue({ totalTokens: 0 }),
-      getMessages: vi.fn().mockResolvedValue({ success: true, messages: [] }),
       piProviders: vi.fn().mockResolvedValue({ success: true, available: false, providers: [] }),
       onChunk: noopUnsub,
-      onPlanActions: noopUnsub,
+      onProposal: noopUnsub,
       onDone: noopUnsub,
       onError: noopUnsub,
       onActivity: noopUnsub,
@@ -166,6 +165,7 @@ export function createMockApi() {
       },
       sync: {
         getPreview: vi.fn().mockResolvedValue({ success: true, preview: null as unknown as SyncPreview }),
+        check: vi.fn().mockResolvedValue({ success: true, unchanged: true }),
         applyChanges: vi.fn().mockResolvedValue({ success: true }),
         onProgress: noopUnsub,
       },
@@ -241,11 +241,6 @@ export function createMockApi() {
       list: vi.fn().mockResolvedValue([]),
       revoke: vi.fn().mockResolvedValue({ success: true }),
       revokeAll: vi.fn().mockResolvedValue({ success: true }),
-    },
-
-    storybook: {
-      updateUrl: vi.fn().mockResolvedValue({ success: true }),
-      testConnection: vi.fn().mockResolvedValue({ success: true, componentCount: 0 }),
     },
 
     taskPromptTemplates: {

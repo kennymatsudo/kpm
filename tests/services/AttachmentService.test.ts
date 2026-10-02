@@ -11,7 +11,6 @@ function createProject(id: string): Project {
     session_tokens: 0,
     session_input_tokens: 0,
     session_output_tokens: 0,
-    storybook_url: null,
     created_at: '',
     updated_at: '',
   };
@@ -57,7 +56,6 @@ function createMocks(overrides?: Partial<AttachmentServiceDeps>): AttachmentServ
     list: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
-    updateStorybookUrl: vi.fn(),
     updateContextDirectories: vi.fn(),
     getContextDirectories: vi.fn(() => null),
     updateSession: vi.fn(),

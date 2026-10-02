@@ -27,16 +27,19 @@ const VIEW_BUTTONS: ViewButtonConfig[] = [
   {
     id: 'planning',
     label: 'Execute',
-    description: 'Plan board, outline, and agent runs',
+    description: 'Plan board and agent runs',
     Icon: BoardColumnsIcon,
   },
 ];
+
+/** Left to right, which is also the Cmd+1 / Cmd+2 order. */
+export const MAIN_VIEW_ORDER: readonly MainView[] = VIEW_BUTTONS.map((button) => button.id);
 
 /**
  * MainViewSwitcher - Toggle between Workspace and Execute views.
  *
  * Workspace: Chat-first interface with file browser and editor
- * Execute: Board and tree views over the plan (board includes agentic execution)
+ * Execute: The plan board, which also drives agentic execution
  */
 export const MainViewSwitcher = memo(function MainViewSwitcher({
   value,

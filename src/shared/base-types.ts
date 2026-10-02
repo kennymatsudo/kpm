@@ -30,7 +30,6 @@ export interface Project {
   session_tokens?: number;
   session_input_tokens?: number;
   session_output_tokens?: number;
-  storybook_url?: string | null;
   /** JSON-serialized Record<repoPath, string[]> of last-used feature directories */
   context_directories?: string | null;
   created_at?: string;

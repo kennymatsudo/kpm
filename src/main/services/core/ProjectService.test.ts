@@ -30,7 +30,6 @@ function createStubProjectRepo(): IProjectRepository {
     update: () => {},
     updateTokens: () => {},
     resetTokens: () => {},
-    updateStorybookUrl: () => {},
     updateContextDirectories: () => {},
     getContextDirectories: () => null,
     delete: () => {},

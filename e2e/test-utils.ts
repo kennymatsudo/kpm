@@ -28,7 +28,7 @@ export async function createProject(window: Page, name: string): Promise<void> {
   await expect(window.getByText(name)).toBeVisible();
   // Navigate to the Execute view (app defaults to Workspace view)
   await window.getByRole('button', { name: 'Execute' }).click();
-  // New projects default to Board view
+  // The Execute view is the board
   await expect(window.getByTestId('board-view')).toBeVisible();
 }
 
@@ -39,11 +39,6 @@ export async function createProject(window: Page, name: string): Promise<void> {
  */
 export function planCard(window: Page, title: string) {
   return window.getByRole('group', { name: title });
-}
-
-/** Locates a plan item's row in Tree view by its title. */
-export function treeRow(window: Page, title: string) {
-  return window.getByRole('treeitem', { name: title });
 }
 
 /**
@@ -126,20 +121,6 @@ export async function cleanupProject(window: Page, projectName: string): Promise
 }
 
 /**
- * Switches to a specific view mode (Tree or Board).
- * Uses button title attributes for reliable matching.
- */
-export async function switchViewMode(window: Page, mode: 'Tree' | 'Board'): Promise<void> {
-  const titleMap = {
-    Tree: 'Tree view (outline)',
-    Board: 'Board view (kanban)',
-  };
-  await window.locator(`button[title="${titleMap[mode]}"]`).click();
-  // Wait for the view transition to complete
-  await window.waitForTimeout(500);
-}
-
-/**
  * Switches to a different project via the TopBar dropdown → Open Project submenu.
  * The project list is in a nested submenu, not the sidebar.
  */
@@ -181,9 +162,8 @@ const STATUS_CATEGORY_BY_LABEL: Record<StatusLabel, string> = {
 
 /**
  * Sets an item's status through the IPC API, then reloads so the store picks it
- * up. Board columns are the only drag target for status and HTML5 drag-and-drop
- * is unreliable here, so setup goes through the API — `setItemStatusInTree`
- * covers the status control itself.
+ * up. Board columns are the only status affordance in the UI and HTML5
+ * drag-and-drop is unreliable here, so tests go through the API.
  */
 export async function setItemStatus(
   window: Page,
@@ -222,21 +202,6 @@ export async function setItemStatus(
   await waitForAppReady(window);
   await window.getByRole('button', { name: 'Execute' }).click();
   await window.waitForTimeout(500);
-}
-
-/**
- * Changes an item's status through the Tree view's status control, the only
- * click-to-set status affordance in the UI.
- */
-export async function setItemStatusInTree(
-  window: Page,
-  itemTitle: string,
-  status: StatusLabel
-): Promise<void> {
-  const statusButton = treeRow(window, itemTitle).getByLabel(/^Status:/);
-  await statusButton.click();
-  await window.getByRole('option', { name: status }).click();
-  await expect(statusButton).toHaveAttribute('aria-label', `Status: ${status}`);
 }
 
 /**

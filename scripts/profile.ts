@@ -237,19 +237,7 @@ async function runUserFlows(page: Page): Promise<string[]> {
     });
   }
 
-  // Flow 4: Switch view modes
-  for (const mode of ['Board', 'Tree'] as const) {
-    const titleMap = {
-      Tree: 'Tree view (outline)',
-      Board: 'Board view (kanban)',
-    };
-    await timed(`Switch to ${mode} view`, async () => {
-      await page.locator(`button[title="${titleMap[mode]}"]`).click();
-      await sleep(500);
-    });
-  }
-
-  // Flow 5: Open edit modal
+  // Flow 4: Open edit modal
   await timed('Open edit modal', async () => {
     const card = page.getByRole('group', { name: 'Task 1 - Performance test item' });
     await card.getByRole('button', { name: 'Edit item' }).click();
@@ -260,19 +248,19 @@ async function runUserFlows(page: Page): Promise<string[]> {
   await page.keyboard.press('Escape');
   await sleep(300);
 
-  // Flow 6: Navigate to Workspace view
+  // Flow 5: Navigate to Workspace view
   await timed('Navigate to Workspace view', async () => {
     await page.getByRole('button', { name: 'Workspace' }).click();
     await sleep(500);
   });
 
-  // Flow 7: Navigate back to the Execute view
+  // Flow 6: Navigate back to the Execute view
   await timed('Navigate back to Execute view', async () => {
     await page.getByRole('button', { name: 'Execute' }).click();
     await page.getByTestId('board-view').waitFor({ state: 'visible' });
   });
 
-  // Flow 8: Open command palette
+  // Flow 7: Open command palette
   await timed('Open command palette', async () => {
     await page.keyboard.press('Meta+k');
     await sleep(500);
