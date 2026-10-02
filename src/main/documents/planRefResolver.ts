@@ -85,7 +85,7 @@ function renderRef(
   if (!item) {
     // A shared doc keeps the literal token so its reader sees the link is
     // broken. Anywhere else the token is a local ID that means nothing to the
-    // reader (P6), so it never leaves.
+    // reader, so it never leaves.
     return destination === 'shared-doc' ? `@plan/${id}` : MISSING_PLAN_ITEM_TEXT;
   }
 

@@ -1,292 +1,81 @@
-# KPM Feature Catalog
+# KPM Feature Index
 
-What a user can do in KPM, grouped by product surface. Each entry says what the feature does and names the owning modules so an agent can find the code. It is a map, not a spec: read the code for behaviour details, [`core-principles.md`](core-principles.md) for why things are shaped the way they are, and the per-directory agent guides (`src/**/CLAUDE.md`) for conventions.
+An index of what a user can do in KPM and where the code lives. Read the code for behavior, [`core-principles.md`](core-principles.md) for why, and `src/**/AGENTS.md` for conventions. When you add a product surface, add one line under its area (feature, what the user can do, owning path).
 
-When a feature is added or removed, edit its entry in place. Don't record history here; git has it.
+## App shell
 
-## Contents
-
-- [App shell and navigation](#app-shell-and-navigation)
-- [Planning](#planning)
-- [Chat](#chat)
-- [Workspace and documents](#workspace-and-documents)
-- [Board execution](#board-execution)
-- [Tracker integration](#tracker-integration)
-- [Actions](#actions)
-- [Settings](#settings)
-- [Onboarding](#onboarding)
-- [Diagnostics](#diagnostics)
-- [UI surface map](#ui-surface-map)
-
----
-
-## App shell and navigation
-
-### Views and top bar
-Two main views: **Workspace** (files, documents, and chat) and **Execute** (the plan board and agent runs), persisted per project. The top bar holds the project switcher, the view switcher, board filters, the tracker sync button, and the status badges described below.
-- `src/renderer/components/layout/` (`Layout.tsx`, `TopBar.tsx`, `TopBarProjectSection.tsx`, `MainViewSwitcher.tsx`, `TopBarPlanningControls.tsx`)
-- Keyboard shortcuts: `src/renderer/components/keyboard-shortcuts/KeyboardShortcuts.tsx` (also listed in Settings, Keyboard Shortcuts), handlers in `components/layout/hooks/useLayoutShortcuts.ts`
-- Cmd+1..9 picks a tab in the strip the user last clicked or focused in: chat sessions, open documents, or otherwise the Workspace / Execute views (9 is the last tab; Settings tabs while Settings is open). A region opts in with `data-tab-scope`; the tracker is `components/layout/tabScope.ts`
-
-### Command palette (Cmd+K)
-Fuzzy-searchable launcher for actions (see [Actions](#actions)), "Regenerate Project Context", and "Manage actions…". A chat action with a target opens a second page to pick the document or repo it runs against; the pick is attached as a focused resource.
-- `src/renderer/components/command-palette/CommandPalette.tsx`, `src/renderer/stores/actionStore.ts`
-
-### Global search (Cmd+Shift+F)
-Full-text search over plan items and project markdown documents, with All / Tasks / Docs tabs. Picking a result opens the item on the board or the file in the workspace. Documents are re-indexed when files change.
-- `src/main/services/core/SearchService.ts` (SQLite FTS5 index), `src/renderer/components/global-search/`, `src/renderer/stores/searchStore.ts`
-
-### Terminal panel (Cmd+`)
-A resizable panel of shell tabs at the bottom of the window, opened in the project's repo. Shells live in the main process, tagged to their project, and keep running across project switches.
-- `src/main/services/streaming/TerminalService.ts`, `src/renderer/components/terminal/`, `src/renderer/stores/terminalStore.ts`
-
-### Notification bell
-A top-bar feed of things that happened while the user was elsewhere: action findings, pull request changes picked up by review polling, and board agents that finished, need attention, or paused. Entries click through to their target, switching project first if needed. Identical events close together collapse into one. The feed is in-memory only and there is no OS-level delivery.
-- `src/main/services/core/UpdateEventBus.ts`, `NotificationService.ts`; `src/renderer/stores/notificationStore.ts`, `src/renderer/components/notifications/NotificationBadge.tsx`
-
-### Background task badge
-A top-bar indicator for long-running app tasks (today, AGENTS.md generation) that lets the user reopen the originating dialog.
-- `src/renderer/components/background-tasks/BackgroundTaskBadge.tsx`, `src/renderer/stores/backgroundTaskStore.ts`
-
-### Cross-project concurrency
-Chats, board agents, and terminals keep running when the user switches projects. The project switcher marks projects with live work (amber when something is waiting on the user), a top-bar "N waiting" pill lists permission requests the user can't see from the current view (including other projects), and rejoining a chat mid-turn replays what streamed while away.
-- `src/main/services/core/ActivityService.ts`, `src/renderer/stores/activityStore.ts`, `src/renderer/stores/permissionStore.ts`, `src/renderer/components/permission/PendingRequestsBadge.tsx`, `switch-project` in `src/renderer/stores/storeEvents.ts`
-
-### Toasts
-Transient success, warning, and error messages used across the app.
-- `src/renderer/stores/toastStore.ts`, `src/renderer/components/ui/Toast.tsx`
-
----
+- **Views and top bar**: switch between Workspace and Execute per project; project switcher, board filters, sync button, status badges. `src/renderer/components/layout/`
+- **Keyboard shortcuts**: full list in `src/renderer/components/keyboard-shortcuts/KeyboardShortcuts.tsx`; handlers in `src/renderer/components/layout/hooks/useLayoutShortcuts.ts`.
+- **Command palette (Cmd+K)**: launch actions and "Regenerate Project Context". `src/renderer/components/command-palette/`
+- **Global search (Cmd+Shift+F)**: full-text search over plan items and project documents. `src/main/services/core/SearchService.ts`, `src/renderer/components/global-search/`
+- **Terminal panel (Cmd+`)**: shell tabs in the project's repo that survive project switches. `src/main/services/streaming/TerminalService.ts`, `src/renderer/components/terminal/`
+- **Notification bell**: feed of findings, PR changes, and board agent events; in-memory only, no OS-level delivery. `src/main/services/core/NotificationService.ts`, `src/renderer/components/notifications/`
+- **Background task badge**: reopen the dialog of a long-running task. `src/renderer/components/background-tasks/`
+- **Cross-project concurrency**: chats, board agents, and terminals keep running across project switches; the waiting-requests pill lists permission requests from any project. `src/main/services/core/ActivityService.ts`, `src/renderer/components/permission/PendingRequestsBadge.tsx`
+- **Toasts**: transient messages. `src/renderer/stores/toastStore.ts`
 
 ## Planning
 
-### Plan items
-A project → feature → task hierarchy stored in SQLite. Items carry status, the Work Brief (below), tracker links, and repo targets. Users create items from the create modal (Cmd+Shift+I), edit them in the task edit modal, and delete them from the board; chat proposes creates, edits, reparenting, and deletes through plan actions. Reparenting has no direct UI.
-- `src/main/services/core/PlanService.ts`, `src/main/db/domain/PlanActionService.ts`, `PlanItemService.ts`, `src/main/db/repositories/impl/PlanItemRepository.ts`
-- `src/renderer/components/planning/CreateItemModal.tsx`, `TaskEditModal.tsx`; store `src/renderer/stores/project/planSlice.ts`
-- Adding a field: follow the recipe in the root `CLAUDE.md` (`src/shared/planItemFields.ts`)
-
-### Work Brief and Repository Scope
-Title, description, intent, and acceptance criteria are edited together as one revisioned Work Brief; saves are guarded against concurrent edits. Only the description reaches Jira/Linear; intent and acceptance criteria stay local and guide execution. Repository Scope sets a primary connected repo plus optional affected repos; chat infers these when proposing an item, and the user can change them in the approval panel.
-- `src/shared/workBrief.ts`, `src/renderer/components/planning/WorkBriefEditor.tsx`, `RepositoryScopeEditor.tsx`
-- Execution picks up the latest approved brief automatically (see [Dev sessions](#dev-sessions))
-
-### Relations
-Items can depend on, block, or relate to other items; cycles are rejected. Relations are created and removed through chat (`modify_plan`) and read with `get_enriched_relations`. They drive merge-queue ordering; there is no dedicated relation editor.
-- `src/main/db/repositories/impl/PlanRelationRepository.ts`, `src/main/kpmTools/tools/relations.ts`
-
-### Board
-Kanban columns for the six status categories (not started, in progress, in review, done, blocked, canceled). Dragging a card between columns is how the user sets status directly; dragging to In Progress starts an agent. Children nest under their parent card. The planning header filters by text, status, and people. Cmd/Shift-click multi-selects; the bulk menu offers edit (single item), add to chat context, queue for the tracker, and delete. Clicking a card opens the detail pane (see [Board execution](#board-execution)).
-- `src/renderer/components/board-view/` (`BoardView.tsx`, `BoardColumn.tsx`, `BoardCard.tsx`, `dropBehavior.ts`)
-- Host with shared modals, context menu, and selection: `src/renderer/components/planning/index.tsx`; `BulkActionsMenu.tsx`, `PlanCardMenu.tsx`
-
-### Proposed changes and approval
-Everything chat proposes (plan actions, document creates and edits, AGENTS.md edits, file moves and deletes, review replies) flows through one disposal path. In the default manual mode the proposals queue for review with diffs; with auto-apply (Settings, General, "Claude Changes") they apply as soon as they arrive.
-- `src/renderer/stores/proposedChangeDisposal.ts`, `src/renderer/components/planning/PendingActionsPanel.tsx` (and the other `Pending*Panel.tsx`), `src/renderer/components/layout/ApprovalOverlays.tsx`
-- Setting: `chat_approval_mode` in `src/shared/appSettings.ts`
-
-### Plan references (`@plan/<uuid>`)
-Markdown anywhere in KPM can reference a plan item with `@plan/<uuid>`. References render as chips, fold to titles in the editor, expand to full item context for agents, and are rewritten to native links at every export boundary so they never leak. Plan actions with unresolved references are rejected. In chat replies, a tracker key that belongs to a plan item (`ASUP-537`) renders as that item's chip too (`linkPlanItemKeys` in `src/shared/planRefs.ts`); other PRs, commits, branches, and tickets are written as markdown links by the model.
-- `src/shared/planRefs.ts`, `src/main/documents/exportBoundary.ts`, `src/main/claude/contextRefs.ts`, `src/renderer/components/plan-ref/PlanRefChip.tsx`, `src/renderer/components/ui/planRefMonaco.tsx`
-- See the "Touch `@plan/<uuid>` flow" recipe in the root `CLAUDE.md`
-
----
+- **Plan items**: project, feature, task hierarchy with status, tracker links, and repo targets; chat proposes reparenting, which has no direct UI. `src/main/services/core/PlanService.ts`, `src/main/db/domain/PlanActionService.ts`, `src/renderer/components/planning/`
+- **Work Brief and Repository Scope**: edit title, description, intent, and acceptance criteria as one revisioned brief; only the description reaches Jira or Linear. `src/shared/workBrief.ts`, `src/renderer/components/planning/WorkBriefEditor.tsx`
+- **Relations**: depend on, block, or relate items through chat; there is no dedicated relation editor. `src/main/db/repositories/impl/PlanRelationRepository.ts`, `src/main/kpmTools/tools/relations.ts`
+- **Board**: kanban by status category; drag to change status, drag to In Progress to start an agent. `src/renderer/components/board-view/`
+- **Proposed changes and approval**: everything chat proposes is queued for review or auto-applied per setting (`chat_approval_mode`). `src/renderer/stores/proposedChangeDisposal.ts`, `src/renderer/components/planning/PendingActionsPanel.tsx`
+- **Plan references (`@plan/<uuid>`)**: chips in markdown, rewritten at every export boundary. `src/shared/planRefs.ts`, `src/main/documents/exportBoundary.ts`, `src/renderer/components/plan-ref/`
 
 ## Chat
 
-### Chat sessions
-Multiple named chat sessions per project, shown as tabs (Cmd+Shift+[ / ] to cycle). Every chat is titled after its first reply and retitled once at its fourth, from Claude's own summary when it has a real one and otherwise one cheap-model call; a retitle of the chat on screen waits until the user switches away. Double-click a tab (or press F2) to rename it; a hand-written name is never replaced, and clearing it hands naming back. Each chat keeps its own provider (Claude, Codex, or pi), model, and effort, chosen in the composer; new chats start from the Settings defaults. Claude and Codex model lists are fetched from the providers at launch and cached, with a built-in list as fallback. Messages sent while a turn is running are queued and answered in order. The composer accepts dragged or pasted images, PDFs, and text files (Codex and pi can't read PDFs, and the composer says so before sending), with or without typed text, shows a context-window meter, and offers `/` slash commands (Claude only: user commands, skills, and plugin commands). Tool activity streams live, and work that outlives a turn (background shells, subagents) shows in a strip below the transcript. Once a message scrolls off the top, a strip pinned above the transcript shows the question behind the answer in view; clicking it scrolls back to that message (`chat/pinnedPrompt.ts`).
-- Main: `src/main/services/streaming/StreamingSessionService.ts`, `src/main/services/core/ChatService.ts`, `src/main/chat/modelChoice/`, `src/main/providers/modelCatalog.ts`
-- Providers: `ClaudeSdkSession`, `src/main/codex/CodexChatSession.ts`, `src/main/pi/PiChatSession.ts`; capabilities in `src/shared/providerCapabilities.ts`
-- Renderer: `src/renderer/components/chat/`, `src/renderer/stores/chat/`, `src/renderer/stores/modelCatalogStore.ts`
-- Attachments: `src/main/services/core/AttachmentService.ts`, `src/main/services/files/TempImageService.ts`, `src/renderer/services/attachmentService.ts`, image viewer in `src/renderer/components/image-viewer-modal/`
-- Slash commands: `src/main/services/core/SlashCommandService.ts`, `SlashCommandMenu.tsx`
-
-### Focused resources
-Files, folders, repos, and plan items the user pins to a chat ("Add to context" from the file tree, board, or detail pane, or by dropping into the composer). They appear as chips above the composer and are sent with the next message; while a live session's selection is unchanged, later turns get a short reminder instead of the full content.
-- `src/renderer/stores/project/uiSlice.ts`, `src/main/chat/prompts/focusedResources.ts`
-
-### System prompt and prompt overrides
-The chat system prompt is assembled from registry sections (grounding, tool guidance, plan rules, response style, AGENTS.md, and the current plan table) shared across providers. Users can override any registry prompt in Settings, Prompts, and optionally fold their `~/.claude/CLAUDE.md` into chat (Settings, General, "Global Instructions"). Task prompt templates (Settings, Prompts, Task Creation) shape how chat writes new tasks.
-- `src/main/chat/prompts/` (`index.ts`, `promptRegistry.ts`, `workspace.ts`, `toolDocs.ts`), `src/main/claude/contextBuilders.ts`
-- `src/main/services/core/PromptOverrideService.ts`, `TaskPromptTemplateService.ts`; `src/renderer/components/settings/PromptsSettings.tsx`
-
-### KPM tools
-In-process tools chat uses to read and propose against KPM and connected systems: plan items and relations, plan changes, documents and AGENTS.md, project files (list, move, delete), git history and branches, `git_push`, pull requests (find, read with reviews and checks, create, edit, gather context for a description), Jira (listed only once Jira credentials are stored), Confluence, and paging through oversized tool results. Claude loads the rarely used ones only when it searches for them. Mutating tools emit proposals, except `git_push` and the pull request writes, which act directly once the project publishing grant is given.
-- `src/main/kpmTools/tools/`, registered in `src/main/kpmTools/runtimeRegistry.ts`; documented to the model in `src/main/chat/prompts/toolDocs.ts`
-- See the "Add a Claude tool" recipe in the root `CLAUDE.md`
-
-### Write permissions and the publishing grant
-Chat writes follow the user's own harness settings. Claude chats run under the user's Claude Code permission mode, rules, and sandbox, and ask per call wherever those settings ask. Codex chats run under the user's Codex sandbox and approval settings, with the project folder and connected repos writable under workspace-write. pi chats run pi's tools as the pi CLI does. In Claude chats, edits to project documents go to the approval queue because KPM intercepts Claude's built-in Write and Edit. Codex and pi write project documents directly, since Codex has the project folder as a writable root and pi has write and edit enabled. Pushing a branch and opening or editing a pull request ask once per project, inline: "Don't allow" or "Always allow in this project". Allowing persists a publishing grant that covers every chat and background action run in that project until turned off in Settings, Publishing, where it can also be turned on ahead of time.
-- `src/main/chat/writeGrants.ts`, `src/main/claude/permissions.ts`, `src/main/claude/userPermissionMode.ts`, `src/main/codex/CodexChatSession.ts`, `src/main/services/core/PermissionService.ts`, `PermissionPromptService.ts`
-- `src/renderer/components/permission/PermissionPrompt.tsx`, `src/renderer/components/settings/PermissionsSettings.tsx`
-
-### MCP servers
-Settings, MCP Servers shows what the selected chat provider can reach. For Claude: claude.ai connectors and user servers (managed with `claude mcp add/remove`, listed read-only) and installed plugins (toggle per plugin). pi uses the servers in `~/.pi/agent/mcp.json` through a single gateway tool. MCP form elicitation prompts inline in chat. Claude chat (not doc focus mode) also loads Claude in Chrome when the user has it on by default in Claude Code (`/chrome`), since the CLI only honors that setting interactively.
-- `src/main/services/core/McpDiscoveryService.ts`, `src/main/claude/userClaudeInChrome.ts`, `src/renderer/components/settings/McpServersSettings.tsx`, `src/renderer/stores/mcpServersStore.ts`
-
----
+- **Chat sessions**: multiple tabbed chats per project, each with its own provider (Claude, Codex, or pi), model, and effort; queued messages, image and file attachments, `/` slash commands (Claude only), Codex and pi cannot read PDFs. `src/main/services/streaming/StreamingSessionService.ts`, `src/main/claude/streaming/StreamingSession.ts`, `src/main/codex/CodexChatSession.ts`, `src/main/pi/PiChatSession.ts`, `src/renderer/components/chat/`
+- **Model catalog**: model lists fetched at launch with a built-in fallback. `src/main/providers/modelCatalog.ts`, `src/shared/providerCapabilities.ts`
+- **Focused resources**: pin files, folders, repos, and plan items to the next message. `src/main/chat/prompts/focusedResources.ts`, `src/renderer/stores/project/uiSlice.ts`
+- **System prompt and overrides**: override any registry prompt in Settings, Prompts; optionally include `~/.claude/CLAUDE.md`. `src/main/chat/prompts/`, `src/main/services/core/PromptOverrideService.ts`
+- **KPM tools**: in-process tools chat uses for plan, documents, files, git, PRs, Jira, and Confluence. `src/main/kpmTools/runtimeRegistry.ts`
+- **Publishing grant**: `git_push` and PR writes ask once per project; revoke in Settings, Publishing. Other chat writes follow the user's own harness settings. `src/main/chat/writeGrants.ts`, `src/renderer/components/permission/PermissionPrompt.tsx`
+- **MCP servers**: see what the selected provider can reach; Claude user servers are read-only here (managed with `claude mcp`). `src/main/services/core/McpDiscoveryService.ts`, `src/renderer/components/settings/McpServersSettings.tsx`
 
 ## Workspace and documents
 
-### File explorer
-The sidebar tree of connected repos and the project folder, kept current by a file watcher. Right-click to create files and folders, add to chat context, open in editor, reveal, copy the path, switch a repo's active worktree, or link and publish documents (Confluence, Linear). Repo rows show the current branch.
-- `src/main/services/files/FileExplorerService.ts`, `ProjectWatcherService.ts`, `src/main/services/repo/RepoWatcherService.ts`
-- `src/renderer/components/sidebar-tree/`, `src/renderer/stores/fileTreeStore.ts`
-
-### Editor and document tabs
-The workspace is chat-only until a file opens, then splits into editor plus chat. Markdown opens in the markdown editor with preview; other files open in Monaco, all editable. Every opened file stays as a tab (Cmd+Option+[ / ] to cycle, Cmd+W to close), tabs are remembered per project, and edits autosave shortly after typing stops, background tabs included. Open files follow external changes, renames, and deletions.
-- `src/renderer/components/workspace/` (`WorkspaceView.tsx`, `DocumentTabStrip.tsx`, `FileEditor.tsx`, `useDocumentAutosave.ts`), `src/renderer/stores/workspaceStore.ts`
-- `src/main/services/files/RepoFileService.ts`
-
-### Project context file (AGENTS.md)
-Each project folder has an AGENTS.md (a legacy CLAUDE.md is still read) that is fed into chat and board agent prompts. Project documents are plain markdown files in the project folder; there is no document database.
-- `src/main/services/core/ContextFileService.ts`, `src/main/project-context/projectContextFile.ts`, `src/shared/contextFile.ts`
-- Generation: see [Onboarding](#onboarding)
-
-### Document proposals
-Chat creates documents with `propose_document_create`, edits them with `propose_document_edit` (single or batched string replacements applied atomically), and edits AGENTS.md with `propose_context_edit`. All three go through the approval flow. Proposals open in a dialog with a diff against the file on disk.
-- `src/main/kpmTools/tools/document-update.ts`, `document-edit.ts`, `context-file-update.ts`
-- `src/renderer/components/planning/PendingDocumentPanel.tsx`, `src/renderer/components/markdown-document-modal/`, `src/renderer/components/ui/DiffViewer.tsx`
-
-### Focus reader (Cmd+Shift+M)
-A full-screen reading mode for a markdown file with a table of contents, in-document search, its own light/dark theme, and remembered reading position. A side chat scoped to that document keeps its own thread and follows the same write-grant and approval rules as main chat.
-- `src/renderer/components/focus-mode/` (`FocusMode.tsx`, `FocusChatPanel.tsx`), `src/renderer/stores/focusModeStore.ts`
-- Focus sessions: `chat_sessions.scope = 'focus_document'`; prompt via `buildFocusSystemPrompt` in `src/main/chat/prompts/index.ts`
-
-### Confluence and Linear document publishing
-A project document can be linked to a Confluence page (push or pull) or published to Linear as a document (push only; the file stays the source of truth). Every sync goes through a preview showing local vs. remote content and conflicts, and the write refuses to proceed if either side changed since the preview. A push with nothing changed on either side since the last sync writes nothing, so it can't flatten the page's rich content. Plan references are rewritten on the way out and restored on pull. Chat can look up a linked Confluence URL (`get_confluence_url`).
-- `src/main/services/documentSync/DocumentSyncService.ts` (shared algorithm), `src/main/services/confluence/ConfluenceSyncService.ts`, `src/main/services/linearDocuments/LinearDocumentService.ts`
-- `src/renderer/components/documentSync/DocumentSyncPreviewModal.tsx`, `src/renderer/components/confluence/`, `src/renderer/components/linearDocuments/` (publish chip shown in the file editor)
-
----
+- **File explorer**: repo and project file tree with context menus and worktree switching. `src/main/services/files/FileExplorerService.ts`, `src/renderer/components/sidebar-tree/`
+- **Editor and document tabs**: markdown editor with preview, Monaco for other files, autosave, tabs remembered per project. `src/renderer/components/workspace/`, `src/main/services/files/RepoFileService.ts`
+- **Project context file (AGENTS.md)**: fed into chat and board prompts; documents are plain files, there is no document database. `src/main/services/core/ContextFileService.ts`, `src/main/project-context/projectContextFile.ts`
+- **Document proposals**: chat creates and edits documents and AGENTS.md through approval with a diff. `src/main/kpmTools/tools/document-update.ts`, `document-edit.ts`, `context-file-update.ts`, `src/renderer/components/markdown-document-modal/`
+- **Focus reader (Cmd+Shift+M)**: full-screen reading mode with a document-scoped side chat. `src/renderer/components/focus-mode/`
+- **Confluence and Linear publishing**: link a document to Confluence (push or pull) or publish to Linear (push only), through a preview. `src/main/services/documentSync/DocumentSyncService.ts`, `src/main/services/confluence/ConfluenceSyncService.ts`, `src/main/services/linearDocuments/LinearDocumentService.ts`
 
 ## Board execution
 
-### Dev sessions
-Starting a plan item (Play, or drag to In Progress) runs an implementation agent in an isolated git worktree on its own branch. The Start modal shows the current Work Brief, the repo (defaulting to the item's primary repo), the environment capture mode, the playbook, and optional extra instructions. Starting again reuses the latest session and worktree for that repo. A worktree made outside KPM can be attached to a task from its card menu (Attach worktree); the task then treats that branch as if KPM had created it for Start, Changes, Create PR, and delete, except that Destroy worktree never deletes its local or remote branch. A PR already linked to the task carries over only when GitHub reports it on that branch. Only separate worktrees can be attached, never the main checkout, and a worktree belongs to one task across every project. Link PR joins the task's session for the chosen repo; when that session has a worktree, the PR must be on its branch (or the name it was pushed as), and a PR linked to one task cannot be linked to another. Chat can do both: `propose_board_change` runs the same checks and proposes the resolved change, which follows the review setting (Settings, General, Claude Changes) like plan edits, and `list_worktrees` shows which worktrees can be attached. Agents always work from the latest approved Work Brief. The detail pane has Activity (a card per step that ran, showing what it concluded: the agent's report, each review pass's findings with the implementer's reply, cost, and reported acceptance-criteria status, above the collapsible agent log), Changes (diff, commits, and an inline commit composer with a generated message), and Review tabs, plus a follow-up input and an overflow menu (open in editor, copy worktree path, Create PR, Run Review, PR content, link existing PR). Card badges show the automation phase.
-- `src/main/services/repo/DevSessionService.ts`, `worktreeScaffold.ts`; `src/main/services/agents/` (`AgentSessionManager.ts`, `BoardAgentOrchestrator.ts`, `automationPhaseMachine.ts`)
-- Agent backends: Claude, Codex, and pi SDK sessions, plus Gemini through its CLI (`CliAgentSession.ts`)
-- `src/renderer/components/board-view/` (`AgentStartModal.tsx`, `DetailPane.tsx`, `ActivityTab.tsx`, `runOutline.ts`, `RunOutlineView.tsx`, `ChangesTab.tsx`, `CommitComposer.tsx`, `DetailChatInput.tsx`)
-- Automation state is persisted in `dev_sessions.automation_phase` (see `src/main/services/agents/CLAUDE.md`)
-
-### Execution playbooks
-A playbook is the recipe a board run follows: ordered steps, each naming an agent fallback chain (or parallel runs, such as a two-lens review), a role prompt, a directive, and routing (review loop-backs with a pass limit, pause gates, whether a subagent may write). Built-ins: "Implement (no review)" (the default), "Implement + review", and "Implement test-first + deep review". Steps can follow the user's default model. Built-ins can be customized and reset; custom playbooks can be created, duplicated, and set as default in Settings, Playbooks, which also holds the Role instructions sub-tab. KPM owns worktree safety, persistence (a run keeps an immutable snapshot of its playbook), and terminal states. The detail pane's phase stepper shows progress and offers "one more pass", "proceed", or "resume" when a run pauses.
-- `src/shared/playbooks.ts`, `src/shared/playbookRuntime.ts`, `src/main/services/core/PlaybookService.ts`, `src/main/services/agents/playbookStepRunner.ts`, `boardProviderRegistry.ts`
-- `src/renderer/components/settings/PlaybooksSettings.tsx`, `src/renderer/components/board-view/PhaseStepper.tsx`
-
-#### Drafting playbooks from chat
-Main chat can create or change a playbook on request ("create a playbook that implements, loops review until clean, then simplifies, renames, and prunes comments"). `read_config` gives chat the current playbooks with a version token, the board providers and models, the prompt keys, and the step grammar; `propose_config_change` validates the full playbook and hands problems back to chat to fix before the user sees anything. A valid proposal always waits for review in the approval panel, even with auto-apply on, as a step-level diff (added, removed, and changed steps, routing, and an instructions text diff) marked "applies to all projects". Approve or reject only; to revise, ask chat. Approving an update is refused if the playbook changed after chat read it. There is no delete. The tools are hidden from doc focus mode and unreachable from action runs. Steps written by chat use prompt text only; the editor no longer offers skill steps, though existing ones still load and run.
-- `src/shared/configKinds.ts`, `src/main/kpmTools/tools/config.ts`, `src/renderer/components/settings/PendingConfigPanel.tsx`, `src/renderer/stores/proposedChangeDisposal.ts` (`config` adapter)
-
-### Automated review loop
-When the playbook includes review, a reviewer agent inspects the diff and its findings go back to the implementer. Only critical and warning findings force another round; suggestions are addressed once. Every turn given findings replies to each one (fixed, or declined with a reason) in a block KPM saves against the finding. The reviewer sees what the implementer declined last round, the loop stops when a pass changes nothing or the pass limit is reached, and a failed review lens puts the run in needs-attention. Run Review in the detail pane triggers a review on demand.
-- `src/main/services/agents/autoReview.ts`, `reviewOutputContract.ts`, `BoardAgentOrchestrator.ts`
-
-### Pull requests
-From the detail pane the user can create a PR (draft by default) or link an existing one, and generate a reviewer-oriented title and description from the branch diff, commit log, PR template, Work Brief, and optionally a project document for feature context. Push failures lead with a plain reason. Chat can find PRs by branch, author, state, or search text; read any PR by URL or number, optionally with its reviews, review threads, discussion, and CI checks and merge readiness; and open or edit a PR's title and description after the project publishing grant.
-- `src/main/services/repo/GitHubService.ts`, `ghUtils.ts`; `src/main/kpmTools/tools/github.ts`, `github-writes.ts`, `git-push.ts`
-- `src/renderer/components/development/` (`CreatePrModal.tsx`, `LinkPrDialog.tsx`, `LinkPrToItemDialog.tsx`, `GeneratePrContentModal.tsx`), `src/renderer/stores/devSessions/prSlice.ts`
-
-### PR review threads
-For a linked PR, KPM polls GitHub review threads, assesses each one, and shows them in the Review tab as a decision queue (next action, per-thread disposition: implement, push back, or needs input; latest verdict per reviewer). Replies can be written or delegated to the agent and are approved before posting. Each task opts in to having assessed comments addressed automatically by its agent.
-- `src/main/services/repo/ReviewPollService.ts`, `ReviewService.ts`, `ReviewAssessmentService.ts`
-- `src/renderer/components/development/ReviewTab.tsx`, `ReviewReplyApprovalPanel.tsx`
-
-### Merge queue
-Sessions with open, non-draft PRs appear in a queue above the board, ordered by plan dependencies with drag-to-reorder overrides. PRs whose dependencies aren't merged are marked blocked.
-- `src/renderer/components/board-view/MergeQueuePanel.tsx`, `mergeQueue.ts`; `src/main/services/repo/mergeOrder.ts`
-
-### Repository environment
-Each connected repo can capture its shell environment for agents (auto, direnv, nix, or none), chosen per run in the Start modal, and can point chat at a specific worktree instead of the repo root.
-- `src/main/services/repo/EnvironmentService.ts`, `RepoService.ts`; `src/renderer/components/sidebar-tree/RepoContextMenu.tsx`
-
----
+- **Dev sessions**: Play runs an implementation agent in an isolated worktree; detail pane has Activity, Changes, and Review tabs; attach an outside worktree or link an existing PR (chat does both through `propose_board_change`). Backends: Claude, Codex, pi, and Gemini CLI. `src/main/services/repo/DevSessionService.ts`, `src/main/services/agents/`, `src/renderer/components/board-view/`
+- **Board Claude session class**: `ClaudeSdkSession` is the board agent session, not chat. `src/main/services/agents/ClaudeSdkSession.ts`
+- **Execution playbooks**: ordered steps with agent fallback chains, review loops, and pause gates; built-ins plus custom, edited in Settings, Playbooks. `src/shared/playbooks.ts`, `src/main/services/core/PlaybookService.ts`, `src/main/services/agents/playbookStepRunner.ts`, `src/renderer/components/settings/PlaybooksSettings.tsx`
+- **Drafting playbooks from chat**: chat creates or changes a playbook with `read_config` and `propose_config_change`; always queued for review, approve or reject only, and there is no delete. The tools are hidden from doc focus mode and unreachable from action runs. Steps written by chat use prompt text only, because skills are found only in `~/.claude/skills`, load differently per provider, and are read from disk at step start, which would break the run's snapshot. `src/shared/configKinds.ts`, `src/main/kpmTools/tools/config.ts`, `src/renderer/components/settings/PendingConfigPanel.tsx`
+- **Automated review loop**: reviewer findings go back to the implementer; Run Review triggers one on demand. `src/main/services/agents/autoReview.ts`, `reviewOutputContract.ts`
+- **Pull requests**: create (draft by default) or link a PR and generate its title and description; chat finds and reads PRs and edits them after the publishing grant. `src/main/services/repo/GitHubService.ts`, `src/main/kpmTools/tools/github.ts`, `github-writes.ts`, `git-push.ts`, `src/renderer/components/development/`
+- **PR review threads**: polled threads are assessed and shown as a decision queue; replies are approved before posting. `src/main/services/repo/ReviewPollService.ts`, `ReviewAssessmentService.ts`, `src/renderer/components/development/ReviewTab.tsx`
+- **Merge queue**: open PRs ordered by plan dependencies. `src/main/services/repo/mergeOrder.ts`, `src/renderer/components/board-view/MergeQueuePanel.tsx`
+- **Repository environment**: capture a repo's shell environment for agents (auto, direnv, nix, none). `src/main/services/repo/EnvironmentService.ts`
 
 ## Tracker integration
 
-### Connections and mappings
-Jira and Linear credentials are stored in the OS keychain; both can be connected at once. A project is linked to a Jira project or Linear team through an association with a filter (JQL for Jira), status mappings, and custom field defaults. A type-mapping grid maps KPM levels (project, feature, task) to tracker issue types in both directions.
-- `src/main/services/core/TrackerService.ts`, `src/main/trackers/TrackerClientService.ts`, `src/main/db/domain/TypeMappingService.ts`, `src/main/tracker-clients/{jira,linear}/`
-- Settings, Workflow, Tracker (`src/renderer/components/settings/TrackerSettings.tsx`, `src/renderer/components/tracker/`)
-
-### Sync and export
-The top-bar "Jira Sync" / "Linear Sync" button opens the sync panel. Inbound, the user reviews tracker changes, resolves three-way conflicts, and decides what to do with items deleted in the tracker. Outbound, queued items go through an export review (status mappings, custom fields, per-item diffs) before anything is pushed. An update sends only the title and description that changed since the last sync, so a status-only export never rewrites a Jira description, and the review warns when a changed description would replace Jira content KPM can't carry back (attachments, expand sections, layouts, nested lists). New issues are assigned to the user unless "Assign issues I export to me" is off (Settings, Workflow). Deleting a linked plan item stages a tracker deletion that is confirmed or cancelled in the export review. Import pulls matching issues in as plan items using the type mapping. Sync only runs when the user asks.
-- `src/main/db/domain/SyncService.ts`, `ExportService.ts`, `ExportPlan.ts`, `ImportService.ts`, `PlanItemRemoval.ts`, `TrackerDeletionDrain.ts`
-- `src/renderer/components/tracker/sync/` (`TrackerSyncPanel.tsx`, `SyncReviewPanel.tsx`, `SyncReviewModal.tsx`)
-- Payloads pass through `toExternalMarkdown` (see the root `CLAUDE.md`)
-
-### Jira chat tools
-Chat can list Jira projects, search with JQL, fetch an issue, and compare an issue against its linked plan item. Linear has no chat tools.
-- `src/main/kpmTools/tools/jira.ts`
-
----
+- **Connections and mappings**: Jira and Linear credentials in the OS keychain, project associations, status and type mappings. `src/main/services/core/TrackerService.ts`, `src/main/tracker-clients/{jira,linear}/`, `src/renderer/components/settings/TrackerSettings.tsx`
+- **Sync and export**: inbound review with conflict resolution, outbound export review, import as plan items; sync only runs when the user asks. `src/main/db/domain/SyncService.ts`, `ExportService.ts`, `ImportService.ts`, `src/renderer/components/tracker/sync/`
+- **Jira chat tools**: list projects, search with JQL, fetch an issue, compare with its plan item. Linear has no chat tools. `src/main/kpmTools/tools/jira.ts`
 
 ## Actions
 
-An action is a saved prompt plus how it starts and what it may do. Triggers: manual, an interval, or an event (app opened, board agent finished, PR changed, ticket changed, branch changed); every action can also be run by hand. A capability grant (read project, read integrations, report a finding, write outputs, propose documents, propose plan changes) decides which tools the run gets and where results land: findings go to the notification bell and outputs to `outputs/actions/<name>.md`. Actions that propose changes run as a chat so proposals reach the approval queue; triggered actions can't propose. Managed in Settings, Actions and run from Cmd+K.
-- `src/shared/actions.ts`, `src/main/services/core/ActionService.ts`, `actionCapabilities.ts`, `src/main/services/repo/ActionRunnerService.ts`
-- `src/renderer/components/settings/ActionsSettings.tsx`, `src/renderer/stores/actionStore.ts`
-
----
+- **Actions**: saved prompts run manually, on an interval, or on an event, with a capability grant; findings go to the bell and outputs to `outputs/actions/<name>.md`; triggered actions cannot propose changes. Managed in Settings, Actions. `src/shared/actions.ts`, `src/main/services/core/ActionService.ts`, `src/main/services/repo/ActionRunnerService.ts`
 
 ## Settings
 
-Settings tabs, in order: General (AI provider readiness, default chat provider and model, approval mode, global instructions), Appearance, Actions, Workflow (Tracker, Git branch naming), Keyboard Shortcuts, Prompts, Playbooks, MCP Servers, Writes (project only), Usage. Tab identity lives in `src/renderer/components/settings/settingsTabs.tsx`; persisted keys in `src/shared/settingsRegistry.ts`.
+Tab identity and order live in `src/renderer/components/settings/settingsTabs.tsx`; persisted keys in `src/shared/settingsRegistry.ts`.
 
-### Themes
-Built-in themes plus VS Code themes imported by URL, applied to the app, the editor, and diagrams, and set before first paint so launch doesn't flash.
-- `src/shared/theme.ts` (single owner of theme colors; see the root `CLAUDE.md`), `src/main/services/core/CustomThemeService.ts`, `src/renderer/components/settings/ThemesSettings.tsx`
-
-### Usage
-Token usage and estimated cost by source and model, per project or across all projects, with a per-project reset. Codex reports no cost and KPM has no OpenAI price table, so Codex runs count their tokens but show cost as a dash, and cost totals say how many runs they leave out.
-- `src/main/services/core/ClaudeUsageService.ts`, `src/renderer/components/settings/UsageSettings.tsx`
-
----
+- **Themes**: built-in and imported VS Code themes. `src/shared/theme.ts`, `src/renderer/components/settings/ThemesSettings.tsx`
+- **Usage**: token usage and estimated cost; Codex runs show cost as a dash. `src/main/services/core/ClaudeUsageService.ts`, `src/renderer/components/settings/UsageSettings.tsx`
 
 ## Onboarding
 
-With no project open, a welcome pane offers "Open a repository" (creates a project named after the folder), "New project", recent projects, and agent setup. The create form takes a name, repositories, and an optional notes folder (a KPM-managed folder is used otherwise). Once a project exists, the workspace home offers to generate its AGENTS.md when it is missing or still the placeholder; "Regenerate Project Context" in Cmd+K reruns it. Generation runs in the background against the connected repos and ends in a diff review, or in the approval queue if the dialog was closed.
-- `src/main/services/generation/OnboardingService.ts`
-- `src/renderer/components/welcome/`, `src/renderer/components/onboarding/` (`CreateProjectModal.tsx`, `RegenerateContextModal.tsx`), `src/renderer/components/workspace/WorkspaceHome.tsx`
-
----
+- **Welcome and project creation**: open a repository, create a project, generate AGENTS.md in the background. `src/main/services/generation/OnboardingService.ts`, `src/renderer/components/welcome/`, `src/renderer/components/onboarding/`
 
 ## Diagnostics
 
-### Tool call log (Cmd+Shift+T)
-A panel listing chat tool calls with inputs and referenced files.
-- `src/main/services/toollog/ToolCallLogger.ts`, `src/renderer/components/tool-log/ToolLogPanel.tsx`
-
-### Performance logging
-Opt-in timing spans for project load, view switches, and plan refresh, enabled with `KPM_PERF=1`.
-- `src/main/services/PerfLogger.ts`, `src/renderer/utils/perfLogger.ts`
-
----
-
-## UI surface map
-
-Component directories under `src/renderer/components/` and the features they surface.
-
-| Directory | Surfaces |
-|---|---|
-| `layout/` | App shell, top bar, view switcher, approval overlays |
-| `planning/` | Board host, create/edit modals, Work Brief and Repository Scope editors, bulk menu, pending-change panels |
-| `board-view/` | Board, detail pane, Start modal, phase stepper, merge queue, commit composer |
-| `development/` | PR create/link/generate dialogs, Review tab |
-| `chat/` | Chat panel, session tabs, composer, model and effort controls, slash commands, background task strip |
-| `workspace/` | Workspace layout, document tabs, file editor, workspace home |
-| `sidebar/`, `sidebar-tree/` | Sidebar, repo and project file tree, context menus |
-| `focus-mode/` | Focus reader and document chat |
-| `markdown-document-modal/` | Markdown file dialog for proposals, with diff |
-| `confluence/`, `linearDocuments/`, `documentSync/` | Document linking, publishing, and sync preview |
-| `tracker/` | Tracker config dialogs, mappings, sync and export review |
-| `settings/` | Settings modal and every tab |
-| `command-palette/` | Cmd+K |
-| `global-search/` | Global search |
-| `terminal/` | Terminal panel |
-| `notifications/`, `background-tasks/`, `permission/` | Top-bar bell, background task badge, write prompt and waiting-requests pill |
-| `welcome/`, `onboarding/` | No-project landing, create project, AGENTS.md generation |
-| `keyboard-shortcuts/`, `tool-log/`, `image-viewer-modal/` | Shortcut overlay, tool call log, image viewer |
-| `plan-ref/`, `file-ref/` | Plan reference chips, file links in chat |
-| `ui/`, `icons/` | Shared primitives and SVG icons |
+- **Tool call log (Cmd+Shift+T)**: chat tool calls with inputs. `src/main/services/toollog/ToolCallLogger.ts`, `src/renderer/components/tool-log/`
+- **Performance logging**: opt-in timing spans with `KPM_PERF=1`. `src/main/services/PerfLogger.ts`

@@ -7,8 +7,8 @@
  * applying an approved change (renderer) are keyed by `ConfigKind` in their own
  * layers, so a new kind that skips either is a compile error.
  *
- * Config proposals always queue for review, whatever the auto-apply setting
- * (P8): a playbook decides which agents run and whether they may write.
+ * Config proposals always queue for review, whatever the auto-apply setting:
+ * a playbook decides which agents run and whether they may write.
  */
 
 import { getPlaybookValidationIssues, type PlaybookStep } from './playbooks';

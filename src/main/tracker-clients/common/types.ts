@@ -53,7 +53,7 @@ export interface CreateIssueParams {
   projectKey: string;
   issueTypeId: string;
   summary: string;
-  /** Must cross the export boundary (`toExternalMarkdown`) so plan refs never leak (P6). */
+  /** Must cross the export boundary (`toExternalMarkdown`) so plan refs never leak. */
   description?: ExternalMarkdown;
   parentKey?: string;         // For sub-tasks or stories under epics
   labels?: string[];

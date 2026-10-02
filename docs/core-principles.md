@@ -1,119 +1,98 @@
 # Core Principles
 
-The commitments a contributor — human or agent — should consult when a feature decision is contested. These are descriptive first (they explain why KPM is built the way it is) and prescriptive second (they tell you which way to lean).
+The commitments to consult when a design decision is contested. Each one takes a side on purpose: it says why KPM is built the way it is, then which way to lean. Principles name no files, tools, or settings; the mechanisms that enforce them are the invariants in [`AGENTS.md`](../AGENTS.md), which cite them as (P1)…(P10).
 
-## Skim summary
+## Product
 
-| # | Principle | One-line rule |
-|---|-----------|---------------|
-| P1 | Single-user cockpit | No seats, permissions, shared state, or conflict resolution. |
-| P2 | Chat grounded in the project | Live plan + project context + focused resources + repos are always in scope. |
-| P3 | Cross-repo first | A plan can span any number of connected repos. |
-| P4 | Plans live in KPM | SQLite, not files in the repo. |
-| P5 | Extend the dev setup | Inherit the user's MCP tools; don't replace their env. |
-| P6 | Internal stays internal | Translate at every export boundary; refs and spec fields are local-only. |
-| P7 | Reads free, writes follow the user's harness | Chat writes under the user's own Claude Code, Codex, or pi permissions; publishing needs a per-project grant. Agent writes stay scoped to worktrees. |
-| P8 | Claude proposes, user configures disposal | Plan mutations go through the `PlanAction` approval flow unless the user explicitly enables auto-apply. Configuration changes proposed by chat (playbooks, actions, prompts) always require review. |
-| P9 | Agent execution is a lifecycle | A bounded, persisted run driven by a chosen playbook (fresh-install default: implement only) — never a one-shot prompt. |
-| P10 | Sync on your terms | No live feeds. Inbound queues; outbound drafts. |
+### 1. One developer's cockpit
 
----
-
-## 1. Single-user cockpit
-
-KPM is the place one developer goes to know what to do next, why it matters, and where it stands. It is not a system of record for a team. Jira and Linear remain the org's source of truth; KPM is the developer's source of truth. The two are deliberately decoupled: KPM's plan hierarchy can be richer, faster, and messier than what gets exported, because only what crosses the export boundary becomes the team's problem.
+KPM is where one developer goes to know what to do next, why it matters, and where it stands. The org's tracker is the team's source of truth; KPM is the developer's. The two are deliberately decoupled, so KPM's plan can be richer, faster, and messier than what the team sees. Only what the developer exports becomes the team's problem.
 
 **Lean toward:** features that make one person's day faster.
-**Lean away from:** seats, permissions, shared state, conflict-resolution UX. There is one user.
+**Lean away from:** seats, permissions, shared state, and conflict-resolution UX. There is one user.
 
 ---
 
-## 2. The chat is a thinking partner grounded in the project
+### 2. Plans stay out of repos
 
-The chat always works against the live plan, project context and focused resources, and connected repos rather than starting cold. It is the primary surface for exploration, triage, investigation, and re-hydration — not a generic AI chat bolted onto a task manager. The user rarely asks Claude to do something in the abstract; they ask Claude to think alongside them with the project's real state available.
+Plans, notes, and project context belong to KPM, not to the code they describe. They never live as files inside a connected repo, so they can't be committed by accident and need no ignore rules. KPM is connected to repos, not embedded in them.
 
-**Lean toward:** features that deepen general grounding and user-configurable capabilities (better focused resources, customizable prompts, faster doc re-hydration from live repo state).
-**Lean away from:** chat experiences that start without project context, or that treat the chat as a separate mode from the plan.
-
----
-
-## 3. Cross-repo first
-
-KPM spans all connected repos so the developer doesn't have to. Plans and context live in one place regardless of how many repos the work touches. This is the layer the org's tracker can't be: Jira and Linear can link tickets, but they can't tell a developer that a Fender PR depends on a K-Repo migration which depends on an App rate-limit change. KPM's hierarchy, relations, and references are explicitly designed to coordinate across repositories without forcing a shared one.
-
-**Lean toward:** features that make a multi-repo effort legible from one place.
-**Lean away from:** assuming a single working directory or a single language.
+**Lean toward:** keeping every planning artifact in KPM's own storage.
+**Lean away from:** plan files, exports, or tool folders written into a working tree.
 
 ---
 
-## 4. Plans live in KPM, not in repos
+### 3. Grounded in the whole project
 
-Planning data — items, notes, and context — lives in KPM's SQLite database. It does not live as files inside repos. Code changes go wherever they need to; plan artifacts do not pollute the working tree, do not risk accidental commits, and do not require .gitignore entries. The two concerns are separate: KPM is connected to repos, not embedded in them.
+The chat is a thinking partner that starts from the project's real state: the live plan, the project context, and every connected repo. The developer rarely asks for something in the abstract; they ask the AI to think alongside them with the project in view. Work often spans several repos, and KPM is the one place that sees them together. A tracker can link tickets but can't tell you that a frontend change depends on a migration that depends on an API change.
 
----
-
-## 5. Extend the developer's setup intentionally
-
-KPM inherits the developer's MCP tools and adds capability on top. It does not inherit the entire Claude environment transparently — some boundaries are intentional (settings sources, tool scope) to keep the cockpit predictable. The goal is to bring in what the developer already has and augment it, not to replace it with a more limited interface and not to blindly pass through everything.
-
-**Lean toward:** surfacing the developer's existing tools and prompts inside KPM.
-**Lean away from:** stripping capability to protect a simpler abstraction, or assuming KPM is a transparent proxy for the full Claude environment.
+**Lean toward:** deeper grounding, and making a multi-repo effort legible from one place.
+**Lean away from:** chat that starts cold, treating chat as a mode separate from the plan, and assuming a single repo or language.
 
 ---
 
-## 6. Internal vocabulary stays internal; exports are clean
+### 4. Watch freely; act for the developer only with consent
 
-KPM has its own internal syntax and references. None of it leaks to external systems. Every export boundary — Jira, Linear, Confluence, GitHub — must translate internal references and clean up internal-only fields before sending. Spec fields like `intent` and `acceptance_criteria` are local; `description` is what gets synced. Internal references are resolved to human-readable text at the boundary. A Jira ticket should never contain KPM internals.
+Reading is free. KPM may read repos, scan files, poll for changes, and analyze them without ceremony, because exploration is most of what the developer does here and has no side effects.
 
-**The rule:** if it's crossing an export boundary, it must be translated. No exceptions.
+Acting is not free. Anything that changes the plan, leaves the machine, or speaks as the developer needs their consent first. Changes the AI proposes go through review. The developer may choose to auto-apply plan edits, but not changes to how KPM's automation behaves, because text planted in a ticket or document could otherwise install behavior that outlives the chat. Trackers sync when the developer asks, and inbound changes are reviewed before they touch the plan. Consent may be standing, but it must be scoped, visible, and easy to take back.
 
----
-
-## 7. Reads are free; writes follow the user's harness
-
-Reads are free. Chat can scan, analyze, and reason about any connected repo with no ceremony, and that stays true. Exploration and investigation are the high-frequency use of KPM, and a developer should be able to open the chat and ask anything without worrying about side effects.
-
-Writes follow the permissions the developer already chose for their harness. A Claude chat runs under the user's Claude Code permission mode, allow and deny rules, and sandbox. A Codex chat runs under their Codex sandbox and approval policy, with the project folder and connected repos as its workspace. A pi chat runs as pi does, with no permission system beyond the pi extensions the user installed. Where those settings ask before acting, KPM shows the question in the chat, once per call, as the harness's own CLI would; a run with no chat to ask in is refused. In agent execution, writes remain scoped to an isolated worktree; the developer's working branches are untouched until they merge.
-
-**Why inherit rather than impose:** KPM's own gate (a localhost-only sandbox, a per-project unlock, a credential deny-list) kept refusing work the developer's harness already allowed: fetching, calling an API, running a test watcher. The developer has made that safety decision once, in the tool built for it. A second, stricter answer inside KPM pushes the work into another window, which is worse for the developer and worse for the plan's fidelity. The boundary that actually holds is the one around the whole process, and the user owns it (P5).
-
-**Publishing is the exception.** `git_push` and the pull request tools act with the user's GitHub credentials from KPM's main process, outside every harness, and put changes in front of other people. They ask once per project for the publishing grant (`src/main/chat/writeGrants.ts`, persisted in `project_write_grants`), which covers every chat and background action run in the project, persists until turned off, and is shown and revocable in Settings, Publishing. The prompt states its full extent before the user agrees.
-
-**What this obliges us to keep:** read each harness's settings from the harness, never approximate them. Claude's permission mode comes from the SDK's own settings resolver (the SDK ignores `permissions.defaultMode` unless KPM passes it), and Codex's from app-server `config/read`. Inherit user-level settings only: a KPM chat starts in the project folder and spans several repos, so no single repo's settings speak for it. KPM's own file tools keep credential and secret paths denied, and plan and document changes still go through review or auto-apply (P8) whatever the harness allows.
-
-**Providers differ, and we say so rather than pretending otherwise.** Each keeps ownership of its native tool and sandbox behavior, and KPM does not wrap one provider in another to manufacture identical semantics. pi has no sandbox, so its shell reaches whatever the user's account can unless the user runs pi inside one. Capability differences are declared in `src/shared/providerCapabilities.ts`, not discovered at runtime.
-
-**Lean toward:** passing the user's own settings through unchanged, and making the publishing grant obvious and easy to take back.
-**Lean away from:** KPM-side gates layered on top of the user's harness, or widening the publishing grant beyond the project that gave it.
+**Lean toward:** fast review (preview, batch, undo), and consent that is obvious and revocable.
+**Lean away from:** hidden bypasses, live push feeds from trackers, and consent that quietly widens beyond what the developer agreed to.
 
 ---
 
-## 8. Claude proposes, user configures disposal
+### 5. Inherit the developer's setup; don't imitate it
 
-By default, every Claude action that mutates the plan emits a `PlanAction[]` that surfaces in an approval modal before anything is written. The user is the last reviewer unless they explicitly choose the global auto-apply setting.
+KPM runs on the developer's own tools and adds capability on top: their harness, permission rules, sandbox, and integrations all apply, and KPM's own tools sit beside them. The developer has already made those safety decisions in the tool built for them. A second, stricter answer inside KPM would refuse work their setup allows and push it into another window.
 
-When auto-apply is enabled, Claude still uses the same structured KPM change paths (`PlanAction[]`, document update events, context update events, deletion events); KPM applies them immediately instead of showing an approval modal. Tools must not bypass those paths or write directly to the database.
+Read each setting from the tool that owns it; never approximate it. Each provider keeps its own native behavior; KPM does not wrap one in another to fake identical semantics, and it declares their differences rather than discovering them at runtime. Scope follows the work. A chat spans several repos, so no single repo's settings speak for it; an agent working inside one repo follows that repo's settings too.
 
-Configuration changes proposed by chat (playbooks, actions, prompts) always require review. The global auto-apply setting does not cover them. A playbook decides which agents run and whether they may write, and an action can run unattended on a timer, so an auto-applied change could let text planted in a document or ticket install behavior that keeps running after the chat ends.
-
-The plan is the developer's mental model externalized. Approval remains the safe default, but a single-user cockpit can let the user trade review friction for speed when they deliberately opt in.
-
-**Lean toward:** making approvals fast (preview, batch, undo) and making auto-apply explicit, reversible, and clearly labeled.
-**Lean away from:** hidden bypasses, per-tool direct database writes, or silently changing the default review behavior.
+**Lean toward:** passing the developer's setup through unchanged, and tracking their tools as they move forward.
+**Lean away from:** KPM-side gates layered over the developer's own, stripping capability to protect a simpler abstraction, and pinning to one version of a tool.
 
 ---
 
-## 9. Agent execution is a lifecycle
+### 6. Never silently substitute
 
-Running a coding agent is not a prompt — it is a structured run with a beginning, middle, and end. Each plan item gets an isolated git worktree so parallel runs don't collide. Implementation runs under the selected main agent. Playbooks may add review steps under a different agent so the implementer isn't grading its own work. The automation phase is persisted to `dev_sessions.automation_phase` so the run survives restarts, stops, and resumes. Agents are interchangeable — Claude, Codex, and others plug into the same harness. The specific sequence is a *playbook* the user chooses and can configure; KPM keeps the safety rails constant across every playbook — worktree isolation, persisted phase, explicit playbook state, and bounded terminal states.
+When KPM can't do what the developer chose, it stops and says so. A model that is no longer available is not swapped for another; an agent that can't run is not replaced behind the developer's back; a number KPM couldn't measure is shown as unknown, not guessed; a tracker deletion that failed keeps its place until it succeeds. A visible failure costs a moment. A silent substitution costs trust in everything else KPM reports.
 
-**Fresh-install default:** implement only, then human review. Users can choose heavier playbooks such as implement → opposing review → one addressing pass → human review. None is a one-shot prompt and none loops forever.
-
-**Lean toward:** features that extend the harness (isolation, review quality, persisted state).
-**Lean away from:** one-shot prompts without accountability, renderer-only orchestration state, agent identity baked into the schema.
+**Lean toward:** explicit failure with a clear way to recover.
+**Lean away from:** fallbacks that change what the developer asked for without telling them.
 
 ---
 
-## 10. Org systems sync on your terms
+### 7. Automation is a lifecycle, not a prompt
 
-Import from Jira or Linear when you want to. Export when you're ready. No live feeds, no push-driven surprises. Inbound signals queue for triage; outbound artifacts are drafted and reviewed before they leave the cockpit. The developer's local reality does not become the team's reality until they decide.
+Anything KPM runs on its own (an agent working a task, a background check, a scheduled action) has a beginning, a bounded middle, and a named end. Its state is persisted, so it survives restarts, stops, and resumes. Every loop has a limit, so none runs forever. Agents write in isolation, so the developer's own branches are untouched until they merge, and work can be reviewed by a different agent than the one that wrote it. Agents are interchangeable. The sequence is something the developer chooses and configures; the safety rails stay the same whatever they choose.
+
+**Lean toward:** isolation, persisted state, independent review, and bounded retries.
+**Lean away from:** one-shot prompts without accountability, state held only in the UI, unbounded loops, and one agent's identity baked into the design.
+
+---
+
+### 8. Internal vocabulary stays internal
+
+KPM has its own references, syntax, and local-only fields. None of it leaks to an external system. Every export translates internal references into readable text and drops local-only fields before anything is sent. A ticket should never contain KPM internals.
+
+**The rule:** if it crosses an export boundary, it is translated. No exceptions.
+
+---
+
+## Engineering
+
+### 9. Make the wrong thing fail to compile
+
+A rule that matters is enforced by the type system or a test, not by a comment or a doc. When adding a case should touch several places, derive them from one registry, so forgetting one is a compile error. When a value must pass through a gate, give it a type only the gate can produce. Prose is for what the compiler can't check.
+
+**Lean toward:** registries that derive downstream types, exhaustive maps over unions, and branded types at boundaries.
+**Lean away from:** rules that live only in documentation or a reviewer's memory.
+
+---
+
+### 10. One owner per fact
+
+Every fact KPM asks about repeatedly (which branch, which path, which phase, how an item is deleted) has exactly one module that answers it. Everything else asks that module rather than working the answer out again. Facts get lost when they pass between modules, so keep the number of hand-offs small and make each one carry the whole fact.
+
+**Lean toward:** one resolver per question, called everywhere.
+**Lean away from:** a second code path for something that already has an owner, and reconstructing another module's state from clues.

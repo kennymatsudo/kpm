@@ -42,7 +42,7 @@ export interface FileUpdateEventData extends ProposalScope {
 /**
  * One change a chat turn proposes, bound for the approval queue. Every kind
  * follows the user's review setting except `config-change`, which always
- * queues for review (P8), and a file update with `forceReview`.
+ * queues for review, and a file update with `forceReview`.
  */
 export type ChatProposalEventData =
   | (ProposalScope & { kind: 'plan-actions'; actions: PlanAction[] })

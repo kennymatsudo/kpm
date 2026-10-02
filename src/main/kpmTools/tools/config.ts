@@ -4,7 +4,7 @@
  * Let chat read KPM's own configuration and propose changes to it. Proposals
  * are validated here, so the model fixes its own mistakes and the user only
  * sees valid changes, then always queue for the user's review: auto-apply
- * never covers configuration (P8). Nothing here writes a record.
+ * never covers configuration. Nothing here writes a record.
  */
 
 import { z } from 'zod';

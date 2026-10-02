@@ -42,7 +42,7 @@ const BUILTIN_TOOLS = ['read', 'grep', 'find', 'ls', 'write', 'edit', 'bash'] as
  * lifecycle, so none connect until the model asks for one.
  *
  * An MCP server can write to a tracker without passing through KPM's export
- * boundary (P6), as the user's MCP servers can in Claude chat.
+ * boundary, as the user's MCP servers can in Claude chat.
  */
 const MCP_GATEWAY_TOOLS = ['mcp'] as const;
 
@@ -515,7 +515,7 @@ export class PiChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
    * itself) each bind to a single `cwd` string — the pi SDK has no
    * multi-directory equivalent of Claude Code's `--add-dir`, so only the
    * first connected repo is reachable through pi's native tools. Cross-repo
-   * reads (P3) still work through KPM's own `git_read` custom tool, which
+   * reads still work through KPM's own `git_read` custom tool, which
    * takes a `repoPath` and runs read-only git against any connected repo.
    */
   private resolveCwd(): string {

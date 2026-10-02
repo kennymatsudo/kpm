@@ -28,10 +28,10 @@ KPM runs on macOS with Apple Silicon.
 
 You'll need:
 
-- **Node.js 22.19+** — the version in `.nvmrc` is the supported development runtime
-- **Git** — powers worktrees, diffs, and agent runs
-- **Claude Code**, installed and logged in — runs every AI feature using your existing session. No Anthropic API key required.
-- **Xcode Command Line Tools** — compiles the native modules (`xcode-select --install`)
+- **Node.js 22** (22.19 or later, below 23; see `.nvmrc`)
+- **Git**: powers worktrees, diffs, and agent runs
+- **Claude Code**, installed and logged in. It runs every AI feature using your existing session, so no Anthropic API key is required.
+- **Xcode Command Line Tools**: compiles the native modules (`xcode-select --install`)
 
 Codex, Gemini, and pi are optional extra backends. You connect them inside the app when you want them.
 
@@ -41,7 +41,7 @@ cd kpm
 make up   # installs dependencies on first run, then starts the app
 ```
 
-On first launch, macOS asks to allow keychain access. That's KPM storing your tracker credentials securely. Approve it to turn on the Jira and Linear integrations.
+On first launch, macOS asks to allow keychain access. KPM uses it to store your tracker credentials. Approve it to turn on the Jira and Linear integrations.
 
 ## Documentation
 
@@ -49,7 +49,6 @@ On first launch, macOS asks to allow keychain access. That's KPM storing your tr
 | ----------------- | ---------------------------------------------------- |
 | Design principles | [`docs/core-principles.md`](docs/core-principles.md) |
 | Feature catalog   | [`docs/features.md`](docs/features.md)               |
-| Architecture      | [`docs/architecture.md`](docs/architecture.md)       |
 | Domain glossary   | [`CONTEXT.md`](CONTEXT.md)                           |
 | Changelog         | [`CHANGELOG.md`](CHANGELOG.md)                       |
 
@@ -59,4 +58,8 @@ KPM is Electron + React + TypeScript, with SQLite for storage and the Claude Age
 
 Start with [`docs/core-principles.md`](docs/core-principles.md). KPM's design rules are deliberate, and they override patterns you might infer from the code. Then run `npm run check` (typecheck + lint + tests) before opening a PR against `main`.
 
-If you're contributing with a coding agent (Claude Code, Codex, Cursor, etc.), point it at [`AGENTS.md`](AGENTS.md) first. It maps each kind of change to the right deep-dive doc, and it lists the ideas that don't fit KPM's design so your agent doesn't try to build them: live tracker sync, multi-user features, plan files committed inside a repo.
+If you're contributing with a coding agent (Claude Code, Codex, Cursor, etc.), point it at [`AGENTS.md`](AGENTS.md) first. It maps each kind of change to the right deep-dive doc, and it lists the invariants your agent must not break, which rule out ideas such as live tracker sync, multi-user features, and plan files committed inside a repo.
+
+### Releases
+
+Releases are version tags on `main`; no binaries are built or published, and updating an install is `git pull && make app`. `make release:patch`, `make release:minor`, and `make release:major` tag a release. Each first runs `make release-notes`, which writes `release-notes.md` from the commits since the last tag, and commits it. Versioning follows [SemVer](https://semver.org/): patch for fixes only, minor for additive features, major for breaking changes to data formats or user-facing flows.

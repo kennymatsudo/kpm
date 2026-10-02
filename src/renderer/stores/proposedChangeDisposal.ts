@@ -226,7 +226,7 @@ const adapters = {
   } satisfies ProposedChangeAdapter<Extract<ProposedChange, { type: 'review-reply' }>>,
   config: {
     // Configuration decides which agents run and whether they write, so it is
-    // never auto-applied, whatever the global setting (P8).
+    // never auto-applied, whatever the global setting.
     defaultPolicy: 'review_required',
     identity: (change) => compoundIdentity(change.change.kind, change.change.targetId ?? `new:${change.change.after.name}`),
     merge: (current, incoming) => ({ ...current, change: incoming.change, error: undefined }),

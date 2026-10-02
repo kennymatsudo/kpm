@@ -132,7 +132,8 @@ export interface PiProviderOption {
   contextWindow?: number;
   /**
    * True only for providers confirmed to route tool calls through pi's own
-   * native tool loop, where KPM's read-only tool gate (P7) applies. See
+   * native tool loop, where the user's pi extensions and KPM's active tool
+   * list see every call. See
    * `main/pi/providers.ts` for the classification mechanism.
    */
   safe: boolean;

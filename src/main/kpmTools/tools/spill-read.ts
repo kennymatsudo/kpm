@@ -10,7 +10,7 @@
  * This tool provides a narrowly-scoped, read-only alternative:
  * - accepts only absolute paths within ~/.claude/projects/ (no parent traversal)
  * - supports character-range access (offset + length) for single-line JSON blobs
- * - is read-only by design (P7 compliance)
+ * - is read-only by design
  */
 
 import { z } from 'zod';
