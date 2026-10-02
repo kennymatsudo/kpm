@@ -12,7 +12,7 @@ The commitments a contributor — human or agent — should consult when a featu
 | P4 | Plans live in KPM | SQLite, not files in the repo. |
 | P5 | Extend the dev setup | Inherit the user's MCP tools; don't replace their env. |
 | P6 | Internal stays internal | Translate at every export boundary; refs and spec fields are local-only. |
-| P7 | Reads by default, writes by consent | Chat reads freely; changing a repo needs the user's unlock for the project. Agent writes stay scoped to worktrees. |
+| P7 | Reads free, writes follow the user's harness | Chat writes under the user's own Claude Code, Codex, or pi permissions; publishing needs a per-project grant. Agent writes stay scoped to worktrees. |
 | P8 | Claude proposes, user configures disposal | Plan mutations go through the `PlanAction` approval flow unless the user explicitly enables auto-apply. Configuration changes proposed by chat (playbooks, actions, prompts) always require review. |
 | P9 | Agent execution is a lifecycle | A bounded, persisted run driven by a chosen playbook (fresh-install default: implement only) — never a one-shot prompt. |
 | P10 | Sync on your terms | No live feeds. Inbound queues; outbound drafts. |
@@ -69,24 +69,22 @@ KPM has its own internal syntax and references. None of it leaks to external sys
 
 ---
 
-## 7. Reads by default; writes by consent
+## 7. Reads are free; writes follow the user's harness
 
-Reads are free. Chat can scan, analyze, and reason about any connected repo with no ceremony, and that stays true — exploration and investigation are the high-frequency use of KPM, and a developer should be able to open the chat and ask anything without worrying about side effects.
+Reads are free. Chat can scan, analyze, and reason about any connected repo with no ceremony, and that stays true. Exploration and investigation are the high-frequency use of KPM, and a developer should be able to open the chat and ask anything without worrying about side effects.
 
-Writes are not free. The first direct file write, shell command, or git operation asks the user to enable writes for the project. Publishing a branch to a remote is inside that grant: the sandboxed chat shell cannot authenticate to GitHub at all, so `git_push` performs the push from the main process and asks for the same grant before it does. The grant enables the selected provider's native writable mode, covers every chat in the project including scheduled and Cmd+K action runs that have no chat to ask in, and persists until the user turns it off, so it is a decision about trusting the project, not a confirmation of one edit. In agent execution, writes remain scoped to an isolated worktree; the developer's working branches are untouched until they merge.
+Writes follow the permissions the developer already chose for their harness. A Claude chat runs under the user's Claude Code permission mode, allow and deny rules, and sandbox. A Codex chat runs under their Codex sandbox and approval policy, with the project folder and connected repos as its workspace. A pi chat runs as pi does, with no permission system beyond the pi extensions the user installed. Where those settings ask before acting, KPM shows the question in the chat, once per call, as the harness's own CLI would; a run with no chat to ask in is refused. In agent execution, writes remain scoped to an isolated worktree; the developer's working branches are untouched until they merge.
 
-**Why consent rather than a block:** a hard prohibition pushed real work out of KPM and into another window, which is worse for the developer and worse for the plan's fidelity. Consent keeps the work here while keeping the moment of authorization explicit.
+**Why inherit rather than impose:** KPM's own gate (a localhost-only sandbox, a per-project unlock, a credential deny-list) kept refusing work the developer's harness already allowed: fetching, calling an API, running a test watcher. The developer has made that safety decision once, in the tool built for it. A second, stricter answer inside KPM pushes the work into another window, which is worse for the developer and worse for the plan's fidelity. The boundary that actually holds is the one around the whole process, and the user owns it (P5).
 
-**Why per project rather than per change or per conversation:** a prompt on every edit trains the user to click through it, which is not consent. Re-asking every conversation had the same effect more slowly, and it made the answer impossible to give ahead of time — an agent that reports read-only without attempting a write never triggers the prompt. One deliberate decision per project, inspectable for as long as it lasts, is a stronger guarantee than many reflexive ones.
+**Publishing is the exception.** `git_push` and the pull request tools act with the user's GitHub credentials from KPM's main process, outside every harness, and put changes in front of other people. They ask once per project for the publishing grant (`src/main/chat/writeGrants.ts`, persisted in `project_write_grants`), which covers every chat and background action run in the project, persists until turned off, and is shown and revocable in Settings, Publishing. The prompt states its full extent before the user agrees.
 
-**What this obliges us to keep:** the unlock must be inspectable while it is active and revocable at any time — Settings, Writes reports the project's state and toggles it. Because the grant now outlives the conversation that gave it, the prompt states its full extent before the user agrees. KPM-controlled file tools keep credential and secret paths denied.
+**What this obliges us to keep:** read each harness's settings from the harness, never approximate them. Claude's permission mode comes from the SDK's own settings resolver (the SDK ignores `permissions.defaultMode` unless KPM passes it), and Codex's from app-server `config/read`. Inherit user-level settings only: a KPM chat starts in the project folder and spans several repos, so no single repo's settings speak for it. KPM's own file tools keep credential and secret paths denied, and plan and document changes still go through review or auto-apply (P8) whatever the harness allows.
 
-**Providers differ, and we say so rather than pretending otherwise.** Claude, Codex (through `codex app-server`), and pi can all pause a running turn to ask for the grant. Each keeps ownership of its native tool and sandbox behavior: KPM translates the shared decision into each provider's native writable mode and does not wrap one provider in another to manufacture identical semantics. Capability differences are declared in `src/shared/providerCapabilities.ts`, not discovered at runtime.
+**Providers differ, and we say so rather than pretending otherwise.** Each keeps ownership of its native tool and sandbox behavior, and KPM does not wrap one provider in another to manufacture identical semantics. pi has no sandbox, so its shell reaches whatever the user's account can unless the user runs pi inside one. Capability differences are declared in `src/shared/providerCapabilities.ts`, not discovered at runtime.
 
-The same honesty applies to reads. Claude denies reads of credential and secret roots through its SDK options, and pi denies them in its own tool gate; Codex's sandbox governs write scope, not reads, so its native tools take no read deny-list. KPM's own code refuses a path whose realpath lands inside a protected root through `checkRealpathAccess` (`src/main/services/files/pathSecurity.ts`) where it resolves real paths. Other KPM tools that touch paths validate by lexical containment against a known root instead, so that guard does not cover them.
-
-**Lean toward:** making the active grant obvious and easy to take back, and stating its full extent at the moment it is asked for.
-**Lean away from:** widening a grant beyond the project that gave it, or turning writes on without the user ever choosing to.
+**Lean toward:** passing the user's own settings through unchanged, and making the publishing grant obvious and easy to take back.
+**Lean away from:** KPM-side gates layered on top of the user's harness, or widening the publishing grant beyond the project that gave it.
 
 ---
 

@@ -24,7 +24,7 @@ import { Z_INDEX } from '../../constants/zIndex';
 /** Short description of what is being asked, preferring the provider's own sentence. */
 function requestSummary(request: PermissionRequest): string {
   if (request.title) return request.title;
-  if (request.kind === 'write-access') return 'Allow writes for this conversation';
+  if (request.kind === 'write-access') return 'Allow publishing from this project';
   return request.preview || request.toolName;
 }
 

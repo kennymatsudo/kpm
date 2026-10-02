@@ -93,12 +93,12 @@ describe.each(Object.keys(providerPromptBuilders))('%s main-scope system prompt'
     expect(prompt).not.toContain('Read/Grep/Glob');
   });
 
-  it('states the conversation-wide write-consent policy honestly', () => {
+  it('says direct writes follow the user\'s own permission settings', () => {
     const prompt = build(makeContext());
 
     expect(prompt).not.toContain('edit repo files only when the user explicitly asks');
     expect(prompt).not.toContain('read-only in chat');
-    expect(prompt).toContain("Direct writes need the user's consent");
+    expect(prompt).toContain("Direct writes follow the user's own permission settings");
   });
 });
 

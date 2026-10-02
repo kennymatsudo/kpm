@@ -19,16 +19,13 @@ import type { PlanContext } from '../chat/prompts';
 import { buildChatSystemPrompt } from '../chat/prompts';
 import { resolveEffectiveRepoPath } from '../../shared/repoPath';
 import type { ChatAttachment } from '../../shared/types';
-import { shellCommandNeedsWriteGrant } from '../chat/shellWritePolicy';
-import {
-  pathCanTraverseDeniedRoot,
-  pathResolvesIntoDeniedRoot,
-} from '../services/files/pathSecurity';
 
-/** Built-in pi tools that are read-only against the filesystem. */
-const READ_ONLY_BUILTIN_TOOLS = ['read', 'grep', 'find', 'ls'] as const;
-
-const WRITE_BUILTIN_TOOLS = ['write', 'edit', 'bash'] as const;
+/**
+ * pi's built-in tools, all active. pi has no permission system of its own, so
+ * a KPM pi chat runs them as the user's pi CLI does; any gate the user wants
+ * comes from their own pi extensions, which load into KPM sessions too.
+ */
+const BUILTIN_TOOLS = ['read', 'grep', 'find', 'ls', 'write', 'edit', 'bash'] as const;
 
 /**
  * The `pi-mcp-adapter` gateway, which is how a pi session reaches the user's
@@ -44,17 +41,10 @@ const WRITE_BUILTIN_TOOLS = ['write', 'edit', 'bash'] as const;
  * server already takes `disabled: true`. Servers keep pi's default `lazy`
  * lifecycle, so none connect until the model asks for one.
  *
- * These calls leave the machine for an external service instead of touching
- * the repo, so they sit outside the write grant (P7), matching how the user's
- * MCP servers already behave in Claude chat. The same caveat carries over
- * too: an MCP server can write to a tracker without passing through KPM's
- * export boundary (P6).
+ * An MCP server can write to a tracker without passing through KPM's export
+ * boundary (P6), as the user's MCP servers can in Claude chat.
  */
 const MCP_GATEWAY_TOOLS = ['mcp'] as const;
-
-export type PiWriteConsentFn = () => Promise<
-  { allowed: true } | { allowed: false; reason: string }
->;
 
 /**
  * The directory a pi session runs in: the first connected repo's working tree,
@@ -99,8 +89,6 @@ export interface CreatePiSessionOptions {
   thinkingLevel?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   /** pi's own persisted session id to continue. Unset starts a fresh persisted session. */
   resumeSessionId?: string;
-  /** Gates write builtins on the conversation's write consent. Omitted means no writes. */
-  requestWriteConsent?: PiWriteConsentFn;
 }
 
 export type CreatePiSessionFn = (options: CreatePiSessionOptions) => Promise<PiSessionHandle>;
@@ -117,8 +105,6 @@ export interface PiChatSessionConfig {
   onReady?: (sessionId: string) => void;
   /** KPM tools adapted by the caller for this session. Defaults to building from context for tests/backcompat. */
   kpmTools?: { tools: PiKpmToolDefinition[]; toolNames: string[] };
-  /** Gates write builtins on the conversation's write consent. Omitted means no writes. */
-  requestWriteConsent?: PiWriteConsentFn;
   /** Injectable session factory, defaulting to the real pi SDK. Tests inject a fake to avoid live model calls. */
   createSession?: CreatePiSessionFn;
 }
@@ -126,67 +112,6 @@ export interface PiChatSessionConfig {
 interface QueuedTurn {
   text: string;
   images: PiToolImageContent[];
-}
-
-/**
- * Tool-call gate. Blocks anything outside the allowlist, and routes a write
- * builtin through the conversation's write consent (P7).
- *
- * Exported standalone so it is unit-testable without the real pi extension
- * runtime; `createRealPiSession` wires the same function into
- * `pi.on('tool_call', ...)`. pi awaits the handler and fails closed if it
- * throws, so a consent prompt that never resolves blocks rather than leaks.
- */
-export function buildToolCallGate(
-  allowedToolNames: readonly string[],
-  requestWriteConsent?: PiWriteConsentFn,
-  pathIsProtected: (
-    path: string,
-    traversal: boolean,
-  ) => Promise<boolean> = (path, traversal) => (
-    traversal
-      ? pathCanTraverseDeniedRoot(path)
-      : pathResolvesIntoDeniedRoot(path)
-  ),
-): (event: { toolName: string; input?: Record<string, unknown> }) => Promise<{ block: true; reason: string } | undefined> {
-  const allowed = new Set(allowedToolNames);
-  return async ({ toolName, input }) => {
-    if (!allowed.has(toolName)) {
-      return { block: true, reason: `Tool "${toolName}" is not available in this chat session.` };
-    }
-
-    const protectsFilesystem = ['read', 'write', 'edit', 'ls', 'grep', 'find'].includes(toolName);
-    const targetPath = typeof input?.path === 'string'
-      ? input.path
-      : protectsFilesystem
-        ? '.'
-        : undefined;
-    if (
-      targetPath
-      && await pathIsProtected(targetPath, toolName === 'grep' || toolName === 'find')
-    ) {
-      return { block: true, reason: `Tool "${toolName}" cannot access protected credential paths.` };
-    }
-
-    if (!(WRITE_BUILTIN_TOOLS as readonly string[]).includes(toolName)) return undefined;
-
-    // Reading git state is a read: `git status`/`diff`/`log` run without the
-    // write grant, on the same rule Claude's gate applies.
-    if (
-      toolName === 'bash'
-      && typeof input?.command === 'string'
-      && !shellCommandNeedsWriteGrant(input.command)
-    ) {
-      return undefined;
-    }
-
-    if (!requestWriteConsent) {
-      return { block: true, reason: `Tool "${toolName}" cannot change files in this chat session.` };
-    }
-
-    const decision = await requestWriteConsent();
-    return decision.allowed ? undefined : { block: true, reason: decision.reason };
-  };
 }
 
 /**
@@ -394,8 +319,7 @@ const PI_FILE_TOOL_NAMES: Record<string, string> = { read: 'Read', edit: 'Edit',
 
 /**
  * A pi built-in tool call as the tool call KPM's shared activity and tool-log
- * code reads, which speaks Claude's names and input shapes. Display only: the
- * write gate (`buildToolCallGate`) reads pi's own names from pi's hook.
+ * code reads, which speaks Claude's names and input shapes. Display only.
  */
 export function canonicalPiToolCall(
   toolName: string,
@@ -419,21 +343,7 @@ export function canonicalPiToolCall(
  */
 async function createRealPiSession(options: CreatePiSessionOptions): Promise<PiSessionHandle> {
   const pi = await import('@earendil-works/pi-coding-agent');
-  const allowedToolNames = [
-    ...READ_ONLY_BUILTIN_TOOLS,
-    ...(options.requestWriteConsent ? WRITE_BUILTIN_TOOLS : []),
-    ...MCP_GATEWAY_TOOLS,
-    ...options.toolNames,
-  ];
-  const gate = buildToolCallGate(
-    allowedToolNames,
-    options.requestWriteConsent,
-    (candidatePath, traversal) => (
-      traversal
-        ? pathCanTraverseDeniedRoot(candidatePath, options.cwd)
-        : pathResolvesIntoDeniedRoot(candidatePath, options.cwd)
-    ),
-  );
+  const activeToolNames = [...BUILTIN_TOOLS, ...MCP_GATEWAY_TOOLS, ...options.toolNames];
   const resourceLoader = new pi.DefaultResourceLoader({
     cwd: options.cwd,
     agentDir: pi.getAgentDir(),
@@ -446,11 +356,6 @@ async function createRealPiSession(options: CreatePiSessionOptions): Promise<PiS
     noPromptTemplates: true,
     noThemes: true,
     noContextFiles: true,
-    extensionFactories: [
-      (extensionApi) => {
-        extensionApi.on('tool_call', (event) => gate({ toolName: event.toolName, input: event.input }));
-      },
-    ],
   });
   await resourceLoader.reload({ resolveProjectTrust: resolvePiProjectTrust });
 
@@ -458,7 +363,7 @@ async function createRealPiSession(options: CreatePiSessionOptions): Promise<PiS
     cwd: options.cwd,
     sessionManager: await resolvePiSessionManager(pi, options.cwd, options.resumeSessionId),
     settingsManager: createEphemeralPiSettings(pi, options.cwd),
-    tools: allowedToolNames,
+    tools: activeToolNames,
     customTools: options.tools as unknown as PiSdkToolDefinition[],
     resourceLoader,
     ...(options.thinkingLevel ? { thinkingLevel: options.thinkingLevel } : {}),
@@ -559,7 +464,6 @@ export class PiChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
         model: this.config.model,
         thinkingLevel: this.config.thinkingLevel,
         resumeSessionId: this.config.resumeSessionId,
-        requestWriteConsent: this.config.requestWriteConsent,
       });
     } catch (error) {
       this.config.onSessionEnd?.('error', error as Error);

@@ -23,7 +23,7 @@ src/
 | `db/` | SQLite connection, migrations, repositories, and domain services (plan actions, sync, export, deletion drain). See [`src/main/db/CLAUDE.md`](../src/main/db/CLAUDE.md). |
 | `ipc/` | Handler bindings and registration for the endpoint registries in `shared/ipc/`. See [`src/main/ipc/CLAUDE.md`](../src/main/ipc/CLAUDE.md). |
 | `services/` | Application services and the composition root (`appServices.ts`). See [`src/main/services/CLAUDE.md`](../src/main/services/CLAUDE.md); board execution lives in `services/agents/` ([guide](../src/main/services/agents/CLAUDE.md)). |
-| `chat/` | Chat runtime pieces shared by every provider: prompts, the project write grant, shell write policy, per-Chat model choice. |
+| `chat/` | Chat runtime pieces shared by every provider: prompts, the project publishing grant, per-Chat model choice. |
 | `claude/`, `codex/`, `pi/` | One directory per chat provider: session implementation, auth/binary discovery, model listing. See [`src/main/claude/CLAUDE.md`](../src/main/claude/CLAUDE.md). |
 | `kpmTools/` | KPM's own tools (plan, documents, git, trackers), served to every provider from one runtime. |
 | `providers/` | Provider readiness and the model catalog fetched at launch. |
@@ -87,7 +87,7 @@ Per-provider differences are declared in `src/shared/providerCapabilities.ts` an
 
 **Prompts.** `buildSystemPrompt()` / `buildFocusSystemPrompt()` in `chat/prompts/` compose one registry of sections for every provider.
 
-**Write consent (P7).** `chat/writeGrants.ts` owns the per-project write grant, persisted in `project_write_grants` and read synchronously from memory on the hot path. Each provider adapter translates the decision into its native mode: Claude through `canUseTool` and its sandbox, Codex by switching between read-only and workspace-write sandboxes and answering app-server approval requests, pi by gating its write tools. `chat/shellWritePolicy.ts` decides which shell commands count as writes for all three.
+**Write permissions (P7).** Chat writes follow the user's own harness settings: Claude loads the user's Claude Code settings and permission mode (`claude/userPermissionMode.ts`), Codex reads its config through app-server `config/read` with the project folder and connected repos added as writable roots, and pi runs its tools ungated as the pi CLI does. `chat/writeGrants.ts` owns the per-project publishing grant that KPM's `git_push` and pull request tools ask for, persisted in `project_write_grants` and read synchronously from memory on the hot path.
 
 **Generations.** Tool-free, one-shot calls (PR descriptions, commit messages, file summaries) go through `runGeneration` in `generation/`, which resolves a purpose and quality tier to a provider and model. Anything that uses tools is a chat or agent turn instead.
 

@@ -50,6 +50,7 @@ import type { PollScheduler, PollTickResult } from '../core/PollScheduler';
 import type { UpdateEvent, UpdateEventBus } from '../core/UpdateEventBus';
 import type { McpDiscoveryService } from '../core/McpDiscoveryService';
 import { buildSdkOptions } from '../../claude/sdkOptionsBuilder';
+import { userPermissionModeOptions } from '../../claude/userPermissionMode';
 import { runClaudeQuery } from '../../claude/runClaudeQuery';
 import { createContextBuilder } from '../../claude/contextBuilders';
 import { runWithToolExecutionContext } from '../../kpmTools/runtimeRegistry';
@@ -274,15 +275,16 @@ export function createActionRunnerService(deps: ActionRunnerDeps) {
     const context = buildContext(projectId);
     if (!context) return failed('Project context could not be built');
 
-    const sdkOptions = buildSdkOptions({
-      context,
-      model: action.model ?? deps.getDefaultClaudeModel(),
-      mainWindow: deps.getMainWindow(),
-      // A background run has no UI to ask in, so it can only write if the
-      // user has already granted writes in this project.
-      grantedCapabilities: toolCapabilitiesFor(action.capabilities),
-      ...mcpConfigs(),
-    });
+    const sdkOptions = {
+      ...await userPermissionModeOptions(),
+      ...buildSdkOptions({
+        context,
+        model: action.model ?? deps.getDefaultClaudeModel(),
+        mainWindow: deps.getMainWindow(),
+        grantedCapabilities: toolCapabilitiesFor(action.capabilities),
+        ...mcpConfigs(),
+      }),
+    };
 
     const result = await runWithToolExecutionContext(
       {

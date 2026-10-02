@@ -17,7 +17,7 @@ KPM is a single-user developer cockpit: planning, chat, and agentic execution ag
 | State management | [`src/renderer/stores/CLAUDE.md`](src/renderer/stores/CLAUDE.md) |
 | What features exist | [`docs/features.md`](docs/features.md) |
 | Architectural map | [`docs/architecture.md`](docs/architecture.md) |
-| Domain vocabulary (Work Brief, write grant, Action, Outbound Change…) | [`CONTEXT.md`](CONTEXT.md) |
+| Domain vocabulary (Work Brief, publishing grant, Action, Outbound Change…) | [`CONTEXT.md`](CONTEXT.md) |
 
 ## Commands
 
@@ -41,7 +41,7 @@ Each is tied to a principle. Breaking one breaks the cockpit's safety guarantees
 - **Claude proposes, user configures disposal (P8).** Plan-mutating tools emit `PlanAction[]` via the `onPlanActions` callback. KPM either queues them for review or auto-applies them based on the user's global setting. No tool writes to the DB directly. Configuration changes (playbooks, and later actions and prompts) always queue for review; auto-apply never covers them.
 - **Plans live in SQLite, not in repos (P4).** Plan data does not live as files inside connected repos. No `.kpm/` folders, no committed plan exports.
 - **Translate at every export boundary (P6).** Jira, Linear, Confluence, and GitHub payloads must pass through `toExternalMarkdown` in `src/main/documents/exportBoundary.ts` — its branded `ExternalMarkdown` return type is what tracker write payloads require, so skipping it is a compile error. `@plan/<uuid>`, `intent`, `acceptance_criteria`, and `source_document_id` are local-only.
-- **Chat reads freely, writes by consent (P7).** The first direct file, shell, or git write requires the user's write grant for the project. It is asked once, persisted in `project_write_grants`, and covers every chat in that project plus background action runs; the selected provider then uses its native writable mode until the user turns writes off in Settings, Writes. KPM-controlled file tools keep credential and secret paths denied. Board agent writes stay scoped to isolated worktrees. The grant and shared decision live in `src/main/chat/writeGrants.ts`.
+- **Chat writes follow the user's harness (P7).** Claude, Codex, and pi chats run under the user's own permission settings for that harness (Claude Code permission mode, rules, and sandbox; Codex sandbox and approval policy; pi's none). KPM adds no write gate of its own; it only asks per call where those settings ask. Publishing (`git_push`, pull request writes) needs the per-project publishing grant in `src/main/chat/writeGrants.ts`, persisted in `project_write_grants` and revocable in Settings, Publishing. KPM-controlled file tools keep credential and secret paths denied. Board agent writes stay scoped to isolated worktrees.
 - **Single user (P1).** No seats, no permissions, no shared state, no conflict-resolution UI.
 - **Sync is on-demand (P10).** No live feeds. Inbound queues for triage; outbound drafts for review.
 - **Board automation state is persisted (P9).** Use `dev_sessions.automation_phase`. Never hold it only in renderer state.
@@ -84,7 +84,7 @@ A missing executor is a compile error (`ACTION_EXECUTORS` is typed against every
 1. Implement in `src/main/kpmTools/tools/`
 2. Register the tool group in `src/main/kpmTools/runtimeRegistry.ts`
 3. Document usage in `prompts/toolDocs.ts`
-4. Scope where it appears through its group's availability (chat modes) and capability in `runtimeRegistry.ts`, and map any new capability in `src/main/services/core/actionCapabilities.ts` or action runs can never reach it. Do not hide it via `canUseTool` (it passes every KPM tool, and Codex/pi never call it) or SDK `allowedTools` (it hides external MCP tools)
+4. Scope where it appears through its group's availability (chat modes) and capability in `runtimeRegistry.ts`, and map any new capability in `src/main/services/core/actionCapabilities.ts` or action runs can never reach it. Do not hide it via `canUseTool` (it only runs where the user's Claude Code settings ask, and Codex/pi never call it) or SDK `allowedTools` (it hides external MCP tools)
 5. If it mutates the plan: emit `PlanAction[]` via `onPlanActions` — do **not** write to the DB.
 
 **Add an IPC handler**
@@ -124,7 +124,7 @@ Common proposals from outside agents that violate KPM's design — push back, do
 - **Storing plans as files inside the repo.** Plans live in SQLite (P4).
 - **Syncing `intent` / `acceptance_criteria` to Jira.** Local-only (P6). Append to the description payload at export time if stakeholders need them.
 - **Writing to the DB from a Claude tool to skip the approval/auto-apply flow.** Emit `PlanAction[]` (P8).
-- **Letting chat write without consent.** Direct writes are allowed only after the user enables them for the project (P7). Never bypass `projectWriteGrants`.
+- **Adding a KPM-side write gate to chat.** Chat writes follow the user's own harness settings (P7); pass those through rather than layering a stricter KPM rule on top. Publishing from KPM's own tools still goes through `projectWriteGrants`.
 - **Wrapping plan or chat state in React Context.** Use Zustand selectors.
 - **Editing a deployed migration to fix a schema bug.** Add a new migration.
 

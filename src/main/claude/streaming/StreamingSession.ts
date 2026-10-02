@@ -26,6 +26,7 @@ import {
   type AccountInfo,
   type SlashCommand,
 } from '@anthropic-ai/claude-agent-sdk';
+import { userPermissionModeOptions } from '../userPermissionMode';
 export type { McpServerStatus, SDKControlGetContextUsageResponse, ModelInfo, AccountInfo } from '@anthropic-ai/claude-agent-sdk';
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources';
 import type { ChatAttachment } from '../../../shared/types';
@@ -162,10 +163,12 @@ export class StreamingSession {
     this.abortController = this.config.sdkOptions.abortController ?? new AbortController();
 
     // Create the query with async generator for streaming input
+    const permissionModeOptions = await userPermissionModeOptions();
     this.queryInstance = query({
       prompt: this.createInputGenerator(),
       options: {
         onUserDialog: declineHostDialogs,
+        ...permissionModeOptions,
         ...this.config.sdkOptions,
         abortController: this.abortController,
       },

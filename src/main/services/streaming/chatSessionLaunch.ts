@@ -31,7 +31,6 @@ import { createTurnReport, type TurnReport } from './turnReport';
 import type { McpElicitationDecision, McpElicitationRequest } from './mcpElicitation';
 import type { ModelType } from '../../claude/sdkOptionsBuilder';
 import type { PlanContext } from '../../chat/prompts';
-import type { WriteDecision } from '../../chat/writeGrants';
 import type { Activity, ChatChoiceEffort, ChatProvider } from '../../../shared/types';
 
 export type SessionState = 'idle' | 'connecting' | 'ready' | 'processing' | 'error' | 'closing';
@@ -114,9 +113,6 @@ export interface ChatSessionHost {
   onReady: (sessionId: string, mcpStatus?: McpServerStatus[]) => void;
   onMcpError: (failedServers: McpServerStatus[]) => void;
   onSlashCommands: (commands: SlashCommand[], context: SlashCommandContext) => void;
-  /** The project write grant (P7). Asked on the first attempted write, not at launch. */
-  requestWriteConsent: () => Promise<WriteDecision>;
-  hasWriteAccess: () => boolean;
   /** Per-call approval for a provider that gates its own external tool calls. */
   requestApproval: (toolName: string, input: Record<string, unknown>) => Promise<boolean>;
   onElicitation: (
@@ -230,8 +226,6 @@ export function buildChatSessionLaunch(
         onSessionEnd: host.onSessionEnd,
         onReady: host.onReady,
         registerMcpSession: () => registerCodexMcpSession({ projectId, chatSessionId, focus }),
-        requestWriteConsent: host.requestWriteConsent,
-        hasWriteAccess: host.hasWriteAccess,
         requestExternalApproval: host.requestApproval,
         onMcpElicitation: (elicitation) => host.onElicitation(elicitation),
       })
@@ -246,7 +240,6 @@ export function buildChatSessionLaunch(
         onSessionEnd: host.onSessionEnd,
         onReady: host.onReady,
         kpmTools: buildPiKpmTools({ focus, projectId, chatSessionId }),
-        requestWriteConsent: host.requestWriteConsent,
       })
     : factories.claude({
         sdkOptions: request.buildClaudeSdkOptions(context, {

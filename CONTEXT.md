@@ -25,9 +25,9 @@ A **Default candidate** is a playbook `AgentCandidate` marked `useDefault: true`
 
 ## Connected repos
 
-A **connected repo** is a git repository attached to a project (the `Repo` type / `repos` table). Chat reads its files freely; direct writes need a **write grant**. Agents write only in isolated worktrees during board execution.
+A **connected repo** is a git repository attached to a project (the `Repo` type / `repos` table). Chat reads its files freely; direct writes follow the user's own harness permissions. Agents write only in isolated worktrees during board execution.
 
-- A **write grant** enables the selected provider's native writable mode for a whole project (P7). It is requested on the first attempted write, persisted in `project_write_grants`, and covers every chat in the project plus background action runs until the user turns it off in Settings, Writes. `src/main/chat/writeGrants.ts` owns it. KPM-controlled file tools continue to deny protected credential and secret roots.
+- A **publishing grant** (still `write grant` in code) lets KPM's own `git_push` and pull request tools act for a whole project (P7). It is requested on the first push or pull request change, persisted in `project_write_grants`, and covers every chat in the project plus background action runs until the user turns it off in Settings, Publishing. `src/main/chat/writeGrants.ts` owns it. Direct file, shell, and git writes do not use it; they follow the user's own harness permissions.
 
 - The **main checkout** is the repo's canonical clone (`repos.path`) — the working tree at the primary checkout.
 - The **active worktree** is a linked git worktree the user has switched the connected repo to (`repos.active_worktree_path`, null when none), set via the "Switch worktree" menu.
@@ -35,7 +35,7 @@ A **connected repo** is a git repository attached to a project (the `Repo` type 
 
 **Branch facts** are the git questions KPM asks a checkout repeatedly, each with exactly one resolver in `src/main/services/repo/branchFacts.ts`: which branch is checked out (`resolveCurrentBranch`), which branch is the repo's default (`resolveDefaultBranch`), which base branch to compare against (`resolveBaseBranch`), whether a branch is off limits to an agent (`protectedBranchReason` / `classifyPushTarget`), and whether a branch has an upstream (`hasUpstream`). "No branch" is always `null`. The one irreducible difference: on an unborn branch `.git/HEAD` names the branch while `rev-parse` fails, so the pure `normalizeHeadRef` the watcher uses answers where `resolveCurrentBranch` returns `null`.
 
-A **git write** is an invocation that moves a branch ref, locally or on a remote. All of them go through `src/main/services/repo/gitWrites.ts` (`publishBranch`, `deleteRemoteBranch`, `deleteLocalBranch`), which owns the policy, the argv, and the invocation. Each takes a **write authorization** saying why the caller may move the ref: `projectWriteGrant` (chat, which must hold or request the project's write grant) or `boardSession` (the user's own action on a session they started). Reads are not git writes and keep their own paths.
+A **git write** is an invocation that moves a branch ref, locally or on a remote. All of them go through `src/main/services/repo/gitWrites.ts` (`publishBranch`, `deleteRemoteBranch`, `deleteLocalBranch`), which owns the policy, the argv, and the invocation. Each takes a **write authorization** saying why the caller may move the ref: `projectWriteGrant` (chat, which must hold or request the project's publishing grant) or `boardSession` (the user's own action on a session they started). Reads are not git writes and keep their own paths.
 
 Distinct from a **session worktree** (`dev_sessions.worktree_path`): a throwaway worktree scaffolded per board agent execution for isolated writes. The two never cross — switching a connected repo's active worktree does not touch session worktrees, and board execution does not read `active_worktree_path`.
 

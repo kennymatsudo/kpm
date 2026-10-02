@@ -6,7 +6,7 @@
  * no mode taxonomy here — only the KPM-specific facts it can't infer.
  * Everything adjacent has an owner elsewhere and is stated once:
  * flat-by-default in PLAN_SYSTEM_RULES, source-of-truth validation and
- * when-to-explore in GROUNDING (both in workspace.ts), write consent in
+ * when-to-explore in GROUNDING (both in workspace.ts), write permissions in
  * CONSTRAINTS. Focused-resource guidance travels per-message, injected into
  * the user turn.
  */

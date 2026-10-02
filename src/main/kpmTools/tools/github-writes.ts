@@ -2,10 +2,10 @@
  * GitHub write tools: open a pull request for the checked-out branch, and edit
  * an existing PR's title or body.
  *
- * Like `git_push`, these run `gh` from the main process because chat's shell is
- * sandboxed away from the network and `~/.config/gh`. KPM MCP tools are
- * auto-allowed by `canUseTool`, so each call asks for the project's write grant
- * itself; nothing upstream will ask.
+ * Like `git_push`, these run `gh` from the main process, so they work even when
+ * the user's sandbox cuts chat's shell off from the network and `~/.config/gh`.
+ * No provider gates KPM tools, so each call asks for the project's publishing
+ * grant itself; nothing upstream will ask.
  */
 
 import { z } from 'zod';
@@ -39,9 +39,9 @@ interface GitHubWriteToolDeps {
   requestWriteAccess: (request: PullRequestWriteRequest) => Promise<WriteDecision>;
 }
 
-const CREATE_DESCRIPTION = `Open a GitHub pull request for the branch checked out in a connected repository, when the user asks to open, create, or raise a PR. This is the only way: gh pr create in Bash has no network or credentials. The branch must already be on the remote, so push it with git_push first. The head is the checked-out branch and cannot be chosen; a detached HEAD, the default branch, and main, master, develop, and release are refused. Opens as a draft unless the user asks for ready for review. Write the body from what you know about the change, following the repo's .github/pull_request_template.md when there is one; call get_pr_context only when the change is not in the conversation. @plan/<uuid> refs become tracker keys. If the branch already has a PR, report it and use update_pull_request instead of retrying. Asks for the project's write grant on first use.`;
+const CREATE_DESCRIPTION = `Open a GitHub pull request for the branch checked out in a connected repository, when the user asks to open, create, or raise a PR. Prefer it to gh pr create in Bash, which may have no network or credentials. The branch must already be on the remote, so push it with git_push first. The head is the checked-out branch and cannot be chosen; a detached HEAD, the default branch, and main, master, develop, and release are refused. Opens as a draft unless the user asks for ready for review. Write the body from what you know about the change, following the repo's .github/pull_request_template.md when there is one; call get_pr_context only when the change is not in the conversation. @plan/<uuid> refs become tracker keys. If the branch already has a PR, report it and use update_pull_request instead of retrying. Asks for the project's publishing grant on first use.`;
 
-const UPDATE_DESCRIPTION = `Change the title, the description, or both of an existing GitHub pull request, when the user asks to rename it, write or rewrite its description, or add a ticket to its title. body replaces the whole description, so to change part of it, read the current one first with read_pull_request. @plan/<uuid> refs become tracker keys. Pass at least one of title and body. Asks for the project's write grant on first use.`;
+const UPDATE_DESCRIPTION = `Change the title, the description, or both of an existing GitHub pull request, when the user asks to rename it, write or rewrite its description, or add a ticket to its title. body replaces the whole description, so to change part of it, read the current one first with read_pull_request. @plan/<uuid> refs become tracker keys. Pass at least one of title and body. Asks for the project's publishing grant on first use.`;
 
 const repoPathParam = z
   .string()

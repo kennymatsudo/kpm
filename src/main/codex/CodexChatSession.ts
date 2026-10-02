@@ -17,8 +17,6 @@ import {
 } from '../services/streaming/providerChatMessage';
 import { resolveEffectiveRepoPath } from '../../shared/repoPath';
 import { readCodexTokenCounts, subtractCodexTokens, toKpmUsage, ZERO_CODEX_TOKENS, type CodexTokenCounts } from './codexUsage';
-import type { WriteDecision } from '../chat/writeGrants';
-import { shellCommandNeedsWriteGrant } from '../chat/shellWritePolicy';
 import type { ChatAttachment } from '../../shared/types';
 import type {
   SessionMcpAuthStatus,
@@ -38,8 +36,6 @@ export interface CodexChatSessionConfig {
   onSessionEnd?: (reason: SessionEndReason, error?: Error) => void;
   onReady?: (threadId: string) => void;
   registerMcpSession?: () => Promise<CodexMcpRegistration>;
-  requestWriteConsent?: () => Promise<WriteDecision>;
-  hasWriteAccess?: () => boolean;
   requestExternalApproval?: (toolName: string, input: JsonObject) => Promise<boolean>;
   onMcpElicitation?: (request: JsonObject) => Promise<{ action: 'accept' | 'decline' | 'cancel'; content?: JsonObject }>;
   createAppServerClient?: (options: CodexAppServerClientOptions) => CodexAppServerClient;
@@ -62,6 +58,27 @@ async function attachmentsToInput(text: string, attachments: ChatAttachment[]): 
 }
 function isObject(value: unknown): value is JsonObject { return typeof value === 'object' && value !== null && !Array.isArray(value); }
 function text(value: unknown): string { return typeof value === 'string' ? value : ''; }
+/**
+ * The user's Codex sandbox mode as a turn's sandbox policy. Sent on every turn
+ * so a resumed thread follows the current config, not the policy it started
+ * with. A KPM chat's workspace is the project folder plus every connected repo,
+ * so workspace-write adds them to the user's own writable roots.
+ */
+export function codexSandboxPolicy(config: JsonObject, workspaceRoots: string[]): JsonObject | null {
+  const mode = text(config.sandbox_mode);
+  if (mode === 'danger-full-access') return { type: 'dangerFullAccess' };
+  if (mode === 'read-only') return { type: 'readOnly', networkAccess: false };
+  if (mode !== 'workspace-write') return null;
+  const workspaceWrite = isObject(config.sandbox_workspace_write) ? config.sandbox_workspace_write : {};
+  const userRoots = Array.isArray(workspaceWrite.writable_roots) ? workspaceWrite.writable_roots.filter((root): root is string => typeof root === 'string') : [];
+  return {
+    type: 'workspaceWrite',
+    writableRoots: Array.from(new Set([...userRoots, ...workspaceRoots])),
+    networkAccess: workspaceWrite.network_access === true,
+    excludeTmpdirEnvVar: workspaceWrite.exclude_tmpdir_env_var === true,
+    excludeSlashTmp: workspaceWrite.exclude_slash_tmp === true,
+  };
+}
 function contextWindow(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
 }
@@ -86,6 +103,8 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
   private lastRequestUsage: CodexTokenCounts = ZERO_CODEX_TOKENS;
   private threadModel: string | undefined;
   private modelContextWindow: number | undefined;
+  private approvalPolicy: unknown = null;
+  private sandboxPolicy: JsonObject | null = null;
 
   constructor(config: CodexChatSessionConfig) { super(config.onMessage, config.onSessionEnd); this.config = config; this.systemPrompt = buildChatSystemPrompt(config.context, { provider: 'codex', scope: config.context.focusDocument ? 'focus_document' : 'main' }); this.threadId = config.resumeThreadId ?? null; }
 
@@ -97,6 +116,7 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
       this.client.onNotification((method, params) => this.handleNotification(method, params));
       this.client.setServerRequestHandler((method, params) => this.handleServerRequest(method, params));
       await this.client.initialize();
+      await this.readUserPermissions(this.client);
       const result = await this.client.request(this.threadId ? 'thread/resume' : 'thread/start', this.threadOptions(this.threadId));
       const thread = isObject(result) && isObject(result.thread) ? result.thread : null;
       this.threadModel = (isObject(result) ? text(result.model) : '') || this.config.model;
@@ -151,7 +171,7 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
     try {
       const completed = new Promise<void>((resolve) => { this.finishTurn = resolve; });
       this.turnUsageBaseline = null; this.lastRequestUsage = ZERO_CODEX_TOKENS;
-      const result = await this.client.request('turn/start', { threadId: this.threadId, input: turn.input, cwd: this.config.context.project.folder_path, approvalPolicy: 'on-request', sandboxPolicy: this.sandboxPolicy(), ...(this.config.model ? { model: this.config.model } : {}), ...(this.config.modelReasoningEffort ? { effort: this.config.modelReasoningEffort } : {}) });
+      const result = await this.client.request('turn/start', { threadId: this.threadId, input: turn.input, cwd: this.config.context.project.folder_path, ...(this.approvalPolicy !== null ? { approvalPolicy: this.approvalPolicy } : {}), ...(this.sandboxPolicy ? { sandboxPolicy: this.sandboxPolicy } : {}), ...(this.config.model ? { model: this.config.model } : {}), ...(this.config.modelReasoningEffort ? { effort: this.config.modelReasoningEffort } : {}) });
       if (isObject(result) && isObject(result.turn)) this.activeTurnId = text(result.turn.id) || null;
       await completed;
     } catch (error) {
@@ -176,12 +196,14 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
         'computer-use': { enabled: false },
       },
     };
-    return { ...(threadId ? { threadId } : {}), ...(this.config.model ? { model: this.config.model } : {}), cwd: this.config.context.project.folder_path, approvalPolicy: 'on-request', sandbox: this.config.hasWriteAccess?.() ? 'workspace-write' : 'read-only', config, developerInstructions: this.systemPrompt };
+    return { ...(threadId ? { threadId } : {}), ...(this.config.model ? { model: this.config.model } : {}), cwd: this.config.context.project.folder_path, config, developerInstructions: this.systemPrompt };
   }
-  private sandboxPolicy(): JsonObject {
-    if (!this.config.hasWriteAccess?.()) return { type: 'readOnly' };
-    const writableRoots = Array.from(new Set([this.config.context.project.folder_path, ...this.config.context.repos.map(resolveEffectiveRepoPath).filter((path): path is string => Boolean(path))]));
-    return { type: 'workspaceWrite', writableRoots, networkAccess: false };
+  private async readUserPermissions(client: CodexAppServerClient): Promise<void> {
+    const result = await client.request('config/read', { cwd: this.config.context.project.folder_path });
+    const config = isObject(result) && isObject(result.config) ? result.config : {};
+    const workspaceRoots = [this.config.context.project.folder_path, ...this.config.context.repos.map(resolveEffectiveRepoPath)].filter((path): path is string => Boolean(path));
+    this.approvalPolicy = config.approval_policy ?? null;
+    this.sandboxPolicy = codexSandboxPolicy(config, workspaceRoots);
   }
 
   private handleNotification(method: string, params: JsonObject): void {
@@ -246,14 +268,15 @@ export class CodexChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
   }
 
   private async handleServerRequest(method: string, params: JsonObject): Promise<unknown> {
-    if (method === 'item/commandExecution/requestApproval') return { decision: !shellCommandNeedsWriteGrant(text(params.command)) || await this.allowWrite() ? 'accept' : 'decline' };
-    if (method === 'item/fileChange/requestApproval') return { decision: await this.allowWrite() ? 'accept' : 'decline' };
-    if (method === 'item/permissions/requestApproval') { const permissions = isObject(params.permissions) ? params.permissions : {}; const needsWrite = isObject(permissions.fileSystem) && Object.keys(permissions.fileSystem).length > 0; const allowed = needsWrite ? await this.allowWrite() : await this.requestExternalApproval('Codex permission', { reason: params.reason, permissions }); return { permissions: allowed ? permissions : {}, scope: 'turn' }; }
+    // Codex only asks when the user's approval policy says to, so each request
+    // goes to the user, as it would in the Codex CLI.
+    if (method === 'item/commandExecution/requestApproval') return { decision: await this.requestExternalApproval('Bash', { command: params.command, cwd: params.cwd, reason: params.reason }) ? 'accept' : 'decline' };
+    if (method === 'item/fileChange/requestApproval') return { decision: await this.requestExternalApproval('Codex file change', { reason: params.reason, changes: this.items.get(text(params.itemId))?.changes }) ? 'accept' : 'decline' };
+    if (method === 'item/permissions/requestApproval') { const permissions = isObject(params.permissions) ? params.permissions : {}; const allowed = await this.requestExternalApproval('Codex permission', { reason: params.reason, permissions }); return { permissions: allowed ? permissions : {}, scope: 'turn' }; }
     if (method === 'mcpServer/elicitation/request') return this.config.onMcpElicitation?.(params) ?? { action: 'decline', content: null };
     if (method === 'item/tool/requestUserInput') { const item = this.items.get(text(params.itemId)); const isPlaywright = text(item?.server).toLowerCase() === 'playwright'; const allowed = isPlaywright || await this.requestExternalApproval('MCP browser action', { questions: params.questions, item }); return { answers: allowed ? firstAnswers(params.questions) : {} }; }
     return {};
   }
-  private async allowWrite(): Promise<boolean> { if (this.config.hasWriteAccess?.()) return true; return (await this.config.requestWriteConsent?.())?.allowed === true; }
   private async requestExternalApproval(toolName: string, input: JsonObject): Promise<boolean> { return this.config.requestExternalApproval ? this.config.requestExternalApproval(toolName, input) : false; }
   private disposeResources(): void {
     this.client?.close(); this.client = null; this.mcpRegistration?.dispose(); this.mcpRegistration = null;

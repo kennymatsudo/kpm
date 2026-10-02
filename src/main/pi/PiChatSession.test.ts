@@ -5,7 +5,6 @@ import { join } from 'path';
 import type * as PiCodingAgent from '@earendil-works/pi-coding-agent';
 import {
   PiChatSession,
-  buildToolCallGate,
   parsePiModelSelector,
   resolvePiModelSelection,
   resolvePiProjectTrust,
@@ -14,7 +13,6 @@ import {
   selectPiModel,
   type CreatePiSessionFn,
   type PiModelRuntimeHandle,
-  type PiWriteConsentFn,
   type PiSessionHandle,
 } from './PiChatSession';
 import type { PlanContext } from '../chat/prompts';
@@ -573,117 +571,6 @@ describe('resolvePiSessionManager', () => {
 
     expect(result).toBe(created);
     expect(pi.SessionManager.open).not.toHaveBeenCalled();
-  });
-});
-
-describe('buildToolCallGate', () => {
-  const readOnly = ['read', 'grep', 'find', 'ls', 'modify_plan'];
-  const withWrites = [...readOnly, 'write', 'edit', 'bash'];
-  const allow: PiWriteConsentFn = async () => ({ allowed: true });
-
-  it('blocks tool names outside the allowlist', async () => {
-    const gate = buildToolCallGate(readOnly);
-
-    for (const toolName of ['write', 'bash', 'edit']) {
-      const result = await gate({ toolName, input: {} });
-      expect(result?.block).toBe(true);
-      expect(typeof result?.reason).toBe('string');
-    }
-  });
-
-  it('allows read-only builtins and KPM tools in the allowlist', async () => {
-    const gate = buildToolCallGate(readOnly);
-
-    await expect(gate({ toolName: 'read', input: {} })).resolves.toBeUndefined();
-    await expect(gate({ toolName: 'grep', input: {} })).resolves.toBeUndefined();
-    await expect(gate({ toolName: 'modify_plan', input: {} })).resolves.toBeUndefined();
-  });
-
-  it('allows the MCP gateway without the write grant, and still blocks other extension tools', async () => {
-    // `mcp` reaches external services rather than the repo, so it is not a
-    // write builtin. Other tools the user's pi extensions register stay out.
-    const gate = buildToolCallGate([...readOnly, 'mcp']);
-
-    await expect(gate({ toolName: 'mcp', input: { search: 'issue' } })).resolves.toBeUndefined();
-    expect((await gate({ toolName: 'cursor_agent', input: {} }))?.block).toBe(true);
-    expect((await gate({ toolName: 'hypa_rewrite', input: {} }))?.block).toBe(true);
-  });
-
-  it('blocks an allowlisted write tool when no consent function is wired', async () => {
-    const gate = buildToolCallGate(withWrites);
-
-    const result = await gate({ toolName: 'write', input: { path: '/repos/my-app/a.ts' } });
-
-    expect(result?.block).toBe(true);
-  });
-
-  it('routes write, edit, and bash through conversation consent', async () => {
-    const requestConsent = vi.fn<PiWriteConsentFn>(allow);
-    const gate = buildToolCallGate(withWrites, requestConsent);
-
-    await gate({ toolName: 'write', input: { path: '/repos/my-app/a.ts' } });
-    await gate({ toolName: 'edit', input: { path: '/repos/my-app/b.ts' } });
-    await gate({ toolName: 'bash', input: { command: 'rm -rf build' } });
-
-    expect(requestConsent).toHaveBeenCalledTimes(3);
-    for (const call of requestConsent.mock.calls) {
-      expect(call).toEqual([]);
-    }
-  });
-
-  it('does not ask consent for read-only git in bash', async () => {
-    const requestConsent = vi.fn<PiWriteConsentFn>(allow);
-    const gate = buildToolCallGate(withWrites, requestConsent);
-
-    const readResult = await gate({ toolName: 'bash', input: { command: 'git status --short' } });
-    const writeResult = await gate({ toolName: 'bash', input: { command: 'git commit -m x' } });
-
-    expect(readResult).toBeUndefined();
-    expect(writeResult).toBeUndefined();
-    expect(requestConsent).toHaveBeenCalledTimes(1);
-  });
-
-  it('does not ask consent for read-only builtins', async () => {
-    const requestConsent = vi.fn<PiWriteConsentFn>(allow);
-    const gate = buildToolCallGate(withWrites, requestConsent);
-
-    await gate({ toolName: 'read', input: { path: '/repos/my-app/a.ts' } });
-    await gate({ toolName: 'grep', input: { pattern: 'TODO' } });
-
-    expect(requestConsent).not.toHaveBeenCalled();
-  });
-
-  it('blocks with the consent layer reason when the user declines', async () => {
-    const gate = buildToolCallGate(withWrites, async () => ({ allowed: false, reason: 'user said no' }));
-
-    const result = await gate({ toolName: 'write', input: { path: '/repos/my-app/a.ts' } });
-
-    expect(result).toEqual({ block: true, reason: 'user said no' });
-  });
-
-  it('allows the write once consent is granted', async () => {
-    const gate = buildToolCallGate(withWrites, allow);
-
-    await expect(gate({ toolName: 'write', input: { path: '/repos/my-app/a.ts' } })).resolves.toBeUndefined();
-  });
-
-  it('blocks protected paths before write consent and marks recursive tools as traversal', async () => {
-    const requestConsent = vi.fn<PiWriteConsentFn>(allow);
-    const pathIsProtected = vi.fn(async (targetPath: string) => (
-      targetPath === '.' || targetPath.includes('credentials')
-    ));
-    const gate = buildToolCallGate(withWrites, requestConsent, pathIsProtected);
-
-    await expect(
-      gate({ toolName: 'write', input: { path: '/protected/credentials/token' } }),
-    ).resolves.toMatchObject({ block: true });
-    await expect(
-      gate({ toolName: 'find', input: {} }),
-    ).resolves.toMatchObject({ block: true });
-
-    expect(requestConsent).not.toHaveBeenCalled();
-    expect(pathIsProtected).toHaveBeenNthCalledWith(1, '/protected/credentials/token', false);
-    expect(pathIsProtected).toHaveBeenNthCalledWith(2, '.', true);
   });
 });
 

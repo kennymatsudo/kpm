@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
-import { query } from '@anthropic-ai/claude-agent-sdk';
+import { query, resolveSettings } from '@anthropic-ai/claude-agent-sdk';
 import type { McpServerStatus, SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import {
   createControlledSdkStream,
@@ -48,6 +48,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async () => {
       const built = queryMockState.build();
       return Object.assign(built.iterable, createQueryControls());
     }),
+    resolveSettings: vi.fn(async () => ({ effective: {}, provenance: {}, sources: [] })),
   };
 });
 
@@ -161,6 +162,18 @@ describe('StreamingSession', () => {
     await expect(startPromise).rejects.toThrow(/kpm \(missing\)/);
     expect(config.onMcpError).toHaveBeenCalledWith([]);
     expect(session.isReady()).toBe(false);
+  });
+
+  it('starts in the permission mode from the user\'s Claude Code settings', async () => {
+    vi.mocked(resolveSettings).mockResolvedValueOnce({ effective: { permissions: { defaultMode: 'bypassPermissions' } }, provenance: {}, sources: [] });
+    makeFakeQuery();
+    const session = new StreamingSession(createConfig());
+    const startPromise = session.start('hello');
+    await vi.waitFor(() => expect(query).toHaveBeenCalled());
+    lastHandle!.emit(initMessage());
+    await startPromise;
+
+    expect(vi.mocked(query).mock.calls[0][0].options).toMatchObject({ permissionMode: 'bypassPermissions', allowDangerouslySkipPermissions: true });
   });
 
   it('allows external MCP servers to be pending at init', async () => {

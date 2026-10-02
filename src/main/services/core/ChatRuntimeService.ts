@@ -5,6 +5,7 @@ import { createStreamingSessionService } from '../streaming/StreamingSessionServ
 import { createContextBuilder } from '../../claude/contextBuilders';
 import type { OnElicitation } from '@anthropic-ai/claude-agent-sdk';
 import { buildSdkOptions, type ModelType } from '../../claude/sdkOptionsBuilder';
+import { userClaudeInChromeEnabled } from '../../claude/userClaudeInChrome';
 import { subscribeToKpmToolProposals } from '../../kpmTools/runtimeRegistry';
 import { createToolCallLogger } from '../toollog';
 import type { PlanContext } from '../../chat/prompts';
@@ -144,6 +145,7 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
         enabledPluginPaths,
         disabledMcpTools,
         disabledMcpServerNames,
+        claudeInChrome: userClaudeInChromeEnabled(),
       });
     },
     subscribeToKpmToolProposals,

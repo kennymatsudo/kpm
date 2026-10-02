@@ -50,8 +50,6 @@ function makeHost(overrides: Partial<ChatSessionHost> = {}): ChatSessionHost {
     onReady: vi.fn(),
     onMcpError: vi.fn(),
     onSlashCommands: vi.fn(),
-    requestWriteConsent: vi.fn(async () => ({ allowed: true as const })),
-    hasWriteAccess: vi.fn(() => false),
     requestApproval: vi.fn(async () => true),
     onElicitation: vi.fn(async () => ({ action: 'decline' as const })),
     onContextFileEdit: vi.fn(),
@@ -140,8 +138,6 @@ describe('buildChatSessionLaunch', () => {
       resumeThreadId: 'thread-4',
     });
     expect(captured.codex?.requestExternalApproval).toBe(host.requestApproval);
-    expect(captured.codex?.hasWriteAccess).toBe(host.hasWriteAccess);
-    expect(captured.codex?.requestWriteConsent).toBe(host.requestWriteConsent);
   });
 
   it('gives pi its tool set and passes the effort through as a thinking level', () => {

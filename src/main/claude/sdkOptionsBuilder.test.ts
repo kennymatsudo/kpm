@@ -9,7 +9,8 @@ vi.mock('../chat/prompts/index', () => ({
 }));
 
 vi.mock('./permissions', () => ({
-  createPermissionHandler: vi.fn(() => vi.fn()),
+  createKpmToolHook: vi.fn(() => ({ hooks: [] })),
+  createPermissionPrompt: vi.fn(() => vi.fn()),
 }));
 
 vi.mock('../kpmTools/createKpmServer', () => ({
@@ -37,11 +38,6 @@ vi.mock('../services/core/PermissionPromptService', () => ({
   promptUser: vi.fn(),
 }));
 
-vi.mock('../services/files/pathSecurity', () => ({
-  getDeniedPathRoots: () => ['/protected/credentials', '/home/developer/.docker'],
-  getDockerConfigPathRoots: () => ['/home/developer/.docker'],
-}));
-
 const context = {
   project: {
     id: 'project-id',
@@ -54,7 +50,7 @@ const context = {
 } as unknown as PlanContext;
 
 describe('buildSdkOptions', () => {
-  it('keeps default tools and explicitly enables native repo search tools', () => {
+  it('keeps default tools and leaves permissions and sandbox to the user\'s Claude Code settings', () => {
     const options = buildSdkOptions({
       context,
       model: 'sonnet',
@@ -62,39 +58,13 @@ describe('buildSdkOptions', () => {
     });
 
     // 'default' must be the sole `tools` value so the native binary expands it
-    // to the full built-in preset; Grep/Glob (omitted from native presets) are
-    // enabled via allowedTools. Listing them in `tools` alongside 'default'
-    // would collapse the preset to only those two tools.
+    // to the full built-in preset.
     expect(options.tools).toEqual(['default']);
-    expect(options.allowedTools).toEqual(['Grep', 'Glob']);
     expect(Object.keys(options.mcpServers ?? {})).toEqual(['kpm']);
-    expect(options.sandbox).toEqual({
-      enabled: true,
-      failIfUnavailable: true,
-      autoAllowBashIfSandboxed: false,
-      allowUnsandboxedCommands: false,
-      excludedCommands: ['docker *'],
-      network: {
-        allowedDomains: ['localhost', '127.0.0.1', '::1'],
-        allowLocalBinding: true,
-        allowUnixSockets: [
-          '/var/run/docker.sock',
-          '/home/developer/.docker/run/docker.sock',
-          '/home/developer/.docker/desktop/docker.sock',
-        ],
-        // Non-darwin sandboxes additionally allow all Unix sockets — assert
-        // this per-platform so the test doesn't only pass on macOS dev machines.
-        ...(process.platform !== 'darwin' && { allowAllUnixSockets: true }),
-      },
-      filesystem: {
-        allowWrite: ['/'],
-        denyRead: ['/protected/credentials'],
-        denyWrite: ['/protected/credentials'],
-      },
-      credentials: {
-        files: [{ path: '/protected/credentials', mode: 'deny' }],
-      },
-    });
+    expect(options.settingSources).toEqual(['user']);
+    expect(options).not.toHaveProperty('allowedTools');
+    expect(options).not.toHaveProperty('sandbox');
+    expect(options).not.toHaveProperty('permissionMode');
   });
 
   // The SDK records a bare-string systemPrompt on the conversation's first
@@ -125,5 +95,13 @@ describe('buildSdkOptions', () => {
 
     vi.mocked(getClaudeSdkSpawnOptions).mockReturnValueOnce({ pathToClaudeCodeExecutable: '/bundled/claude' });
     expect(withPlugins().pluginDelivery).toBe('initialize');
+  });
+
+  it('passes --chrome to main chat sessions only', () => {
+    const focusContext = { ...context, focusDocument: { path: 'notes.md' } } as unknown as PlanContext;
+
+    expect(buildSdkOptions({ context, model: 'sonnet', mainWindow: null, claudeInChrome: true }).extraArgs).toEqual({ chrome: null });
+    expect(buildSdkOptions({ context, model: 'sonnet', mainWindow: null })).not.toHaveProperty('extraArgs');
+    expect(buildSdkOptions({ context: focusContext, model: 'sonnet', mainWindow: null, claudeInChrome: true })).not.toHaveProperty('extraArgs');
   });
 });

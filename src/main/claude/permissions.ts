@@ -1,29 +1,16 @@
 /**
- * Permission control for Claude SDK tool usage.
- *
- * - Deny: reads that resolve into a credential/secret root. Not overridable.
- * - Intercept: project file and context file edits, routed to the approval queue.
- * - Consent: direct writes need the project's write grant, asked once per
- *   project and persisted.
- * - Auto-allow: everything else — reads anywhere, network reads, MCP tools.
+ * KPM's part of Claude tool permissions. What may run is the user's own Claude
+ * Code settings: their permission mode, allow and deny rules, and sandbox.
+ * KPM adds document capture and disabled MCP servers on top, and asks the user
+ * whenever those settings say to ask.
  */
 
-import type { CanUseTool, PermissionResult } from '@anthropic-ai/claude-agent-sdk';
+import type { CanUseTool, HookCallbackMatcher, PermissionResult } from '@anthropic-ai/claude-agent-sdk';
 import type { PermissionRequest } from '../../shared/types';
 import { promises as fs } from 'fs';
-import os from 'os';
-import { join, normalize, relative } from 'path';
+import { normalize, relative } from 'path';
 import { isContextFile, CONTEXT_FILE_PENDING_CACHE_KEY } from '../../shared/contextFile';
-import {
-  checkRealpathAccess,
-  pathCanTraverseDeniedRoot,
-} from '../services/files/pathSecurity';
-import { shellCommandNeedsWriteGrant } from '../chat/shellWritePolicy';
 import { getConfig } from '../config';
-import {
-  projectWriteGrants,
-  type ProjectWriteGrants,
-} from '../chat/writeGrants';
 
 /**
  * Per-tool-call permission tracing. Silent unless `claude.debug` is on — this
@@ -35,9 +22,6 @@ function permLog(...args: unknown[]): void {
     console.log(...args);
   }
 }
-const READ_TOOLS = ['Read', 'Grep', 'Glob'];
-const WRITE_TOOLS = ['Edit', 'MultiEdit', 'Write', 'Bash', 'NotebookEdit'];
-const NETWORK_READ_TOOLS = ['WebFetch', 'WebSearch'];
 
 /** Function to prompt user for permission */
 export type PromptUserFn = (
@@ -68,11 +52,7 @@ export type ProjectFileInterceptFn = (
 export interface PermissionContext {
   projectPath: string;
   projectId: string;
-  /**
-   * The chat session to surface a prompt in. The write grant itself is
-   * project-scoped, so a run without a session (an action run) still inherits
-   * the project's grant — it just has nowhere to ask if there is none.
-  */
+  /** The chat session to ask in. A run without one (an action run) is denied wherever it would ask. */
   chatSessionId?: string;
   /** Optional callback to intercept project context file edits */
   onContextFileEdit?: ContextFileInterceptFn;
@@ -132,17 +112,6 @@ function extractPath(toolName: string, input: Record<string, unknown>): string |
  * Check if a path is within a directory.
  * Handles symlinks and relative paths.
  */
-// realpathSync does not expand a leading ~, so an attacker's `~/.ssh/id_rsa`
-// would otherwise never match a denied home-relative root.
-function expandHomePath(targetPath: string): string {
-  const trimmedPath = targetPath.trim();
-  if (trimmedPath === '~') return os.homedir();
-  if (trimmedPath.startsWith('~/') || trimmedPath.startsWith('~\\')) {
-    return join(os.homedir(), trimmedPath.slice(2));
-  }
-  return trimmedPath;
-}
-
 function isWithinDirectory(targetPath: string, baseDir: string): boolean {
   try {
     const normalizedTarget = normalize(targetPath);
@@ -226,293 +195,193 @@ function mcpServerNamesMatch(disabledServerName: string, toolServerName: string)
 }
 
 /**
- * Create permission handler for Claude SDK.
+ * KPM's own rules for a Claude tool call, applied before the user's Claude Code
+ * permissions decide whether it may run. Returns a deny message, or null to
+ * leave the call to those permissions.
  *
- * There is one question this handler ever asks the user: may this project
- * write? Everything else it decides on its own.
- *
- * Rules:
- * -1. Git in Bash: read-only invocations are allowed; anything else needs the
- *     project's write grant
- * 0. Intercept: Context file (AGENTS.md/CLAUDE.md) edits are captured and sent for user approval
- * 0.5. Intercept: Project file writes are captured and sent for user approval
- * 1. Gate: every remaining write tool needs the project's write grant
- * 1.5. Deny: Reads that resolve into a credential/secret root
- * 2. Auto-allow: Read tools anywhere; network reads (WebFetch/WebSearch)
- * 3. Auto-allow: MCP tools, except servers disabled in settings
- * 4. Auto-allow: anything else
+ * - Intercept: project context file and project file edits are captured and
+ *   sent to the approval queue instead of written.
+ * - Deny: tools from MCP servers the user turned off in KPM settings.
  */
-export function createPermissionHandler(
+export async function evaluateKpmToolCall(
   context: PermissionContext,
-  promptUser: PromptUserFn,
-  writeGrants: ProjectWriteGrants = projectWriteGrants,
-): CanUseTool {
+  toolName: string,
+  input: Record<string, unknown>,
+): Promise<string | null> {
+  const targetPath = extractPath(toolName, input);
+
+  // Rule 0: Intercept project context file edits (AGENTS.md / CLAUDE.md) for user approval
+  if (targetPath && isContextFilePath(targetPath, context.projectPath)) {
+    if (toolName === 'Write' && context.onContextFileEdit && typeof input.content === 'string') {
+      const newContent = input.content;
+      permLog(`[Permissions] Context file Write intercepted - capturing for approval (${newContent.length} chars)`);
+      context.onContextFileEdit(context.projectId, newContent);
+      return 'Project context file update captured by KPM.';
+    }
+    // Edit tool on the context file: read the file, apply old_string ->
+    // new_string ourselves, and route the full new content through
+    // onContextFileEdit so it lands in the same approval flow as Write.
+    // Mirrors Rule 0.5's Edit interception for regular project files.
+    if (toolName === 'Edit' && context.onContextFileEdit) {
+      const oldString = typeof input.old_string === 'string' ? input.old_string : null;
+      const newString = typeof input.new_string === 'string' ? input.new_string : null;
+
+      if (!oldString || newString === null) {
+        return 'Edit requires old_string and new_string. Pass exact text from the file (whitespace-sensitive).';
+      }
+      if (oldString === newString) {
+        return 'old_string and new_string are identical. No change would be made.';
+      }
+
+      // Prefer pending content from earlier edits this turn so multiple
+      // edits to the context file accumulate. The interception denies the
+      // write, so disk never reflects prior edits — reading it would
+      // silently drop them. Shares the cache with the propose_context_edit
+      // tool via CONTEXT_FILE_PENDING_CACHE_KEY.
+      let currentContent: string;
+      const pending = context.peekPendingFile?.(CONTEXT_FILE_PENDING_CACHE_KEY);
+      if (pending !== undefined) {
+        currentContent = pending;
+      } else {
+        const reader = context.readProjectFile ?? ((p) => fs.readFile(p, 'utf-8'));
+        try {
+          currentContent = await reader(targetPath);
+        } catch (error) {
+          return `Could not read the project context file for editing: ${error instanceof Error ? error.message : String(error)}`;
+        }
+      }
+
+      const firstIndex = currentContent.indexOf(oldString);
+      if (firstIndex === -1) {
+        return 'old_string not found in the project context file. Read the file first and copy exact text including whitespace.';
+      }
+      const secondIndex = currentContent.indexOf(oldString, firstIndex + 1);
+      if (secondIndex !== -1) {
+        return 'old_string appears multiple times in the project context file. Include more surrounding context to make the match unique.';
+      }
+
+      const newContent =
+        currentContent.slice(0, firstIndex) + newString + currentContent.slice(firstIndex + oldString.length);
+      permLog(`[Permissions] Context file Edit intercepted - capturing for approval (${newContent.length} chars)`);
+      context.onContextFileEdit(context.projectId, newContent);
+      return 'Project context file update captured by KPM.';
+    }
+  }
+
+  // Rule 0.5: Intercept project file writes for user approval
+  // IMPORTANT: Bash path extraction is heuristic and can miss secondary paths
+  // in compound commands. Never auto-allow Bash based on extracted path.
+  if (targetPath && toolName !== 'Bash' && toolName !== 'NotebookEdit' && isWithinDirectory(targetPath, context.projectPath)) {
+    if (toolName === 'Write' && context.onProjectFileWrite && typeof input.content === 'string') {
+      // Compute relative path from project folder
+      const relativePath = relative(normalize(context.projectPath), normalize(targetPath));
+      permLog(`[Permissions] Project file Write intercepted - capturing for approval: ${relativePath}`);
+      context.onProjectFileWrite(context.projectId, relativePath, input.content);
+      return 'File update captured by KPM.';
+    }
+    // Edit tool on project files: read the file, apply old_string -> new_string
+    // ourselves, and route the full new content through onProjectFileWrite so
+    // it lands in the same approval queue as Write. Avoids relying on Claude
+    // following a prose hint to use propose_document_edit.
+    if (toolName === 'Edit' && context.onProjectFileWrite) {
+      const relativePath = relative(normalize(context.projectPath), normalize(targetPath));
+      const oldString = typeof input.old_string === 'string' ? input.old_string : null;
+      const newString = typeof input.new_string === 'string' ? input.new_string : null;
+
+      if (!oldString || newString === null) {
+        return 'Edit requires old_string and new_string. Pass exact text from the file (whitespace-sensitive).';
+      }
+      if (oldString === newString) {
+        return 'old_string and new_string are identical. No change would be made.';
+      }
+
+      // Prefer pending content from earlier edits this turn so multiple edits
+      // to the same file accumulate. The interception denies the write, so
+      // disk never reflects prior edits — reading it would silently drop them.
+      let currentContent: string;
+      const pending = context.peekPendingFile?.(relativePath);
+      if (pending !== undefined) {
+        currentContent = pending;
+      } else {
+        const reader = context.readProjectFile ?? ((p) => fs.readFile(p, 'utf-8'));
+        try {
+          currentContent = await reader(targetPath);
+        } catch (error) {
+          return `Could not read "${relativePath}" for editing: ${error instanceof Error ? error.message : String(error)}`;
+        }
+      }
+
+      const firstIndex = currentContent.indexOf(oldString);
+      if (firstIndex === -1) {
+        return `old_string not found in "${relativePath}". Read the file first and copy exact text including whitespace.`;
+      }
+      const secondIndex = currentContent.indexOf(oldString, firstIndex + 1);
+      if (secondIndex !== -1) {
+        return `old_string appears multiple times in "${relativePath}". Include more surrounding context to make the match unique.`;
+      }
+
+      const newContent =
+        currentContent.slice(0, firstIndex) + newString + currentContent.slice(firstIndex + oldString.length);
+      permLog(`[Permissions] Project file Edit intercepted - capturing for approval: ${relativePath}`);
+      context.onProjectFileWrite(context.projectId, relativePath, newContent);
+      return 'File update captured by KPM.';
+    }
+  }
+
+  const toolServerName = toolName.startsWith('mcp__') ? extractMcpServerName(toolName) : null;
+  const disabledServer = toolServerName
+    ? context.disabledMcpServerNames?.find(serverName => mcpServerNamesMatch(serverName, toolServerName))
+    : undefined;
+  if (disabledServer) return `The ${disabledServer} MCP server is disabled in KPM settings.`;
+
+  return null;
+}
+
+/**
+ * Runs `evaluateKpmToolCall` as a PreToolUse hook. Hooks fire in every
+ * permission mode, including bypassPermissions where `canUseTool` is never
+ * called, so document capture and disabled servers hold whatever mode the
+ * user runs Claude Code in.
+ */
+export function createKpmToolHook(context: PermissionContext): HookCallbackMatcher {
+  return {
+    hooks: [async (hookInput) => {
+      if (hookInput.hook_event_name !== 'PreToolUse') return { continue: true };
+      const toolInput = (hookInput.tool_input ?? {}) as Record<string, unknown>;
+      const denial = await evaluateKpmToolCall(context, hookInput.tool_name, toolInput);
+      if (!denial) return { continue: true };
+      permLog(`[Permissions] ${hookInput.tool_name} handled by KPM: ${denial}`);
+      return {
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          permissionDecision: 'deny',
+          permissionDecisionReason: denial,
+        },
+      };
+    }],
+  };
+}
+
+/**
+ * Claude Code only calls this for a tool its permission settings say to ask
+ * about, so the user answers each one, as they would in the Claude Code CLI.
+ * A run with no chat (an action run) has nowhere to ask and is denied.
+ */
+export function createPermissionPrompt(context: PermissionContext, promptUser: PromptUserFn): CanUseTool {
   return async (toolName, input, options) => {
-    // Debug logging for MCP tools
-    if (toolName.startsWith('mcp__kpm__')) {
-      permLog(`[Permissions] ========== MCP TOOL PERMISSION CHECK ==========`);
-      permLog(`[Permissions] Tool: ${toolName}`);
-      permLog(`[Permissions] Input keys: ${Object.keys(input).join(', ')}`);
-      permLog(`[Permissions] Input: ${JSON.stringify(input).slice(0, 500)}`);
+    if (!context.chatSessionId) {
+      return {
+        behavior: 'deny',
+        message: `Your Claude Code permission settings ask before ${toolName}, and this background run has no chat to ask in. Do not retry; report what you would have done instead.`,
+      };
     }
-
-    const gateWrites = async (): Promise<PermissionResult> => {
-      const decision = await writeGrants.request(context.projectId, async () => {
-        permLog(`[Permissions] Requesting write access for project ${context.projectId}`);
-        const result = await promptUser(toolName, input, {
-          signal: options.signal,
-          title: options.title,
-          chatSessionId: context.chatSessionId,
-          kind: 'write-access',
-        });
-        return result.behavior === 'allow';
-      });
-
-      if (!decision.allowed) return { behavior: 'deny', message: decision.reason };
-      return { behavior: 'allow', updatedInput: input };
-    };
-
-    if (toolName === 'Bash' && typeof input.command === 'string') {
-      if (!shellCommandNeedsWriteGrant(input.command)) {
-        return { behavior: 'allow', updatedInput: input };
-      }
-      return gateWrites();
-    }
-
-    const targetPath = extractPath(toolName, input);
-
-    // Debug logging for Write/Edit tools targeting files
-    if ((toolName === 'Write' || toolName === 'Edit') && targetPath) {
-      permLog(`[Permissions] ${toolName} tool called for: ${targetPath}`);
-    }
-
-    const traversesDirectories = toolName === 'Grep' || toolName === 'Glob';
-    const pathToCheck = targetPath ?? (traversesDirectories ? context.projectPath : null);
-    if (pathToCheck && [...READ_TOOLS, ...WRITE_TOOLS].includes(toolName)) {
-      const expandedPath = expandHomePath(pathToCheck);
-      const access = await checkRealpathAccess(expandedPath, context.projectPath);
-      if (!access.allowed) {
-        return {
-          behavior: 'deny',
-          message: access.reason ?? 'Access denied: path resolves inside a protected credential location.',
-        };
-      }
-      if (traversesDirectories && await pathCanTraverseDeniedRoot(expandedPath, context.projectPath)) {
-        return {
-          behavior: 'deny',
-          message: 'Access denied: recursive search would traverse a protected credential location.',
-        };
-      }
-    }
-
-    // Rule 0: Intercept project context file edits (AGENTS.md / CLAUDE.md) for user approval
-    if (targetPath && isContextFilePath(targetPath, context.projectPath)) {
-      if (toolName === 'Write' && context.onContextFileEdit && typeof input.content === 'string') {
-        const newContent = input.content;
-        permLog(`[Permissions] Context file Write intercepted - capturing for approval (${newContent.length} chars)`);
-        context.onContextFileEdit(context.projectId, newContent);
-        return {
-          behavior: 'deny',
-          message: 'Project context file update captured by KPM.',
-        };
-      }
-      // Edit tool on the context file: read the file, apply old_string ->
-      // new_string ourselves, and route the full new content through
-      // onContextFileEdit so it lands in the same approval flow as Write.
-      // Mirrors Rule 0.5's Edit interception for regular project files.
-      if (toolName === 'Edit' && context.onContextFileEdit) {
-        const oldString = typeof input.old_string === 'string' ? input.old_string : null;
-        const newString = typeof input.new_string === 'string' ? input.new_string : null;
-
-        if (!oldString || newString === null) {
-          return {
-            behavior: 'deny',
-            message: 'Edit requires old_string and new_string. Pass exact text from the file (whitespace-sensitive).',
-          };
-        }
-        if (oldString === newString) {
-          return {
-            behavior: 'deny',
-            message: 'old_string and new_string are identical. No change would be made.',
-          };
-        }
-
-        // Prefer pending content from earlier edits this turn so multiple
-        // edits to the context file accumulate. The interception denies the
-        // write, so disk never reflects prior edits — reading it would
-        // silently drop them. Shares the cache with the propose_context_edit
-        // tool via CONTEXT_FILE_PENDING_CACHE_KEY.
-        let currentContent: string;
-        const pending = context.peekPendingFile?.(CONTEXT_FILE_PENDING_CACHE_KEY);
-        if (pending !== undefined) {
-          currentContent = pending;
-        } else {
-          const reader = context.readProjectFile ?? ((p) => fs.readFile(p, 'utf-8'));
-          try {
-            currentContent = await reader(targetPath);
-          } catch (error) {
-            return {
-              behavior: 'deny',
-              message: `Could not read the project context file for editing: ${error instanceof Error ? error.message : String(error)}`,
-            };
-          }
-        }
-
-        const firstIndex = currentContent.indexOf(oldString);
-        if (firstIndex === -1) {
-          return {
-            behavior: 'deny',
-            message: 'old_string not found in the project context file. Read the file first and copy exact text including whitespace.',
-          };
-        }
-        const secondIndex = currentContent.indexOf(oldString, firstIndex + 1);
-        if (secondIndex !== -1) {
-          return {
-            behavior: 'deny',
-            message: 'old_string appears multiple times in the project context file. Include more surrounding context to make the match unique.',
-          };
-        }
-
-        const newContent =
-          currentContent.slice(0, firstIndex) + newString + currentContent.slice(firstIndex + oldString.length);
-        permLog(`[Permissions] Context file Edit intercepted - capturing for approval (${newContent.length} chars)`);
-        context.onContextFileEdit(context.projectId, newContent);
-        return {
-          behavior: 'deny',
-          message: 'Project context file update captured by KPM.',
-        };
-      }
-    }
-
-    // Rule 0.5: Intercept project file writes for user approval
-    // IMPORTANT: Bash path extraction is heuristic and can miss secondary paths
-    // in compound commands. Never auto-allow Bash based on extracted path.
-    if (targetPath && toolName !== 'Bash' && toolName !== 'NotebookEdit' && isWithinDirectory(targetPath, context.projectPath)) {
-      if (toolName === 'Write' && context.onProjectFileWrite && typeof input.content === 'string') {
-        // Compute relative path from project folder
-        const relativePath = relative(normalize(context.projectPath), normalize(targetPath));
-        permLog(`[Permissions] Project file Write intercepted - capturing for approval: ${relativePath}`);
-        context.onProjectFileWrite(context.projectId, relativePath, input.content);
-        return {
-          behavior: 'deny',
-          message: 'File update captured by KPM.',
-        };
-      }
-      // Edit tool on project files: read the file, apply old_string -> new_string
-      // ourselves, and route the full new content through onProjectFileWrite so
-      // it lands in the same approval queue as Write. Avoids relying on Claude
-      // following a prose hint to use propose_document_edit.
-      if (toolName === 'Edit' && context.onProjectFileWrite) {
-        const relativePath = relative(normalize(context.projectPath), normalize(targetPath));
-        const oldString = typeof input.old_string === 'string' ? input.old_string : null;
-        const newString = typeof input.new_string === 'string' ? input.new_string : null;
-
-        if (!oldString || newString === null) {
-          return {
-            behavior: 'deny',
-            message: 'Edit requires old_string and new_string. Pass exact text from the file (whitespace-sensitive).',
-          };
-        }
-        if (oldString === newString) {
-          return {
-            behavior: 'deny',
-            message: 'old_string and new_string are identical. No change would be made.',
-          };
-        }
-
-        // Prefer pending content from earlier edits this turn so multiple edits
-        // to the same file accumulate. The interception denies the write, so
-        // disk never reflects prior edits — reading it would silently drop them.
-        let currentContent: string;
-        const pending = context.peekPendingFile?.(relativePath);
-        if (pending !== undefined) {
-          currentContent = pending;
-        } else {
-          const reader = context.readProjectFile ?? ((p) => fs.readFile(p, 'utf-8'));
-          try {
-            currentContent = await reader(targetPath);
-          } catch (error) {
-            return {
-              behavior: 'deny',
-              message: `Could not read "${relativePath}" for editing: ${error instanceof Error ? error.message : String(error)}`,
-            };
-          }
-        }
-
-        const firstIndex = currentContent.indexOf(oldString);
-        if (firstIndex === -1) {
-          return {
-            behavior: 'deny',
-            message: `old_string not found in "${relativePath}". Read the file first and copy exact text including whitespace.`,
-          };
-        }
-        const secondIndex = currentContent.indexOf(oldString, firstIndex + 1);
-        if (secondIndex !== -1) {
-          return {
-            behavior: 'deny',
-            message: `old_string appears multiple times in "${relativePath}". Include more surrounding context to make the match unique.`,
-          };
-        }
-
-        const newContent =
-          currentContent.slice(0, firstIndex) + newString + currentContent.slice(firstIndex + oldString.length);
-        permLog(`[Permissions] Project file Edit intercepted - capturing for approval: ${relativePath}`);
-        context.onProjectFileWrite(context.projectId, relativePath, newContent);
-        return {
-          behavior: 'deny',
-          message: 'File update captured by KPM.',
-        };
-      }
-      if (!WRITE_TOOLS.includes(toolName)) {
-        return { behavior: 'allow', updatedInput: input };
-      }
-    }
-
-    if (WRITE_TOOLS.includes(toolName)) {
-      return gateWrites();
-    }
-
-    // Rule 2: Read tools (Read/Grep/Glob) are allowed anywhere on disk.
-    // Reads can't mutate state, so chat isn't confined to the project folder or
-    // connected repos for reading — the user can point it at any folder.
-    if (READ_TOOLS.includes(toolName)) {
-      return { behavior: 'allow', updatedInput: input };
-    }
-
-    // Network read tools (WebFetch/WebSearch) are legitimate discovery
-    // capability and cannot mutate local state. The read denylist above closes
-    // credential exfiltration, so these stay frictionless.
-    if (NETWORK_READ_TOOLS.includes(toolName)) {
-      return { behavior: 'allow', updatedInput: input };
-    }
-
-    // Rule 3: KPM MCP tools always allowed (read-only, approval-gated by tool implementation)
-    if (toolName.startsWith('mcp__kpm__')) {
-      permLog(`[Permissions] MCP tool auto-allowed: ${toolName}`);
-      return { behavior: 'allow', updatedInput: input };
-    }
-
-    // Rule 3.5: External MCP tools (claude.ai managed servers, user plugins).
-    // Allowed unless the user turned the server off in settings — the read
-    // deny-list and the write grant already cover what these can reach.
-    if (toolName.startsWith('mcp__')) {
-      const toolServerName = extractMcpServerName(toolName);
-      const disabledServer = toolServerName
-        ? context.disabledMcpServerNames?.find(serverName => mcpServerNamesMatch(serverName, toolServerName))
-        : undefined;
-      if (disabledServer) {
-        return {
-          behavior: 'deny',
-          message: `The ${disabledServer} MCP server is disabled in KPM settings.`,
-        };
-      }
-      return { behavior: 'allow', updatedInput: input };
-    }
-
-    // Rule 4: anything unrecognized. Writes were gated above and credential
-    // paths denied above, so what reaches here cannot touch either.
-    permLog(`[Permissions] Allowing unrecognized tool: ${toolName}`);
-    return { behavior: 'allow', updatedInput: input };
+    const result = await promptUser(toolName, input, {
+      signal: options.signal,
+      title: options.title,
+      chatSessionId: context.chatSessionId,
+      kind: 'elicitation',
+    });
+    return result.behavior === 'allow' ? { behavior: 'allow', updatedInput: input } : result;
   };
 }
 

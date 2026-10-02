@@ -112,18 +112,18 @@ The chat system prompt is assembled from registry sections (grounding, tool guid
 - `src/main/services/core/PromptOverrideService.ts`, `TaskPromptTemplateService.ts`; `src/renderer/components/settings/PromptsSettings.tsx`
 
 ### KPM tools
-In-process tools chat uses to read and propose against KPM and connected systems: plan items and relations, plan changes, documents and AGENTS.md, project files (list, move, delete), git history and branches, `git_push`, pull requests (find, read with reviews and checks, create, edit, gather context for a description), Jira (listed only once Jira credentials are stored), Confluence, and paging through oversized tool results. Claude loads the rarely used ones only when it searches for them. Mutating tools emit proposals, except `git_push` and the pull request writes, which act directly once the project write grant is given.
+In-process tools chat uses to read and propose against KPM and connected systems: plan items and relations, plan changes, documents and AGENTS.md, project files (list, move, delete), git history and branches, `git_push`, pull requests (find, read with reviews and checks, create, edit, gather context for a description), Jira (listed only once Jira credentials are stored), Confluence, and paging through oversized tool results. Claude loads the rarely used ones only when it searches for them. Mutating tools emit proposals, except `git_push` and the pull request writes, which act directly once the project publishing grant is given.
 - `src/main/kpmTools/tools/`, registered in `src/main/kpmTools/runtimeRegistry.ts`; documented to the model in `src/main/chat/prompts/toolDocs.ts`
 - See the "Add a Claude tool" recipe in the root `CLAUDE.md`
 
-### Project write grant
-The first direct file, shell, or git write in a project asks once, inline, with any chat provider: "Don't allow" or "Always allow in this project". Allowing persists a per-project grant that covers every chat and background action run in that project until turned off in Settings, Writes, where it can also be turned on ahead of time. Reads are never gated, credential paths are always denied, and document edits go to the approval queue instead.
-- `src/main/chat/writeGrants.ts`, `src/main/claude/permissions.ts`, `src/main/services/core/PermissionService.ts`, `PermissionPromptService.ts`
+### Write permissions and the publishing grant
+Chat writes follow the user's own harness settings. Claude chats run under the user's Claude Code permission mode, rules, and sandbox, and ask per call wherever those settings ask. Codex chats run under the user's Codex sandbox and approval settings, with the project folder and connected repos writable under workspace-write. pi chats run pi's tools as the pi CLI does. Document edits go to the approval queue whatever the harness allows. Pushing a branch and opening or editing a pull request ask once per project, inline: "Don't allow" or "Always allow in this project". Allowing persists a publishing grant that covers every chat and background action run in that project until turned off in Settings, Publishing, where it can also be turned on ahead of time.
+- `src/main/chat/writeGrants.ts`, `src/main/claude/permissions.ts`, `src/main/claude/userPermissionMode.ts`, `src/main/codex/CodexChatSession.ts`, `src/main/services/core/PermissionService.ts`, `PermissionPromptService.ts`
 - `src/renderer/components/permission/PermissionPrompt.tsx`, `src/renderer/components/settings/PermissionsSettings.tsx`
 
 ### MCP servers
-Settings, MCP Servers shows what the selected chat provider can reach. For Claude: claude.ai connectors and user servers (managed with `claude mcp add/remove`, listed read-only) and installed plugins (toggle per plugin). pi uses the servers in `~/.pi/agent/mcp.json` through a single gateway tool. MCP form elicitation prompts inline in chat.
-- `src/main/services/core/McpDiscoveryService.ts`, `src/renderer/components/settings/McpServersSettings.tsx`, `src/renderer/stores/mcpServersStore.ts`
+Settings, MCP Servers shows what the selected chat provider can reach. For Claude: claude.ai connectors and user servers (managed with `claude mcp add/remove`, listed read-only) and installed plugins (toggle per plugin). pi uses the servers in `~/.pi/agent/mcp.json` through a single gateway tool. MCP form elicitation prompts inline in chat. Claude chat (not doc focus mode) also loads Claude in Chrome when the user has it on by default in Claude Code (`/chrome`), since the CLI only honors that setting interactively.
+- `src/main/services/core/McpDiscoveryService.ts`, `src/main/claude/userClaudeInChrome.ts`, `src/renderer/components/settings/McpServersSettings.tsx`, `src/renderer/stores/mcpServersStore.ts`
 
 ---
 
@@ -184,7 +184,7 @@ When the playbook includes review, a reviewer agent inspects the diff and its fi
 - `src/main/services/agents/autoReview.ts`, `reviewOutputContract.ts`, `BoardAgentOrchestrator.ts`
 
 ### Pull requests
-From the detail pane the user can create a PR (draft by default) or link an existing one, and generate a reviewer-oriented title and description from the branch diff, commit log, PR template, Work Brief, and optionally a project document for feature context. Push failures lead with a plain reason. Chat can find PRs by branch, author, state, or search text; read any PR by URL or number, optionally with its reviews, review threads, discussion, and CI checks and merge readiness; and open or edit a PR's title and description after the project write grant.
+From the detail pane the user can create a PR (draft by default) or link an existing one, and generate a reviewer-oriented title and description from the branch diff, commit log, PR template, Work Brief, and optionally a project document for feature context. Push failures lead with a plain reason. Chat can find PRs by branch, author, state, or search text; read any PR by URL or number, optionally with its reviews, review threads, discussion, and CI checks and merge readiness; and open or edit a PR's title and description after the project publishing grant.
 - `src/main/services/repo/GitHubService.ts`, `ghUtils.ts`; `src/main/kpmTools/tools/github.ts`, `github-writes.ts`, `git-push.ts`
 - `src/renderer/components/development/` (`CreatePrModal.tsx`, `LinkPrDialog.tsx`, `LinkPrToItemDialog.tsx`, `GeneratePrContentModal.tsx`), `src/renderer/stores/devSessions/prSlice.ts`
 

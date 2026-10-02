@@ -8,9 +8,8 @@ interface Props {
 /** Everything the grant covers, so turning it on here is as informed as
  * answering the prompt in chat. */
 const WRITE_ACCESS_COVERAGE = [
-  'Creating, editing, and deleting files',
-  'Running shell commands',
-  'Git operations, including commits and pushing a branch',
+  'Pushing a branch',
+  'Opening and editing pull requests',
   'Scheduled and Cmd+K action runs, which have no chat to ask in',
 ];
 
@@ -25,8 +24,8 @@ export function PermissionsSettings({ currentProjectId }: Props) {
             <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
           </svg>
         }
-        title="Writes"
-        description="Whether agents can change this project's repos directly"
+        title="Publishing"
+        description="Whether chat can push branches and open or edit pull requests for this project"
         collapsible={false}
         statusBadge={
           <StatusBadge variant={writesEnabled ? 'success' : 'muted'}>
@@ -37,9 +36,9 @@ export function PermissionsSettings({ currentProjectId }: Props) {
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-2">
             <p className="text-xs text-text-muted">
-              Applies to every chat in this project and stays on after a restart. Credential
-              and secret files stay out of reach either way, and plan and document edits keep
-              going through the approval queue.
+              Applies to every chat in this project and stays on after a restart. File, shell,
+              and git changes follow your own Claude Code, Codex, or pi permission settings,
+              and plan and document edits keep going through the approval queue.
             </p>
             <ul className="text-xs text-text-secondary space-y-1">
               {WRITE_ACCESS_COVERAGE.map((item) => (
@@ -57,7 +56,7 @@ export function PermissionsSettings({ currentProjectId }: Props) {
             type="button"
             role="switch"
             aria-checked={writesEnabled}
-            aria-label="Allow writes in this project"
+            aria-label="Allow publishing from this project"
             onClick={() => (writesEnabled ? revoke() : grant())}
             className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${writesEnabled ? 'bg-accent' : 'bg-surface-4'}`}
           >

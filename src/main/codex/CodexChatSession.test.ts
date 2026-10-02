@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { CodexChatSession, codexToolCalls } from './CodexChatSession';
+import { CodexChatSession, codexSandboxPolicy, codexToolCalls } from './CodexChatSession';
 import { getToolActivity } from '../claude/activity';
 import { extractFilePaths } from '../services/toollog/extractFilePaths';
 import type { CodexAppServerClient } from './CodexAppServerClient';
@@ -15,6 +15,7 @@ class FakeAppServer {
   readonly requests: { method: string; params: Record<string, unknown> }[] = [];
   completeTurns = true;
   mcpServers: Record<string, unknown>[] = [];
+  userConfig: Record<string, unknown> = {};
   private notification: ((method: string, params: Record<string, unknown>) => void) | null = null;
   private serverRequest: Handler | null = null;
   async initialize(): Promise<void> {}
@@ -22,6 +23,7 @@ class FakeAppServer {
   setServerRequestHandler(handler: Handler): void { this.serverRequest = handler; }
   async request(method: string, params: Record<string, unknown> = {}): Promise<unknown> {
     this.requests.push({ method, params });
+    if (method === 'config/read') return { config: this.userConfig, origins: {}, layers: null };
     if (method === 'thread/start' || method === 'thread/resume') return { thread: { id: 'thread-1' } };
     if (method === 'mcpServerStatus/list') return { data: this.mcpServers };
     if (method === 'mcpServer/oauth/login') return { authorizationUrl: 'https://linear.app/oauth/authorize' };
@@ -41,6 +43,7 @@ class FakeAppServer {
   }
   closed = false;
   close(): void { this.closed = true; }
+  sent(method: string): { method: string; params: Record<string, unknown> }[] { return this.requests.filter((request) => request.method === method); }
   emit(method: string, params: Record<string, unknown>): void { this.notification?.(method, params); }
   ask(method: string, params: Record<string, unknown>): Promise<unknown> { return this.serverRequest?.(method, params) ?? Promise.resolve({}); }
 }
@@ -62,18 +65,16 @@ describe('CodexChatSession', () => {
     const session = new CodexChatSession({ context: context(), onMessage, registerMcpSession: async () => registration(), createAppServerClient: () => client as unknown as CodexAppServerClient });
     await session.start('hello');
     await vi.waitFor(() => expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'result' })));
-    expect(client.requests[0]?.method).toBe('thread/start');
-    expect(client.requests[0]?.params.approvalPolicy).toBe('on-request');
-    expect(client.requests[0]?.params.sandbox).toBe('read-only');
-    expect(typeof client.requests[0]?.params.developerInstructions).toBe('string');
-    expect(client.requests[0]?.params.developerInstructions).toEqual(expect.stringContaining('You are Codex running inside KPM'));
-    expect(client.requests[0]?.params.developerInstructions).toEqual(expect.stringContaining('a request for Playwright must use an `mcp__playwright__*` tool'));
-    expect(client.requests[0]?.params.config).toMatchObject({
+    const [threadStart] = client.sent('thread/start');
+    expect(typeof threadStart?.params.developerInstructions).toBe('string');
+    expect(threadStart?.params.developerInstructions).toEqual(expect.stringContaining('You are Codex running inside KPM'));
+    expect(threadStart?.params.developerInstructions).toEqual(expect.stringContaining('a request for Playwright must use an `mcp__playwright__*` tool'));
+    expect(threadStart?.params.config).toMatchObject({
       mcp_servers: {
         'computer-use': { enabled: false },
       },
     });
-    expect(client.requests[1]).toMatchObject({ method: 'turn/start', params: { input: [{ type: 'text', text: 'hello' }], sandboxPolicy: { type: 'readOnly' } } });
+    expect(client.sent('turn/start')[0]?.params.input).toEqual([{ type: 'text', text: 'hello' }]);
     expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'result', contextWindow: 1_050_000 }));
     client.emit('item/started', { item: { id: 'play-1', type: 'mcpToolCall', server: 'playwright', tool: 'browser_tabs', arguments: {}, readOnlyHint: true } });
     expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'assistant' }));
@@ -86,7 +87,7 @@ describe('CodexChatSession', () => {
     await vi.waitFor(() => expect(client.requests.some((request) => request.method === 'turn/start')).toBe(true));
     session.send('second');
     await vi.waitFor(() => expect(client.requests.filter((request) => request.method === 'turn/start')).toHaveLength(2));
-    expect(client.requests[0]).toMatchObject({ method: 'thread/resume', params: { threadId: 'old-thread' } });
+    expect(client.sent('thread/resume')[0]?.params.threadId).toBe('old-thread');
   });
 
   it('reports configured MCP health and starts OAuth only for the active thread', async () => {
@@ -251,21 +252,49 @@ describe('CodexChatSession', () => {
     ]);
 
     await vi.waitFor(() => expect(client.requests.filter((request) => request.method === 'turn/start')).toHaveLength(2));
-    expect(client.requests[2]?.params.input).toEqual([
+    expect(client.sent('turn/start')[1]?.params.input).toEqual([
       { type: 'localImage', path: imagePath },
       { type: 'text', text: '<file name="notes.md">\n# Notes\n</file>' },
     ]);
   });
 
-  it('keeps file and shell writes denied without a project grant', async () => {
+  it('runs turns under the user\'s Codex sandbox and approval settings, with connected repos writable', async () => {
     const client = new FakeAppServer();
-    const requestWriteConsent = vi.fn().mockResolvedValue({ allowed: false, reason: 'denied' });
-    const session = new CodexChatSession({ context: context(), onMessage: vi.fn(), requestWriteConsent, hasWriteAccess: () => false, registerMcpSession: async () => registration(), createAppServerClient: () => client as unknown as CodexAppServerClient });
+    client.userConfig = {
+      approval_policy: 'never',
+      sandbox_mode: 'workspace-write',
+      sandbox_workspace_write: { writable_roots: ['/Users/me/.cache'], network_access: true, exclude_tmpdir_env_var: false, exclude_slash_tmp: false },
+    };
+    const withRepo = { ...context(), repos: [{ id: 'repo-1', project_id: 'project-1', path: '/tmp/repo-1', active_worktree_path: '/tmp/repo-1-wt' }] } as unknown as PlanContext;
+    const session = new CodexChatSession({ context: withRepo, onMessage: vi.fn(), registerMcpSession: async () => registration(), createAppServerClient: () => client as unknown as CodexAppServerClient });
+    await session.start('fetch');
+    await vi.waitFor(() => expect(client.sent('turn/start')).toHaveLength(1));
+    expect(client.sent('config/read')[0]?.params).toEqual({ cwd: '/tmp/project' });
+    expect(client.sent('turn/start')[0]?.params).toMatchObject({
+      approvalPolicy: 'never',
+      sandboxPolicy: { type: 'workspaceWrite', writableRoots: ['/Users/me/.cache', '/tmp/project', '/tmp/repo-1-wt'], networkAccess: true, excludeTmpdirEnvVar: false, excludeSlashTmp: false },
+    });
+  });
+
+  it('leaves sandbox and approvals to Codex when the user has not set them', async () => {
+    const client = new FakeAppServer();
+    const session = new CodexChatSession({ context: context(), onMessage: vi.fn(), registerMcpSession: async () => registration(), createAppServerClient: () => client as unknown as CodexAppServerClient });
+    await session.start('hello');
+    await vi.waitFor(() => expect(client.sent('turn/start')).toHaveLength(1));
+    const params = { ...client.sent('thread/start')[0]?.params, ...client.sent('turn/start')[0]?.params };
+    expect(params).not.toHaveProperty('approvalPolicy');
+    expect(params).not.toHaveProperty('sandbox');
+    expect(params).not.toHaveProperty('sandboxPolicy');
+  });
+
+  it('asks the user about each command and file change Codex wants approved', async () => {
+    const client = new FakeAppServer();
+    const requestExternalApproval = vi.fn(async (toolName: string) => toolName === 'Bash');
+    const session = new CodexChatSession({ context: context(), onMessage: vi.fn(), requestExternalApproval, registerMcpSession: async () => registration(), createAppServerClient: () => client as unknown as CodexAppServerClient });
     await session.start('edit');
-    await expect(client.ask('item/fileChange/requestApproval', {})).resolves.toEqual({ decision: 'decline' });
-    await expect(client.ask('item/commandExecution/requestApproval', { command: 'touch changed.txt' })).resolves.toEqual({ decision: 'decline' });
-    await expect(client.ask('item/commandExecution/requestApproval', { command: 'git status' })).resolves.toEqual({ decision: 'accept' });
-    expect(requestWriteConsent).toHaveBeenCalledTimes(2);
+    await expect(client.ask('item/commandExecution/requestApproval', { command: 'git fetch', cwd: '/tmp/project' })).resolves.toEqual({ decision: 'accept' });
+    await expect(client.ask('item/fileChange/requestApproval', { itemId: 'patch-1' })).resolves.toEqual({ decision: 'decline' });
+    expect(requestExternalApproval).toHaveBeenCalledWith('Bash', { command: 'git fetch', cwd: '/tmp/project', reason: undefined });
   });
 
   it('approves a read-only Playwright request and lets the same turn continue', async () => {
@@ -289,6 +318,16 @@ describe('CodexChatSession', () => {
     client.emit('item/started', { item: { id: 'click', type: 'mcpToolCall', server: 'playwright', tool: 'browser_click', arguments: {}, readOnlyHint: false } });
     await expect(client.ask('item/tool/requestUserInput', { itemId: 'click', questions: [{ id: 'approval', options: [{ label: 'Allow' }] }] })).resolves.toEqual({ answers: { approval: { answers: ['Allow'] } } });
     expect(requestExternalApproval).not.toHaveBeenCalled();
+  });
+});
+
+describe('codexSandboxPolicy', () => {
+  it.each([
+    ['danger-full-access', { type: 'dangerFullAccess' }],
+    ['read-only', { type: 'readOnly', networkAccess: false }],
+    [undefined, null],
+  ])('maps sandbox_mode %s', (mode, expected) => {
+    expect(codexSandboxPolicy(mode ? { sandbox_mode: mode } : {}, ['/tmp/project'])).toEqual(expected);
   });
 });
 

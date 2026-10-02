@@ -5,9 +5,9 @@
  * owns the classification, which must stay in the main process because it is
  * the decision, not the data.
  *
- * SAFETY-CRITICAL: `safe` gates whether a provider/model may ever be selected
- * for KPM's read-only main chat (P7). See `isPiProviderSafe` below for the
- * exact signal used and its limits.
+ * `safe` marks whether pi itself runs a provider's tool calls, so the user's
+ * pi extensions and KPM's active tool list apply to them. See `isPiProviderSafe`
+ * below for the exact signal used and its limits.
  */
 
 import { PI_UNRESOLVED_MODEL_ID, type PiProviderOption } from '../../shared/types';
@@ -34,8 +34,8 @@ function modelContextWindow(model: { contextWindow?: number }): number | undefin
  * Every one of these models is driven through
  * one of pi-ai's own bundled API-dialect implementations (`anthropic-messages`,
  * `openai-codex-responses`, etc.) — pi's own `AgentSession` runs the ReAct
- * loop and executes tool calls itself for all of them, so KPM's
- * `buildToolCallGate` (in `PiChatSession.ts`) sees and gates every tool call.
+ * loop and executes tool calls itself for all of them, so every tool call
+ * goes through pi's own `tool_call` event, where the user's pi extensions see it.
  *
  * A provider NOT on this list is either unknown or was registered at runtime
  * by an installed pi extension via `ModelRegistry.registerProvider()` (e.g.
@@ -43,7 +43,7 @@ function modelContextWindow(model: { contextWindow?: number }): number | undefin
  * extension supply its own `streamSimple` implementation, which can run
  * arbitrary code — including driving its own embedded agent with full
  * read/write tool access — before ever handing a response back to pi. pi's
- * tool gate has no visibility into that code path. Such providers default to
+ * `tool_call` event has no visibility into that code path. Such providers default to
  * `safe: false` unless the user has explicitly trusted one (see
  * `USER_TRUSTED_PI_PROVIDERS` below) — `cursor` is currently trusted that way.
  *
@@ -118,8 +118,8 @@ const KNOWN_NATIVE_PI_PROVIDERS = new Set<string>([
  * Providers the user has explicitly chosen to trust despite NOT being driven
  * by pi-ai's native tool loop. Unlike `KNOWN_NATIVE_PI_PROVIDERS`, these are
  * not safe by construction: `cursor` runs its own embedded agent via
- * `streamSimple` that KPM's tool gate cannot see, so it can modify repo files
- * or run commands from chat, outside chat's read-only guarantee (P7). It is
+ * `streamSimple` that pi's `tool_call` event cannot see, so it can modify repo
+ * files or run commands outside the user's pi extensions. It is
  * listed here because the single user has accepted that tradeoff on their own
  * machine — this entry IS the trust decision, not a claim the provider is
  * gated. Removing `cursor` here restores the "runs its own agent" warning.
@@ -177,7 +177,7 @@ export function buildPiProviderOptions(catalog: PiCatalogSnapshot): PiProviderOp
 
 /**
  * Enumerate the pi providers/models the user has configured and authenticated,
- * each classified safe/unsafe for KPM's read-only chat.
+ * each classified by whether pi runs its tool calls.
  *
  * The child process loads global/user pi extensions with the same trust
  * posture as a real chat session, so a provider registered at runtime by an

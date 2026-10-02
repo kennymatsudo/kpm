@@ -19,11 +19,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  createPermissionHandler,
-  type PermissionContext,
-  type PromptUserFn,
-} from './permissions';
+import { evaluateKpmToolCall, type PermissionContext } from './permissions';
 
 const PROJECT_PATH = '/tmp/kpm-project';
 const FILE_ABS = `${PROJECT_PATH}/guide.md`;
@@ -31,20 +27,8 @@ const FILE_ABS = `${PROJECT_PATH}/guide.md`;
 // Original on-disk content with two independent sections.
 const DISK = ['# Guide', 'Section A: old-A', 'Section B: old-B', ''].join('\n');
 
-function testOptions() {
-  return { signal: new AbortController().signal, toolUseID: 'tu-1', requestId: 'req-1' };
-}
-
-async function editFile(
-  handler: ReturnType<typeof createPermissionHandler>,
-  oldString: string,
-  newString: string
-) {
-  return handler(
-    'Edit',
-    { file_path: FILE_ABS, old_string: oldString, new_string: newString },
-    testOptions()
-  );
+async function editFile(context: PermissionContext, oldString: string, newString: string) {
+  return evaluateKpmToolCall(context, 'Edit', { file_path: FILE_ABS, old_string: oldString, new_string: newString });
 }
 
 describe('built-in Edit interception — same-file edit accumulation', () => {
@@ -53,9 +37,6 @@ describe('built-in Edit interception — same-file edit accumulation', () => {
   beforeEach(() => {
     captured = [];
   });
-
-  // promptUser is never reached for intercepted edits (they short-circuit to deny).
-  const promptUser: PromptUserFn = async () => ({ behavior: 'allow', updatedInput: {} });
 
   it('WITHOUT a pending cache, snapshots are non-cumulative (the pre-fix failure mode)', async () => {
     const context: PermissionContext = {
@@ -66,10 +47,9 @@ describe('built-in Edit interception — same-file edit accumulation', () => {
       readProjectFile: async () => DISK,
       // No peekPendingFile wired — reproduces the original lossy behavior.
     };
-    const handler = createPermissionHandler(context, promptUser);
 
-    await editFile(handler, 'Section A: old-A', 'Section A: NEW-A');
-    await editFile(handler, 'Section B: old-B', 'Section B: NEW-B');
+    await editFile(context, 'Section A: old-A', 'Section A: NEW-A');
+    await editFile(context, 'Section B: old-B', 'Section B: NEW-B');
 
     expect(captured).toHaveLength(2);
     // The last snapshot (the one the queue keeps) is missing edit A entirely.
@@ -92,10 +72,9 @@ describe('built-in Edit interception — same-file edit accumulation', () => {
         captured.push({ filePath, content });
       },
     };
-    const handler = createPermissionHandler(context, promptUser);
 
-    await editFile(handler, 'Section A: old-A', 'Section A: NEW-A');
-    await editFile(handler, 'Section B: old-B', 'Section B: NEW-B');
+    await editFile(context, 'Section A: old-A', 'Section A: NEW-A');
+    await editFile(context, 'Section B: old-B', 'Section B: NEW-B');
 
     expect(captured).toHaveLength(2);
     // The final snapshot — what the user approves — now contains BOTH edits.

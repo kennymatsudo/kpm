@@ -43,7 +43,7 @@ export function buildUserGlobalInstructionsSection(userGlobalInstructions?: stri
 
   return `# User Global Preferences
 
-The developer maintains these personal working preferences globally, in \`~/.claude/CLAUDE.md\`. Honor them in your replies and any content you author. Relative file references below resolve against \`~/.claude/\` and point at the developer's global files, not at this project's context file. Where they conflict with KPM's operating rules (write consent, plan/proposal tools, export boundaries), KPM's rules win.
+The developer maintains these personal working preferences globally, in \`~/.claude/CLAUDE.md\`. Honor them in your replies and any content you author. Relative file references below resolve against \`~/.claude/\` and point at the developer's global files, not at this project's context file. Where they conflict with KPM's operating rules (publishing consent, plan/proposal tools, export boundaries), KPM's rules win.
 
 ${content}
 `;
@@ -81,7 +81,7 @@ When creating implementation items, use clear verb-first titles, a one-sentence 
  * else.
  */
 const FOCUS_OPERATING_RULES = `# Operating Rules
-- This session is focused on one document. Direct file, shell, and git writes need the project's write grant; project files change through KPM's proposal tools.
+- This session is focused on one document. Direct file, shell, and git writes follow the user's permission settings; project files change through KPM's proposal tools.
 - Jira, Linear, Confluence, and GitHub exports must not leak KPM-local fields or @plan internals.
 - Plan data lives in KPM SQLite, not in connected repos.
 - If the user asks to change the plan, use KPM plan tools so changes flow through KPM's proposal and review path.
@@ -93,7 +93,7 @@ const CLAUDE_FOCUS_OPERATING_RULES = `# Operating Rules
 - Answer from the focused document first.
 - Use KPM project-file tools when you need other project documents.
 - Use Read/Grep/Glob for connected repo validation and cite file paths when you reference code.
-- Direct file, shell, and git writes need the project's write grant, requested on the first attempt. This focused session is for the document — do not change repo files unless the user asks.
+- Direct file, shell, and git writes follow the user's Claude Code permission settings. This focused session is for the document — do not change repo files unless the user asks.
 - To change project documents, use \`propose_document_edit\` or \`propose_document_create\`.
 - To change project context files, use \`propose_context_edit\`.
 - All document and context changes from this focused session must go through KPM review before applying.

@@ -29,7 +29,7 @@ interface GitPushToolDeps {
   requestWriteAccess: (request: GitPushConsentRequest) => Promise<WriteDecision>;
 }
 
-const TOOL_DESCRIPTION = `Push the checked-out branch of a connected repository to its remote, usually so a pull request can be opened. This is the only way to push: chat's shell has no network access or credentials, so git push in Bash fails. Pushes committed work only, so commit first. The branch is whatever is checked out and cannot be chosen; the first push sets its upstream. Refuses a detached HEAD, the default branch, and main, master, develop, and release. There is no force push: if the remote rejects the push as non-fast-forward, tell the user and let them decide. Asks for the project's write grant on first use.`;
+const TOOL_DESCRIPTION = `Push the checked-out branch of a connected repository to its remote, usually so a pull request can be opened. Prefer it to git push in Bash, which may have no network access or credentials. Pushes committed work only, so commit first. The branch is whatever is checked out and cannot be chosen; the first push sets its upstream. Refuses a detached HEAD, the default branch, and main, master, develop, and release. There is no force push: if the remote rejects the push as non-fast-forward, tell the user and let them decide. Asks for the project's publishing grant on first use.`;
 
 export function createGitPushTools(deps: GitPushToolDeps) {
   return [

@@ -9,6 +9,7 @@ const { runClaudeQuery, buildSdkOptions } = mocks;
 
 vi.mock('../../claude/runClaudeQuery', () => ({ runClaudeQuery: mocks.runClaudeQuery }));
 vi.mock('../../claude/sdkOptionsBuilder', () => ({ buildSdkOptions: mocks.buildSdkOptions }));
+vi.mock('../../claude/userPermissionMode', () => ({ userPermissionModeOptions: async () => ({}) }));
 vi.mock('../../claude/contextBuilders', () => ({
   createContextBuilder: () => () => ({ project: { id: 'p1', folder_path: '/tmp/p1' }, repos: [] }),
 }));

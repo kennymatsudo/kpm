@@ -35,7 +35,6 @@ import {
   recordPendingDocumentContent,
   type KpmToolProposal,
 } from '../../kpmTools/runtimeRegistry';
-import { projectWriteGrants } from '../../chat/writeGrants';
 import { buildFocusedReminder, buildFocusedSection } from '../../chat/prompts/focusedResources';
 import { type ServiceResult, type AsyncResult, success, failure } from '../result';
 import type { PlanContext } from '../../chat/prompts';
@@ -1276,15 +1275,6 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         ].sort((a, b) => a.name.localeCompare(b.name));
         emitAppEvent(mainWindow?.webContents, chatEvents.slashCommands, { projectId, chatSessionId, commands: merged });
       },
-      requestWriteConsent: () =>
-        projectWriteGrants.request(projectId, async () => {
-          const result = await promptUser(mainWindow, projectId, 'Write', {}, {
-            chatSessionId,
-            kind: 'write-access',
-          });
-          return result.behavior === 'allow';
-        }),
-      hasWriteAccess: () => projectWriteGrants.has(projectId),
       requestApproval: async (toolName, input) => {
         const result = await promptUser(mainWindow, projectId, toolName, input, {
           chatSessionId,
