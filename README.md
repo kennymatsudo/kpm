@@ -1,65 +1,52 @@
 # KPM
 
-![Platform: macOS](https://img.shields.io/badge/platform-macOS-lightgrey)
-![Electron](https://img.shields.io/badge/Electron-2B2E3A?logo=electron&logoColor=9FEAF9)
-![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![Vibe coded](https://img.shields.io/badge/vibe%20coded-100%25-ff69b4)
+KPM is a Mac app for planning and running work with coding agents. It runs Claude Code, Codex, and pi with your own settings, and gives your plans, tasks, pull requests, and tickets one place to live.
 
-KPM is a desktop app for planning and tracking software projects locally.
+## Why I built this
 
-## Why I built it
+I do most of my work through agents, and the agents were fine. The work around them wasn't.
 
-My planning docs were a mess. Running Claude Code or Codex inside a repo left me with markdown files scattered across projects, each one referenced by path and a bad commit away from landing in the source code. A central folder didn't help. I still couldn't see a plan as a whole, and I had nowhere to lay out tickets before writing them into a tracker.
+I re-explained my project at the start of every chat. My design docs lived in whichever repo I happened to be in, and a week later they no longer matched the code. My tickets fell behind too. A PR would merge and the ticket still said in progress. When I ran two agents at once, I lost track of which worktree had which change.
 
-KPM keeps every plan in one place, visual and out of the repos it describes, so I can shape the work before it becomes a ticket.
+KPM is what I use to stop doing that by hand. It's built for one person working across several repos. If you work in one repo and don't use a tracker, Claude Code or Codex in a terminal is simpler.
 
 ## What it does
 
-- Break a big idea into a structured plan of tasks and dependencies, and work it on a status board.
-- Keep every plan local, so nothing leaks into the repos it describes.
-- Draft and rearrange tickets before you commit them to a tracker.
-- Ask an AI that already sees your plan and repos, so you're not re-pasting context.
-- Hand a task to an agent that works in an isolated copy of the repo. Nothing it proposes lands until you approve it.
-- Open pull requests from the plan and diff, and sync back to your tracker when you choose.
+- Starts every chat from your plans, your tasks, and every repo the project touches. Old chats pick up where they left off.
+- Keeps plans in a project folder outside your repos, so they can't be committed by accident. Ask chat to check a doc against the code, and review its edits as a diff.
+- Links each task to its Jira or Linear ticket and its PR. When the code changes, chat proposes ticket updates and you push them together. Nothing syncs until you ask.
+- Runs each task in its own git worktree, so agents never touch your branch. You choose the steps, for example one agent writes the code, another reviews it, and the first fixes what the review found.
+- Watches your open PRs and collects new reviews, failing checks, and merges in one feed. It flags which review comments are worth acting on.
+- Runs saved prompts on a timer, like "check Slack and GitHub for news on this project."
 
-## Getting started
+The full list is in [`docs/features.md`](docs/features.md).
 
-KPM runs on macOS with Apple Silicon.
+## Install
 
 You'll need:
 
-- **Node.js 22** (22.19 or later, below 23; see `.nvmrc`)
-- **Git**: powers worktrees, diffs, and agent runs
-- **Claude Code**, installed and logged in. It runs every AI feature using your existing session, so no Anthropic API key is required.
-- **Xcode Command Line Tools**: compiles the native modules (`xcode-select --install`)
-
-Codex, Gemini, and pi are optional extra backends. You connect them inside the app when you want them.
+- A Mac with Apple Silicon
+- Node.js 22.19 or later, below 23. See `.nvmrc`.
+- Git
+- Claude Code, installed and logged in. KPM uses your session, so you don't need an Anthropic API key.
+- Xcode Command Line Tools: `xcode-select --install`
+- Optional: Codex, pi, or the Gemini CLI
 
 ```bash
 git clone https://github.com/kennymatsudo/kpm.git
 cd kpm
-make up   # installs dependencies on first run, then starts the app
+make up      # install and run in dev mode
+make app     # build and install to /Applications
 ```
 
-On first launch, macOS asks to allow keychain access. KPM uses it to store your tracker credentials. Approve it to turn on the Jira and Linear integrations.
-
-## Documentation
-
-| Topic             | File                                                 |
-| ----------------- | ---------------------------------------------------- |
-| Design principles | [`docs/core-principles.md`](docs/core-principles.md) |
-| Feature catalog   | [`docs/features.md`](docs/features.md)               |
-| Domain glossary   | [`CONTEXT.md`](CONTEXT.md)                           |
-| Changelog         | [`CHANGELOG.md`](CHANGELOG.md)                       |
+Update with `git pull && make app`. On first launch, KPM asks for keychain access to store your tracker credentials.
 
 ## Contributing
 
-KPM is Electron + React + TypeScript, with SQLite for storage and the Claude Agent SDK for AI features.
+KPM is Electron, React, TypeScript, and SQLite, with the Claude Agent SDK, Codex SDK, and pi for AI features. Read [`docs/core-principles.md`](docs/core-principles.md) first. If you work with a coding agent, point it at [`AGENTS.md`](AGENTS.md). Run `npm run check` before opening a PR against `main`.
 
-Start with [`docs/core-principles.md`](docs/core-principles.md). KPM's design rules are deliberate, and they override patterns you might infer from the code. Then run `npm run check` (typecheck + lint + tests) before opening a PR against `main`.
+Releases are SemVer tags on `main`, made with `make release:patch`, `make release:minor`, or `make release:major`. [`CONTEXT.md`](CONTEXT.md) defines the domain terms, and [`CHANGELOG.md`](CHANGELOG.md) has the history.
 
-If you're contributing with a coding agent (Claude Code, Codex, Cursor, etc.), point it at [`AGENTS.md`](AGENTS.md) first. It maps each kind of change to the right deep-dive doc, and it lists the invariants your agent must not break, which rule out ideas such as live tracker sync, multi-user features, and plan files committed inside a repo.
+## License
 
-### Releases
-
-Releases are version tags on `main`; no binaries are built or published, and updating an install is `git pull && make app`. `make release:patch`, `make release:minor`, and `make release:major` tag a release. Each first runs `make release-notes`, which writes `release-notes.md` from the commits since the last tag, and commits it. Versioning follows [SemVer](https://semver.org/): patch for fixes only, minor for additive features, major for breaking changes to data formats or user-facing flows.
+[MIT](LICENSE)
