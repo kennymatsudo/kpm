@@ -112,7 +112,7 @@ The chat system prompt is assembled from registry sections (grounding, tool guid
 - `src/main/services/core/PromptOverrideService.ts`, `TaskPromptTemplateService.ts`; `src/renderer/components/settings/PromptsSettings.tsx`
 
 ### KPM tools
-In-process tools chat uses to read and propose against KPM and connected systems: plan items and relations, plan changes, documents and AGENTS.md, project files (list, move, delete), git history and branches, `git_push`, pull requests (find, read with reviews and checks, create, edit, gather context for a description), Jira, Confluence, Storybook, and paging through oversized tool results. Mutating tools emit proposals, except `git_push` and the pull request writes, which act directly once the project write grant is given.
+In-process tools chat uses to read and propose against KPM and connected systems: plan items and relations, plan changes, documents and AGENTS.md, project files (list, move, delete), git history and branches, `git_push`, pull requests (find, read with reviews and checks, create, edit, gather context for a description), Jira (listed only once Jira credentials are stored), Confluence, and paging through oversized tool results. Claude loads the rarely used ones only when it searches for them. Mutating tools emit proposals, except `git_push` and the pull request writes, which act directly once the project write grant is given.
 - `src/main/kpmTools/tools/`, registered in `src/main/kpmTools/runtimeRegistry.ts`; documented to the model in `src/main/chat/prompts/toolDocs.ts`
 - See the "Add a Claude tool" recipe in the root `CLAUDE.md`
 
@@ -220,10 +220,6 @@ The top-bar "Jira Sync" / "Linear Sync" button opens the sync panel. Inbound, th
 Chat can list Jira projects, search with JQL, fetch an issue, and compare an issue against its linked plan item. Linear has no chat tools.
 - `src/main/kpmTools/tools/jira.ts`
 
-### Storybook
-A project can store a Storybook URL (Settings, Workflow, Storybook) so chat can list, inspect, and search components before planning UI work.
-- `src/main/kpmTools/tools/storybook.ts`, `src/renderer/components/settings/StorybookSettings.tsx`
-
 ---
 
 ## Actions
@@ -236,7 +232,7 @@ An action is a saved prompt plus how it starts and what it may do. Triggers: man
 
 ## Settings
 
-Settings tabs, in order: General (AI provider readiness, default chat provider and model, approval mode, global instructions), Appearance, Actions, Workflow (Tracker, Git branch naming, Storybook), Keyboard Shortcuts, Prompts, Playbooks, MCP Servers, Writes (project only), Usage. Tab identity lives in `src/renderer/components/settings/settingsTabs.tsx`; persisted keys in `src/shared/settingsRegistry.ts`.
+Settings tabs, in order: General (AI provider readiness, default chat provider and model, approval mode, global instructions), Appearance, Actions, Workflow (Tracker, Git branch naming), Keyboard Shortcuts, Prompts, Playbooks, MCP Servers, Writes (project only), Usage. Tab identity lives in `src/renderer/components/settings/settingsTabs.tsx`; persisted keys in `src/shared/settingsRegistry.ts`.
 
 ### Themes
 Built-in themes plus VS Code themes imported by URL, applied to the app, the editor, and diagrams, and set before first paint so launch doesn't flash.

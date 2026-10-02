@@ -9,7 +9,6 @@ function makeProject(): Project {
     name: 'Test Project',
     phase: 'planning',
     folder_path: '/tmp/test-project',
-    storybook_url: null,
     sort_order: 0,
     icon: null,
     created_at: '2026-01-01T00:00:00.000Z',

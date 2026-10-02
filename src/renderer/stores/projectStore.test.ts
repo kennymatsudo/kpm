@@ -32,28 +32,6 @@ describe('projectStore slices', () => {
     expect(store.getState().repoBranches).toEqual({});
   });
 
-  it('refreshes projects after updating the Storybook URL', async () => {
-    const refreshedProjects = [{
-      id: 'project-1',
-      name: 'Project One',
-      folder_path: '/tmp/project-one',
-      phase: 'discovery',
-      session_tokens: 0,
-      session_input_tokens: 0,
-      session_output_tokens: 0,
-      storybook_url: 'http://localhost:6006',
-    }];
-    api.storybook.updateUrl.mockResolvedValue({ success: true });
-    api.projects.list.mockResolvedValue(refreshedProjects);
-
-    const result = await store.getState().updateProjectStorybookUrl('project-1', 'http://localhost:6006');
-
-    expect(api.storybook.updateUrl).toHaveBeenCalledWith({ projectId: 'project-1', storybookUrl: 'http://localhost:6006' });
-    expect(api.projects.list).toHaveBeenCalled();
-    expect(result).toEqual(refreshedProjects);
-    expect(store.getState().projects).toEqual(refreshedProjects);
-  });
-
   it('adds repos through the resource domain and tracks their branches', async () => {
     const repos = [
       { id: 'repo-1', project_id: 'project-1', path: '/tmp/repo-1' },

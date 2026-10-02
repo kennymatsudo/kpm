@@ -243,11 +243,6 @@ export function createMockApi() {
       revokeAll: vi.fn().mockResolvedValue({ success: true }),
     },
 
-    storybook: {
-      updateUrl: vi.fn().mockResolvedValue({ success: true }),
-      testConnection: vi.fn().mockResolvedValue({ success: true, componentCount: 0 }),
-    },
-
     taskPromptTemplates: {
       list: vi.fn().mockResolvedValue({ success: true, templates: [] }),
       get: vi.fn().mockResolvedValue({ success: true, template: null }),

@@ -4771,6 +4771,13 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    id: 1132,
+    name: '132_drop_project_storybook_url',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec('ALTER TABLE projects DROP COLUMN storybook_url;');
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

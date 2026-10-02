@@ -46,7 +46,7 @@ class FakeAppServer {
 }
 
 function context(): PlanContext {
-  return { project: { id: 'project-1', name: 'Project', phase: 'discovery', folder_path: '/tmp/project', storybook_url: null, created_at: '2026-01-01T00:00:00.000Z', session_tokens: 0, session_input_tokens: 0, session_output_tokens: 0 }, repos: [], attachments: [], planItems: [], focusedResources: [] };
+  return { project: { id: 'project-1', name: 'Project', phase: 'discovery', folder_path: '/tmp/project', created_at: '2026-01-01T00:00:00.000Z', session_tokens: 0, session_input_tokens: 0, session_output_tokens: 0 }, repos: [], attachments: [], planItems: [], focusedResources: [] };
 }
 
 function sentMessages(onMessage: ReturnType<typeof vi.fn>): ProviderChatMessage[] {

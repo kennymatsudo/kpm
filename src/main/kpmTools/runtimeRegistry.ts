@@ -43,7 +43,6 @@ import { createPlanItemTools } from './tools/plan-items';
 import { createPlanRefTools } from './tools/plan-refs';
 import { createRelationTools } from './tools/relations';
 import { createSpillReadTools } from './tools/spill-read';
-import { createStorybookTools } from './tools/storybook';
 
 export { runWithToolExecutionContext, type KpmToolDefinition, type KpmToolRuntime } from './runtime';
 export { subscribeToKpmToolProposals, type KpmToolProposal, type PlanActionsEvent } from './proposals';
@@ -335,7 +334,6 @@ function buildToolGroups(): KpmToolGroup[] {
     group('plan-relations', MAIN_ONLY, ['plan_relations.read'], createRelationTools(planItemRepo)),
     group('plan-changes', MAIN_ONLY, ['plan_items.propose'], createPlanChangeTools(emitPlanActions, repoRepo, planItemRepo)),
     group('jira', MAIN_ONLY, ['integrations.read'], createJiraTools()),
-    group('storybook', MAIN_ONLY, ['integrations.read'], createStorybookTools(projectRepo)),
     group('project-context', ALL_CHAT_SCOPES, ['project_context.propose'], createContextFileEditTools(readProjectContextFileWithPending, emitContextFileUpdate)),
     group('document-read', ALL_CHAT_SCOPES, ['documents.read'], createDocumentReadTools(readProjectFileWithPending)),
     group('document-create', ALL_CHAT_SCOPES, ['documents.propose'], createDocumentCreateTools(emitDocumentUpdate)),

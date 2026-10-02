@@ -49,7 +49,6 @@ function makeContext(): PlanContext {
       name: 'Test Project',
       phase: 'discovery',
       folder_path: '/tmp/project',
-      storybook_url: null,
       created_at: '2026-01-01T00:00:00.000Z',
       session_tokens: 0,
       session_input_tokens: 0,

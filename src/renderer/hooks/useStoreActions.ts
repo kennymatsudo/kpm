@@ -25,8 +25,6 @@ export function useProjectDomainActions() {
     removeProject: state.removeProject,
     setCurrentProject: state.setCurrentProject,
     refreshProjects: state.refreshProjects,
-    updateProjectStorybookUrl: state.updateProjectStorybookUrl,
-    testStorybookConnection: state.testStorybookConnection,
     reset: state.reset,
     resetProjectState: state.resetProjectState,
   };

@@ -44,8 +44,6 @@ export interface ProjectSlice {
   removeProject: (projectId: string) => void;
   setCurrentProject: (projectId: string | null) => void;
   refreshProjects: () => Promise<Project[]>;
-  updateProjectStorybookUrl: (projectId: string, storybookUrl: string | null) => Promise<Project[]>;
-  testStorybookConnection: (url: string) => Promise<{ success: boolean; componentCount?: number; error?: string }>;
   reset: () => void;
   resetProjectState: () => void;  // Clears project-specific state while preserving project list
 }
@@ -127,7 +125,7 @@ export type ProjectDomainState = Pick<
   ProjectState,
   'projects' | 'currentProjectId' |
   'setProjects' | 'addProject' | 'removeProject' | 'setCurrentProject' |
-  'refreshProjects' | 'updateProjectStorybookUrl' | 'testStorybookConnection' |
+  'refreshProjects' |
   'reset' | 'resetProjectState'
 >;
 

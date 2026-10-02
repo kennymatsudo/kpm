@@ -45,7 +45,6 @@ interface PreparedStatements {
   insert: Statement;
   updateTokens: Statement;
   resetTokens: Statement;
-  updateStorybookUrl: Statement;
   updateContextDirectories: Statement;
   delete: Statement;
 }
@@ -85,9 +84,6 @@ export class ProjectRepository implements IProjectRepository {
           session_output_tokens = 0,
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
-      `),
-      updateStorybookUrl: db.prepare(`
-        UPDATE projects SET storybook_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
       `),
       updateContextDirectories: db.prepare(`
         UPDATE projects SET context_directories = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
@@ -156,10 +152,6 @@ export class ProjectRepository implements IProjectRepository {
 
   resetTokens(projectId: string): void {
     this.stmts.resetTokens.run(projectId);
-  }
-
-  updateStorybookUrl(projectId: string, url: string | null): void {
-    this.stmts.updateStorybookUrl.run(url, projectId);
   }
 
   updateContextDirectories(projectId: string, directories: Record<string, string[]>): void {

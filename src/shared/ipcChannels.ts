@@ -39,7 +39,6 @@ import { settingsEndpoints } from './ipc/settingsEndpoints';
 import { permissionEndpoints } from './ipc/permissionEndpoints';
 import { promptOverridesEndpoints } from './ipc/promptOverridesEndpoints';
 import { toolLogEndpoints } from './ipc/toolLogEndpoints';
-import { storybookEndpoints } from './ipc/storybookEndpoints';
 import { devSessionEndpoints } from './ipc/devSessionEndpoints';
 import { agentSessionEndpoints } from './ipc/agentSessionEndpoints';
 import { playbookEndpoints } from './ipc/playbookEndpoints';
@@ -112,7 +111,6 @@ const promptOverridesChannels = toNestedChannels(promptOverridesEndpoints);
 
 const toolLogChannels = toNestedChannels(toolLogEndpoints);
 
-const storybookChannels = toNestedChannels(storybookEndpoints);
 
 const devSessionChannels = toNestedChannels(devSessionEndpoints);
 
@@ -244,11 +242,6 @@ export const IPC_CHANNELS = {
   // Review Workflow
   // ===========================================================================
   review: reviewChannels,
-
-  // ===========================================================================
-  // Storybook
-  // ===========================================================================
-  storybook: storybookChannels,
 
   // ===========================================================================
   // Shell Operations

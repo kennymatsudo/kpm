@@ -34,11 +34,9 @@ export interface ProjectServiceDeps {
   /** Electron's userData directory — the root of KPM-managed project folders. */
   userDataPath: string;
   openPath: (targetPath: string) => Promise<string>;
-  fetchFn?: typeof fetch;
 }
 
 export function createProjectService(deps: ProjectServiceDeps) {
-  const fetchFn = deps.fetchFn ?? fetch;
 
   return {
     async create(input: CreateProjectInput): AsyncResult<Project> {
@@ -113,36 +111,6 @@ export function createProjectService(deps: ProjectServiceDeps) {
         return error ? failure(error) : success(undefined);
       } catch (error) {
         return failure(error instanceof Error ? error.message : String(error));
-      }
-    },
-
-    updateStorybookUrl(projectId: string, storybookUrl: string | null): ServiceResult<void> {
-      return wrap(() => {
-        deps.projects.updateStorybookUrl(projectId, storybookUrl);
-      });
-    },
-
-    async testStorybookConnection(url: string): AsyncResult<{ componentCount: number }> {
-      try {
-        const indexUrl = `${url.replace(/\/$/, '')}/index.json`;
-        const response = await fetchFn(indexUrl, {
-          headers: { Accept: 'application/json' },
-          signal: AbortSignal.timeout(10_000),
-        });
-
-        if (!response.ok) {
-          return failure(`Storybook returned ${response.status} ${response.statusText}`);
-        }
-
-        const data = await response.json() as { entries?: unknown; v?: number };
-        if (!data.entries || typeof data.v !== 'number') {
-          return failure('Response does not appear to be a valid Storybook index');
-        }
-
-        return success({ componentCount: Object.keys(data.entries).length });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
-        return failure(`Could not connect to Storybook: ${message}`);
       }
     },
   };

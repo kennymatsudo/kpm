@@ -4,18 +4,16 @@ import { useGeneralSettingsStore } from '../../stores';
 import { toast } from '../../stores/toastStore';
 import { SettingsSection, StatusBadge } from './SettingsSection';
 import { TrackerSettings } from './TrackerSettings';
-import { StorybookSettings } from './StorybookSettings';
 import {
   BRANCH_NAME_TEMPLATE_VARIABLES,
   previewBranchName,
 } from '../../../shared/branchNaming';
 
-type WorkflowSubTab = 'git' | 'tracker' | 'storybook';
+type WorkflowSubTab = 'git' | 'tracker';
 
 const SUB_TABS: { id: WorkflowSubTab; label: string; requiresProject?: boolean }[] = [
   { id: 'tracker', label: 'Tracker', requiresProject: true },
   { id: 'git', label: 'Git' },
-  { id: 'storybook', label: 'Storybook', requiresProject: true },
 ];
 
 interface Props {
@@ -64,9 +62,6 @@ export function WorkflowSettings({ currentProjectId }: Props) {
             <IssueAssignmentSection />
             {currentProjectId ? <TrackerSettings currentProjectId={currentProjectId} /> : <ProjectGatedMessage />}
           </div>
-        )}
-        {activeSubTab === 'storybook' && (
-          currentProjectId ? <StorybookSettings currentProjectId={currentProjectId} /> : <ProjectGatedMessage />
         )}
       </div>
     </div>

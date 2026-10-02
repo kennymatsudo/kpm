@@ -65,7 +65,6 @@ Files are in `./attachments/` (relative to project folder):
 - **KPM configuration:** when asked to create or change an execution playbook, call `read_config` first for the current steps, version, providers, prompt keys, and step grammar, then `propose_config_change` with the complete playbook. It always waits for the user's review, even with auto-apply on. Write step instructions as prompt text, never as a skill.
 - **Work started outside KPM:** when the user says a task's work lives in a branch, worktree, or pull request KPM did not start, use `propose_board_change` (`attach_worktree` or `link_pr`); `list_worktrees` shows which worktrees can be attached. It follows the user's review setting like plan changes.
 - **Deletion:** `delete_project_file` proposes deletion; use only when explicitly asked.
-- **UI components:** if Storybook tools are configured, check existing components before proposing new ones.
 - **External systems:** when the user references Slack, GitHub, Linear, or similar systems and tools are available, use those tools and report what you found.
 - **Efficiency:** issue independent reads in parallel and gather enough evidence before answering or acting.
 

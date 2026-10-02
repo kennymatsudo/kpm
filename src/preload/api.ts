@@ -40,7 +40,6 @@ import { settingsEndpoints } from '../shared/ipc/settingsEndpoints';
 import { permissionEndpoints } from '../shared/ipc/permissionEndpoints';
 import { promptOverridesEndpoints } from '../shared/ipc/promptOverridesEndpoints';
 import { toolLogEndpoints } from '../shared/ipc/toolLogEndpoints';
-import { storybookEndpoints } from '../shared/ipc/storybookEndpoints';
 import { devSessionEndpoints } from '../shared/ipc/devSessionEndpoints';
 import { agentSessionEndpoints } from '../shared/ipc/agentSessionEndpoints';
 import { playbookEndpoints } from '../shared/ipc/playbookEndpoints';
@@ -567,12 +566,6 @@ const menu = {
   },
 };
 
-const storybookInvoke = deriveDomainApi(storybookEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
-const storybook = {
-  updateUrl: storybookInvoke.updateUrl,
-  testConnection: storybookInvoke.testConnection,
-};
-
 const settingsInvoke = deriveDomainApi(settingsEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
 const settings = {
   anthropic: {
@@ -1088,7 +1081,6 @@ export const api = {
   contextFile,
   contextFiles,
   menu,
-  storybook,
   settings,
   customThemes,
   theme,
