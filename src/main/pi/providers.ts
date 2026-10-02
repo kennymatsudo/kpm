@@ -5,12 +5,13 @@
  * owns the classification, which must stay in the main process because it is
  * the decision, not the data.
  *
- * SAFETY-CRITICAL: `safe` gates whether a provider/model may ever be selected
- * for KPM's read-only main chat (P7). See `isPiProviderSafe` below for the
- * exact signal used and its limits.
+ * `safe` marks whether pi itself runs a provider's tool calls, so the user's
+ * pi extensions and KPM's active tool list apply to them. See `isPiProviderSafe`
+ * below for the exact signal used and its limits.
  */
 
 import { PI_UNRESOLVED_MODEL_ID, type PiProviderOption } from '../../shared/types';
+import { knownEfforts } from '../../shared/modelCatalog';
 import { readPiCatalog, type PiCatalogSnapshot } from './piCatalog';
 
 export type { PiProviderOption };
@@ -25,7 +26,7 @@ function modelContextWindow(model: { contextWindow?: number }): number | undefin
  * Providers shipped in pi-ai's own built-in catalog, plus providers shipped by
  * pi-coding-agent's built-in extensions (`llama.cpp`). The catalog was verified
  * by reading `builtinProviders()` in
- * `node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai/dist/providers/all.js`;
+ * `node_modules/@earendil-works/pi-ai/dist/providers/all.js`;
  * built-in extension providers were verified under `pi-coding-agent/dist/extensions`.
  * `builtinProviders()` is the registry, not `models.generated.js` — the latter
  * holds only providers that ship a static model list, so it omits gateway-driven
@@ -33,8 +34,8 @@ function modelContextWindow(model: { contextWindow?: number }): number | undefin
  * Every one of these models is driven through
  * one of pi-ai's own bundled API-dialect implementations (`anthropic-messages`,
  * `openai-codex-responses`, etc.) — pi's own `AgentSession` runs the ReAct
- * loop and executes tool calls itself for all of them, so KPM's
- * `buildToolCallGate` (in `PiChatSession.ts`) sees and gates every tool call.
+ * loop and executes tool calls itself for all of them, so every tool call
+ * goes through pi's own `tool_call` event, where the user's pi extensions see it.
  *
  * A provider NOT on this list is either unknown or was registered at runtime
  * by an installed pi extension via `ModelRegistry.registerProvider()` (e.g.
@@ -42,7 +43,7 @@ function modelContextWindow(model: { contextWindow?: number }): number | undefin
  * extension supply its own `streamSimple` implementation, which can run
  * arbitrary code — including driving its own embedded agent with full
  * read/write tool access — before ever handing a response back to pi. pi's
- * tool gate has no visibility into that code path. Such providers default to
+ * `tool_call` event has no visibility into that code path. Such providers default to
  * `safe: false` unless the user has explicitly trusted one (see
  * `USER_TRUSTED_PI_PROVIDERS` below) — `cursor` is currently trusted that way.
  *
@@ -50,8 +51,8 @@ function modelContextWindow(model: { contextWindow?: number }): number | undefin
  * catalog and pi-coding-agent's built-in extensions rather than read from the
  * SDK at runtime — `pi-coding-agent`'s public exports (`index.d.ts`) don't
  * re-export pi-ai's built-in provider catalog, and `@earendil-works/pi-ai`
- * isn't a direct KPM dependency (only nested under `pi-coding-agent`'s own
- * `node_modules`), so there's no import path that would keep this list in sync
+ * isn't a direct KPM dependency (only installed transitively by
+ * `pi-coding-agent`), so there's no import path that would keep this list in sync
  * automatically. It will silently miss a new built-in provider added in a
  * future `pi-coding-agent` upgrade (that
  * provider would default to `safe: false`, the conservative direction) and,
@@ -75,7 +76,8 @@ const KNOWN_NATIVE_PI_PROVIDERS = new Set<string>([
   'amazon-bedrock',
   'ant-ling',
   'anthropic',
-  'azure-openai-responses',
+  'azure',
+  'baseten',
   'cerebras',
   'cloudflare-ai-gateway',
   'cloudflare-workers-ai',
@@ -88,6 +90,7 @@ const KNOWN_NATIVE_PI_PROVIDERS = new Set<string>([
   'huggingface',
   'kimi-coding',
   'llama.cpp',
+  'meta',
   'minimax',
   'minimax-cn',
   'mistral',
@@ -101,8 +104,10 @@ const KNOWN_NATIVE_PI_PROVIDERS = new Set<string>([
   'openrouter',
   'qwen-token-plan',
   'qwen-token-plan-cn',
+  'qwen-token-plan-individual',
   'radius',
   'together',
+  'typesafe',
   'vercel-ai-gateway',
   'xai',
   'xiaomi',
@@ -117,8 +122,8 @@ const KNOWN_NATIVE_PI_PROVIDERS = new Set<string>([
  * Providers the user has explicitly chosen to trust despite NOT being driven
  * by pi-ai's native tool loop. Unlike `KNOWN_NATIVE_PI_PROVIDERS`, these are
  * not safe by construction: `cursor` runs its own embedded agent via
- * `streamSimple` that KPM's tool gate cannot see, so it can modify repo files
- * or run commands from chat, outside chat's read-only guarantee (P7). It is
+ * `streamSimple` that pi's `tool_call` event cannot see, so it can modify repo
+ * files or run commands outside the user's pi extensions. It is
  * listed here because the single user has accepted that tradeoff on their own
  * machine — this entry IS the trust decision, not a claim the provider is
  * gated. Removing `cursor` here restores the "runs its own agent" warning.
@@ -157,6 +162,7 @@ export function buildPiProviderOptions(catalog: PiCatalogSnapshot): PiProviderOp
 
     for (const model of models) {
       const contextWindow = modelContextWindow(model);
+      const [defaultThinkingLevel] = knownEfforts([model.defaultThinkingLevel]);
       options.push({
         provider,
         modelId: model.id,
@@ -164,6 +170,8 @@ export function buildPiProviderOptions(catalog: PiCatalogSnapshot): PiProviderOp
         label: `${displayName} — ${model.name}`,
         safe,
         ...(contextWindow ? { contextWindow } : {}),
+        ...(model.thinkingLevels ? { thinkingLevels: knownEfforts(model.thinkingLevels) } : {}),
+        ...(defaultThinkingLevel ? { defaultThinkingLevel } : {}),
         ...(`${provider}/${model.id}` === catalog.defaultSelector ? { isDefault: true } : {}),
       });
     }
@@ -173,7 +181,7 @@ export function buildPiProviderOptions(catalog: PiCatalogSnapshot): PiProviderOp
 
 /**
  * Enumerate the pi providers/models the user has configured and authenticated,
- * each classified safe/unsafe for KPM's read-only chat.
+ * each classified by whether pi runs its tool calls.
  *
  * The child process loads global/user pi extensions with the same trust
  * posture as a real chat session, so a provider registered at runtime by an

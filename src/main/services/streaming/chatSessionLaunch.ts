@@ -30,9 +30,9 @@ import { createTurnLifecycle, type TurnLifecycle } from './turnLifecycle';
 import { createTurnReport, type TurnReport } from './turnReport';
 import type { McpElicitationDecision, McpElicitationRequest } from './mcpElicitation';
 import type { ModelType } from '../../claude/sdkOptionsBuilder';
+import type { ChatModelSelection } from '../../chat/modelChoice';
 import type { PlanContext } from '../../chat/prompts';
-import type { WriteDecision } from '../../chat/writeGrants';
-import type { Activity, ChatChoiceEffort, ChatProvider } from '../../../shared/types';
+import type { Activity, ChatChoiceEffort } from '../../../shared/types';
 
 export type SessionState = 'idle' | 'connecting' | 'ready' | 'processing' | 'error' | 'closing';
 
@@ -42,17 +42,18 @@ export interface ManagedSession {
   projectId: string;
   session: IChatSession;
   state: SessionState;
-  provider: ChatProvider;
-  model: ModelType;
-  /** pi-only `"<provider>/<modelId>"` selector used by this native session. */
-  providerModel?: string;
+  selection: ChatModelSelection;
   effort?: ChatChoiceEffort | null;
   lastActivity: number;
   sessionId?: string; // SDK session ID for resume
   mcpHealthStatus: 'healthy' | 'degraded' | 'recovering'; // KPM MCP server health
   mcpRecoveryAttempts: number; // Consecutive failed reconnect attempts
-  /** Raw first user message before focused-resource context injection. */
-  titleSeed?: string;
+  /**
+   * The full Focused Selection block this live session last received. Chips
+   * stay attached across sends, so an identical block is replaced by a short
+   * reminder instead of being re-sent every turn. A new launch starts empty.
+   */
+  lastFocusedSection?: string;
   segmentState: SegmentState; // Track message segments for splitting bubbles
   /**
    * Maps SDK tool_use id → the Activity we emitted for it.
@@ -75,7 +76,7 @@ export interface ManagedSession {
   suppressLifecycleEventsOnEnd: boolean; // Suppress renderer lifecycle events when session ends
   /** Client ids for follow-ups sent while a turn is processing, and their acceptance/promotion state. */
   followUps: FollowUpQueue;
-  /** Actual model ID returned by the SDK (e.g. "claude-opus-4-8"). Set from the first assistant message each turn. */
+  /** Full model ID the SDK resolved the alias to. Set from the first assistant message each turn. */
   resolvedModel?: string;
   /**
    * True once a specific error banner has been surfaced for the in-flight turn
@@ -110,9 +111,6 @@ export interface ChatSessionHost {
   onReady: (sessionId: string, mcpStatus?: McpServerStatus[]) => void;
   onMcpError: (failedServers: McpServerStatus[]) => void;
   onSlashCommands: (commands: SlashCommand[], context: SlashCommandContext) => void;
-  /** The project write grant (P7). Asked on the first attempted write, not at launch. */
-  requestWriteConsent: () => Promise<WriteDecision>;
-  hasWriteAccess: () => boolean;
   /** Per-call approval for a provider that gates its own external tool calls. */
   requestApproval: (toolName: string, input: Record<string, unknown>) => Promise<boolean>;
   onElicitation: (
@@ -145,16 +143,12 @@ export interface ChatLaunchRequest {
   key: string;
   projectId: string;
   chatSessionId?: string;
-  provider: ChatProvider;
-  /** Claude's model. Other providers select with `providerModel`. */
-  model: ModelType;
-  providerModel?: string;
+  selection: ChatModelSelection;
   effort?: ChatChoiceEffort | null;
   context: PlanContext;
   resumeSessionId?: string;
   persistHistory: boolean;
   forceApprovalReview: boolean;
-  titleSeed?: string;
   mainWindow: BrowserWindow | null;
   /**
    * Resolved at emit time, not at launch: the window a session reports to can
@@ -213,41 +207,38 @@ export function buildChatSessionLaunch(
   request: ChatLaunchRequest,
   factories: ChatSessionFactories = defaultChatSessionFactories,
 ): { session: IChatSession; managed: ManagedSession } {
-  const { provider, context, chatSessionId, projectId, host } = request;
+  const { selection, context, chatSessionId, projectId, host } = request;
   const focus = Boolean(context.focusDocument);
 
-  const session = provider === 'codex'
+  const session = selection.provider === 'codex'
     ? factories.codex({
         context,
         chatSessionId,
         resumeThreadId: request.resumeSessionId,
-        model: request.providerModel,
+        model: selection.model,
         modelReasoningEffort: narrowEffort<CodexEffort>(CODEX_EFFORT_LEVELS, request.effort),
         onMessage: host.onMessage,
         onSessionEnd: host.onSessionEnd,
         onReady: host.onReady,
         registerMcpSession: () => registerCodexMcpSession({ projectId, chatSessionId, focus }),
-        requestWriteConsent: host.requestWriteConsent,
-        hasWriteAccess: host.hasWriteAccess,
         requestExternalApproval: host.requestApproval,
         onMcpElicitation: (elicitation) => host.onElicitation(elicitation),
       })
-    : provider === 'pi'
+    : selection.provider === 'pi'
     ? factories.pi({
         context,
         chatSessionId,
         resumeSessionId: request.resumeSessionId,
-        model: request.providerModel,
+        model: selection.model,
         thinkingLevel: request.effort ?? undefined,
         onMessage: host.onMessage,
         onSessionEnd: host.onSessionEnd,
         onReady: host.onReady,
         kpmTools: buildPiKpmTools({ focus, projectId, chatSessionId }),
-        requestWriteConsent: host.requestWriteConsent,
       })
     : factories.claude({
         sdkOptions: request.buildClaudeSdkOptions(context, {
-          model: request.model,
+          model: selection.model,
           effort: narrowEffort<ClaudeEffort>(CLAUDE_EFFORT_LEVELS, request.effort),
           resumeSessionId: request.resumeSessionId,
           mainWindow: request.mainWindow,
@@ -274,13 +265,10 @@ export function buildChatSessionLaunch(
       chatSessionId,
       session,
       state: 'connecting',
-      provider,
-      model: request.model,
-      providerModel: request.providerModel,
+      selection,
       effort: request.effort,
       lastActivity: now,
       turnStartedAt: now,
-      titleSeed: request.titleSeed,
       mcpHealthStatus: 'healthy',
       mcpRecoveryAttempts: 0,
       segmentState: {

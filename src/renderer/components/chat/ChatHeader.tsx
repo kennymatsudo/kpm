@@ -8,16 +8,16 @@ import { Tooltip } from '../ui/Tooltip';
 import { HEADER_ICON_BUTTON } from './headerControls';
 
 export function ChatHeader() {
-  const claudeSessionId = useChatStore((state) => {
+  const providerSessionId = useChatStore((state) => {
     const session = state.viewedSessionId
       ? state.sessions.get(state.viewedSessionId)
       : null;
-    return session?.claudeSessionId ?? null;
+    return session?.providerSessionId ?? null;
   });
 
   const handleCopySessionId = () => {
-    if (claudeSessionId) {
-      void copyToClipboard(claudeSessionId, 'Session ID');
+    if (providerSessionId) {
+      void copyToClipboard(providerSessionId, 'Session ID');
     }
   };
 
@@ -26,12 +26,12 @@ export function ChatHeader() {
       <SessionList />
       <div className="flex items-center gap-0.5 flex-shrink-0 ml-auto">
         <span className="mx-1 h-4 w-px bg-border-default flex-shrink-0" aria-hidden="true" />
-        {claudeSessionId && (
-          <Tooltip content={<span className="font-mono">Copy session ID {claudeSessionId}</span>}>
+        {providerSessionId && (
+          <Tooltip content={<span className="font-mono">Copy session ID {providerSessionId}</span>}>
             <button
               onClick={handleCopySessionId}
               className={HEADER_ICON_BUTTON}
-              aria-label={`Copy session id ${claudeSessionId}`}
+              aria-label={`Copy session id ${providerSessionId}`}
             >
               <HashIcon className="w-3.5 h-3.5" />
             </button>

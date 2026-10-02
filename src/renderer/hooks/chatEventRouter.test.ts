@@ -33,7 +33,9 @@ function makeSession(overrides: Partial<PerSessionState> = {}): PerSessionState 
     sessionNumber: 1,
     choice: null,
     title: null,
-    claudeSessionId: null,
+    firstMessage: null,
+    pendingTitle: null,
+    providerSessionId: null,
     mcpDegraded: false,
     mcpError: null,
     hydrated: true,
@@ -52,7 +54,6 @@ function makeChatState(overrides: Partial<ChatStoreView> = {}): ChatStoreView {
     setError: vi.fn(),
     setTokens: vi.fn(),
     addActivity: vi.fn(),
-    updateActivity: vi.fn(),
     setSuggestions: vi.fn(),
     setSlashCommands: vi.fn(),
     setSessionState: vi.fn(),
@@ -61,8 +62,9 @@ function makeChatState(overrides: Partial<ChatStoreView> = {}): ChatStoreView {
     markSessionInactive: vi.fn(),
     setViewedSession: vi.fn(),
     getOrCreateSession: vi.fn(() => makeSession()),
-    setClaudeSessionId: vi.fn(),
+    setProviderSessionId: vi.fn(),
     setSessionTitle: vi.fn(),
+    loadTabLabels: vi.fn(async () => {}),
     setMcpStatus: vi.fn(),
     setBackgroundTasks: vi.fn(),
     setLastTurnUsage: vi.fn(),
@@ -131,43 +133,6 @@ describe('event routing', () => {
     router.handlers.onChunk({ projectId: OTHER_PROJECT_ID, chatSessionId: SESSION_ID, text: 'x' });
 
     expect(chatState.appendChunk).not.toHaveBeenCalled();
-  });
-
-  it('routes result-side activity updates (with diff data) to updateActivity, not addActivity', () => {
-    const chatState = makeChatState();
-    const { deps } = makeDeps(chatState);
-    const router = createChatEventRouter(deps);
-
-    const baseActivity = { id: 'a1', type: 'tool', name: 'Edit', status: 'complete' };
-    router.handlers.onActivity({
-      projectId: PROJECT_ID,
-      chatSessionId: SESSION_ID,
-      activity: { ...baseActivity, diffStats: { additions: 1, deletions: 0 } } as never,
-    });
-    router.handlers.onActivity({
-      projectId: PROJECT_ID,
-      chatSessionId: SESSION_ID,
-      activity: baseActivity as never,
-    });
-
-    expect(chatState.updateActivity).toHaveBeenCalledTimes(1);
-    expect(chatState.addActivity).toHaveBeenCalledTimes(1);
-  });
-
-  it('treats a "still responding" error as a retry, not a failure', () => {
-    const chatState = makeChatState();
-    const { deps } = makeDeps(chatState);
-    const router = createChatEventRouter(deps);
-
-    router.handlers.onError({
-      projectId: PROJECT_ID,
-      chatSessionId: SESSION_ID,
-      error: 'Claude is still responding',
-    });
-
-    expect(chatState.setRetrying).toHaveBeenCalledWith(SESSION_ID);
-    expect(chatState.setSessionState).toHaveBeenCalledWith(SESSION_ID, 'processing');
-    expect(chatState.setError).not.toHaveBeenCalled();
   });
 
   it('falls back to the viewed session for errors without a chatSessionId', () => {
@@ -357,11 +322,16 @@ describe('approval event buffering', () => {
     const router = createChatEventRouter(deps);
     const actions = [{ type: 'update_item', item_id: 'x' } as never];
 
-    router.handlers.onPlanActions({ projectId: PROJECT_ID, actions });
-    router.handlers.onFileUpdate({ projectId: PROJECT_ID, filePath: 'notes.md', content: 'new', oldContent: 'old' });
-    router.handlers.onFileUpdate({ projectId: PROJECT_ID, filePath: 'AGENTS.md', content: 'ctx', oldContent: 'old ctx' });
-    router.handlers.onFileMove({ projectId: PROJECT_ID, sourcePath: 'draft.md', targetPath: 'archive/draft.md' });
-    router.handlers.onFileDelete({ projectId: PROJECT_ID, path: 'old.md', isDirectory: false });
+    const configChange = { kind: 'playbook', op: 'create', before: null, after: { id: 'p' } } as never;
+    const boardChange = { kind: 'link_pr', planItemId: 'item-1' } as never;
+
+    router.handlers.onProposal({ kind: 'plan-actions', projectId: PROJECT_ID, actions });
+    router.handlers.onProposal({ kind: 'file-update', projectId: PROJECT_ID, filePath: 'notes.md', content: 'new', oldContent: 'old' });
+    router.handlers.onProposal({ kind: 'file-update', projectId: PROJECT_ID, filePath: 'AGENTS.md', content: 'ctx', oldContent: 'old ctx' });
+    router.handlers.onProposal({ kind: 'file-move', projectId: PROJECT_ID, sourcePath: 'draft.md', targetPath: 'archive/draft.md' });
+    router.handlers.onProposal({ kind: 'file-delete', projectId: PROJECT_ID, path: 'old.md', isDirectory: false });
+    router.handlers.onProposal({ kind: 'config-change', projectId: PROJECT_ID, change: configChange });
+    router.handlers.onProposal({ kind: 'board-change', projectId: PROJECT_ID, change: boardChange });
 
     expect(approvalQueue.propose).toHaveBeenCalledWith({ type: 'plan-actions', projectId: PROJECT_ID, actions });
     expect(approvalQueue.propose).toHaveBeenCalledWith(
@@ -372,6 +342,20 @@ describe('approval event buffering', () => {
     );
     expect(approvalQueue.propose).toHaveBeenCalledWith({ type: 'move', projectId: PROJECT_ID, sourcePath: 'draft.md', targetPath: 'archive/draft.md' });
     expect(approvalQueue.propose).toHaveBeenCalledWith({ type: 'delete', projectId: PROJECT_ID, filePath: 'old.md', isDirectory: false });
+    expect(approvalQueue.propose).toHaveBeenCalledWith({ type: 'config', projectId: PROJECT_ID, change: configChange });
+    expect(approvalQueue.propose).toHaveBeenCalledWith({ type: 'board', projectId: PROJECT_ID, change: boardChange });
+  });
+
+  it('forces review on a file update that asks for it', () => {
+    const { deps, approvalQueue } = makeDeps(makeChatState());
+    const router = createChatEventRouter(deps);
+
+    router.handlers.onProposal({ kind: 'file-update', projectId: PROJECT_ID, filePath: 'notes.md', content: 'new', oldContent: 'old', forceReview: true });
+
+    expect(approvalQueue.propose).toHaveBeenCalledWith(
+      { type: 'document', projectId: PROJECT_ID, filePath: 'notes.md', content: 'new', oldContent: 'old' },
+      { policy: 'review_required' },
+    );
   });
 
   it('emits chat-file-updated after processing a file update', () => {
@@ -380,7 +364,7 @@ describe('approval event buffering', () => {
     const router = createChatEventRouter(deps);
 
     const data = { projectId: PROJECT_ID, filePath: 'notes.md', content: 'new', oldContent: 'old' };
-    router.handlers.onFileUpdate(data);
+    router.handlers.onProposal({ kind: 'file-update', ...data });
 
     expect(approvalQueue.propose).toHaveBeenCalledWith(
       { type: 'document', projectId: PROJECT_ID, filePath: 'notes.md', content: 'new', oldContent: 'old' }, undefined,
@@ -395,14 +379,13 @@ describe('approval event buffering', () => {
     const routerA = createChatEventRouter(depsA);
 
     const planActionsData = {
+      kind: 'plan-actions' as const,
       projectId: OTHER_PROJECT_ID,
       actions: [{ type: 'update_item', item_id: 'x' } as never],
     };
-    const fileMoveData = { projectId: OTHER_PROJECT_ID, sourcePath: 'draft.md', targetPath: 'archive/draft.md' };
-    const fileDeleteData = { projectId: OTHER_PROJECT_ID, path: 'old.md', isDirectory: false };
-    routerA.handlers.onPlanActions(planActionsData);
-    routerA.handlers.onFileMove(fileMoveData);
-    routerA.handlers.onFileDelete(fileDeleteData);
+    routerA.handlers.onProposal(planActionsData);
+    routerA.handlers.onProposal({ kind: 'file-move', projectId: OTHER_PROJECT_ID, sourcePath: 'draft.md', targetPath: 'archive/draft.md' });
+    routerA.handlers.onProposal({ kind: 'file-delete', projectId: OTHER_PROJECT_ID, path: 'old.md', isDirectory: false });
     expect(buffer.get(OTHER_PROJECT_ID)).toHaveLength(3);
 
     const chatStateB = makeChatState();
@@ -425,7 +408,7 @@ describe('approval event buffering', () => {
     const { deps } = makeDeps(chatState, { buffer });
     const router = createChatEventRouter(deps);
 
-    router.handlers.onPlanActions({ projectId: OTHER_PROJECT_ID, actions: [] });
+    router.handlers.onProposal({ kind: 'plan-actions', projectId: OTHER_PROJECT_ID, actions: [] });
 
     expect(buffer.size).toBe(0);
   });
@@ -438,8 +421,8 @@ describe('initialize', () => {
     services.getActiveChatSessions.mockResolvedValue({
       success: true,
       sessions: [
-        { chatSessionId: 's-live', scope: 'main', state: 'processing', title: 'Refactor plan' },
-        { chatSessionId: 's-focus', scope: 'focus_document', state: 'ready', title: null },
+        { chatSessionId: 's-live', scope: 'main', state: 'processing', isProcessing: true, title: 'Refactor plan' },
+        { chatSessionId: 's-focus', scope: 'focus_document', state: 'ready', isProcessing: false, title: null },
       ],
     });
     const router = createChatEventRouter(deps);
@@ -467,6 +450,7 @@ describe('initialize', () => {
           chatSessionId: 's-live',
           scope: 'main',
           state: 'processing',
+          isProcessing: true,
           title: null,
           partialResponse: 'Half an answ',
           partialActivities: [activity],
@@ -485,7 +469,7 @@ describe('initialize', () => {
     const { deps, services } = makeDeps(chatState);
     services.getActiveChatSessions.mockResolvedValue({
       success: true,
-      sessions: [{ chatSessionId: 's-idle', scope: 'main', state: 'ready', title: null }],
+      sessions: [{ chatSessionId: 's-idle', scope: 'main', state: 'ready', isProcessing: false, title: null }],
     });
     const router = createChatEventRouter(deps);
 
@@ -499,7 +483,7 @@ describe('initialize', () => {
     const { deps, services } = makeDeps(chatState);
     services.getActiveChatSessions.mockResolvedValue({
       success: true,
-      sessions: [{ chatSessionId: 's-live', scope: 'main', state: 'ready', title: null }],
+      sessions: [{ chatSessionId: 's-live', scope: 'main', state: 'ready', isProcessing: false, title: null }],
     });
     const router = createChatEventRouter(deps);
 

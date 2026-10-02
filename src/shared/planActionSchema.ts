@@ -61,7 +61,7 @@ export const PLAN_ACTION_REGISTRY = {
       .string()
       .max(WORK_BRIEF_LIMITS.description)
       .optional()
-      .describe('Rationale and context; synced to Jira or Linear when linked'),
+      .describe('Why the work matters, in two to four sentences of plain prose for a product manager or a developer new to the codebase: the problem, who it affects, what changes for them, and any alternative already rejected. Synced to Jira or Linear when linked.'),
     intent: z
       .string()
       .max(WORK_BRIEF_LIMITS.intent)
@@ -72,7 +72,7 @@ export const PLAN_ACTION_REGISTRY = {
       .max(WORK_BRIEF_LIMITS.criteria)
       .optional()
       .describe('Testable checklist the implementation must satisfy'),
-    source_document_id: z.string().optional().describe('KPM document ID this item was extracted from, when applicable'),
+    source_document_id: z.string().optional().describe('Project-relative path of the document this item was extracted from, when applicable'),
     label: planItemLabel.optional().describe('Plan item type label'),
     parent_id: z.string().nullable().describe('Parent item ID, placeholder such as $1, or null for root'),
     primary_repo_id: connectedRepoIdSchema
@@ -104,16 +104,16 @@ export const PLAN_ACTION_REGISTRY = {
     type: z.literal('add_dependency'),
     from_id: z.string(),
     to_id: z.string(),
-    relation_type: relationType,
+    relation_type: relationType.describe('Reads "from_id relation_type to_id": blocks means from_id blocks to_id'),
   }), { refs: [itemRef('from_id'), itemRef('to_id')] }),
   remove_dependency: action(z.object({
     type: z.literal('remove_dependency'),
-    relation_id: z.string(),
+    relation_id: z.string().describe('relation_id from get_enriched_relations'),
   }), { refs: [{ field: 'relation_id', kind: 'relation', placeholders: 'rejected' }] }),
   reorder: action(z.object({
     type: z.literal('reorder'),
     item_id: z.string(),
-    after_item_id: z.string().nullable(),
+    after_item_id: z.string().nullable().describe('Sibling to place item_id after; null moves it first'),
   }), { refs: [itemRef('item_id'), itemRef('after_item_id')] }),
   update_item: action(z.object({
     type: z.literal('update_item'),
@@ -135,11 +135,11 @@ export const PLAN_ACTION_REGISTRY = {
     type: z.literal('delete_item'),
     item_id: z.string(),
     /** Absent means orphan the descendants, matching the delete dialog's default button. */
-    cascade: z.boolean().optional(),
+    cascade: z.boolean().optional().describe('true deletes the whole subtree; omitted or false leaves the children as root items'),
   }), { refs: [itemRef('item_id')] }),
   queue_for_tracker: action(z.object({
     type: z.literal('queue_for_tracker'),
-    item_ids: z.array(z.string()),
+    item_ids: z.array(z.string()).describe('Items to queue for export to the project\'s linked Jira or Linear project'),
   }), { refs: [itemRef('item_ids')] }),
 } as const;
 

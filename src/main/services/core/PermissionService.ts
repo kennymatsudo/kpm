@@ -8,9 +8,9 @@ export interface PermissionServiceDeps {
 }
 
 /**
- * Owns the project write grant. The in-memory grant is the hot-path read (it
- * is consulted on every tool call) and the table is what makes it outlive a
- * restart, so both move together through here.
+ * Owns the project publishing grant. The in-memory grant is the fast read
+ * (consulted when git_push or a pull request tool runs) and the table is what
+ * makes it outlive a restart, so both move together through here.
  */
 export function createPermissionService(deps: PermissionServiceDeps) {
   const grants = deps.grants ?? projectWriteGrants;

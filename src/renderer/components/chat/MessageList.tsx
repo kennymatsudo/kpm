@@ -13,24 +13,19 @@ import { useChatStore, usePermissionStore, type Activity, type MessageSegment } 
 import type { Message } from '../../stores/chat';
 import type { AgentBackgroundTask } from '../../../shared/types';
 import { parseUserMessage } from '../../utils/messageFormatter';
-import { Markdown } from 'markdown-to-jsx';
-import {
-  growingBlockMarkdownOptions,
-  markdownOptions,
-  transformPlanRefs,
-} from '../../utils/markdown';
-import { splitMarkdownBlocks } from '../../utils/markdownBlocks';
+import { StaticMarkdown, StreamingMarkdown } from './StreamingMarkdown';
 import { CopyIcon, CheckIcon, CloseIcon } from '../icons';
 import { PermissionPrompt } from '../permission/PermissionPrompt';
 import { ProcessTimeline } from './ProcessTimeline';
 import { BackgroundTaskStrip } from './BackgroundTaskStrip';
 import { Tooltip } from '../ui/Tooltip';
 import { AttachmentChip } from './AttachmentChip';
-import { formatModel } from '../../utils/usageFormatters';
+import { useRecordedModelName } from '../../stores/modelCatalogStore';
 import { buildTurnRenderPlan, type TurnRenderNode } from './turnRenderPlan';
 import { sessionModelId } from '../../stores/chat/chatChoice';
 import { canMergeAssistantTurn } from '../../stores/chat/messageMerge';
 import { prefersReducedMotion } from '../../utils/reducedMotion';
+import { findPinnedPromptId, type TranscriptRow } from './pinnedPrompt';
 
 /** Extract text content from message segments for copy/display */
 function getTextContent(segments: MessageSegment[]): string {
@@ -48,7 +43,7 @@ const CHECKPOINT_GAP_MIN_MS = 1_500;
 /** Muted inline divider marking a merged turn boundary — carries the "time is passing" signal that a repeated header used to provide. */
 const CheckpointDivider = memo(function CheckpointDivider({ gapMs, model }: { gapMs: number | null; model?: string }) {
   const durationLabel = gapMs != null && gapMs >= CHECKPOINT_GAP_MIN_MS ? formatTurnDuration(gapMs) : null;
-  const modelLabel = formatModelLabel(model);
+  const modelLabel = useModelLabel(model);
   if (!durationLabel && !modelLabel) return null;
   const timeText = durationLabel
     ? gapMs != null && gapMs >= CHECKPOINT_GAP_DIVIDER_MS
@@ -257,43 +252,6 @@ export const AssistantMessageContent = memo(function AssistantMessageContent({
   );
 });
 
-/** One blank-line-delimited markdown block. Memoized so a block whose text
- * hasn't changed since the last flush skips re-parsing — only the growing
- * tail block re-parses as streamed text appends. */
-const MarkdownBlock = memo(function MarkdownBlock({
-  block,
-  growing,
-}: {
-  block: string;
-  growing?: boolean;
-}) {
-  return (
-    <Markdown options={growing ? growingBlockMarkdownOptions : markdownOptions}>
-      {transformPlanRefs(block)}
-    </Markdown>
-  );
-});
-
-/** Markdown for a still-growing text group. Splits the accumulated content
- * into blocks and renders each through its own memoized `<Markdown>` call, so
- * a buffer flush re-parses only the tail block instead of the full string. */
-const StreamingMarkdown = memo(function StreamingMarkdown({ content }: { content: string }) {
-  const blocks = useMemo(() => splitMarkdownBlocks(content), [content]);
-
-  return (
-    <>
-      {blocks.map((block, idx) => (
-        <MarkdownBlock key={idx} block={block} growing={idx === blocks.length - 1} />
-      ))}
-    </>
-  );
-});
-
-/** Markdown for a text group that has stopped growing. */
-const StaticMarkdown = memo(function StaticMarkdown({ content }: { content: string }) {
-  return <Markdown options={markdownOptions}>{transformPlanRefs(content)}</Markdown>;
-});
-
 /** One prose node. Owns the wrapper both the streaming and the finalized
  * render share, so a turn's markup does not change shape when it finalizes;
  * `appending` only picks the block-splitting renderer for the one node that is
@@ -473,9 +431,9 @@ function formatTurnDuration(ms: number | undefined): string | null {
 }
 
 /** Friendly model label derived from the model id stamped on the message. */
-function formatModelLabel(model: string | undefined): string | null {
-  if (!model) return null;
-  return formatModel(model).toLowerCase();
+function useModelLabel(model: string | undefined): string | null {
+  const recordedModelName = useRecordedModelName();
+  return model ? recordedModelName(model).toLowerCase() : null;
 }
 
 /** What answered, on what model, for how long, and when.
@@ -495,7 +453,7 @@ const AssistantCaption = memo(function AssistantCaption({
   /** Omitted while the turn is still streaming, when there is nothing final to copy. */
   copyContent?: string;
 }) {
-  const modelLabel = formatModelLabel(model);
+  const modelLabel = useModelLabel(model);
   const durationLabel = formatTurnDuration(durationMs);
   return (
     <div className="flex h-6 items-center gap-2 font-mono text-tiny text-text-muted">
@@ -604,13 +562,15 @@ export const MessageRow = memo(function MessageRow({
         </div>
       )}
 
-      <div
-        className={`chat-message-content chat-note text-text-secondary whitespace-pre-wrap ${
-          awaitingDelivery ? 'chat-note-queued' : ''
-        }`}
-      >
-        <UserMessageText content={userText} />
-      </div>
+      {userText && (
+        <div
+          className={`chat-message-content chat-note text-text-secondary whitespace-pre-wrap ${
+            awaitingDelivery ? 'chat-note-queued' : ''
+          }`}
+        >
+          <UserMessageText content={userText} />
+        </div>
+      )}
 
       {message.followUp && (
         <div className="mt-1 flex items-center gap-2 text-xs text-text-muted">
@@ -635,6 +595,54 @@ export const MessageRow = memo(function MessageRow({
       )}
 
       <UserCaption timestamp={message.timestamp} copyContent={userText} />
+    </div>
+  );
+});
+
+/** The question behind the answer being read, held at the top of the
+ * transcript once its own note has scrolled away. Clicking it scrolls back to
+ * that note. */
+const PinnedPrompt = memo(function PinnedPrompt({
+  message,
+  scrollbarWidth,
+  onJump,
+}: {
+  message: Message;
+  scrollbarWidth: number;
+  onJump: () => void;
+}) {
+  const text = useMemo(() => {
+    const content = getTextContent(message.segments);
+    if (message.attachments && message.attachments.length > 0) return content;
+    return parseUserMessage(content).cleanContent || content;
+  }, [message.segments, message.attachments]);
+
+  // Filled like the note it stands in for, and shadowed rather than ruled so
+  // the answer reads as scrolling under it instead of continuing from it.
+  return (
+    <div
+      className="absolute top-0 left-0 px-3 py-1.5 bg-surface-3 shadow-md"
+      style={{ right: scrollbarWidth }}
+    >
+      <Tooltip
+        content={
+          <div className="max-w-md whitespace-pre-wrap line-clamp-[12]">{text}</div>
+        }
+      >
+        <button
+          type="button"
+          onClick={onJump}
+          className="w-full flex items-baseline gap-2 text-left rounded-sm text-xs text-text-secondary hover:text-text-primary transition-colors"
+          aria-label="Scroll to your message"
+        >
+          <span className="flex-shrink-0 font-mono text-tiny text-text-muted">
+            you · {formatClockTime(message.timestamp)}
+          </span>
+          <span className="min-w-0 truncate">
+            <UserMessageText content={text} />
+          </span>
+        </button>
+      </Tooltip>
     </div>
   );
 });
@@ -744,6 +752,8 @@ export function MessageList({
   const streamStartedAt = viewedSession?.streamStartedAt ?? null;
 
   const listRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const rowsRef = useRef<TranscriptRow[]>([]);
   const messageHeightsRef = useRef<Map<string, number>>(new Map());
   const isInitialMount = useRef(true);
   const prevMessagesRef = useRef(messages);
@@ -758,6 +768,17 @@ export function MessageList({
   const [viewportHeight, setViewportHeight] = useState(0);
   const [measurementVersion, setMeasurementVersion] = useState(0);
   const [timeNow, setTimeNow] = useState(() => Date.now());
+  const [pinnedPromptId, setPinnedPromptId] = useState<string | null>(null);
+  const [scrollbarWidth, setScrollbarWidth] = useState(0);
+
+  // Row tops are relative to the content box, which the scroller's top
+  // padding pushes down, so the viewport top is translated into that frame.
+  const updatePinnedPrompt = useCallback(() => {
+    const list = listRef.current;
+    const content = contentRef.current;
+    if (!list || !content) return;
+    setPinnedPromptId(findPinnedPromptId(rowsRef.current, list.scrollTop - content.offsetTop));
+  }, []);
 
   useEffect(() => {
     if (!isStreaming) return;
@@ -790,7 +811,8 @@ export function MessageList({
     // the preference has to be answered in the call itself or a long scroll
     // still animates for someone who asked it not to.
     const effective = behavior === 'smooth' && prefersReducedMotion() ? 'auto' : behavior;
-    if (effective === 'auto') {
+    // `scrollTop` only feeds the virtualizer, so short lists skip the re-render.
+    if (effective === 'auto' && staticMessages.length >= VIRTUALIZATION_MIN_MESSAGES) {
       setScrollTop(Math.max(0, list.scrollHeight - list.clientHeight));
     }
     list.scrollTo({ top: list.scrollHeight, behavior: effective });
@@ -803,16 +825,17 @@ export function MessageList({
     return list.scrollHeight - (list.scrollTop + list.clientHeight) <= threshold;
   };
 
-  // `scrollTop` only feeds the virtualizer's visible-window math, so short
-  // conversations never need it, and long ones need it at most once a frame —
-  // writing it on every scroll event re-renders the whole list per event.
+  // Scroll position is read at most once a frame — writing it on every scroll
+  // event re-renders the whole list per event. `scrollTop` only feeds the
+  // virtualizer's visible-window math, so short conversations skip it.
   const scrollFrameRef = useRef<number | null>(null);
   const trackScrollTop = (list: HTMLDivElement) => {
-    if (staticMessages.length < VIRTUALIZATION_MIN_MESSAGES) return;
     if (scrollFrameRef.current !== null) return;
+    const virtualized = staticMessages.length >= VIRTUALIZATION_MIN_MESSAGES;
     scrollFrameRef.current = requestAnimationFrame(() => {
       scrollFrameRef.current = null;
-      setScrollTop(list.scrollTop);
+      if (virtualized) setScrollTop(list.scrollTop);
+      updatePinnedPrompt();
     });
   };
 
@@ -842,6 +865,7 @@ export function MessageList({
 
     const updateViewport = () => {
       setViewportHeight(list.clientHeight);
+      setScrollbarWidth(list.offsetWidth - list.clientWidth);
     };
 
     updateViewport();
@@ -874,7 +898,7 @@ export function MessageList({
     }
   }, [messages]);
 
-  const { totalStaticHeight, virtualizedMessages } = useMemo(() => {
+  const { totalStaticHeight, virtualizedMessages, rows } = useMemo(() => {
     let runningTop = 0;
     const measurements = staticMessages.map((message) => {
       const measuredHeight =
@@ -899,6 +923,7 @@ export function MessageList({
       return {
         totalStaticHeight: runningTop,
         virtualizedMessages: measurements,
+        rows: measurements,
       };
     }
 
@@ -911,8 +936,36 @@ export function MessageList({
     return {
       totalStaticHeight: runningTop,
       virtualizedMessages: visibleItems,
+      rows: measurements,
     };
   }, [staticMessages, measurementVersion, scrollTop, viewportHeight]);
+
+  // Rows move without a scroll event when a turn above the viewport grows or a
+  // late measurement lands, so the pin is re-read whenever the rows change.
+  useLayoutEffect(() => {
+    rowsRef.current = rows.map(({ message, top, height }) => ({
+      id: message.id,
+      role: message.role,
+      top,
+      height,
+    }));
+    updatePinnedPrompt();
+  }, [rows, updatePinnedPrompt]);
+
+  const pinnedPrompt = pinnedPromptId
+    ? messages.find((message) => message.id === pinnedPromptId) ?? null
+    : null;
+
+  const jumpToPinnedPrompt = () => {
+    const list = listRef.current;
+    const content = contentRef.current;
+    const row = rowsRef.current.find((r) => r.id === pinnedPromptId);
+    if (!list || !content || !row) return;
+    list.scrollTo({
+      top: content.offsetTop + row.top,
+      behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+    });
+  };
 
   // Smart autoscroll:
   // - Follow while user is at bottom
@@ -997,7 +1050,7 @@ export function MessageList({
         className="h-full overflow-y-auto px-3 pt-3 pb-10"
         style={{ scrollbarGutter: 'stable' }}
       >
-        <div className="relative" style={{ height: totalStaticHeight }}>
+        <div ref={contentRef} className="relative" style={{ height: totalStaticHeight }}>
           {virtualizedMessages.map(({ message, top }) => (
             <VirtualizedMessageRow
               key={message.id}
@@ -1039,6 +1092,14 @@ export function MessageList({
           <TurnError error={error} onRetry={onRetry} onDismiss={onDismissError} />
         )}
       </div>
+
+      {pinnedPrompt && (
+        <PinnedPrompt
+          message={pinnedPrompt}
+          scrollbarWidth={scrollbarWidth}
+          onJump={jumpToPinnedPrompt}
+        />
+      )}
 
       {/* Only the control itself takes pointer events: a strip across the foot
           of the scroller would swallow selection and link clicks on whatever

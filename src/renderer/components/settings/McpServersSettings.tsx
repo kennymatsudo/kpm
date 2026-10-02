@@ -55,7 +55,7 @@ export function McpServersSettings({ currentProjectId }: { currentProjectId?: st
       <div>
         <h3 className="text-base font-semibold text-text-primary">MCP Servers</h3>
         <p className="text-sm text-text-secondary mt-1">
-          Choose which MCP servers are available in new chat sessions.
+          MCP servers and plugins available in new chat sessions.
         </p>
       </div>
 
@@ -110,18 +110,11 @@ export function McpServersSettings({ currentProjectId }: { currentProjectId?: st
           {hasUserServers && (
             <ServerSection
               title="User Servers"
-              description={<>Configured via <code className="text-xs bg-surface-3 px-1 py-0.5 rounded">claude mcp add</code>.</>}
+              description={<>Available in every Claude chat. Add or remove them with <code className="text-xs bg-surface-3 px-1 py-0.5 rounded">claude mcp add</code> and <code className="text-xs bg-surface-3 px-1 py-0.5 rounded">claude mcp remove</code>.</>}
               icon={<UserIcon />}
             >
               {userServers.map(server => (
-                <ToggleableServerRow
-                  key={server.name}
-                  name={server.name}
-                  detail={server.type}
-                  isEnabled={preferences[`user:${server.name}`] === true}
-                  isToggling={togglingServerName === `user:${server.name}`}
-                  onToggle={(enabled) => void setServerEnabled(`user:${server.name}`, enabled)}
-                />
+                <UserServerRow key={server.name} name={server.name} type={server.type} />
               ))}
             </ServerSection>
           )}
@@ -335,7 +328,17 @@ function ManagedServerRow({ name, status }: {
   );
 }
 
-/** Toggleable row for user servers and plugins */
+/** Read-only row for user servers — the Claude CLI loads them from its own settings */
+function UserServerRow({ name, type }: { name: string; type: string }) {
+  return (
+    <div className="p-2.5 rounded-lg bg-surface-2 border border-border-subtle flex items-center gap-2">
+      <span className="text-sm font-medium text-text-primary">{name}</span>
+      <span className="text-xs text-text-muted">{type}</span>
+    </div>
+  );
+}
+
+/** Toggleable row for plugins */
 function ToggleableServerRow({ name, detail, isEnabled, isToggling, onToggle }: {
   name: string;
   detail?: string;

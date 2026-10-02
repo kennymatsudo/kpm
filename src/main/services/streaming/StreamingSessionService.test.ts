@@ -1,12 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BrowserWindow } from 'electron';
 import type { PlanAction } from '../../../shared/types';
+import type { ResolvedChatChoice } from '../../chat/modelChoice';
 import type { KpmToolProposal, PlanActionsEvent } from '../../kpmTools/runtimeRegistry';
 import {
   buildContinuationHistory,
   createStreamingSessionService,
   type StreamingSessionServiceDeps,
 } from './StreamingSessionService';
+import { FollowUpDroppedError } from './IChatSession';
 import type * as SdkTypeGuardsModule from '../../claude/sdkTypeGuards';
 import type { PollContext, PollHandler } from '../core/PollScheduler';
 
@@ -17,6 +19,7 @@ const { mockSessionInstances, mockSessionConfigs, mockSessionCounter, clearPendi
     emitSessionEnd: (reason: 'completed' | 'error' | 'closed', error?: Error) => void;
     setReady: (value: boolean) => void;
     sentMessages: string[];
+    send: (text: string) => void | Promise<void>;
     interruptCallCount: { value: number };
     cancelLastQueued: () => unknown;
     pendingQueuedCount: () => number;
@@ -34,6 +37,14 @@ const { sdkTypeGuardState } = vi.hoisted(() => ({
     terminalReason: undefined as string | undefined,
   },
 }));
+
+const SONNET: ResolvedChatChoice = { provider: 'claude', model: 'sonnet', effort: null, revision: 0 };
+
+function nativeChoice(provider: 'codex' | 'pi', model: string): ResolvedChatChoice {
+  return provider === 'codex'
+    ? { provider, model, effort: null, revision: 0 }
+    : { provider, model, effort: null, revision: 0 };
+}
 
 const { configState } = vi.hoisted(() => ({
   // Lets individual tests flip the streaming mode the service reads from config.
@@ -219,6 +230,7 @@ vi.mock('../../kpmTools/runtimeRegistry', () => ({
   clearPendingDocumentContent: (chatSessionId: string) => {
     clearPendingDocumentContentCalls.push(chatSessionId);
   },
+  recordPendingDocumentContent: () => {},
   getKpmToolDefinitions: () => [],
 }));
 
@@ -255,6 +267,7 @@ vi.mock('../../claude/sdkTypeGuards', async () => {
     getTerminalReason: () => sdkTypeGuardState.terminalReason,
     describeAssistantError: actual.describeAssistantError,
     describeModelRefusalNoFallback: actual.describeModelRefusalNoFallback,
+    describeTerminalReason: actual.describeTerminalReason,
   };
 });
 
@@ -266,6 +279,7 @@ vi.mock('../../config', () => ({
       processingIdleTimeoutMs: 60_000,
       processingTimeoutMs: 300_000,
       mainIdleTimeoutMs: 60_000,
+      fileUpdateQuietMs: 60_000,
     },
     claude: {
       // Existing lifecycle tests emit complete assistant messages and assert on
@@ -278,8 +292,12 @@ vi.mock('../../config', () => ({
   }),
 }));
 
+function isProposal(event: { channel: string; payload: unknown }, kind: string): boolean {
+  return event.channel === 'chat:proposal' && (event.payload as { kind?: string }).kind === kind;
+}
+
 function createDeps(sendSpy: (channel: string, payload: unknown) => void): StreamingSessionServiceDeps {
-  const chatSessions = new Map<string, { claude_session_id: string | null; title: string | null }>();
+  const chatSessions = new Map<string, { provider_session_id: string | null; title: string | null }>();
 
   return {
     projectRepository: {
@@ -289,24 +307,26 @@ function createDeps(sendSpy: (channel: string, payload: unknown) => void): Strea
     chatMessageRepository: {
       addMessage: vi.fn(),
       getMessagesByChatSession: vi.fn(() => []),
+      countAssistantMessages: vi.fn(() => 0),
+      deleteUserMessageByClientMessageId: vi.fn(),
     },
     chatSessionRepository: {
       get: (id: string) => chatSessions.get(id),
       create: (id: string) => {
-        chatSessions.set(id, { claude_session_id: null, title: null });
+        chatSessions.set(id, { provider_session_id: null, title: null });
         return { id };
       },
-      updateClaudeSessionId: (id: string, claudeSessionId: string) => {
-        const prev = chatSessions.get(id) ?? { claude_session_id: null, title: null };
-        chatSessions.set(id, { ...prev, claude_session_id: claudeSessionId });
+      updateProviderSessionId: (id: string, _provider: string, providerSessionId: string) => {
+        const prev = chatSessions.get(id) ?? { provider_session_id: null, title: null };
+        chatSessions.set(id, { ...prev, provider_session_id: providerSessionId });
       },
       updateTitle: (id: string, title: string) => {
-        const prev = chatSessions.get(id) ?? { claude_session_id: null, title: null };
+        const prev = chatSessions.get(id) ?? { provider_session_id: null, title: null };
         chatSessions.set(id, { ...prev, title });
       },
-      clearClaudeSessionIdsByProject: () => {
+      clearProviderSessionIdsByProject: () => {
         for (const [key, value] of chatSessions) {
-          chatSessions.set(key, { ...value, claude_session_id: null });
+          chatSessions.set(key, { ...value, provider_session_id: null });
         }
       },
     },
@@ -405,7 +425,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
 
     const sendResult = await service.sendChatMessage('project-1', 'hello', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
     });
     expect(sendResult.ok).toBe(true);
 
@@ -429,7 +449,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
 
     const sendResult = await service.sendChatMessage('project-1', 'hello', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
     });
     expect(sendResult.ok).toBe(true);
 
@@ -456,7 +476,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
 
     const firstSend = await service.sendChatMessage('project-1', 'hello', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
     });
     expect(firstSend.ok).toBe(true);
 
@@ -467,7 +487,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
     sentEvents.length = 0;
     const secondSend = await service.sendChatMessage('project-1', 'follow up', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
     });
     expect(secondSend.ok).toBe(true);
 
@@ -480,7 +500,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
 
     const firstSend = await service.sendChatMessage('project-1', 'hello', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
       currentView: 'plan',
     });
     expect(firstSend.ok).toBe(true);
@@ -491,7 +511,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
     sentEvents.length = 0;
     const secondSend = await service.sendChatMessage('project-1', 'follow up', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
       currentView: 'workspace',
     });
     expect(secondSend.ok).toBe(true);
@@ -506,7 +526,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
 
     await service.sendChatMessage('project-1', 'hello', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
       currentView: 'plan',
     });
 
@@ -523,7 +543,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
 
     await service.sendChatMessage('project-1', '/compact', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
       currentView: 'plan',
     });
 
@@ -536,7 +556,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
 
     await service.sendChatMessage('project-1', 'Ask Matt to review this.\n\n$KPM_CONTEXT\n\nUser request: validate it', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
       focusedResources: [{ type: 'project_file', path: 'docs/csat.md', isDirectory: false } as never],
     });
 
@@ -553,11 +573,46 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
 
     await service.sendChatMessage('project-1', 'Ask Matt.\n\n$KPM_CONTEXT\n\nUser request: validate it', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
     });
 
     const session = mockSessionInstances[0];
     expect(session.sentMessages[0]).toBe('Ask Matt.\n\n\n\nUser request: validate it');
+  });
+
+  it('sends a short reminder when the live session already has the same focused context', async () => {
+    service = createStreamingSessionService(createDeps(sendSpy));
+    const focusedResources = [{ type: 'project_file', path: 'docs/csat.md', isDirectory: false } as never];
+
+    await service.sendChatMessage('project-1', 'first', { chatSessionId: 'chat-1', choice: SONNET, focusedResources });
+    const session = mockSessionInstances[0];
+    session.emitMessage({ type: 'result' });
+    await service.sendChatMessage('project-1', 'second', { chatSessionId: 'chat-1', choice: SONNET, focusedResources });
+
+    expect(session.sentMessages[0]).toContain('Use the `Read` tool');
+    expect(session.sentMessages[1]).toContain('Unchanged since it was shared earlier');
+    expect(session.sentMessages[1]).toContain('- docs/csat.md');
+    expect(session.sentMessages[1]).not.toContain('Use the `Read` tool');
+  });
+
+  it('re-sends the full focused context when the selection changes', async () => {
+    service = createStreamingSessionService(createDeps(sendSpy));
+
+    await service.sendChatMessage('project-1', 'first', {
+      chatSessionId: 'chat-1',
+      choice: SONNET,
+      focusedResources: [{ type: 'project_file', path: 'docs/csat.md', isDirectory: false } as never],
+    });
+    const session = mockSessionInstances[0];
+    session.emitMessage({ type: 'result' });
+    await service.sendChatMessage('project-1', 'second', {
+      chatSessionId: 'chat-1',
+      choice: SONNET,
+      focusedResources: [{ type: 'project_file', path: 'docs/nps.md', isDirectory: false } as never],
+    });
+
+    expect(session.sentMessages[1]).toContain('- File: docs/nps.md');
+    expect(session.sentMessages[1]).not.toContain('Unchanged since it was shared earlier');
   });
 
   it('routes tool approval events only to their originating chat session', async () => {
@@ -566,11 +621,11 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
 
     const firstSend = await service.sendChatMessage('project-1', 'hello', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
     });
     const secondSend = await service.sendChatMessage('project-1', 'hello', {
       chatSessionId: 'chat-2',
-      model: 'sonnet',
+      choice: SONNET,
     });
     expect(firstSend.ok).toBe(true);
     expect(secondSend.ok).toBe(true);
@@ -584,7 +639,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
       actions,
     });
 
-    const planActionEvents = sentEvents.filter((event) => event.channel === 'chat:plan-actions');
+    const planActionEvents = sentEvents.filter((event) => isProposal(event, 'plan-actions'));
 
     expect(planActionEvents).toHaveLength(1);
     expect(planActionEvents[0]?.payload).toMatchObject({
@@ -600,7 +655,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
 
     const sendResult = await service.sendChatMessage('project-1', 'hello', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
     });
     expect(sendResult.ok).toBe(true);
 
@@ -615,13 +670,46 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
       oldContent: '# Existing context',
       filename: 'CLAUDE.md',
     });
-    await Promise.resolve();
+    mockSessionInstances[0].emitMessage({ type: 'result' });
+    await vi.waitFor(() => expect(sentEvents.some((event) => isProposal(event, 'file-update'))).toBe(true));
 
-    const fileUpdate = sentEvents.find((event) => event.channel === 'chat:file-update');
+    const fileUpdate = sentEvents.find((event) => isProposal(event, 'file-update'));
     expect(fileUpdate?.payload).toMatchObject({
       projectId: 'project-1',
       chatSessionId: 'chat-1',
       filePath: 'CLAUDE.md',
+      content: '# Updated context',
+      oldContent: '# Existing context',
+    });
+  });
+
+  it('sends a context file edit intercepted from Claude Write or Edit to the approval queue', async () => {
+    let onContextFileEdit: ((projectId: string, newContent: string) => void) | undefined;
+    service = createStreamingSessionService({
+      ...createDeps(sendSpy),
+      buildSdkOptions: (_ctx, options) => {
+        onContextFileEdit = options?.onContextFileEdit;
+        return {};
+      },
+      readProjectContextFile: async () => ({ success: true, content: '# Existing context', filename: 'AGENTS.md' }),
+    });
+
+    const sendResult = await service.sendChatMessage('project-1', 'hello', {
+      chatSessionId: 'chat-1',
+      choice: SONNET,
+    });
+    expect(sendResult.ok).toBe(true);
+
+    sentEvents.length = 0;
+    onContextFileEdit?.('project-1', '# Updated context');
+    mockSessionInstances[0].emitMessage({ type: 'result' });
+    await vi.waitFor(() => expect(sentEvents.some((event) => isProposal(event, 'file-update'))).toBe(true));
+
+    const fileUpdate = sentEvents.find((event) => isProposal(event, 'file-update'));
+    expect(fileUpdate?.payload).toMatchObject({
+      projectId: 'project-1',
+      chatSessionId: 'chat-1',
+      filePath: 'AGENTS.md',
       content: '# Updated context',
       oldContent: '# Existing context',
     });
@@ -633,7 +721,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
 
     const sendResult = await service.sendChatMessage('project-1', 'hello', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
     });
     expect(sendResult.ok).toBe(true);
 
@@ -645,8 +733,10 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
       content: '# Updated decision',
       oldContent: '# Existing decision',
     });
+    mockSessionInstances[0].emitMessage({ type: 'result' });
+    await vi.waitFor(() => expect(sentEvents.some((event) => isProposal(event, 'file-update'))).toBe(true));
 
-    const fileUpdate = sentEvents.find((event) => event.channel === 'chat:file-update');
+    const fileUpdate = sentEvents.find((event) => isProposal(event, 'file-update'));
     expect(fileUpdate?.payload).toMatchObject({
       projectId: 'project-1',
       chatSessionId: 'chat-1',
@@ -656,13 +746,38 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
     });
   });
 
+  it('holds a turn of edits to one file and sends a single proposal when the turn ends', async () => {
+    const toolEvents = createDepsWithToolEvents(sendSpy);
+    service = createStreamingSessionService(toolEvents.deps);
+
+    const sendResult = await service.sendChatMessage('project-1', 'hello', {
+      chatSessionId: 'chat-1',
+      choice: SONNET,
+    });
+    expect(sendResult.ok).toBe(true);
+
+    sentEvents.length = 0;
+    for (const [content, oldContent] of [['v1', 'original'], ['v2', 'v1'], ['v3', 'v2']]) {
+      toolEvents.emitDocumentUpdate({ projectId: 'project-1', chatSessionId: 'chat-1', filePath: 'docs/notes.md', content, oldContent });
+    }
+    await Promise.resolve();
+    expect(sentEvents.filter((event) => isProposal(event, 'file-update'))).toHaveLength(0);
+
+    mockSessionInstances[0].emitMessage({ type: 'result' });
+    await vi.waitFor(() => expect(sentEvents.some((event) => isProposal(event, 'file-update'))).toBe(true));
+
+    const fileUpdates = sentEvents.filter((event) => isProposal(event, 'file-update'));
+    expect(fileUpdates).toHaveLength(1);
+    expect(fileUpdates[0]?.payload).toMatchObject({ filePath: 'docs/notes.md', content: 'v3', oldContent: 'original' });
+  });
+
   it('forwards file move proposals to the approval queue', async () => {
     const toolEvents = createDepsWithToolEvents(sendSpy);
     service = createStreamingSessionService(toolEvents.deps);
 
     const sendResult = await service.sendChatMessage('project-1', 'hello', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
     });
     expect(sendResult.ok).toBe(true);
 
@@ -674,7 +789,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
       targetPath: 'archive/draft.md',
     });
 
-    const fileMove = sentEvents.find((event) => event.channel === 'chat:file-move');
+    const fileMove = sentEvents.find((event) => isProposal(event, 'file-move'));
     expect(fileMove?.payload).toMatchObject({
       projectId: 'project-1',
       chatSessionId: 'chat-1',
@@ -689,7 +804,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
 
     const sendResult = await service.sendChatMessage('project-1', 'hello', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
     });
     expect(sendResult.ok).toBe(true);
 
@@ -701,7 +816,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
       isDirectory: false,
     });
 
-    const fileDelete = sentEvents.find((event) => event.channel === 'chat:file-delete');
+    const fileDelete = sentEvents.find((event) => isProposal(event, 'file-delete'));
     expect(fileDelete?.payload).toMatchObject({
       projectId: 'project-1',
       chatSessionId: 'chat-1',
@@ -715,7 +830,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
 
     const firstSend = await service.sendChatMessage('project-1', 'first prompt', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
     });
     expect(firstSend.ok).toBe(true);
     // Initial message was delivered via start(), session is now processing.
@@ -727,23 +842,18 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
     const secondClientMessageId = '11111111-1111-4111-8111-111111111111';
     const secondSend = await service.sendChatMessage('project-1', 'second prompt', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
       clientMessageId: secondClientMessageId,
     });
 
     expect(secondSend.ok).toBe(true);
     expect(session.interruptCallCount.value).toBe(0);
     expect(session.sentMessages).toEqual(['first prompt', 'second prompt']);
-    expect(sentEvents.find((e) => e.channel === 'chat:queued')?.payload).toMatchObject({
-      projectId: 'project-1',
-      chatSessionId: 'chat-1',
-      clientMessageId: secondClientMessageId,
-    });
 
     const thirdClientMessageId = '22222222-2222-4222-8222-222222222222';
     const concurrent = await service.sendChatMessage('project-1', 'third prompt', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
       clientMessageId: thirdClientMessageId,
     });
     expect(concurrent.ok).toBe(true);
@@ -767,7 +877,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
 
     const thirdAfterTurnBoundary = await service.sendChatMessage('project-1', 'third prompt', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
       clientMessageId: '33333333-3333-4333-8333-333333333333',
     });
     expect(thirdAfterTurnBoundary.ok).toBe(true);
@@ -775,12 +885,12 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
     expect(mockSessionInstances).toHaveLength(1);
   });
 
-  it('clears the queued badge when the SDK echoes back a dequeued follow-up', async () => {
+  it.each([SONNET, nativeChoice('codex', 'gpt-5.6-sol')])('clears the $provider pending badge when delivery is acknowledged', async (choice) => {
     service = createStreamingSessionService(createDeps(sendSpy));
 
     const firstSend = await service.sendChatMessage('project-1', 'first prompt', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice,
     });
     expect(firstSend.ok).toBe(true);
     const session = mockSessionInstances[0];
@@ -788,7 +898,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
     const clientMessageId = '66666666-6666-4666-8666-666666666666';
     const queued = await service.sendChatMessage('project-1', 'second prompt', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice,
       clientMessageId,
     });
     expect(queued.ok).toBe(true);
@@ -806,12 +916,80 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
     });
   });
 
+  it('awaits a rejected Codex follow-up and withdraws it before turn settlement', async () => {
+    service = createStreamingSessionService(createDeps(sendSpy));
+    const choice = nativeChoice('codex', 'gpt-5.6-sol');
+    await service.sendChatMessage('project-1', 'first prompt', { chatSessionId: 'chat-1', choice });
+    const session = mockSessionInstances[0];
+    vi.spyOn(session, 'send').mockRejectedValue(new Error('cannot steer a review turn'));
+    const clientMessageId = '66666666-6666-4666-8666-666666666666';
+    const result = await service.sendChatMessage('project-1', 'follow-up', { chatSessionId: 'chat-1', choice, clientMessageId });
+    expect(result).toEqual({ ok: false, error: 'Failed to add follow-up: cannot steer a review turn' });
+    session.emitMessage({ type: 'result' });
+    expect(sentEvents.find((event) => event.channel === 'chat:done')?.payload).toMatchObject({ hasQueuedFollowUp: false });
+    expect(sentEvents.find((event) => event.channel === 'chat:done')?.payload).not.toHaveProperty('consumedQueuedClientMessageId', clientMessageId);
+    expect(sentEvents.filter((event) => event.channel === 'chat:queue-cleared')).toEqual([]);
+  });
+
+  it('withdraws a Codex follow-up that Stop dropped while it was being steered', async () => {
+    const deps = createDeps(sendSpy);
+    service = createStreamingSessionService(deps);
+    const choice = nativeChoice('codex', 'gpt-5.6-sol');
+    await service.sendChatMessage('project-1', 'first prompt', { chatSessionId: 'chat-1', choice });
+    const session = mockSessionInstances[0];
+    vi.spyOn(session, 'send').mockRejectedValue(new FollowUpDroppedError());
+    const clientMessageId = '66666666-6666-4666-8666-666666666666';
+
+    const result = await service.sendChatMessage('project-1', 'follow-up', { chatSessionId: 'chat-1', choice, clientMessageId });
+
+    expect(result).toEqual({ ok: true, data: 'withdrawn' });
+    expect(deps.chatMessageRepository.deleteUserMessageByClientMessageId).toHaveBeenCalledWith('project-1', 'chat-1', clientMessageId);
+    expect(sentEvents.find((event) => event.channel === 'chat:queue-cleared')?.payload).toMatchObject({
+      clientMessageId,
+      reason: 'cancelled',
+    });
+  });
+
+  it('deletes the saved row of a follow-up that Stop cancels', async () => {
+    const deps = createDeps(sendSpy);
+    service = createStreamingSessionService(deps);
+    await service.sendChatMessage('project-1', 'first prompt', { chatSessionId: 'chat-1', choice: SONNET });
+    const clientMessageId = '88888888-8888-4888-8888-888888888888';
+    await service.sendChatMessage('project-1', 'second prompt', { chatSessionId: 'chat-1', choice: SONNET, clientMessageId });
+
+    await service.interruptChatSession('project-1', 'chat-1');
+
+    expect(deps.chatMessageRepository.deleteUserMessageByClientMessageId).toHaveBeenCalledWith('project-1', 'chat-1', clientMessageId);
+    expect(sentEvents.find((event) => event.channel === 'chat:queue-cleared')?.payload).toMatchObject({
+      clientMessageId,
+      reason: 'cancelled',
+    });
+  });
+
+  it.each(['stop', 'disconnect'] as const)('withdraws queued follow-ups newest first on %s', async (action) => {
+    service = createStreamingSessionService(createDeps(sendSpy));
+    await service.sendChatMessage('project-1', 'first prompt', { chatSessionId: 'chat-1', choice: SONNET });
+    const firstClientMessageId = '11111111-1111-4111-8111-111111111111';
+    const secondClientMessageId = '22222222-2222-4222-8222-222222222222';
+    await service.sendChatMessage('project-1', 'earlier follow-up', { chatSessionId: 'chat-1', choice: SONNET, clientMessageId: firstClientMessageId });
+    await service.sendChatMessage('project-1', 'later follow-up', { chatSessionId: 'chat-1', choice: SONNET, clientMessageId: secondClientMessageId });
+
+    if (action === 'stop') await service.interruptChatSession('project-1', 'chat-1');
+    else await service.disconnectChatSession('project-1', 'chat-1');
+
+    const reason = action === 'stop' ? 'cancelled' : 'session_disconnected';
+    expect(sentEvents.filter((event) => event.channel === 'chat:queue-cleared').map((event) => event.payload)).toEqual([
+      { projectId: 'project-1', chatSessionId: 'chat-1', clientMessageId: secondClientMessageId, reason },
+      { projectId: 'project-1', chatSessionId: 'chat-1', clientMessageId: firstClientMessageId, reason },
+    ]);
+  });
+
   it('does not report a promoted follow-up as an interjection consumed by its own turn', async () => {
     service = createStreamingSessionService(createDeps(sendSpy));
 
     const firstSend = await service.sendChatMessage('project-1', 'first prompt', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
     });
     expect(firstSend.ok).toBe(true);
     const session = mockSessionInstances[0];
@@ -819,7 +997,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
     const clientMessageId = '77777777-7777-4777-8777-777777777777';
     const queued = await service.sendChatMessage('project-1', 'second prompt', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
       clientMessageId,
     });
     expect(queued.ok).toBe(true);
@@ -870,7 +1048,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
 
     const firstSend = await service.sendChatMessage('project-1', 'first prompt', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
     });
     expect(firstSend.ok).toBe(true);
     const session = mockSessionInstances[0];
@@ -878,7 +1056,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
     const followUpClientMessageId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
     const queued = await service.sendChatMessage('project-1', 'follow-up while streaming', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
       clientMessageId: followUpClientMessageId,
     });
     expect(queued.ok).toBe(true);
@@ -914,7 +1092,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
 
     const nextSend = await service.sendChatMessage('project-1', 'a genuinely new turn', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
       clientMessageId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
     });
     expect(nextSend.ok).toBe(true);
@@ -925,7 +1103,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
 
     const firstSend = await service.sendChatMessage('project-1', 'first prompt', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
     });
     expect(firstSend.ok).toBe(true);
 
@@ -934,7 +1112,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
 
     const queued = await service.sendChatMessage('project-1', 'second prompt', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
       clientMessageId,
     });
     expect(queued.ok).toBe(true);
@@ -957,7 +1135,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
 
     const firstSend = await service.sendChatMessage('project-1', 'first prompt', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
     });
     expect(firstSend.ok).toBe(true);
 
@@ -966,7 +1144,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
 
     const queued = await service.sendChatMessage('project-1', 'second prompt', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
       clientMessageId: '55555555-5555-4555-8555-555555555555',
     });
     expect(queued.ok).toBe(true);
@@ -982,17 +1160,12 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
     });
   });
 
-  it('uses a caller-resolved authoritative choice without loading the catalog again', async () => {
-    const resolveForTurn = vi.fn();
-    const deps: StreamingSessionServiceDeps = {
-      ...createDeps(sendSpy),
-      modelChoice: { resolveForTurn },
-    };
-    service = createStreamingSessionService(deps);
+  it("launches Codex with the turn choice's model and effort", async () => {
+    service = createStreamingSessionService(createDeps(sendSpy));
 
     const result = await service.sendChatMessage('project-1', 'hello', {
       chatSessionId: 'chat-1',
-      authoritativeChoice: {
+      choice: {
         provider: 'codex',
         model: 'gpt-5.6-terra',
         effort: 'xhigh',
@@ -1001,34 +1174,6 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(resolveForTurn).not.toHaveBeenCalled();
-    expect(mockSessionConfigs[0]).toMatchObject({
-      model: 'gpt-5.6-terra',
-      modelReasoningEffort: 'xhigh',
-    });
-  });
-
-  it('falls back to resolving the persisted choice for internal callers', async () => {
-    const deps: StreamingSessionServiceDeps = {
-      ...createDeps(sendSpy),
-      modelChoice: {
-        resolveForTurn: vi.fn().mockResolvedValue({
-          ok: true,
-          data: { provider: 'codex', model: 'gpt-5.6-terra', effort: 'xhigh', revision: 4 },
-        }),
-      },
-    };
-    service = createStreamingSessionService(deps);
-
-    const result = await service.sendChatMessage('project-1', 'hello', {
-      chatSessionId: 'chat-1',
-      provider: 'pi',
-      providerModel: 'ignored/model',
-      effort: 'low',
-    });
-
-    expect(result.ok).toBe(true);
-    expect(deps.modelChoice?.resolveForTurn).toHaveBeenCalledWith('project-1', 'chat-1');
     expect(mockSessionConfigs[0]).toMatchObject({
       model: 'gpt-5.6-terra',
       modelReasoningEffort: 'xhigh',
@@ -1045,9 +1190,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
 
     await service.sendChatMessage('project-1', 'hello', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
-      provider,
-      providerModel,
+      choice: nativeChoice(provider, providerModel),
     });
     const session = mockSessionInstances[0];
     sentEvents.length = 0;
@@ -1074,12 +1217,16 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
     );
   });
 
-  it('streams partial text deltas as chunks without double-emitting the complete block', async () => {
-    configState.includePartialMessages = true;
+  it.each([
+    { choice: SONNET, includePartialMessages: true },
+    { choice: nativeChoice('codex', 'gpt-5.6-sol'), includePartialMessages: true },
+    { choice: nativeChoice('codex', 'gpt-5.6-sol'), includePartialMessages: false },
+  ])('streams $choice.provider text once with Claude partial streaming set to $includePartialMessages', async ({ choice, includePartialMessages }) => {
+    configState.includePartialMessages = includePartialMessages;
     const deps = createDeps(sendSpy);
     service = createStreamingSessionService(deps);
 
-    await service.sendChatMessage('project-1', 'hello', { chatSessionId: 'chat-1', model: 'sonnet' });
+    await service.sendChatMessage('project-1', 'hello', { chatSessionId: 'chat-1', choice });
     const session = mockSessionInstances[0];
     sentEvents.length = 0;
 
@@ -1116,8 +1263,8 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
       'Hello',
       'chat-1',
       undefined,
-      'claude',
-      'sonnet',
+      choice.provider,
+      choice.model,
     );
   });
 
@@ -1128,9 +1275,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
 
     await service.sendChatMessage('project-1', 'hello', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
-      provider: 'pi',
-      providerModel: 'cursor/auto',
+      choice: nativeChoice('pi', 'cursor/auto'),
     });
     const session = mockSessionInstances[0];
     sentEvents.length = 0;
@@ -1167,7 +1312,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
     const deps = createDeps(sendSpy);
     service = createStreamingSessionService(deps);
 
-    await service.sendChatMessage('project-1', 'find the login handler', { chatSessionId: 'chat-1', model: 'sonnet' });
+    await service.sendChatMessage('project-1', 'find the login handler', { chatSessionId: 'chat-1', choice: SONNET });
     const session = mockSessionInstances[0];
 
     // Main agent delegates to the explorer subagent — registers the parent card.
@@ -1215,7 +1360,7 @@ describe('StreamingSessionService lifecycle regression coverage', () => {
   it('surfaces a context-compaction boundary as an activity notice', async () => {
     service = createStreamingSessionService(createDeps(sendSpy));
 
-    await service.sendChatMessage('project-1', 'long discovery session', { chatSessionId: 'chat-1', model: 'sonnet' });
+    await service.sendChatMessage('project-1', 'long discovery session', { chatSessionId: 'chat-1', choice: SONNET });
     const session = mockSessionInstances[0];
     sentEvents.length = 0;
 
@@ -1238,7 +1383,7 @@ it('surfaces max-token truncation after finalizing the partial response', async 
 
     const sendResult = await service.sendChatMessage('project-1', 'hello', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
     });
     expect(sendResult.ok).toBe(true);
 
@@ -1265,7 +1410,7 @@ it('surfaces max-token truncation after finalizing the partial response', async 
 
     const sendResult = await service.sendChatMessage('project-1', 'hello', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
     });
     expect(sendResult.ok).toBe(true);
 
@@ -1289,7 +1434,7 @@ it('surfaces max-token truncation after finalizing the partial response', async 
 
     const sendResult = await service.sendChatMessage('project-1', 'hello', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
     });
     expect(sendResult.ok).toBe(true);
 
@@ -1313,7 +1458,7 @@ it('surfaces max-token truncation after finalizing the partial response', async 
 
     const sendResult = await service.sendChatMessage('project-1', 'hello', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
     });
     expect(sendResult.ok).toBe(true);
 
@@ -1341,7 +1486,7 @@ it('surfaces max-token truncation after finalizing the partial response', async 
 
     const sendResult = await service.sendChatMessage('project-1', 'hello', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
     });
     expect(sendResult.ok).toBe(true);
 
@@ -1365,7 +1510,7 @@ it('surfaces max-token truncation after finalizing the partial response', async 
 
     const sendResult = await service.sendChatMessage('project-1', 'hello', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
     });
     expect(sendResult.ok).toBe(true);
 
@@ -1396,7 +1541,7 @@ it('surfaces max-token truncation after finalizing the partial response', async 
 
     const sendResult = await service.sendChatMessage('project-1', 'hello', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
     });
     expect(sendResult.ok).toBe(true);
 
@@ -1426,7 +1571,7 @@ it('surfaces max-token truncation after finalizing the partial response', async 
 
     const sendResult = await service.sendChatMessage('project-1', 'hello', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
     });
     expect(sendResult.ok).toBe(true);
 
@@ -1454,7 +1599,7 @@ it('surfaces max-token truncation after finalizing the partial response', async 
 
     const sendResult = await service.sendChatMessage('project-1', 'hello', {
       chatSessionId: 'chat-1',
-      model: 'opus',
+      choice: { ...SONNET, model: 'opus' },
     });
     expect(sendResult.ok).toBe(true);
 
@@ -1517,7 +1662,7 @@ it('surfaces max-token truncation after finalizing the partial response', async 
 
       const sendResult = await service.sendChatMessage('project-1', 'hello', {
         chatSessionId: 'chat-1',
-        model: 'sonnet',
+        choice: SONNET,
       });
       expect(sendResult.ok).toBe(true);
 
@@ -1538,7 +1683,7 @@ it('surfaces max-token truncation after finalizing the partial response', async 
 
       const sendResult = await service.sendChatMessage('project-1', 'hello', {
         chatSessionId: 'chat-1',
-        model: 'sonnet',
+        choice: SONNET,
       });
       expect(sendResult.ok).toBe(true);
       mockSessionInstances[0].emitMessage({ type: 'result' });
@@ -1564,7 +1709,7 @@ it('surfaces max-token truncation after finalizing the partial response', async 
 
       const firstSend = await service.sendChatMessage('project-1', 'first prompt', {
         chatSessionId: 'chat-1',
-        model: 'sonnet',
+        choice: SONNET,
       });
       expect(firstSend.ok).toBe(true);
       const session = mockSessionInstances[0];
@@ -1578,7 +1723,7 @@ it('surfaces max-token truncation after finalizing the partial response', async 
       clock.advance(2_000);
       const interjected = await service.sendChatMessage('project-1', 'actually, also this', {
         chatSessionId: 'chat-1',
-        model: 'sonnet',
+        choice: SONNET,
         clientMessageId: '66666666-6666-4666-8666-666666666666',
       });
       expect(interjected.ok).toBe(true);
@@ -1684,7 +1829,7 @@ describe('createChatSession continuation wiring', () => {
     const service = createStreamingSessionService(depsWithCapture);
     const result = await service.sendChatMessage('project-1', 'new message after worktree switch', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
     });
     expect(result.ok).toBe(true);
 
@@ -1705,7 +1850,7 @@ describe('createChatSession continuation wiring', () => {
       ...deps,
       chatSessionRepository: {
         ...deps.chatSessionRepository,
-        get: () => ({ claude_session_id: 'prior-sdk-session', provider: 'claude', title: null }),
+        get: () => ({ provider: 'claude', provider_session_id: 'prior-sdk-session', title: null }),
       },
       chatMessageRepository: {
         ...deps.chatMessageRepository,
@@ -1723,7 +1868,7 @@ describe('createChatSession continuation wiring', () => {
     const service = createStreamingSessionService(depsWithCapture);
     const result = await service.sendChatMessage('project-1', 'continuing', {
       chatSessionId: 'chat-1',
-      model: 'sonnet',
+      choice: SONNET,
     });
     expect(result.ok).toBe(true);
 
@@ -1741,7 +1886,6 @@ describe('createChatSession continuation wiring', () => {
       chatSessionRepository: {
         ...deps.chatSessionRepository,
         get: () => ({
-          claude_session_id: 'claude-session-before-codex',
           provider: 'codex',
           provider_session_id: 'current-codex-thread',
           title: null,
@@ -1766,8 +1910,7 @@ describe('createChatSession continuation wiring', () => {
     const service = createStreamingSessionService(depsWithCapture);
     const result = await service.sendChatMessage('project-1', 'switching back to Claude', {
       chatSessionId: 'chat-1',
-      provider: 'claude',
-      model: 'sonnet',
+      choice: SONNET,
     });
     expect(result.ok).toBe(true);
 

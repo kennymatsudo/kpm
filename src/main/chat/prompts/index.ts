@@ -14,7 +14,7 @@ export type { PlanContext } from './types';
 import type { PlanContext, ContinuationTurn } from './types';
 import type { ChatProvider, ChatSessionScope, TaskPromptTemplate } from '../../../shared/types';
 import { resolveEffectiveRepoPath } from '../../../shared/repoPath';
-import { FULL_HIERARCHY_THRESHOLD, buildItemReferenceTable } from './planFormatting';
+import { buildCurrentPlanSection } from './planFormatting';
 import { buildPlanModificationsSection } from './modes';
 import { buildToolDecisionTree } from './toolDocs';
 import { buildAttachmentsSection } from './workspace';
@@ -43,7 +43,7 @@ export function buildUserGlobalInstructionsSection(userGlobalInstructions?: stri
 
   return `# User Global Preferences
 
-The developer maintains these personal working preferences globally, in \`~/.claude/CLAUDE.md\`. Honor them in your replies and any content you author. Relative file references below resolve against \`~/.claude/\` and point at the developer's global files, not at this project's context file. Where they conflict with KPM's operating rules (write consent, plan/proposal tools, export boundaries), KPM's rules win.
+The developer maintains these personal working preferences globally, in \`~/.claude/CLAUDE.md\`. Honor them in your replies and any content you author. Relative file references below resolve against \`~/.claude/\` and point at the developer's global files, not at this project's context file. Where they conflict with KPM's operating rules (publishing consent, plan/proposal tools, export boundaries), KPM's rules win.
 
 ${content}
 `;
@@ -81,7 +81,7 @@ When creating implementation items, use clear verb-first titles, a one-sentence 
  * else.
  */
 const FOCUS_OPERATING_RULES = `# Operating Rules
-- This session is focused on one document. Direct file, shell, and git writes need the project's write grant; project files change through KPM's proposal tools.
+- This session is focused on one document. Direct file, shell, and git writes follow the user's permission settings; project files change through KPM's proposal tools.
 - Jira, Linear, Confluence, and GitHub exports must not leak KPM-local fields or @plan internals.
 - Plan data lives in KPM SQLite, not in connected repos.
 - If the user asks to change the plan, use KPM plan tools so changes flow through KPM's proposal and review path.
@@ -93,7 +93,7 @@ const CLAUDE_FOCUS_OPERATING_RULES = `# Operating Rules
 - Answer from the focused document first.
 - Use KPM project-file tools when you need other project documents.
 - Use Read/Grep/Glob for connected repo validation and cite file paths when you reference code.
-- Direct file, shell, and git writes need the project's write grant, requested on the first attempt. This focused session is for the document — do not change repo files unless the user asks.
+- Direct file, shell, and git writes follow the user's Claude Code permission settings. This focused session is for the document — do not change repo files unless the user asks.
 - To change project documents, use \`propose_document_edit\` or \`propose_document_create\`.
 - To change project context files, use \`propose_context_edit\`.
 - All document and context changes from this focused session must go through KPM review before applying.
@@ -147,9 +147,8 @@ export function buildChatSystemPrompt(
   const profile = PROMPT_PROFILES[audience.provider];
   const isFocus = audience.scope === 'focus_document';
   const repos = context.repos.length > 0
-    ? context.repos.map((repo) => `- \`${resolveEffectiveRepoPath(repo)}\``).join('\n')
+    ? context.repos.map((repo) => `- ID: \`${repo.id}\` — path: \`${resolveEffectiveRepoPath(repo)}\``).join('\n')
     : 'No repos connected.';
-  const planSummary = context.planItems.length > 0 ? buildItemReferenceTable(context.planItems) : 'Empty.';
   const continuationSection = buildContinuationSection(context.continuationHistory);
   const continuation = continuationSection ? `\n${continuationSection}` : '';
   const focusDocument = context.focusDocument
@@ -178,15 +177,12 @@ ${operatingRules}
 
 # Project
 Name: ${context.project.name}
-ID: \`${context.project.id}\`
 Project folder: \`${context.project.folder_path}\`
 
 Connected repos:
 ${repos}
 ${continuation}${focusDocument}${projectContext}${userPrefs}
-# Current Plan
-${context.planItems.length} items.
-${planSummary}
+${buildCurrentPlanSection(context.planItems)}
 
 ${planRefs}`;
 }
@@ -196,7 +192,6 @@ export function buildSystemPrompt(context: PlanContext): string {
 
   const hasAttachments = attachments.length > 0;
   const hasRepos = repos.length > 0;
-  const hasPlan = planItems.length > 0;
   const hasContextFile = contextFileContent && contextFileContent.trim().length > 0;
 
   const getPrompt = (key: string): string => resolveRegistryPrompt(key, getPromptContent);
@@ -204,7 +199,6 @@ export function buildSystemPrompt(context: PlanContext): string {
   return `You are a technical partner in KPM. Help the user investigate codebases, reason across connected repos, plan and sequence work, keep project documents current, and carry out the changes they ask for.
 
 ${buildContinuationSection(continuationHistory)}# Project: ${project.name}
-ID: \`${project.id}\` (use for all tool calls)
 Project folder: \`${project.folder_path}\`
 ${hasRepos ? `Connected repos (ground truth for code):\n${repos.map(r => `- ID: \`${r.id}\` — path: \`${resolveEffectiveRepoPath(r)}\``).join('\n')}` : 'No repos connected.'}
 Your file tools can also read any other folder on disk when the user points you at one — you are not limited to the project folder and connected repos for reading.
@@ -220,7 +214,7 @@ ${buildPlanModificationsSection()}
 ${getPrompt('system.workspace')}
 
 ${hasAttachments ? buildAttachmentsSection(attachments) : ''}
-${buildToolDecisionTree(project.id)}
+${buildToolDecisionTree()}
 
 ${getPrompt('system.plan_rules')}
 
@@ -232,13 +226,7 @@ ${buildUserGlobalInstructionsSection(userGlobalInstructions)}${hasContextFile ? 
 
 ${contextFileContent}
 ` : ''}
-# Current Plan
-${hasPlan
-    ? planItems.length <= FULL_HIERARCHY_THRESHOLD
-      ? `${planItems.length} items. IDs listed below — use directly.`
-      : `${planItems.length} items. Root items below. Query \`query_plan_items\` for others.`
-    : 'Empty.'}
-${buildItemReferenceTable(planItems)}
+${buildCurrentPlanSection(planItems)}
 
 ${buildPlanReferenceRulesSection()}`;
 }
@@ -249,10 +237,11 @@ export function buildPlanReferenceRulesSection(): string {
 Use \`@plan/<uuid>\` to reference a plan item inside any markdown you author (chat replies, plan-item description / intent / acceptance_criteria, document-edit proposals). KPM renders these as live chips that show the item's current title and status, and rewrites them to native syntax (Jira smart link, Linear URL, GitHub \`Closes ENG-123\`) on export.
 
 Rules:
-- Only use UUIDs from the **Item Reference** above, or from the **Focused Selection** section (focused plan items are always valid refs even when the plan is too large to list in full). KPM rejects unknown UUIDs at save — do not invent or guess.
+- Only use UUIDs from the **Item Reference** above, the **Focused Selection** section, or a KPM plan tool result (for items the reference does not list, such as closed ones). KPM rejects unknown UUIDs at save — do not invent or guess.
 - Refs work mid-prose: "After @plan/<uuid>, we can…" is fine.
 - Don't put refs inside fenced code blocks — they won't resolve.
-- Prefer a ref over restating the item's title or external key in prose; readers get a live chip.`;
+- Prefer a ref over restating the item's title or external key in prose; readers get a live chip.
+- Only KPM's own export paths rewrite refs, such as \`create_pull_request\` and \`update_pull_request\`. Anything you send out through MCP servers or the shell (PR text, comments, issues, tickets, pages) must not contain them; write the item's tracker key, or its title when it has none.`;
 }
 
 export function buildFocusSystemPrompt(context: PlanContext): string {
@@ -275,7 +264,6 @@ ${focusDocument.content}
 
 ${buildContinuationSection(continuationHistory)}# Project
 Name: ${project.name}
-ID: \`${project.id}\`
 Project folder: \`${project.folder_path}\`
 
 Connected repos:

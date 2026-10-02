@@ -8,10 +8,9 @@ export type ChatStreamEvent =
   | { type: 'queue-activities'; activities: Activity[] }
   | { type: 'thinking'; text: string }
   | { type: 'activity-start'; activity: Activity }
-  | { type: 'activity-update'; activity: Activity }
   | { type: 'flush'; text: string }
   | { type: 'retry' }
-  | { type: 'error'; error: string }
+  | { type: 'error'; error: string; buffered?: string }
   | { type: 'queue-cleared-already-sent'; clientMessageId?: string }
   | { type: 'queue-cleared-dropped'; clientMessageId?: string }
   | { type: 'deactivate'; buffered?: string }
@@ -73,11 +72,14 @@ export interface FinalizeOptions {
  * pendingActivities or the streaming timestamps — used when a viewed
  * session's throttle buffer is force-flushed outside the normal chunk path
  * (e.g. switching tabs mid-stream), where those side effects don't apply.
+ * Mutates the `segments` array it is given but never a segment object in it.
  */
 function appendTextToSegments(segments: MessageSegment[], text: string): void {
   const lastSegment = segments[segments.length - 1];
   if (lastSegment?.type === 'text') {
-    lastSegment.content += text;
+    // Replace rather than mutate: the previous state shares this object, and
+    // render memoization compares segments by identity.
+    segments[segments.length - 1] = { ...lastSegment, content: lastSegment.content + text };
   } else {
     segments.push({ type: 'text', content: text });
   }
@@ -148,6 +150,23 @@ export type FollowUpTransition =
   | { kind: 'withdrawn'; clientMessageId: string }
   | { kind: 'turn-settled'; beforeClientMessageId?: string };
 
+/**
+ * Prepend withdrawn input to the composer handoff. Backend withdrawals arrive
+ * newest first so prepending preserves submission order.
+ */
+function restoreToDraft(
+  message: Message,
+  restoredDraft: PerSessionState['restoredDraft'],
+): NonNullable<PerSessionState['restoredDraft']> {
+  const text = message.segments
+    .map((segment) => (segment.type === 'text' ? segment.content : ''))
+    .join('');
+  return {
+    text: [text, restoredDraft?.text].filter((part): part is string => !!part?.trim()).join('\n\n'),
+    attachments: [...(message.attachments ?? []), ...(restoredDraft?.attachments ?? [])],
+  };
+}
+
 function withoutFollowUp(message: Message): Message {
   const { followUp: _followUp, ...rest } = message;
   return rest;
@@ -157,10 +176,9 @@ function withoutFollowUp(message: Message): Message {
  * The one place a message's follow-up state changes.
  *
  * Every transition matches by `clientMessageId`, never by the state being
- * rendered: Stop settles the interrupted turn locally before the backend's
- * cancellation arrives, so by then the message no longer looks pending. The
- * single exception is a `delivered` with no id, which the backend may send
- * when it cannot name the message — then the oldest awaiting one is the only
+ * rendered, because a racing event can change that state first. The single
+ * exception is a `delivered` with no id, which the backend may send when it
+ * cannot name the message — then the oldest awaiting one is the only
  * candidate.
  */
 export function applyFollowUpTransition(messages: Message[], transition: FollowUpTransition): Message[] {
@@ -223,6 +241,7 @@ function settleFollowUps(
   });
 }
 
+/** Commit the current turn and settle its streaming and follow-up state. */
 function finalize(session: PerSessionState, options: FinalizeOptions | undefined, buffered: string): PerSessionState {
   const interrupted = options?.interrupted ?? false;
   // When promoting a queued follow-up, anchor the finalized bubble before
@@ -288,10 +307,15 @@ function finalize(session: PerSessionState, options: FinalizeOptions | undefined
     finalSegments = [{ type: 'activity', activities: session.activities }];
   }
 
+  // Stop finalizes before the backend answers, so a follow-up's fate is still
+  // unknown: keep it pending until a queue-cleared event withdraws it or
+  // reports it delivered.
+  const baseMessages = interrupted ? session.messages : settleFollowUps(session.messages, promoteId, clearQueuedId);
+
   if (finalSegments.length === 0) {
     return {
       ...session,
-      messages: settleFollowUps(session.messages, promoteId, clearQueuedId),
+      messages: baseMessages,
       streamingContent: '',
       streamingThinking: '',
       streamingSegments: [],
@@ -303,13 +327,6 @@ function finalize(session: PerSessionState, options: FinalizeOptions | undefined
 
   const durationMs = session.streamStartedAt != null ? Math.max(0, now - session.streamStartedAt) : undefined;
   const displayModel = options?.model ?? sessionModelId(session, '');
-
-  // Strip the queued flag (from a promoted or consumed follow-up) BEFORE
-  // positioning so the insertion logic sees an accurate `queued` state. For a
-  // consumed follow-up this matters: once it is no longer flagged queued, the
-  // fallback walk below won't step over it, so the assistant bubble lands
-  // AFTER it — chronologically correct, since this turn answered it.
-  const baseMessages = settleFollowUps(session.messages, promoteId, clearQueuedId);
 
   // Merge this turn into the previous message when it's an uninterrupted
   // assistant turn with nothing in between — this is what keeps a multi-turn
@@ -388,6 +405,45 @@ function finalize(session: PerSessionState, options: FinalizeOptions | undefined
   };
 }
 
+function hasActivity(session: PerSessionState, activityId: string): boolean {
+  const inSegments = (segments: readonly MessageSegment[]) =>
+    segments.some((segment) => segment.type === 'activity' && segment.activities.some((activity) => activity.id === activityId));
+  return session.activities.some((activity) => activity.id === activityId)
+    || session.pendingActivities.some((activity) => activity.id === activityId)
+    || inSegments(session.streamingSegments)
+    || session.messages.some((message) => inSegments(message.segments));
+}
+
+function replaceActivity(session: PerSessionState, activity: Activity): PerSessionState {
+  const replaceById = (existing: Activity) => (existing.id === activity.id ? activity : existing);
+
+  const messages: Message[] = session.messages.map((message) => {
+    let touched = false;
+    const segments = message.segments.map((segment) => {
+      if (segment.type !== 'activity') return segment;
+      if (!segment.activities.some((existing) => existing.id === activity.id)) return segment;
+      touched = true;
+      return { ...segment, activities: segment.activities.map(replaceById) };
+    });
+    return touched ? { ...message, segments } : message;
+  });
+
+  const streamingSegments = session.streamingSegments.map((segment) => {
+    if (segment.type !== 'activity') return segment;
+    if (!segment.activities.some((existing) => existing.id === activity.id)) return segment;
+    return { ...segment, activities: segment.activities.map(replaceById) };
+  });
+
+  return {
+    ...session,
+    activities: session.activities.map(replaceById),
+    pendingActivities: session.pendingActivities.map(replaceById),
+    streamingSegments,
+    messages,
+  };
+}
+
+/** Keep the transcript and live stream state in sync through one session update. */
 export function applyStreamEvent(session: PerSessionState, event: ChatStreamEvent): PerSessionState {
   const now = Date.now();
 
@@ -424,6 +480,9 @@ export function applyStreamEvent(session: PerSessionState, event: ChatStreamEven
       };
 
     case 'activity-start':
+      // Main re-sends an activity under its original id with a live timer,
+      // subagent progress, or diff stats; that replaces the card it already has.
+      if (hasActivity(session, event.activity.id)) return replaceActivity(session, event.activity);
       // Uncapped on purpose. A turn that never emits text never ships
       // `precedingActivities` (those only ride on chunk events), so this list
       // is the whole record finalize has to commit for tool-only turns.
@@ -436,35 +495,6 @@ export function applyStreamEvent(session: PerSessionState, event: ChatStreamEven
         streamStartedAt: session.streamStartedAt ?? now,
         lastStreamUpdateAt: now,
       };
-
-    case 'activity-update': {
-      const replaceById = (activity: Activity) => (activity.id === event.activity.id ? event.activity : activity);
-
-      const messages: Message[] = session.messages.map((message) => {
-        let touched = false;
-        const segments = message.segments.map((segment) => {
-          if (segment.type !== 'activity') return segment;
-          if (!segment.activities.some((activity) => activity.id === event.activity.id)) return segment;
-          touched = true;
-          return { ...segment, activities: segment.activities.map(replaceById) };
-        });
-        return touched ? { ...message, segments } : message;
-      });
-
-      const streamingSegments = session.streamingSegments.map((segment) => {
-        if (segment.type !== 'activity') return segment;
-        if (!segment.activities.some((activity) => activity.id === event.activity.id)) return segment;
-        return { ...segment, activities: segment.activities.map(replaceById) };
-      });
-
-      return {
-        ...session,
-        activities: session.activities.map(replaceById),
-        pendingActivities: session.pendingActivities.map(replaceById),
-        streamingSegments,
-        messages,
-      };
-    }
 
     case 'retry':
       return {
@@ -482,18 +512,11 @@ export function applyStreamEvent(session: PerSessionState, event: ChatStreamEven
       };
 
     case 'error':
-      return {
-        ...session,
-        error: event.error,
-        isStreaming: false,
-        streamingContent: '',
-        streamingThinking: '',
-        activities: [],
-        streamingSegments: [],
-        pendingActivities: [],
-        streamStartedAt: null,
-        lastStreamUpdateAt: null,
-      };
+      // Keep what the turn already streamed as an interrupted bubble. The
+      // backend saves that text too, so discarding it here made the answer
+      // vanish until reload. A send that failed has streamed nothing, so it
+      // just stops.
+      return { ...finalize(session, { interrupted: true }, event.buffered ?? ''), error: event.error };
 
     case 'queue-cleared-already-sent': {
       const messages = applyFollowUpTransition(session.messages, { kind: 'delivered', clientMessageId: event.clientMessageId });
@@ -502,8 +525,12 @@ export function applyStreamEvent(session: PerSessionState, event: ChatStreamEven
 
     case 'queue-cleared-dropped': {
       if (!event.clientMessageId) return session;
+      const withdrawn = session.messages.find(
+        (message) => message.role === 'user' && message.clientMessageId === event.clientMessageId,
+      );
+      if (!withdrawn) return session;
       const messages = applyFollowUpTransition(session.messages, { kind: 'withdrawn', clientMessageId: event.clientMessageId });
-      return messages === session.messages ? session : { ...session, messages };
+      return { ...session, messages, restoredDraft: restoreToDraft(withdrawn, session.restoredDraft) };
     }
 
     case 'deactivate':

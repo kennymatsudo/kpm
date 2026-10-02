@@ -11,7 +11,7 @@ export interface WriteGrantStore {
 
 export interface ProjectWriteGrants {
   /**
-   * Resolve the project's write consent, asking once if it has never been
+   * Resolve the project's publishing consent, asking once if it has never been
    * answered. Concurrent callers in the same project share the one prompt.
    */
   request(
@@ -31,7 +31,7 @@ export interface ProjectWriteGrants {
 }
 
 const NO_PROJECT_REASON =
-  'Writing needs a project to check the write grant against, and this run has none.';
+  'Publishing needs a project to check the publishing grant against, and this run has none.';
 
 export function createProjectWriteGrants(): ProjectWriteGrants {
   const grantedProjects = new Set<string>();
@@ -70,7 +70,7 @@ export function createProjectWriteGrants(): ProjectWriteGrants {
         if (!await requestConsent()) {
           return {
             allowed: false,
-            reason: 'The user did not allow writes in this project. Do not retry; explain what you would have changed instead.',
+            reason: 'The user declined publishing in this project (pushing a branch, opening or editing a pull request). Do not retry; carry on with the rest of the work.',
           };
         }
 

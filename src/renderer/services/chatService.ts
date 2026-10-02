@@ -2,18 +2,15 @@ import type {
   ChatChoiceIntent,
   ChatViewMode,
   FocusChatDocument,
+  ChatAttachment,
   FocusedResource,
 } from '../../shared/types';
 
 import type {
   ChunkEventData,
-  PlanActionsEventData,
-  FileUpdateEventData,
-  FileMoveEventData,
-  FileDeleteEventData,
+  ChatProposalEventData,
   TurnDoneEventData,
   SessionLifecycleEventData,
-  QueuedEventData,
   QueueClearedEventData,
   ErrorEventData,
   ActivityEventData,
@@ -26,26 +23,6 @@ import type {
   McpStatusEventData,
 } from '../../shared/ipc/chatEvents';
 
-export type {
-  ChunkEventData,
-  PlanActionsEventData,
-  FileUpdateEventData,
-  FileMoveEventData,
-  FileDeleteEventData,
-  TurnDoneEventData,
-  SessionLifecycleEventData,
-  QueuedEventData,
-  QueueClearedEventData,
-  ErrorEventData,
-  ActivityEventData,
-  SessionReadyEventData,
-  SessionTitleEventData,
-  ThinkingEventData,
-  BackgroundTasksEventData,
-  SuggestionsEventData,
-  SlashCommandsEventData,
-  McpStatusEventData,
-};
 
 export function getChatUsage(projectId: string) {
   return window.api.chat.getUsage(projectId);
@@ -53,6 +30,14 @@ export function getChatUsage(projectId: string) {
 
 export function getSlashCommands() {
   return window.api.chat.getSlashCommands();
+}
+
+export function getModelCatalog() {
+  return window.api.chat.modelCatalog();
+}
+
+export function onModelCatalogChange(callback: Parameters<typeof window.api.chat.onModelCatalog>[0]) {
+  return window.api.chat.onModelCatalog(callback);
 }
 
 export function getPiProviders() {
@@ -83,7 +68,7 @@ export function sendChatMessage(params: {
   projectId: string;
   message: string;
   focusedResources: FocusedResource[];
-  tempImages?: string[];
+  attachments?: ChatAttachment[];
   chatSessionId: string;
   currentView?: ChatViewMode;
   clientMessageId: string;
@@ -93,7 +78,7 @@ export function sendChatMessage(params: {
     projectId: params.projectId,
     message: params.message,
     focusedResources: params.focusedResources,
-    tempImages: params.tempImages,
+    attachments: params.attachments,
     chatSessionId: params.chatSessionId,
     currentView: params.currentView,
     clientMessageId: params.clientMessageId,
@@ -126,6 +111,14 @@ export function cancelChatSession(projectId: string, chatSessionId: string) {
   return window.api.chat.cancel({ projectId, chatSessionId });
 }
 
+/** Cancel only while a turn is streaming; disconnect is idempotent in main, so it always runs. */
+export async function closeChatSession(projectId: string, chatSessionId: string, isStreaming: boolean) {
+  if (isStreaming) {
+    await cancelChatSession(projectId, chatSessionId);
+  }
+  await disconnectChatSession(projectId, chatSessionId);
+}
+
 export function cancelQueuedChatMessage(projectId: string, chatSessionId: string, clientMessageId?: string) {
   return window.api.chat.cancelQueued({ projectId, chatSessionId, clientMessageId });
 }
@@ -136,6 +129,14 @@ export function getChatSessionHistory(projectId: string, limit: number) {
 
 export function loadChatSession(projectId: string, chatSessionId: string) {
   return window.api.chat.loadSession(projectId, chatSessionId);
+}
+
+export function getChatSessionLabels(projectId: string, chatSessionIds: string[]) {
+  return window.api.chat.getSessionLabels({ projectId, chatSessionIds });
+}
+
+export function renameChatSession(projectId: string, chatSessionId: string, title: string) {
+  return window.api.chat.renameSession({ projectId, chatSessionId, title });
 }
 
 export function getFocusDocumentChatSession(
@@ -149,10 +150,7 @@ export function getFocusDocumentChatSession(
 
 export function subscribeToChatEvents(handlers: {
   onChunk?: (data: ChunkEventData) => void;
-  onPlanActions?: (data: PlanActionsEventData) => void;
-  onFileUpdate?: (data: FileUpdateEventData) => void;
-  onFileMove?: (data: FileMoveEventData) => void;
-  onFileDelete?: (data: FileDeleteEventData) => void;
+  onProposal?: (data: ChatProposalEventData) => void;
   onDone?: (data: TurnDoneEventData) => void;
   onError?: (data: ErrorEventData) => void;
   onActivity?: (data: ActivityEventData) => void;
@@ -166,15 +164,11 @@ export function subscribeToChatEvents(handlers: {
   onSlashCommands?: (data: SlashCommandsEventData) => void;
   onMcpStatus?: (data: McpStatusEventData) => void;
   onBackgroundTasks?: (data: BackgroundTasksEventData) => void;
-  onQueued?: (data: QueuedEventData) => void;
   onQueueCleared?: (data: QueueClearedEventData) => void;
 }): () => void {
   const cleanups = [
     handlers.onChunk ? window.api.chat.onChunk(handlers.onChunk) : null,
-    handlers.onPlanActions ? window.api.chat.onPlanActions(handlers.onPlanActions) : null,
-    handlers.onFileUpdate ? window.api.chat.onFileUpdate(handlers.onFileUpdate) : null,
-    handlers.onFileMove ? window.api.chat.onFileMove(handlers.onFileMove) : null,
-    handlers.onFileDelete ? window.api.chat.onFileDelete(handlers.onFileDelete) : null,
+    handlers.onProposal ? window.api.chat.onProposal(handlers.onProposal) : null,
     handlers.onDone ? window.api.chat.onDone(handlers.onDone) : null,
     handlers.onError ? window.api.chat.onError(handlers.onError) : null,
     handlers.onActivity ? window.api.chat.onActivity(handlers.onActivity) : null,
@@ -188,7 +182,6 @@ export function subscribeToChatEvents(handlers: {
     handlers.onSuggestions ? window.api.chat.onSuggestions(handlers.onSuggestions) : null,
     handlers.onSlashCommands ? window.api.chat.onSlashCommands(handlers.onSlashCommands) : null,
     handlers.onMcpStatus ? window.api.chat.onMcpStatus(handlers.onMcpStatus) : null,
-    handlers.onQueued ? window.api.chat.onQueued(handlers.onQueued) : null,
     handlers.onQueueCleared ? window.api.chat.onQueueCleared(handlers.onQueueCleared) : null,
   ].filter((cleanup): cleanup is (() => void) => Boolean(cleanup));
 

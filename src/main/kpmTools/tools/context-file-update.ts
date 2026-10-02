@@ -9,7 +9,7 @@
  */
 
 import { z } from 'zod';
-import { tool, jsonResult, toolError, toolLog } from './index';
+import { tool, jsonResult, toolError, toolLog, projectScoped } from './index';
 
 export interface ContextFileUpdatePayload {
   projectId: string;
@@ -38,13 +38,9 @@ export type ReadProjectContextFileFn = (
 /**
  * Tool description with embedded best practices for KPM's project management context.
  */
-const TOOL_DESCRIPTION = `Submit an edit to the project context file (AGENTS.md or CLAUDE.md) — persistent knowledge that primes future sessions. KPM queues or applies it according to the user's approval setting.
+const TOOL_DESCRIPTION = `Propose an edit to the project context file (AGENTS.md or CLAUDE.md), the persistent notes loaded into every future chat in this project. Use it when the user asks to remember something for later sessions, or to correct what the file says. KPM queues the edit for review or applies it, per the user's setting. old_string must match exactly one place in the file, whitespace included; add surrounding text if it is not unique.
 
-Rules:
-- old_string must match exactly one location (whitespace included); add more context if non-unique.
-- old_string and new_string must differ.
-
-Content: connected repos + key dirs, plan/tracker conventions, key file paths, gotchas, commands. Short bullets, ## sections, 100–200 lines max. Skip code snippets, repo-README dupes, and session-specific notes.`;
+What belongs there: connected repos and their key folders, plan and tracker conventions, important paths, commands, and gotchas, as short bullets under ## sections, within about 200 lines. Leave out code snippets, anything the repos' own READMEs cover, and notes that only matter to this conversation.`;
 
 /**
  * Create the project context file edit tool.
@@ -61,11 +57,10 @@ export function createContextFileEditTools(
       'propose_context_edit',
       TOOL_DESCRIPTION,
       {
-        projectId: z.string().uuid().describe('The project UUID'),
         old_string: z.string().min(1).describe('The exact text to find in the project context file. Must match exactly one location.'),
         new_string: z.string().describe('The replacement text. Can be empty to delete the old_string.'),
       },
-      async ({ projectId, old_string, new_string }) => {
+      projectScoped(async ({ projectId, old_string, new_string }) => {
         toolLog(`[KPM Tools] propose_context_edit ${projectId} (old=${old_string.length} new=${new_string.length})`);
 
         // Read current project context file content
@@ -120,7 +115,7 @@ export function createContextFileEditTools(
           success: true,
           message: 'Project context file edit submitted to KPM.',
         });
-      }
+      })
     ),
   ];
 }

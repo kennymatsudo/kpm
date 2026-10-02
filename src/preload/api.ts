@@ -1,4 +1,4 @@
-import { ipcRenderer } from 'electron';
+import { ipcRenderer, webUtils } from 'electron';
 import { IPC_CHANNELS } from '../shared/ipcChannels';
 import { deriveDomainApi } from '../shared/ipc/endpoints';
 import { deriveEventSubscriptions } from '../shared/ipc/appEvents';
@@ -34,13 +34,12 @@ import { searchEndpoints } from '../shared/ipc/searchEndpoints';
 import { mcpServersEndpoints } from '../shared/ipc/mcpServersEndpoints';
 import { usageEndpoints } from '../shared/ipc/usageEndpoints';
 import { activityEndpoints } from '../shared/ipc/activityEndpoints';
-import { chatEndpoints } from '../shared/ipc/chatEndpoints';
+import { chatEndpoints, type ActiveSessionInfo } from '../shared/ipc/chatEndpoints';
 import { terminalEndpoints } from '../shared/ipc/terminalEndpoints';
 import { settingsEndpoints } from '../shared/ipc/settingsEndpoints';
 import { permissionEndpoints } from '../shared/ipc/permissionEndpoints';
 import { promptOverridesEndpoints } from '../shared/ipc/promptOverridesEndpoints';
 import { toolLogEndpoints } from '../shared/ipc/toolLogEndpoints';
-import { storybookEndpoints } from '../shared/ipc/storybookEndpoints';
 import { devSessionEndpoints } from '../shared/ipc/devSessionEndpoints';
 import { agentSessionEndpoints } from '../shared/ipc/agentSessionEndpoints';
 import { playbookEndpoints } from '../shared/ipc/playbookEndpoints';
@@ -91,13 +90,13 @@ import type {
   SlashCommandInfo,
   PermissionRequest,
   PermissionAction,
+  ChatAttachment,
   FocusedResource,
   TaskPromptTemplate,
   SessionState,
   DevSession,
   DevSessionWithPlanItem,
   ClaudeModel,
-  ChatSessionScope,
   ChatViewMode,
   FileNode,
   ConfluencePageLink,
@@ -210,7 +209,7 @@ const chat = {
     projectId: string;
     message: string;
     focusedResources: FocusedResource[];
-    tempImages?: string[];
+    attachments?: ChatAttachment[];
     chatSessionId?: string;
     currentView?: ChatViewMode;
     clientMessageId?: string;
@@ -226,12 +225,10 @@ const chat = {
       { usage: { totalTokens: number; inputTokens: number; outputTokens: number } },
       { totalTokens: number; inputTokens: number; outputTokens: number }
     >(IPC_CHANNELS.chat.getUsage, { projectId }, ({ usage }) => usage),
-  getMessages: (projectId: string): Promise<{ success: boolean; messages?: ChatMessage[]; error?: string }> =>
-    invokeFlat<{ messages: ChatMessage[] }>(IPC_CHANNELS.chat.getMessages, { projectId }).then((result) =>
-      result.success ? { success: true, messages: result.messages } : result
-    ),
   getSlashCommands: chatInvoke.getSlashCommands,
   piProviders: chatInvoke.piProviders,
+  modelCatalog: chatInvoke.modelCatalog,
+  onModelCatalog: chatSubscriptions.modelCatalog,
   mcpServers: chatInvoke.mcpServers,
   reloadMcpServers: chatInvoke.reloadMcpServers,
   loginMcpServer: chatInvoke.loginMcpServer,
@@ -239,46 +236,37 @@ const chat = {
     invokeFlat<{ sessions: ChatSessionSummary[] }>(IPC_CHANNELS.chat.getSessionHistory, { projectId, limit }).then((result) =>
       result.success ? { success: true, sessions: result.sessions } : result
     ),
-  loadSession: (projectId: string, chatSessionId: string): Promise<{ success: boolean; messages?: ChatMessage[]; chatSessionId?: string; choice?: ChatChoiceView; error?: string }> =>
-    invokeFlat<{ messages: ChatMessage[]; chatSessionId: string; choice: ChatChoiceView }>(
+  getSessionLabels: chatInvoke.getSessionLabels,
+  renameSession: chatInvoke.renameSession,
+  loadSession: (projectId: string, chatSessionId: string): Promise<{ success: boolean; messages?: ChatMessage[]; chatSessionId?: string; choice?: ChatChoiceView; title?: string | null; error?: string }> =>
+    invokeFlat<{ messages: ChatMessage[]; chatSessionId: string; choice: ChatChoiceView; title: string | null }>(
       IPC_CHANNELS.chat.loadSession,
       { projectId, chatSessionId },
-    ).then((result) => (result.success ? result : result)),
+    ),
   getFocusDocumentSession: (projectId: string, path: string, title: string, contentHash: string): Promise<{ success: boolean; messages?: ChatMessage[]; chatSessionId?: string; choice?: ChatChoiceView; error?: string }> =>
     invokeFlat<{ messages: ChatMessage[]; chatSessionId: string; choice: ChatChoiceView }>(
       IPC_CHANNELS.chat.getFocusDocumentSession,
       { projectId, path, title, contentHash },
-    ).then((result) => (result.success ? result : result)),
+    ),
   onChunk: chatSubscriptions.chunk,
-  onPlanActions: chatSubscriptions.planActions,
+  onProposal: chatSubscriptions.proposal,
   onDone: chatSubscriptions.done,
-  onQueued: chatSubscriptions.queued,
   onQueueCleared: chatSubscriptions.queueCleared,
   onError: chatSubscriptions.error,
   onActivity: chatSubscriptions.activity,
   onThinking: chatSubscriptions.thinking,
   onBackgroundTasks: chatSubscriptions.backgroundTasks,
-  onFileUpdate: chatSubscriptions.fileUpdate,
-  onFileMove: chatSubscriptions.fileMove,
-  onFileDelete: chatSubscriptions.fileDelete,
 
   // ─── Streaming Session Methods ───
-
-  /** Connect streaming session for a project (called on project open) */
-  connectSession: chatInvoke.connectSession,
 
   /** Disconnect streaming session for a project (all sessions) */
   disconnectSession: chatInvoke.disconnectSession,
 
   /** Get all active sessions for a project (multi-session support) */
-  getActiveSessions: (projectId: string): Promise<{
-    success: boolean;
-    sessions?: { chatSessionId: string; scope: ChatSessionScope; state: SessionState; isProcessing: boolean; title?: string | null }[];
-    error?: string;
-  }> => invokeFlat<{ sessions: { chatSessionId: string; scope: ChatSessionScope; state: SessionState; isProcessing: boolean; title?: string | null }[] }>(
-    IPC_CHANNELS.chat.getActiveSessions,
-    { projectId },
-  ).then((result) => (result.success ? { success: true, sessions: result.sessions } : result)),
+  getActiveSessions: (projectId: string): Promise<{ success: boolean; sessions?: ActiveSessionInfo[]; error?: string }> =>
+    invokeFlat<{ sessions: ActiveSessionInfo[] }>(IPC_CHANNELS.chat.getActiveSessions, { projectId }).then((result) =>
+      result.success ? { success: true, sessions: result.sessions } : result
+    ),
 
   /** Disconnect a specific session (multi-session support) */
   disconnectSpecificSession: chatInvoke.disconnectSpecificSession,
@@ -479,6 +467,7 @@ const tracker = {
   },
   sync: {
     getPreview: trackerInvoke['sync.preview'],
+    check: trackerInvoke['sync.check'],
     applyChanges: trackerInvoke['sync.apply'],
     onProgress: trackerSubscriptions.syncProgress,
   },
@@ -558,12 +547,6 @@ const menu = {
   closeWindow: (): void => {
     ipcRenderer.send('window:close');
   },
-};
-
-const storybookInvoke = deriveDomainApi(storybookEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
-const storybook = {
-  updateUrl: storybookInvoke.updateUrl,
-  testConnection: storybookInvoke.testConnection,
 };
 
 const settingsInvoke = deriveDomainApi(settingsEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
@@ -744,6 +727,10 @@ const devSessions = {
 
   destroy: devSessionInvoke.destroy,
 
+  listAttachableWorktrees: devSessionInvoke.listAttachableWorktrees,
+
+  attachWorktree: devSessionInvoke.attachWorktree,
+
   checkDirty: devSessionInvoke.checkDirty,
 
   getDiff: devSessionInvoke.getDiff,
@@ -785,6 +772,8 @@ const agentSessions = {
   stop: agentSessionInvoke.stop,
 
   getActivities: agentSessionInvoke.getActivities,
+
+  listReviewHistory: agentSessionInvoke.listReviewHistory,
 
   getState: agentSessionInvoke.getState,
 
@@ -834,6 +823,9 @@ const fileExplorer = {
   // Copy an external file into the project
   copyExternalFile: fileExplorerInvoke.copyExternalFile,
 
+  // Disk path of a dropped File; '' when it has none. Electron 32 removed File.path.
+  getPathForFile: (file: File): string => webUtils.getPathForFile(file),
+
   // Create a new binary file (images, PDFs, etc.)
   createBinaryFile: fileExplorerInvoke.createBinaryFile,
 
@@ -863,6 +855,9 @@ const fileExplorer = {
 
   // Show a project file/folder in Finder/Explorer
   showItemInFolder: fileExplorerInvoke.showItemInFolder,
+
+  // Render a project .html file as a page in a sandboxed preview window
+  openHtmlPreview: fileExplorerInvoke.openHtmlPreview,
 
   // Open a project file/folder in the user's code editor
   openInEditor: fileExplorerInvoke.openInEditor,
@@ -904,6 +899,9 @@ const repoFiles = {
 
   // Show a repo file/folder in Finder/Explorer
   showItemInFolder: repoFilesInvoke.showItemInFolder,
+
+  // Render a repo .html file as a page in a sandboxed preview window
+  openHtmlPreview: repoFilesInvoke.openHtmlPreview,
 };
 
 // Shell API (for OS-level operations)
@@ -1072,7 +1070,6 @@ export const api = {
   contextFile,
   contextFiles,
   menu,
-  storybook,
   settings,
   customThemes,
   theme,

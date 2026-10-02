@@ -121,12 +121,21 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
   // Session Discovery
   // ---------------------------------------------------------------------------
 
+  // Parked on the user: polling may refresh PR fields and complete a merged PR,
+  // but assessment and auto-follow-up would move the cursor and wipe the user's
+  // stop, gate, or recovery choice.
+  function isParkedForUser(session: DevSession): boolean {
+    return session.automation_phase === 'needs_attention' || session.automation_phase === 'paused';
+  }
+
   function hasLiveAutomation(session: DevSession): boolean {
     // needs_attention is stalled, not busy — no agent turn is in flight, so
     // polling can't race one. Excluding it here would freeze cached PR
     // fields (state, review, draft) forever; processSession separately
     // blocks assessment/auto-follow-up for it, so only the field refresh resumes.
-    if (session.automation_phase === 'needs_attention') return false;
+    // Paused is the same: the run is parked on the user, and a PR merged
+    // meanwhile still has to move the item to Done.
+    if (isParkedForUser(session)) return false;
     return isLiveAutomationPhase(session.automation_phase) || readSessionRun(session).isLive;
   }
 
@@ -413,7 +422,7 @@ export function createReviewPollService(deps: ReviewPollServiceDeps) {
 
       // Cached fields are already refreshed above — stop here so a poll tick
       // can't resume assessment/auto-follow-up on a session parked for the user.
-      if (session.automation_phase === 'needs_attention') {
+      if (isParkedForUser(session)) {
         recordQuietTick(sessionId);
         return { sessionId, action: 'synced', newThreadCount: 0, implementCount: 0 };
       }

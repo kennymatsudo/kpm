@@ -8,6 +8,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+import { runWithToolExecutionContext } from '../runtime';
 import { applyHunks, createDocumentEditTools } from './document-edit';
 import type { DocumentUpdatePayload } from './document-update';
 
@@ -100,7 +101,8 @@ describe('createDocumentEditTools', () => {
   ) {
     // The tool's handler is the last argument; invoke it via the SDK call convention.
     // We access the internal handler via the tool object shape produced by createDocumentEditTools.
-    return (tool as any).handler(input);
+    const { projectId, ...args } = input as { projectId: string };
+    return runWithToolExecutionContext({ projectId }, () => (tool as any).handler(args));
   }
 
   // Single-hunk path — unchanged behaviour

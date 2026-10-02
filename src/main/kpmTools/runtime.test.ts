@@ -11,6 +11,7 @@ import {
 import { createPlanChangeTools } from './tools/plan-changes';
 import type { PlanAction } from '../../shared/types';
 import { getKpmToolRuntime, warmupKpmToolRuntime } from './runtimeRegistry';
+import { DEFERRED_KPM_TOOLS } from './createKpmServer';
 
 vi.mock('../db/connection', () => ({
   getDatabase: () => ({}),
@@ -402,6 +403,21 @@ describe('KpmToolRuntime', () => {
       message: 'KPM tool "modify_plan" is not available for focus_document chat sessions.',
     });
   });
+
+  it('lists a group only while its integration is set up', () => {
+    let configured = false;
+    const runtime = new KpmToolRuntime(() => [
+      makeToolGroup({
+        id: 'jira',
+        tools: [{ name: 'jira_search', description: 'Search Jira', inputSchema: {}, handler: vi.fn() }],
+        isEnabled: () => configured,
+      }),
+    ]);
+
+    expect(runtime.listTools({ scope: 'main' })).toEqual([]);
+    configured = true;
+    expect(runtime.listTools({ scope: 'main' }).map((tool) => tool.name)).toEqual(['jira_search']);
+  });
 });
 
 describe('default KPM tool runtime manifest', () => {
@@ -455,5 +471,63 @@ describe('default KPM tool runtime manifest', () => {
       expect.objectContaining({ name: 'read_project_file', capabilities: expect.arrayContaining(['documents.read']) }),
       expect.objectContaining({ name: 'propose_document_edit', capabilities: expect.arrayContaining(['documents.propose']) }),
     ]));
+  });
+
+  it('keeps every tool description within the length Claude Code shows the model', () => {
+    // Claude Code silently cuts MCP tool descriptions at 4,096 characters.
+    // KPM holds its own tools to 2,048 so descriptions stay tight and read the
+    // same on every provider; schemas are not cut, so detail belongs there.
+    warmupKpmToolRuntime({
+      container: { projects: {}, planItems: {}, planRelations: {}, repos: {}, devSessions: {}, confluenceLinks: {} } as never,
+      services: { fileExplorerService: {} } as never,
+      getMainWindow: () => null,
+    });
+
+    const tooLong = getKpmToolRuntime().listToolManifest()
+      .filter((tool) => tool.description.length > 2048)
+      .map((tool) => `${tool.name} (${tool.description.length})`);
+
+    expect(tooLong).toEqual([]);
+  });
+
+  it('marks every tool in a read-only capability group as read-only so Claude Code can run it in parallel', () => {
+    warmupKpmToolRuntime({
+      container: { projects: {}, planItems: {}, planRelations: {}, repos: {}, devSessions: {}, confluenceLinks: {} } as never,
+      services: { fileExplorerService: {} } as never,
+      getMainWindow: () => null,
+    });
+
+    const unmarked = getKpmToolRuntime().listTools({ scope: 'main' })
+      .filter((tool) => tool.capabilities.length > 0 && tool.capabilities.every((capability) => capability.endsWith('.read')))
+      .filter((tool) => tool.annotations?.readOnlyHint !== true)
+      .map((tool) => tool.name);
+
+    expect(unmarked).toEqual([]);
+  });
+
+  it('takes the project from the chat, never from the model', () => {
+    warmupKpmToolRuntime({
+      container: { projects: {}, planItems: {}, planRelations: {}, repos: {}, devSessions: {}, confluenceLinks: {} } as never,
+      services: { fileExplorerService: {} } as never,
+      getMainWindow: () => null,
+    });
+
+    const askingForProject = getKpmToolRuntime().listTools({ scope: 'main' })
+      .filter((tool) => 'projectId' in tool.inputSchema)
+      .map((tool) => tool.name);
+
+    expect(askingForProject).toEqual([]);
+  });
+
+  it('defers only tools that exist', () => {
+    warmupKpmToolRuntime({
+      container: { projects: {}, planItems: {}, planRelations: {}, repos: {}, devSessions: {}, confluenceLinks: {} } as never,
+      services: { fileExplorerService: {} } as never,
+      getMainWindow: () => null,
+    });
+
+    const names = new Set(getKpmToolRuntime().listToolManifest().map((tool) => tool.name));
+
+    expect([...DEFERRED_KPM_TOOLS].filter((name) => !names.has(name))).toEqual([]);
   });
 });

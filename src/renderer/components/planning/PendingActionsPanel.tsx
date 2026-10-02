@@ -8,7 +8,7 @@
  * Uses all-or-nothing approval: approve all actions or dismiss all.
  */
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { m, AnimatePresence } from 'framer-motion';
 import type { PlanAction, PlanItem, Repo } from '../../../shared/types';
@@ -56,10 +56,13 @@ export function PendingActionsPanel({
   const [selectedActionIndex, setSelectedActionIndex] = useState(0);
   const [actions, setActions] = useState<PlanAction[]>(proposedActions);
 
+  // A new proposal merges into this batch by appending or replacing actions in
+  // place, so the selected index still points at the same action.
   useEffect(() => {
     setActions(proposedActions);
-    setSelectedActionIndex(0);
   }, [proposedActions]);
+
+  const selectAction = useCallback((index: number) => setSelectedActionIndex(index), []);
 
   const updateAction = (index: number, action: PlanAction) => {
     setActions((current) => current.map((entry, entryIndex) => entryIndex === index ? action : entry));
@@ -240,9 +243,9 @@ export function PendingActionsPanel({
                         action={action}
                         index={index}
                         isActive={index === safeSelectedIndex}
-                        planItems={planItems}
+                        planItemsById={planItemsById}
                         placeholderMap={placeholderMap}
-                        onSelect={() => setSelectedActionIndex(index)}
+                        onSelect={selectAction}
                       />
                     ))}
                   </div>
@@ -363,9 +366,9 @@ export function PendingActionsPanel({
                   action={action}
                   index={index}
                   isActive={index === safeSelectedIndex}
-                  planItems={planItems}
+                  planItemsById={planItemsById}
                   placeholderMap={placeholderMap}
-                  onSelect={() => setSelectedActionIndex(index)}
+                  onSelect={selectAction}
                 />
               ))}
             </div>

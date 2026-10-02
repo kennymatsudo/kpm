@@ -36,10 +36,12 @@ export function playbookSnapshotOf(session: DevSession): Playbook | null {
 
 /**
  * The live phase a step runs under. A main step occupies the implementation
- * agent; a subagent step runs beside it.
+ * agent, as review work only when it addresses findings; a subagent step runs
+ * beside it.
  */
-export function phaseForPlaybookStep(step: PlaybookStep): DevSessionAutomationPhase {
-  return step.session === 'subagent' ? 'reviewing' : 'addressing_review';
+export function phaseForPlaybookStep(playbook: Playbook, step: PlaybookStep): DevSessionAutomationPhase {
+  if (step.session === 'subagent') return 'reviewing';
+  return addressesFindings(playbook, step) ? 'addressing_review' : 'running_step';
 }
 
 /**

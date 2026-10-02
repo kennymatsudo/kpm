@@ -521,6 +521,34 @@ describe('ReviewPollService', () => {
     expect(harness.reviewAssessmentService.assessThreads).not.toHaveBeenCalled();
   });
 
+  it('completes a stopped session whose PR has merged', async () => {
+    const harness = buildHarness({
+      session: createSession({ automation_phase: 'paused', paused_reason: 'stopped', current_step_id: 'implement' }),
+    });
+
+    const summary = await harness.service.pollNow();
+
+    expect(summary.completed).toBe(1);
+    expect(harness.planService.updateItem).toHaveBeenCalledWith('plan-1', { status_category: 'done' });
+  });
+
+  it('refreshes a paused session without assessing its threads or moving its cursor', async () => {
+    const harness = buildHarness({
+      session: createSession({
+        automation_phase: 'paused', paused_reason: 'gate', current_step_id: 'review', auto_address_pr_reviews: true,
+      }),
+      snapshot: createSnapshot({ state: 'OPEN' }),
+      tasks: [createTask({ status: 'needs_review' })],
+    });
+
+    const summary = await harness.service.pollNow();
+
+    expect(summary.processed).toBe(1);
+    expect(harness.reviewService.syncSessionReviewState).toHaveBeenCalledWith('session-1', { skipIfUnchanged: true });
+    expect(harness.reviewAssessmentService.assessThreads).not.toHaveBeenCalled();
+    expect(harness.reviewService.queueReviewTasks).not.toHaveBeenCalled();
+  });
+
   it('hands the queued threads to the review service and reports a fix started', async () => {
     const task = createTask({
       status: 'needs_review',

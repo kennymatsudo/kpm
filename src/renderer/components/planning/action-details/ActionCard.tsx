@@ -3,24 +3,25 @@
  * Shows action type badge, summary text, and selection state.
  */
 
+import { memo } from 'react';
 import type { PlanAction, PlanItem } from '../../../../shared/types';
 
 interface ActionCardProps {
   action: PlanAction;
   index: number;
   isActive: boolean;
-  planItems: PlanItem[];
+  planItemsById: Map<string, PlanItem>;
   placeholderMap: Map<string, { title: string; description?: string; label?: string }>;
-  onSelect: () => void;
+  onSelect: (index: number) => void;
 }
 
-export function ActionCard({ action, index, isActive, planItems, placeholderMap, onSelect }: ActionCardProps) {
+export const ActionCard = memo(function ActionCard({ action, index, isActive, planItemsById, placeholderMap, onSelect }: ActionCardProps) {
   const { icon, color, label } = getActionStyle(action.type);
-  const summary = describeAction(action, planItems, placeholderMap);
+  const summary = describeAction(action, planItemsById, placeholderMap);
 
   return (
     <div
-      onClick={onSelect}
+      onClick={() => onSelect(index)}
       className={`
         group relative flex items-center gap-2.5 px-2.5 py-2 rounded-lg cursor-pointer transition-all duration-100
         ${isActive
@@ -51,7 +52,7 @@ export function ActionCard({ action, index, isActive, planItems, placeholderMap,
       <span className="text-text-muted/50 text-xs flex-shrink-0">{icon}</span>
     </div>
   );
-}
+});
 
 function getActionStyle(type: PlanAction['type']): { icon: string; color: string; label: string } {
   switch (type) {
@@ -89,7 +90,7 @@ function getActionStyle(type: PlanAction['type']): { icon: string; color: string
 
 function describeAction(
   action: PlanAction,
-  planItems: PlanItem[],
+  planItemsById: Map<string, PlanItem>,
   placeholderMap: Map<string, { title: string; description?: string; label?: string }>
 ): string {
   const getTitle = (id: string): string => {
@@ -98,8 +99,7 @@ function describeAction(
       const placeholder = placeholderMap.get(id);
       return placeholder?.title || `[New item ${id}]`;
     }
-    const item = planItems.find(i => i.id === id);
-    return item?.title || '[missing item]';
+    return planItemsById.get(id)?.title || '[missing item]';
   };
 
   switch (action.type) {

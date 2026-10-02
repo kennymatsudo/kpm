@@ -10,7 +10,7 @@
  */
 
 import { z } from 'zod';
-import { tool, jsonResult, toolError, toolLog } from './index';
+import { tool, jsonResult, toolError, toolLog, projectScoped } from './index';
 
 export interface DocumentUpdatePayload {
   projectId: string;
@@ -27,13 +27,7 @@ export interface DocumentUpdatePayload {
 
 export type DocumentUpdateCallback = (update: DocumentUpdatePayload) => void;
 
-const TOOL_DESCRIPTION = `Create a new file or fully replace an existing file's content (relative path, e.g. "guide.md"). Provide the COMPLETE content; KPM will queue or apply it according to the user's approval setting. Do NOT use propose_document_edit when replacing an entire file.
-
-For targeted find-and-replace within a file use \`propose_document_edit\`. For the project context file use \`propose_context_edit\`. When asked to create "using X as reference", use a NEW file path.
-
-Cross-references: write \`@plan/<uuid>\` inline when mentioning plan items — KPM renders chips locally and rewrites to native tracker syntax on export. Use only UUIDs from the system prompt's Item Reference. Refs inside fenced code blocks won't resolve.
-
-Multiple files: call ONE AT A TIME, never in parallel. Verify path matches content each call.`;
+const TOOL_DESCRIPTION = `Propose a new file in the KPM project folder, or a full replacement of an existing one, with its complete content. KPM queues it for review or applies it, per the user's setting. For a change to part of a file, use propose_document_edit, which sends only the changed text. For the project context file (AGENTS.md or CLAUDE.md), use propose_context_edit. When asked to write something "using X as a reference", create a new path rather than replacing X. Mention plan items as @plan/<uuid> per Plan References; refs inside code blocks do not resolve.`;
 
 /**
  * Create the document create tool.
@@ -46,7 +40,6 @@ export function createDocumentCreateTools(onDocumentUpdate: DocumentUpdateCallba
       'propose_document_create',
       TOOL_DESCRIPTION,
       {
-        projectId: z.string().uuid().describe('The project UUID'),
         filePath: z.string().min(1)
         .refine(
           (p) => !p.startsWith('/') && !/^[a-zA-Z]:/.test(p) && !p.includes('..'),
@@ -55,7 +48,7 @@ export function createDocumentCreateTools(onDocumentUpdate: DocumentUpdateCallba
         .describe('Relative file path within the KPM project (e.g., "guide.md", "meeting-notes.md"). Must be relative — never an absolute path like /Users/... or a path into a connected repo.'),
         content: z.string().min(1).describe('The complete new document content (not a diff). Must be valid Markdown.'),
       },
-      async ({ projectId, filePath, content }) => {
+      projectScoped(async ({ projectId, filePath, content }) => {
         toolLog(`[KPM Tools] propose_document_create ${projectId} ${filePath} (${content.length} chars)`);
 
         try {
@@ -66,14 +59,8 @@ export function createDocumentCreateTools(onDocumentUpdate: DocumentUpdateCallba
           return toolError(`Failed to propose document create: ${error instanceof Error ? error.message : String(error)}`);
         }
 
-        const preview = /^#+ .+$/m.exec(content)?.[0] ?? content.slice(0, 100);
-        return jsonResult({
-          success: true,
-          filePath,
-          contentPreview: preview,
-          message: `Submitted new file "${filePath}". Preview: ${preview}`,
-        });
-      }
+        return jsonResult({ success: true, filePath, message: `Submitted "${filePath}" to KPM.` });
+      })
     ),
   ];
 }

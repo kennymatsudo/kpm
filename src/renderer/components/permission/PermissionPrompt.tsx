@@ -10,13 +10,12 @@ import { usePermissionStore } from '../../stores';
 import { useShallow } from 'zustand/react/shallow';
 import { UnlockIcon } from '../icons';
 
-/** What the write grant actually opens up, stated before the user agrees to it
+/** What the publishing grant actually opens up, stated before the user agrees to it
  * rather than summarized after. It has no expiry, so this is the one moment
  * the full extent is on screen. */
 const WRITE_ACCESS_COVERAGE = [
-  'Creating, editing, and deleting files',
-  'Running shell commands',
-  'Git operations, including commits and pushing a branch',
+  'Pushing a branch',
+  'Opening and editing pull requests',
 ];
 
 interface PermissionPromptProps {
@@ -41,7 +40,7 @@ export function PermissionPrompt({ chatSessionId }: PermissionPromptProps) {
   return (
     <div
       role="group"
-      aria-label={isWriteAccess ? 'Project write request' : 'Input request'}
+      aria-label={isWriteAccess ? 'Project publishing request' : 'Input request'}
       onKeyDown={(e) => {
         if (e.key === 'Escape') {
           e.preventDefault();
@@ -61,7 +60,7 @@ export function PermissionPrompt({ chatSessionId }: PermissionPromptProps) {
       >
         <UnlockIcon className="w-4 h-4 text-accent flex-shrink-0" aria-hidden="true" />
         <span className="text-sm font-medium text-text-primary">
-          {isWriteAccess ? 'Allow writes in this project?' : 'Allow this action?'}
+          {isWriteAccess ? 'Allow publishing from this project?' : 'Allow this action?'}
         </span>
       </div>
 
@@ -106,7 +105,7 @@ export function PermissionPrompt({ chatSessionId }: PermissionPromptProps) {
         {isWriteAccess && (
           <p className="text-xs text-text-tertiary mt-2">
             Applies to every chat in this project and stays on after a restart. Turn it
-            off in Settings, Permissions.
+            off in Settings, Publishing.
           </p>
         )}
       </div>

@@ -1,11 +1,13 @@
-import type { ContentBlockParam } from '@anthropic-ai/sdk/resources';
+import { readFile } from 'fs/promises';
 import type * as PiCodingAgent from '@earendil-works/pi-coding-agent';
 import type { ToolDefinition as PiSdkToolDefinition } from '@earendil-works/pi-coding-agent';
 import { BaseTurnQueueChatSession, type SessionEndReason } from '../services/streaming/BaseTurnQueueChatSession';
 import {
-  assistantError,
   assistantText,
   assistantThinking,
+  describeProviderFailure,
+  providerError,
+  providerNotice,
   textDelta,
   toolUse,
   turnResult,
@@ -16,16 +18,14 @@ import { buildPiKpmTools, type PiKpmToolDefinition, type PiToolImageContent } fr
 import type { PlanContext } from '../chat/prompts';
 import { buildChatSystemPrompt } from '../chat/prompts';
 import { resolveEffectiveRepoPath } from '../../shared/repoPath';
-import { shellCommandNeedsWriteGrant } from '../chat/shellWritePolicy';
-import {
-  pathCanTraverseDeniedRoot,
-  pathResolvesIntoDeniedRoot,
-} from '../services/files/pathSecurity';
+import type { ChatAttachment } from '../../shared/types';
 
-/** Built-in pi tools that are read-only against the filesystem. */
-const READ_ONLY_BUILTIN_TOOLS = ['read', 'grep', 'find', 'ls'] as const;
-
-const WRITE_BUILTIN_TOOLS = ['write', 'edit', 'bash'] as const;
+/**
+ * pi's built-in tools, all active. pi has no permission system of its own, so
+ * a KPM pi chat runs them as the user's pi CLI does; any gate the user wants
+ * comes from their own pi extensions, which load into KPM sessions too.
+ */
+const BUILTIN_TOOLS = ['read', 'grep', 'find', 'ls', 'write', 'edit', 'bash'] as const;
 
 /**
  * The `pi-mcp-adapter` gateway, which is how a pi session reaches the user's
@@ -41,17 +41,10 @@ const WRITE_BUILTIN_TOOLS = ['write', 'edit', 'bash'] as const;
  * server already takes `disabled: true`. Servers keep pi's default `lazy`
  * lifecycle, so none connect until the model asks for one.
  *
- * These calls leave the machine for an external service instead of touching
- * the repo, so they sit outside the write grant (P7), matching how the user's
- * MCP servers already behave in Claude chat. The same caveat carries over
- * too: an MCP server can write to a tracker without passing through KPM's
- * export boundary (P6).
+ * An MCP server can write to a tracker without passing through KPM's export
+ * boundary, as the user's MCP servers can in Claude chat.
  */
 const MCP_GATEWAY_TOOLS = ['mcp'] as const;
-
-export type PiWriteConsentFn = () => Promise<
-  { allowed: true } | { allowed: false; reason: string }
->;
 
 /**
  * The directory a pi session runs in: the first connected repo's working tree,
@@ -96,8 +89,6 @@ export interface CreatePiSessionOptions {
   thinkingLevel?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   /** pi's own persisted session id to continue. Unset starts a fresh persisted session. */
   resumeSessionId?: string;
-  /** Gates write builtins on the conversation's write consent. Omitted means no writes. */
-  requestWriteConsent?: PiWriteConsentFn;
 }
 
 export type CreatePiSessionFn = (options: CreatePiSessionOptions) => Promise<PiSessionHandle>;
@@ -114,8 +105,6 @@ export interface PiChatSessionConfig {
   onReady?: (sessionId: string) => void;
   /** KPM tools adapted by the caller for this session. Defaults to building from context for tests/backcompat. */
   kpmTools?: { tools: PiKpmToolDefinition[]; toolNames: string[] };
-  /** Gates write builtins on the conversation's write consent. Omitted means no writes. */
-  requestWriteConsent?: PiWriteConsentFn;
   /** Injectable session factory, defaulting to the real pi SDK. Tests inject a fake to avoid live model calls. */
   createSession?: CreatePiSessionFn;
 }
@@ -123,67 +112,6 @@ export interface PiChatSessionConfig {
 interface QueuedTurn {
   text: string;
   images: PiToolImageContent[];
-}
-
-/**
- * Tool-call gate. Blocks anything outside the allowlist, and routes a write
- * builtin through the conversation's write consent (P7).
- *
- * Exported standalone so it is unit-testable without the real pi extension
- * runtime; `createRealPiSession` wires the same function into
- * `pi.on('tool_call', ...)`. pi awaits the handler and fails closed if it
- * throws, so a consent prompt that never resolves blocks rather than leaks.
- */
-export function buildToolCallGate(
-  allowedToolNames: readonly string[],
-  requestWriteConsent?: PiWriteConsentFn,
-  pathIsProtected: (
-    path: string,
-    traversal: boolean,
-  ) => Promise<boolean> = (path, traversal) => (
-    traversal
-      ? pathCanTraverseDeniedRoot(path)
-      : pathResolvesIntoDeniedRoot(path)
-  ),
-): (event: { toolName: string; input?: Record<string, unknown> }) => Promise<{ block: true; reason: string } | undefined> {
-  const allowed = new Set(allowedToolNames);
-  return async ({ toolName, input }) => {
-    if (!allowed.has(toolName)) {
-      return { block: true, reason: `Tool "${toolName}" is not available in this chat session.` };
-    }
-
-    const protectsFilesystem = ['read', 'write', 'edit', 'ls', 'grep', 'find'].includes(toolName);
-    const targetPath = typeof input?.path === 'string'
-      ? input.path
-      : protectsFilesystem
-        ? '.'
-        : undefined;
-    if (
-      targetPath
-      && await pathIsProtected(targetPath, toolName === 'grep' || toolName === 'find')
-    ) {
-      return { block: true, reason: `Tool "${toolName}" cannot access protected credential paths.` };
-    }
-
-    if (!(WRITE_BUILTIN_TOOLS as readonly string[]).includes(toolName)) return undefined;
-
-    // Reading git state is a read: `git status`/`diff`/`log` run without the
-    // write grant, on the same rule Claude's gate applies.
-    if (
-      toolName === 'bash'
-      && typeof input?.command === 'string'
-      && !shellCommandNeedsWriteGrant(input.command)
-    ) {
-      return undefined;
-    }
-
-    if (!requestWriteConsent) {
-      return { block: true, reason: `Tool "${toolName}" cannot change files in this chat session.` };
-    }
-
-    const decision = await requestWriteConsent();
-    return decision.allowed ? undefined : { block: true, reason: decision.reason };
-  };
 }
 
 /**
@@ -225,22 +153,23 @@ export function resolvePiModelSelection<TModel extends { provider: string; id: s
   return Promise.resolve(exact ? { model: exact, usedFallback: false } : undefined);
 }
 
-function contentBlocksToPiPrompt(content: ContentBlockParam[]): { text: string; images: PiToolImageContent[] } {
+// pi's prompt API takes text plus images; text files are inlined and PDFs are
+// refused before a send reaches here (`attachmentKinds`).
+async function attachmentsToPiPrompt(text: string, attachments: ChatAttachment[]): Promise<{ text: string; images: PiToolImageContent[] }> {
   const textParts: string[] = [];
   const images: PiToolImageContent[] = [];
-  for (const block of content) {
-    if (block.type === 'text') {
-      textParts.push(block.text);
+  for (const attachment of attachments) {
+    if (attachment.kind === 'image') {
+      images.push({ type: 'image', data: (await readFile(attachment.path)).toString('base64'), mimeType: attachment.mediaType });
       continue;
     }
-    if (block.type === 'image' && block.source.type === 'base64') {
-      images.push({ type: 'image', data: block.source.data, mimeType: block.source.media_type });
+    if (attachment.kind === 'text') {
+      textParts.push(`<file name="${attachment.filename}">\n${await readFile(attachment.path, 'utf-8')}\n</file>`);
       continue;
     }
-    if (block.type === 'document') {
-      textParts.push('[Document attachment omitted: pi chat adapter does not yet translate base64 document blocks.]');
-    }
+    throw new Error(`pi can't read "${attachment.filename}"`);
   }
+  if (text.trim()) textParts.push(text);
   return { text: textParts.join('\n\n'), images };
 }
 
@@ -370,6 +299,40 @@ export function createEphemeralPiSettings(pi: typeof PiCodingAgent, cwd: string)
   return pi.SettingsManager.inMemory(pi.SettingsManager.create(cwd, pi.getAgentDir()).getGlobalSettings());
 }
 
+type PiThinkingLevel = NonNullable<CreatePiSessionOptions['thinkingLevel']>;
+
+/**
+ * Switch a session to `model`, then to KPM's thinking level. pi's `setModel`
+ * re-derives the level from the user's pi settings (per-model, then default),
+ * discarding the one passed at creation, so the level must be applied after.
+ */
+export async function selectPiModel<TModel>(
+  session: { setModel(model: TModel): Promise<void>; setThinkingLevel(level: PiThinkingLevel): void },
+  model: TModel,
+  thinkingLevel: PiThinkingLevel | undefined,
+): Promise<void> {
+  await session.setModel(model);
+  if (thinkingLevel) session.setThinkingLevel(thinkingLevel);
+}
+
+const PI_FILE_TOOL_NAMES: Record<string, string> = { read: 'Read', edit: 'Edit', write: 'Write' };
+
+/**
+ * A pi built-in tool call as the tool call KPM's shared activity and tool-log
+ * code reads, which speaks Claude's names and input shapes. Display only.
+ */
+export function canonicalPiToolCall(
+  toolName: string,
+  input: Record<string, unknown>,
+): { name: string; input: Record<string, unknown> } {
+  const fileToolName = PI_FILE_TOOL_NAMES[toolName];
+  if (fileToolName) return { name: fileToolName, input: { ...input, file_path: input.path } };
+  if (toolName === 'bash') return { name: 'Bash', input };
+  if (toolName === 'grep') return { name: 'Grep', input };
+  if (toolName === 'find') return { name: 'Glob', input };
+  return { name: toolName, input };
+}
+
 /**
  * Real pi SDK wiring, isolated in its own function and loaded via dynamic
  * `import()`. @earendil-works/pi-coding-agent is ESM-only ("type": "module",
@@ -380,21 +343,7 @@ export function createEphemeralPiSettings(pi: typeof PiCodingAgent, cwd: string)
  */
 async function createRealPiSession(options: CreatePiSessionOptions): Promise<PiSessionHandle> {
   const pi = await import('@earendil-works/pi-coding-agent');
-  const allowedToolNames = [
-    ...READ_ONLY_BUILTIN_TOOLS,
-    ...(options.requestWriteConsent ? WRITE_BUILTIN_TOOLS : []),
-    ...MCP_GATEWAY_TOOLS,
-    ...options.toolNames,
-  ];
-  const gate = buildToolCallGate(
-    allowedToolNames,
-    options.requestWriteConsent,
-    (candidatePath, traversal) => (
-      traversal
-        ? pathCanTraverseDeniedRoot(candidatePath, options.cwd)
-        : pathResolvesIntoDeniedRoot(candidatePath, options.cwd)
-    ),
-  );
+  const activeToolNames = [...BUILTIN_TOOLS, ...MCP_GATEWAY_TOOLS, ...options.toolNames];
   const resourceLoader = new pi.DefaultResourceLoader({
     cwd: options.cwd,
     agentDir: pi.getAgentDir(),
@@ -407,11 +356,6 @@ async function createRealPiSession(options: CreatePiSessionOptions): Promise<PiS
     noPromptTemplates: true,
     noThemes: true,
     noContextFiles: true,
-    extensionFactories: [
-      (extensionApi) => {
-        extensionApi.on('tool_call', (event) => gate({ toolName: event.toolName, input: event.input }));
-      },
-    ],
   });
   await resourceLoader.reload({ resolveProjectTrust: resolvePiProjectTrust });
 
@@ -419,7 +363,7 @@ async function createRealPiSession(options: CreatePiSessionOptions): Promise<PiS
     cwd: options.cwd,
     sessionManager: await resolvePiSessionManager(pi, options.cwd, options.resumeSessionId),
     settingsManager: createEphemeralPiSettings(pi, options.cwd),
-    tools: allowedToolNames,
+    tools: activeToolNames,
     customTools: options.tools as unknown as PiSdkToolDefinition[],
     resourceLoader,
     ...(options.thinkingLevel ? { thinkingLevel: options.thinkingLevel } : {}),
@@ -430,7 +374,7 @@ async function createRealPiSession(options: CreatePiSessionOptions): Promise<PiS
     const resolution = selector ? await resolvePiModelSelection(session.modelRuntime, selector) : undefined;
     if (!selector) throw new Error(`Invalid pi model selector “${options.model}”. Choose a provider/model pair.`);
     if (!resolution) throw new Error(`The saved pi model “${options.model}” is unavailable. Choose another model.`);
-    await session.setModel(resolution.model);
+    await selectPiModel(session, resolution.model, options.thinkingLevel);
   }
 
   // Extensions initialize on the `session_start` event, and `bindExtensions`
@@ -482,6 +426,14 @@ export class PiChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
   private unsubscribe: (() => void) | null = null;
   /** True while an in-flight `abort()` is settling the current turn, so the `executeTurn` catch does not treat a user-initiated interrupt as a session error. */
   private interrupting = false;
+  /**
+   * How the turn's latest model call ended. pi decides whether to retry or
+   * compact-and-continue only after `message_end`, so these stand until a
+   * retry starts or a later call replaces them, and whatever is left when
+   * `prompt()` returns is the turn's real outcome.
+   */
+  private unrecoveredError: string | null = null;
+  private outputLimitReached = false;
   private latestUsage: PiUsageLike | undefined;
 
   constructor(config: PiChatSessionConfig) {
@@ -491,13 +443,11 @@ export class PiChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
     this.createSessionFn = config.createSession ?? createRealPiSession;
   }
 
-  async start(initialMessage: string | ContentBlockParam[]): Promise<void> {
+  async start(initialMessage: string, attachments: ChatAttachment[] = []): Promise<void> {
     if (this.active) {
       throw new Error('Session already started');
     }
-    const turn = typeof initialMessage === 'string'
-      ? { text: initialMessage, images: [] }
-      : contentBlocksToPiPrompt(initialMessage);
+    const turn = await attachmentsToPiPrompt(initialMessage, attachments);
 
     const { tools, toolNames } = this.config.kpmTools ?? buildPiKpmTools({
       focus: Boolean(this.config.context.focusDocument),
@@ -514,7 +464,6 @@ export class PiChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
         model: this.config.model,
         thinkingLevel: this.config.thinkingLevel,
         resumeSessionId: this.config.resumeSessionId,
-        requestWriteConsent: this.config.requestWriteConsent,
       });
     } catch (error) {
       this.config.onSessionEnd?.('error', error as Error);
@@ -533,8 +482,8 @@ export class PiChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
     this.enqueue({ text, images: [] });
   }
 
-  sendUserContent(content: ContentBlockParam[]): void {
-    this.enqueue(contentBlocksToPiPrompt(content));
+  async sendWithAttachments(text: string, attachments: ChatAttachment[]): Promise<void> {
+    this.enqueue(await attachmentsToPiPrompt(text, attachments));
   }
 
   interrupt(): Promise<void> {
@@ -566,7 +515,7 @@ export class PiChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
    * itself) each bind to a single `cwd` string — the pi SDK has no
    * multi-directory equivalent of Claude Code's `--add-dir`, so only the
    * first connected repo is reachable through pi's native tools. Cross-repo
-   * reads (P3) still work through KPM's own `git_read` custom tool, which
+   * reads still work through KPM's own `git_read` custom tool, which
    * takes a `repoPath` and runs read-only git against any connected repo.
    */
   private resolveCwd(): string {
@@ -578,6 +527,8 @@ export class PiChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
     // from an interrupt() call that had no in-flight turn to consume it.
     this.interrupting = false;
     this.latestUsage = undefined;
+    this.unrecoveredError = null;
+    this.outputLimitReached = false;
     try {
       if (!this.sessionHandle) {
         throw new Error('pi session is not initialized');
@@ -586,6 +537,10 @@ export class PiChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
       await this.sessionHandle.prompt(turn.text, turn.images.length > 0 ? { images: turn.images } : undefined);
       const after = this.sessionHandle.getSessionStats?.();
       if (before && after) this.latestUsage = sessionStatsDelta(before, after);
+      if (this.unrecoveredError) {
+        console.error('[PiChatSession] pi turn error:', this.unrecoveredError);
+        this.config.onMessage(providerError(describeProviderFailure('pi stopped with an error. Send another message to retry.', this.unrecoveredError)));
+      }
       this.emitTurnResult();
     } catch (error) {
       if (this.closing || this.interrupting) return;
@@ -612,6 +567,9 @@ export class PiChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
         return;
       case 'agent_end':
         this.handleAgentEnd(event as { messages?: unknown[] });
+        return;
+      case 'auto_retry_start':
+        this.handleAutoRetryStart(event as { attempt?: unknown; maxAttempts?: unknown; delayMs?: unknown; errorMessage?: unknown });
         return;
       default:
         return;
@@ -647,10 +605,16 @@ export class PiChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
       this.config.onMessage(assistantText(text));
     }
 
-    if (message.stopReason === 'error' && message.errorMessage) {
-      console.error('[PiChatSession] pi turn error:', message.errorMessage);
-      this.config.onMessage(assistantError(message.errorMessage));
-    }
+    this.unrecoveredError = message.stopReason === 'error' ? message.errorMessage || 'Unknown error' : null;
+    this.outputLimitReached = message.stopReason === 'length';
+  }
+
+  private handleAutoRetryStart(event: { attempt?: unknown; maxAttempts?: unknown; delayMs?: unknown; errorMessage?: unknown }): void {
+    this.unrecoveredError = null;
+    const attempt = typeof event.attempt === 'number' && typeof event.maxAttempts === 'number' ? ` (attempt ${event.attempt}/${event.maxAttempts})` : '';
+    const delay = typeof event.delayMs === 'number' ? ` in ${Math.round(event.delayMs / 1000)}s` : '';
+    const reason = typeof event.errorMessage === 'string' && event.errorMessage ? `: ${event.errorMessage}` : '';
+    this.config.onMessage(providerNotice('Retrying', `pi hit an error and is retrying${delay}${attempt}${reason}`));
   }
 
   /**
@@ -669,7 +633,8 @@ export class PiChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
   private handleToolExecutionStart(event: { toolCallId?: unknown; toolName?: unknown; args?: unknown }): void {
     if (typeof event.toolCallId !== 'string' || typeof event.toolName !== 'string') return;
     const input = event.args && typeof event.args === 'object' ? event.args as Record<string, unknown> : {};
-    this.config.onMessage(toolUse(event.toolCallId, event.toolName, input));
+    const call = canonicalPiToolCall(event.toolName, input);
+    this.config.onMessage(toolUse(event.toolCallId, call.name, call.input));
   }
 
   private handleAgentEnd(event: { messages?: unknown[] }): void {
@@ -687,6 +652,7 @@ export class PiChatSession extends BaseTurnQueueChatSession<QueuedTurn> {
         ? { cost: { usd: totalCostUsd, basis: 'per-turn' as const } }
         : {}),
       sessionId: this.getSessionId() ?? undefined,
+      outputLimitReached: this.outputLimitReached,
     }));
   }
 }

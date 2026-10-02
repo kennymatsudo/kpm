@@ -9,7 +9,7 @@
 import path from 'path';
 import { z } from 'zod';
 import { isContextFile } from '../../../shared/contextFile';
-import { tool, jsonResult, toolError } from './index';
+import { tool, jsonResult, toolError, projectScoped } from './index';
 
 export interface FileMovePayload {
   projectId: string;
@@ -24,27 +24,7 @@ interface FileMoveToolDeps {
   onFileMove: FileMoveCallback;
 }
 
-const TOOL_DESCRIPTION = `Submit a move for a file or folder within the project files. KPM queues or applies it according to the user's approval setting.
-
-## When to Use
-Use when the user asks to reorganize, move, or relocate files/folders in the project file tree.
-
-## Parameters
-- \`projectId\`: The project UUID
-- \`sourcePath\`: Current relative path of the file/folder (e.g., "old-location/spec.md")
-- \`targetFolder\`: Destination folder relative path. Use "" (empty string) for the project root.
-
-## Examples
-- Move "spec.md" to "archive/": sourcePath="spec.md", targetFolder="archive"
-- Move "notes/todo.md" to root: sourcePath="notes/todo.md", targetFolder=""
-- Move folder "drafts" into "specs/": sourcePath="drafts", targetFolder="specs"
-
-## Behavior
-- In review mode, KPM opens a confirmation in the approval panel; in auto-apply mode, KPM moves immediately.
-
-## Restrictions
-- Cannot move the project context file (AGENTS.md or CLAUDE.md)
-- Cannot move a file to its current location (no-op)`;
+const TOOL_DESCRIPTION = `Propose moving a file or folder to another folder in the KPM project folder, when the user asks to reorganize or relocate documents. KPM queues the move for review or applies it, per the user's setting. The item keeps its name; targetFolder "" means the project root, so sourcePath "notes/todo.md" with targetFolder "" moves it to the root. The project context file (AGENTS.md or CLAUDE.md) cannot be moved. To rename a file, propose_document_create the new path and delete_project_file the old one.`;
 
 export function createFileMoveTools(deps: FileMoveToolDeps) {
   return [
@@ -52,11 +32,10 @@ export function createFileMoveTools(deps: FileMoveToolDeps) {
       'move_project_file',
       TOOL_DESCRIPTION,
       {
-        projectId: z.string().uuid().describe('The project UUID'),
         sourcePath: z.string().min(1).describe('Current relative path of the file or folder to move'),
-        targetFolder: z.string().describe('Destination folder relative path. Use "" for project root.'),
+        targetFolder: z.string().describe('Destination folder, relative to the project root; "" for the root itself'),
       },
-      async ({ projectId, sourcePath, targetFolder }) => {
+      projectScoped(async ({ projectId, sourcePath, targetFolder }) => {
         const basename = path.basename(sourcePath);
         if (isContextFile(basename)) {
           return toolError(`Cannot move ${basename} — it is a protected project context file.`);
@@ -70,13 +49,8 @@ export function createFileMoveTools(deps: FileMoveToolDeps) {
         await Promise.resolve();
         deps.onFileMove({ projectId, sourcePath, targetPath });
 
-        return jsonResult({
-          success: true,
-          sourcePath,
-          targetPath,
-          proposalSubmitted: true,
-        });
-      }
+        return jsonResult({ success: true, sourcePath, targetPath });
+      })
     ),
   ];
 }

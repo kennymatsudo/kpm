@@ -13,7 +13,8 @@ import { Markdown } from 'markdown-to-jsx';
 import { CloseIcon } from '../icons';
 import { LoadingSpinner } from '../ui/LoadingButton';
 import { MotionButton } from '../ui/MotionButton';
-import { DiffViewer, computeDiff, getDiffStatsFromDiff } from '../ui/DiffViewer';
+import { DiffViewerLazy } from '../ui/DiffViewerLazy';
+import { computeDiff, getDiffStatsFromDiff } from '../ui/diffHelpers';
 import { addSoftBreaks, markdownOptions, transformPlanRefs } from '../../utils/markdown';
 import { Z_INDEX } from '../../constants/zIndex';
 import { getBaseName } from '../../utils/path';
@@ -66,8 +67,8 @@ export function PendingDocumentPanel({
     [summaryDiffLines]
   );
   const editedDiffLines = useMemo(
-    () => computeDiff(oldContent, editedContent),
-    [oldContent, editedContent]
+    () => editedContent === content ? summaryDiffLines : computeDiff(oldContent, editedContent),
+    [oldContent, content, editedContent, summaryDiffLines]
   );
 
   // Collapsed panel (floating at bottom)
@@ -236,7 +237,7 @@ export function PendingDocumentPanel({
             {/* Content */}
             <div className="flex-1 overflow-auto p-4 bg-surface-1">
               {viewMode === 'diff' ? (
-                <DiffViewer oldContent={oldContent || ''} newContent={editedContent} diffLines={editedDiffLines} autoScrollToFirstChange />
+                <DiffViewerLazy oldContent={oldContent || ''} newContent={editedContent} diffLines={editedDiffLines} autoScrollToFirstChange />
               ) : viewMode === 'preview' ? (
                 <div className="prose prose-panel bg-surface-2 p-4 rounded-lg border border-border-subtle overflow-y-auto overflow-x-hidden">
                   <Markdown options={markdownOptions}>
@@ -363,7 +364,7 @@ export function PendingDocumentPanel({
         {/* Content area */}
         <div className="flex-1 overflow-auto p-4 bg-surface-1">
           {viewMode === 'diff' ? (
-            <DiffViewer oldContent={oldContent || ''} newContent={editedContent} diffLines={editedDiffLines} autoScrollToFirstChange />
+            <DiffViewerLazy oldContent={oldContent || ''} newContent={editedContent} diffLines={editedDiffLines} autoScrollToFirstChange />
           ) : viewMode === 'preview' ? (
             <div className="prose prose-panel bg-surface-2 p-4 rounded-lg border border-border-subtle overflow-y-auto overflow-x-hidden">
               <Markdown options={markdownOptions}>

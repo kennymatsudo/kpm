@@ -8,22 +8,60 @@ import type { PlanItem } from '../../../shared/types';
 
 /**
  * Threshold for including FULL item hierarchy in prompt.
- * Below this: include all items with hierarchy (saves all query calls)
- * Above this: only include root-level items (phases) as move targets
+ * Below this: include all listed items with hierarchy (saves all query calls)
+ * Above this: only include root-level items as move targets
  */
 export const FULL_HIERARCHY_THRESHOLD = 30;
 
+const CLOSED_STATUSES: ReadonlySet<PlanItem['status_category']> = new Set(['done', 'canceled']);
+
 /**
- * Build a compact reference table of plan items for Claude.
- *
- * Strategy:
- * - Always include root-level items (phases) - common move targets, typically 3-7 items
- * - Only include full hierarchy when total items <= threshold
- *
- * This ensures "move X to Phase Y" only needs 2 calls (query X, propose)
- * even with large plans, since Phase Y's ID is always available.
+ * Closed (done or canceled) items stay out of the listing: in a long-lived plan
+ * they are most of the rows and rarely the subject. A closed item is kept only
+ * when an open item sits beneath it, so the open item's nesting still reads
+ * correctly.
  */
-export function buildItemReferenceTable(planItems: PlanItem[]): string {
+function selectListedItems(planItems: readonly PlanItem[]): PlanItem[] {
+  const byId = new Map(planItems.map((item) => [item.id, item]));
+  const listed = new Set<string>();
+  for (const item of planItems) {
+    if (CLOSED_STATUSES.has(item.status_category)) continue;
+    let current: PlanItem | undefined = item;
+    while (current && !listed.has(current.id)) {
+      listed.add(current.id);
+      current = current.parent_id ? byId.get(current.parent_id) : undefined;
+    }
+  }
+  return planItems.filter((item) => listed.has(item.id));
+}
+
+/**
+ * The `# Current Plan` section shared by every chat provider: a count line and
+ * a compact reference table of the items worth listing.
+ */
+export function buildCurrentPlanSection(planItems: readonly PlanItem[]): string {
+  if (planItems.length === 0) return '# Current Plan\nEmpty.';
+
+  const listed = selectListedItems(planItems);
+  const omitted = planItems.length - listed.length;
+  const findHint = 'find them with `query_plan_items`.';
+  const summary = listed.length === 0
+    ? `${planItems.length} ${planItems.length === 1 ? 'item, closed' : 'items, all closed'} (done or canceled), so none are listed; ${findHint}`
+    : omitted > 0
+      ? `${planItems.length} items. ${omitted} closed (done or canceled) ${omitted === 1 ? 'item is' : 'items are'} not listed; ${findHint}`
+      : `${planItems.length} items.`;
+
+  const table = buildItemReferenceTable(listed);
+  return `# Current Plan\n${summary}${table ? `\n${table}` : ''}`;
+}
+
+/**
+ * Build a compact reference table of plan items.
+ *
+ * Only include the full hierarchy when the listed items fit under the
+ * threshold; otherwise list root items, which are the common reparent targets.
+ */
+export function buildItemReferenceTable(planItems: readonly PlanItem[]): string {
   if (planItems.length === 0) {
     return '';
   }
@@ -38,7 +76,6 @@ export function buildItemReferenceTable(planItems: PlanItem[]): string {
   };
 
   if (includeFullHierarchy) {
-    // Full hierarchy: include all items nested
     const lines = ['## Item Reference (use these IDs directly)', ''];
     const childrenByParent = new Map<string, PlanItem[]>();
 
@@ -69,8 +106,7 @@ export function buildItemReferenceTable(planItems: PlanItem[]): string {
 
     return lines.join('\n');
   } else {
-    // Root items only: phases as move targets
-    const lines = ['## Root Items (phases - use these IDs for reparent targets)', ''];
+    const lines = ['## Item Reference (root items only)', ''];
     lines.push('Query `query_plan_items` for other item IDs.', '');
 
     rootItems
@@ -82,4 +118,3 @@ export function buildItemReferenceTable(planItems: PlanItem[]): string {
     return lines.join('\n');
   }
 }
-

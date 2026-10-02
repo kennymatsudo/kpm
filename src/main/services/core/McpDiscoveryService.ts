@@ -260,29 +260,6 @@ export function createMcpDiscoveryService(deps: McpDiscoveryServiceDeps) {
     },
 
     /**
-     * Get configs for enabled user MCP servers (to pass to SDK mcpServers option).
-     * Returns a Record<name, config> for servers the user has enabled in KPM.
-     */
-    getEnabledUserMcpConfigs(): ServiceResult<Record<string, Record<string, unknown>>> {
-      const serversResult = this.discoverUserServers();
-      if (!serversResult.ok) return failure(serversResult.error);
-
-      const prefsResult = this.getPreferences();
-      if (!prefsResult.ok) return failure(prefsResult.error);
-
-      const prefs = prefsResult.data;
-      const configs: Record<string, Record<string, unknown>> = {};
-
-      for (const server of serversResult.data) {
-        if (prefs[`user:${server.name}`] === true) {
-          configs[server.name] = server.config;
-        }
-      }
-
-      return success(configs);
-    },
-
-    /**
      * Save managed server info from session init (so settings UI can show them).
      *
      * An init that reports no claude.ai servers means "not loaded", never "none

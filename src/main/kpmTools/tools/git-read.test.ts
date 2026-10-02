@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { runWithToolExecutionContext } from '../runtime';
 import { createGitReadTools } from './git-read';
 
 const gitExecCaptured = vi.fn();
@@ -18,7 +19,7 @@ function makeTool(repos?: { path: string; active_worktree_path: string | null }[
 }
 
 function callTool(readTool: ReturnType<typeof makeTool>, input: Record<string, unknown>) {
-  return (readTool as any).handler({ projectId: PROJECT_ID, args: [], ...input });
+  return runWithToolExecutionContext({ projectId: PROJECT_ID }, () => (readTool as any).handler({ args: [], ...input }));
 }
 
 beforeEach(() => {
@@ -66,7 +67,7 @@ describe('git_read', () => {
     const result = await callTool(makeTool(), { operation: 'grep', args: ['nothing-matches'] });
 
     expect(result.isError).toBeFalsy();
-    expect(JSON.parse(result.content[0].text).exitCode).toBe(1);
+    expect(result.content[0].text).toBe('exit 1');
   });
 
   it('requires repoPath when several repos are connected', async () => {

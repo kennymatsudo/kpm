@@ -1,18 +1,15 @@
-import type { Activity, SessionState } from '../../shared/types';
+import type { SessionState } from '../../shared/types';
 import type { ProposedChangeInput, DisposalPolicy } from '../stores/proposedChangeDisposal';
+import type { ActiveSessionInfo } from '../../shared/ipc/chatEndpoints';
 import { isContextFile } from '../../shared/contextFile';
 import type { ChatState } from '../stores/chat/types';
 import { isStreamStale } from '../stores/chat/chatStreamReducer';
 import type { StoreEvent } from '../stores/storeEvents';
 import type {
-  FileDeleteEventData,
-  FileMoveEventData,
-  FileUpdateEventData,
-  PlanActionsEventData,
+  ChatProposalEventData,
   ChunkEventData,
   TurnDoneEventData,
   SessionLifecycleEventData,
-  QueuedEventData,
   QueueClearedEventData,
   ErrorEventData,
   ActivityEventData,
@@ -28,12 +25,8 @@ import type {
 /** Chat IPC event handlers in the shape `subscribeToChatEvents` accepts. */
 export interface ChatEventHandlers {
   onChunk: (data: ChunkEventData) => void;
-  onPlanActions: (data: PlanActionsEventData) => void;
-  onFileUpdate: (data: FileUpdateEventData) => void;
-  onFileMove: (data: FileMoveEventData) => void;
-  onFileDelete: (data: FileDeleteEventData) => void;
+  onProposal: (data: ChatProposalEventData) => void;
   onDone: (data: TurnDoneEventData) => void;
-  onQueued: (data: QueuedEventData) => void;
   onQueueCleared: (data: QueueClearedEventData) => void;
   onError: (data: ErrorEventData) => void;
   onActivity: (data: ActivityEventData) => void;
@@ -60,7 +53,6 @@ export type ChatStoreView = Pick<
   | 'setError'
   | 'setTokens'
   | 'addActivity'
-  | 'updateActivity'
   | 'setSuggestions'
   | 'setSlashCommands'
   | 'setSessionState'
@@ -69,8 +61,9 @@ export type ChatStoreView = Pick<
   | 'markSessionInactive'
   | 'setViewedSession'
   | 'getOrCreateSession'
-  | 'setClaudeSessionId'
+  | 'setProviderSessionId'
   | 'setSessionTitle'
+  | 'loadTabLabels'
   | 'setMcpStatus'
   | 'setBackgroundTasks'
   | 'setLastTurnUsage'
@@ -86,14 +79,7 @@ export interface ChatEventRouterServices {
   getChatUsage: (projectId: string) => Promise<{ totalTokens: number }>;
   getActiveChatSessions: (projectId: string) => Promise<{
     success: boolean;
-    sessions?: {
-      chatSessionId: string;
-      scope: string;
-      state: SessionState;
-      title?: string | null;
-      partialResponse?: string;
-      partialActivities?: Activity[];
-    }[];
+    sessions?: ActiveSessionInfo[];
   }>;
   getChatSessionState: (
     projectId: string,
@@ -112,11 +98,7 @@ export interface ChatEventRouterDeps {
   buffer?: Map<string, BufferedApprovalEvent[]>;
 }
 
-export type BufferedApprovalEvent =
-  | { type: 'plan-actions'; data: PlanActionsEventData }
-  | { type: 'file-update'; data: FileUpdateEventData }
-  | { type: 'file-move'; data: FileMoveEventData }
-  | { type: 'file-delete'; data: FileDeleteEventData };
+export type BufferedApprovalEvent = ChatProposalEventData;
 
 /**
  * Approval events (plan actions, file updates/deletes) must never be dropped,
@@ -162,38 +144,43 @@ export function createChatEventRouter(deps: ChatEventRouterDeps): ChatEventRoute
     approvalEventBuffer.set(targetProjectId, [...existing, event]);
   };
 
-  const processPlanActionsEvent = (data: PlanActionsEventData) => {
-    if (data.actions.length > 0) {
-      getApprovalQueue().propose({ type: 'plan-actions', projectId: data.projectId, actions: data.actions });
+  const processProposal = (data: ChatProposalEventData): void => {
+    const queue = getApprovalQueue();
+    switch (data.kind) {
+      case 'plan-actions':
+        queue.propose({ type: 'plan-actions', projectId: data.projectId, actions: data.actions });
+        return;
+      case 'file-update': {
+        const { kind: _kind, ...update } = data;
+        const change: ProposedChangeInput = isContextFile(update.filePath)
+          ? { type: 'context-file', projectId: update.projectId, newContent: update.content, oldContent: update.oldContent ?? null }
+          : { type: 'document', projectId: update.projectId, filePath: update.filePath, content: update.content, oldContent: update.oldContent ?? null };
+        queue.propose(change, update.forceReview ? { policy: 'review_required' } : undefined);
+        emitStoreEvent({ type: 'chat-file-updated', payload: update });
+        return;
+      }
+      case 'file-move':
+        queue.propose({ type: 'move', projectId: data.projectId, sourcePath: data.sourcePath, targetPath: data.targetPath });
+        return;
+      case 'file-delete':
+        queue.propose({ type: 'delete', projectId: data.projectId, filePath: data.path, isDirectory: data.isDirectory });
+        return;
+      case 'config-change':
+        queue.propose({ type: 'config', projectId: data.projectId, change: data.change });
+        return;
+      case 'board-change':
+        queue.propose({ type: 'board', projectId: data.projectId, change: data.change });
+        return;
     }
-  };
-  const processFileUpdateEvent = (data: FileUpdateEventData) => {
-    const change: ProposedChangeInput = isContextFile(data.filePath)
-      ? { type: 'context-file', projectId: data.projectId, newContent: data.content, oldContent: data.oldContent ?? null }
-      : { type: 'document', projectId: data.projectId, filePath: data.filePath, content: data.content, oldContent: data.oldContent ?? null };
-    getApprovalQueue().propose(change, data.forceReview ? { policy: 'review_required' } : undefined);
-    emitStoreEvent({
-      type: 'chat-file-updated',
-      payload: data,
-    });
-  };
-  const processFileMoveEvent = (data: FileMoveEventData) => {
-    getApprovalQueue().propose({ type: 'move', projectId: data.projectId, sourcePath: data.sourcePath, targetPath: data.targetPath });
-  };
-  const processFileDeleteEvent = (data: FileDeleteEventData) => {
-    getApprovalQueue().propose({ type: 'delete', projectId: data.projectId, filePath: data.path, isDirectory: data.isDirectory });
   };
 
   const flushBufferedApprovalEvents = (): void => {
     const bufferedApprovalEvents = approvalEventBuffer.get(projectId);
     if (!bufferedApprovalEvents || bufferedApprovalEvents.length === 0) return;
     approvalEventBuffer.delete(projectId);
-    for (const event of bufferedApprovalEvents) {
+    for (const proposal of bufferedApprovalEvents) {
       if (!active) break;
-      if (event.type === 'plan-actions') processPlanActionsEvent(event.data);
-      if (event.type === 'file-update') processFileUpdateEvent(event.data);
-      if (event.type === 'file-move') processFileMoveEvent(event.data);
-      if (event.type === 'file-delete') processFileDeleteEvent(event.data);
+      processProposal(proposal);
     }
   };
 
@@ -263,6 +250,8 @@ export function createChatEventRouter(deps: ChatEventRouterDeps): ChatEventRoute
       }
     }
 
+    void getChatState().loadTabLabels(projectId);
+
     if (!getChatState().viewedSessionId && preferredSessionId) {
       getChatState().setViewedSession(preferredSessionId);
     }
@@ -276,37 +265,14 @@ export function createChatEventRouter(deps: ChatEventRouterDeps): ChatEventRoute
         getChatState().appendChunk(sessionId, data.text, data.segmentId, data.precedingActivities);
       }
     },
-    onPlanActions: (data) => {
-      if (!active || data.actions.length === 0) return;
-      if (!isActiveForProject(data.projectId)) {
-        bufferApprovalEvent(data.projectId, { type: 'plan-actions', data });
-        return;
-      }
-      processPlanActionsEvent(data);
-    },
-    onFileUpdate: (data) => {
+    onProposal: (data) => {
       if (!active) return;
+      if (data.kind === 'plan-actions' && data.actions.length === 0) return;
       if (!isActiveForProject(data.projectId)) {
-        bufferApprovalEvent(data.projectId, { type: 'file-update', data });
+        bufferApprovalEvent(data.projectId, data);
         return;
       }
-      processFileUpdateEvent(data);
-    },
-    onFileMove: (data) => {
-      if (!active) return;
-      if (!isActiveForProject(data.projectId)) {
-        bufferApprovalEvent(data.projectId, { type: 'file-move', data });
-        return;
-      }
-      processFileMoveEvent(data);
-    },
-    onFileDelete: (data) => {
-      if (!active) return;
-      if (!isActiveForProject(data.projectId)) {
-        bufferApprovalEvent(data.projectId, { type: 'file-delete', data });
-        return;
-      }
-      processFileDeleteEvent(data);
+      processProposal(data);
     },
     onDone: (data) => {
       void (async () => {
@@ -347,13 +313,6 @@ export function createChatEventRouter(deps: ChatEventRouterDeps): ChatEventRoute
         getChatState().setTokens(usage.totalTokens);
       })();
     },
-    onQueued: (data) => {
-      // No-op for now — the user bubble is added optimistically with
-      // queued=true in `useChat.send`. This event exists so the renderer
-      // can confirm the backend accepted the queue, but we don't need
-      // to mutate state here.
-      if (!isActiveForProject(data.projectId)) return;
-    },
     onQueueCleared: (data) => {
       if (!isActiveForProject(data.projectId)) return;
       const sessionId = data.chatSessionId;
@@ -365,8 +324,6 @@ export function createChatEventRouter(deps: ChatEventRouterDeps): ChatEventRoute
         getChatState().markFollowUpDelivered(sessionId, data.clientMessageId);
         return;
       }
-      // Cancelled by user or lost to a session disconnect — drop the
-      // bubble entirely. The message never reached the model.
       if (data.clientMessageId) {
         getChatState().withdrawFollowUp(sessionId, data.clientMessageId);
       }
@@ -377,12 +334,6 @@ export function createChatEventRouter(deps: ChatEventRouterDeps): ChatEventRoute
       const sessionId = data.chatSessionId ?? state.viewedSessionId ?? undefined;
       if (data.chatSessionId && !isKnownChatSession(data.chatSessionId)) return;
       if (isKnownChatSession(sessionId)) {
-        if (data.error.includes('still responding')) {
-          state.setRetrying(sessionId);
-          state.setSessionState(sessionId, 'processing');
-          return;
-        }
-
         state.setError(sessionId, data.error);
       }
     },
@@ -390,14 +341,7 @@ export function createChatEventRouter(deps: ChatEventRouterDeps): ChatEventRoute
       if (!isActiveForProject(data.projectId)) return;
       const sessionId = data.chatSessionId;
       if (!isKnownChatSession(sessionId)) return;
-      // Result-side updates carry diffStats/diffHunks and reuse the original
-      // activity id — route them to updateActivity so we don't duplicate cards.
-      const isResultUpdate = !!(data.activity.diffStats || data.activity.diffHunks);
-      if (isResultUpdate) {
-        getChatState().updateActivity(sessionId, data.activity);
-      } else {
-        getChatState().addActivity(sessionId, data.activity);
-      }
+      getChatState().addActivity(sessionId, data.activity);
     },
     onThinking: (data) => {
       if (!isActiveForProject(data.projectId)) return;
@@ -432,7 +376,7 @@ export function createChatEventRouter(deps: ChatEventRouterDeps): ChatEventRoute
         state.markSessionActive(sessionId);
         state.setMcpStatus(sessionId, false);
         if (data.sessionId) {
-          state.setClaudeSessionId(sessionId, data.sessionId);
+          state.setProviderSessionId(sessionId, data.sessionId);
         }
       }
     },

@@ -1,12 +1,12 @@
 /**
  * Chat Session Repository Implementation
  *
- * Stores Claude SDK session IDs per chat conversation for proper resume functionality.
- * Each chat_session_id (UI conversation grouping) maps to a claude_session_id (SDK session).
+ * Stores each chat conversation's native provider session ID for resume.
+ * Each chat_session_id (UI conversation grouping) maps to a provider_session_id.
  */
 
 import type { Database, Statement } from 'better-sqlite3';
-import type { ChatProvider, ChatSession } from '../../../../shared/types';
+import type { ChatProvider, ChatSession, ChatTitleSource } from '../../../../shared/types';
 import type { IChatSessionRepository } from '../../interfaces';
 
 /**
@@ -18,12 +18,10 @@ interface PreparedStatements {
   insert: Statement;
   insertFocusDocument: Statement;
   updateFocusDocument: Statement;
-  updateFocusDocumentAndClearClaudeSession: Statement;
-  updateClaudeSessionId: Statement;
+  updateFocusDocumentAndClearProviderSession: Statement;
   updateProviderSessionId: Statement;
   updateModelChoice: Statement;
   updateTitle: Statement;
-  clearClaudeSessionIdsByProject: Statement;
   clearProviderSessionIdsByProject: Statement;
   delete: Statement;
 }
@@ -66,20 +64,14 @@ export class ChatSessionRepository implements IChatSessionRepository {
         WHERE id = ?
         RETURNING *
       `),
-      updateFocusDocumentAndClearClaudeSession: db.prepare(`
+      updateFocusDocumentAndClearProviderSession: db.prepare(`
         UPDATE chat_sessions
         SET focus_document_title = ?,
             focus_document_hash = ?,
             last_opened_at = CURRENT_TIMESTAMP,
-            claude_session_id = NULL,
             provider_session_id = NULL
         WHERE id = ?
         RETURNING *
-      `),
-      updateClaudeSessionId: db.prepare(`
-        UPDATE chat_sessions
-        SET claude_session_id = ?
-        WHERE id = ?
       `),
       updateProviderSessionId: db.prepare(`
         UPDATE chat_sessions
@@ -96,13 +88,8 @@ export class ChatSessionRepository implements IChatSessionRepository {
       `),
       updateTitle: db.prepare(`
         UPDATE chat_sessions
-        SET title = ?
+        SET title = ?, title_source = ?, title_turn = ?
         WHERE id = ?
-      `),
-      clearClaudeSessionIdsByProject: db.prepare(`
-        UPDATE chat_sessions
-        SET claude_session_id = NULL
-        WHERE project_id = ? AND claude_session_id IS NOT NULL
       `),
       clearProviderSessionIdsByProject: db.prepare(`
         UPDATE chat_sessions
@@ -147,16 +134,12 @@ export class ChatSessionRepository implements IChatSessionRepository {
     id: string,
     title: string,
     contentHash: string,
-    clearClaudeSessionId: boolean,
+    clearProviderSessionId: boolean,
   ): ChatSession {
-    const stmt = clearClaudeSessionId
-      ? this.stmts.updateFocusDocumentAndClearClaudeSession
+    const stmt = clearProviderSessionId
+      ? this.stmts.updateFocusDocumentAndClearProviderSession
       : this.stmts.updateFocusDocument;
     return stmt.get(title, contentHash, id) as ChatSession;
-  }
-
-  updateClaudeSessionId(id: string, claudeSessionId: string): void {
-    this.stmts.updateClaudeSessionId.run(claudeSessionId, id);
   }
 
   updateProviderSessionId(id: string, provider: ChatProvider, providerSessionId: string): void {
@@ -167,12 +150,8 @@ export class ChatSessionRepository implements IChatSessionRepository {
     return this.stmts.updateModelChoice.get(choiceJson, id, expectedRevision) as ChatSession | undefined;
   }
 
-  updateTitle(id: string, title: string): void {
-    this.stmts.updateTitle.run(title, id);
-  }
-
-  clearClaudeSessionIdsByProject(projectId: string): void {
-    this.stmts.clearClaudeSessionIdsByProject.run(projectId);
+  updateTitle(id: string, title: string | null, source: ChatTitleSource | null, turn: number | null): void {
+    this.stmts.updateTitle.run(title, source, turn, id);
   }
 
   clearProviderSessionIdsByProject(projectId: string): void {

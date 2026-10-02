@@ -93,6 +93,14 @@ describe('derivePanelStatus — running phases', () => {
     expect(derivePanelStatus(makeInputs({ automationPhase: 'reviewing' })).phase).toBe('reviewing');
   });
 
+  it('a running implementation step reads as implementing, not review feedback', () => {
+    for (const implAgentState of ['working', undefined] as const) {
+      const status = derivePanelStatus(makeInputs({ implAgentState, automationPhase: 'running_step', reviewStats: makeStats() }));
+      expect(status.phase).toBe('implementing');
+      expect(status.nextAction?.text).toBe('Implementing');
+    }
+  });
+
   it('addressing when automation_phase is addressing_review', () => {
     const status = derivePanelStatus(makeInputs({
       implAgentState: 'working',

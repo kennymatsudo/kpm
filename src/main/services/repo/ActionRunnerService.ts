@@ -50,10 +50,11 @@ import type { PollScheduler, PollTickResult } from '../core/PollScheduler';
 import type { UpdateEvent, UpdateEventBus } from '../core/UpdateEventBus';
 import type { McpDiscoveryService } from '../core/McpDiscoveryService';
 import { buildSdkOptions } from '../../claude/sdkOptionsBuilder';
+import { userPermissionModeOptions } from '../../claude/userPermissionMode';
 import { runClaudeQuery } from '../../claude/runClaudeQuery';
 import { createContextBuilder } from '../../claude/contextBuilders';
 import { runWithToolExecutionContext } from '../../kpmTools/runtimeRegistry';
-import { toolCapabilitiesFor } from '../core/actionCapabilities';
+import { builtinToolsDeniedFor, toolCapabilitiesFor } from '../core/actionCapabilities';
 
 const ACTION_TIMEOUT_MS = 10 * 60 * 1000;
 const RUN_HISTORY_LIMIT = 50;
@@ -160,16 +161,14 @@ export function createActionRunnerService(deps: ActionRunnerDeps) {
   // for the same action.
   const running = new Set<string>();
 
-  /** Assemble the user's enabled MCP plugins/servers, mirroring the chat path. */
+  /** Assemble the user's enabled MCP plugins and disabled tools, mirroring the chat path. */
   function mcpConfigs() {
     const plugins = deps.mcpDiscoveryService.getEnabledPluginPaths();
-    const userConfigs = deps.mcpDiscoveryService.getEnabledUserMcpConfigs();
     const managed = deps.mcpDiscoveryService.getCachedManagedServers();
     const disabledTools = managed.ok ? deps.mcpDiscoveryService.getDisabledMcpTools(managed.data) : null;
     const disabledNames = managed.ok ? deps.mcpDiscoveryService.getDisabledMcpServerNames(managed.data) : null;
     return {
       enabledPluginPaths: plugins.ok ? plugins.data : [],
-      enabledUserMcpConfigs: userConfigs.ok ? userConfigs.data : {},
       disabledMcpTools: disabledTools?.ok ? disabledTools.data : [],
       disabledMcpServerNames: disabledNames?.ok ? disabledNames.data : [],
     };
@@ -276,15 +275,18 @@ export function createActionRunnerService(deps: ActionRunnerDeps) {
     const context = buildContext(projectId);
     if (!context) return failed('Project context could not be built');
 
-    const sdkOptions = buildSdkOptions({
+    const built = buildSdkOptions({
       context,
       model: action.model ?? deps.getDefaultClaudeModel(),
       mainWindow: deps.getMainWindow(),
-      // A background run has no UI to ask in, so it can only write if the
-      // user has already granted writes in this project.
       grantedCapabilities: toolCapabilitiesFor(action.capabilities),
       ...mcpConfigs(),
     });
+    const sdkOptions = {
+      ...await userPermissionModeOptions(),
+      ...built,
+      disallowedTools: [...(built.disallowedTools ?? []), ...builtinToolsDeniedFor(action.capabilities)],
+    };
 
     const result = await runWithToolExecutionContext(
       {

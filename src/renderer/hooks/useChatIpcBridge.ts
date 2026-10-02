@@ -14,7 +14,7 @@ import { createChatEventRouter, WATCHDOG_POLL_MS } from './chatEventRouter';
  *
  * Previously these listeners lived inside `useChat`, which only mounted when
  * the Chat component was rendered. When the user switched to the Development
- * view (no Chat component), events like `onFileUpdate` and `onPlanActions`
+ * view (no Chat component), proposal events
  * were silently dropped, causing approval modals to never appear.
  *
  * By calling this hook from Layout (always mounted), events are captured

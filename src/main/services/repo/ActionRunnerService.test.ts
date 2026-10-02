@@ -3,12 +3,13 @@ import type { ActionDefinition } from '../../../shared/actions';
 
 const mocks = vi.hoisted(() => ({
   runClaudeQuery: vi.fn<(options: unknown) => Promise<{ text: string }>>(),
-  buildSdkOptions: vi.fn<(params: { grantedCapabilities?: string[] }) => object>(),
+  buildSdkOptions: vi.fn<(params: { grantedCapabilities?: string[] }) => { disallowedTools?: string[] }>(),
 }));
 const { runClaudeQuery, buildSdkOptions } = mocks;
 
 vi.mock('../../claude/runClaudeQuery', () => ({ runClaudeQuery: mocks.runClaudeQuery }));
 vi.mock('../../claude/sdkOptionsBuilder', () => ({ buildSdkOptions: mocks.buildSdkOptions }));
+vi.mock('../../claude/userPermissionMode', () => ({ userPermissionModeOptions: async () => ({}) }));
 vi.mock('../../claude/contextBuilders', () => ({
   createContextBuilder: () => () => ({ project: { id: 'p1', folder_path: '/tmp/p1' }, repos: [] }),
 }));
@@ -75,7 +76,6 @@ function harness(stored: ActionDefinition = action()) {
     eventBus: eventBus as never,
     mcpDiscoveryService: {
       getEnabledPluginPaths: () => ({ ok: true, data: [] }),
-      getEnabledUserMcpConfigs: () => ({ ok: true, data: {} }),
       getCachedManagedServers: () => ({ ok: false }),
     } as never,
     getDefaultClaudeModel: () => 'sonnet',
@@ -105,6 +105,20 @@ describe('ActionRunnerService', () => {
     expect(granted).toContain('plan_items.read');
     expect(granted).not.toContain('plan_items.propose');
     expect(granted).not.toContain('documents.propose');
+  });
+
+  it('denies built-in write tools even when the user permission mode would allow them', async () => {
+    runClaudeQuery.mockResolvedValue({ text: 'Something broke\nDetails here.' });
+    buildSdkOptions.mockReturnValue({ disallowedTools: ['AskUserQuestion'] });
+    const { runner } = harness();
+
+    await runner.runNow('a1');
+    await vi.waitFor(() => expect(runClaudeQuery).toHaveBeenCalled());
+
+    const { sdkOptions } = runClaudeQuery.mock.calls[0]?.[0] as { sdkOptions: { disallowedTools: string[] } };
+    expect(sdkOptions.disallowedTools).toEqual(
+      expect.arrayContaining(['AskUserQuestion', 'Edit', 'Write', 'NotebookEdit', 'Bash'])
+    );
   });
 
   it('records a finding and broadcasts the run', async () => {

@@ -18,7 +18,7 @@ import type { BrowserWindow } from 'electron';
 import { getSessionInfo } from '@anthropic-ai/claude-agent-sdk';
 import type { McpServerStatus } from '../../claude/streaming';
 import type { SessionMcpInspection, SessionMcpServer } from './sessionMcp';
-import type { IChatSession } from './IChatSession';
+import { FollowUpDroppedError, type IChatSession } from './IChatSession';
 import {
   buildChatSessionLaunch,
   type BuildClaudeSdkOptions,
@@ -27,6 +27,7 @@ import {
   type SessionState,
 } from './chatSessionLaunch';
 import { decideMcpElicitation, isAutoApprovedCodexMcpServer } from './mcpElicitation';
+import { createFileUpdateOutbox } from './fileUpdateOutbox';
 import type { ModelType } from '../../claude/sdkOptionsBuilder';
 import {
   runWithToolExecutionContext,
@@ -35,15 +36,13 @@ import {
   recordPendingDocumentContent,
   type KpmToolProposal,
 } from '../../kpmTools/runtimeRegistry';
-import { buildUserContentBlocks } from '../../claude/attachmentBlocks';
-import { projectWriteGrants } from '../../chat/writeGrants';
-import { buildFocusedSection } from '../../chat/prompts/focusedResources';
+import { buildFocusedReminder, buildFocusedSection } from '../../chat/prompts/focusedResources';
 import { type ServiceResult, type AsyncResult, success, failure } from '../result';
 import type { PlanContext } from '../../chat/prompts';
-import type { ChatChoiceEffort, ChatProvider, FocusChatDocument, FocusedResource, PlanItem, Project, Activity, ToolCallLogEntry, ChatAttachment, ChatSessionScope, SlashCommandInfo } from '../../../shared/types';
-import type { ChatModelChoiceService, ResolvedChatChoice } from '../../chat/modelChoice';
+import type { ChatChoiceEffort, ChatProvider, ChatTitleSource, FocusChatDocument, FocusedResource, PlanItem, Project, Activity, ToolCallLogEntry, ChatAttachment, ChatSessionScope, SlashCommandInfo } from '../../../shared/types';
+import type { ChatModelSelection, ResolvedChatChoice } from '../../chat/modelChoice';
 import { getConfig } from '../../config';
-import { isMaxTokensReached, isMaxTurnsReached, getTerminalReason } from '../../claude/sdkTypeGuards';
+import { isMaxTokensReached, isMaxTurnsReached, getTerminalReason, describeTerminalReason } from '../../claude/sdkTypeGuards';
 import { interpretSdkMessage } from './interpretSdkMessage';
 import { extractFilePaths } from '../toollog/extractFilePaths';
 import { DEFAULT_CONTEXT_FILENAME, CONTEXT_FILE_PENDING_CACHE_KEY } from '../../../shared/contextFile';
@@ -53,7 +52,9 @@ import { selectVisibleSlashCommands } from '../core/SlashCommandService';
 import type { PollScheduler, PollTickResult } from '../core/PollScheduler';
 import { randomUUID } from 'crypto';
 import { emitAppEvent } from '../../../shared/ipc/appEvents';
-import { chatEvents } from '../../../shared/ipc/chatEvents';
+import { runGeneration } from '../../generation';
+import { createChatTitler, type ChatTitler, type ProviderSessionSummary } from './chatTitles';
+import { chatEvents, type ChatProposalEventData } from '../../../shared/ipc/chatEvents';
 import type { TurnCost } from './providerChatMessage';
 
 /**
@@ -92,27 +93,6 @@ const CONTINUATION_MAX_TURNS = 20;
 const CONTINUATION_MAX_CHARS = 60_000;
 const CONTINUATION_MAX_TURN_CHARS = 8_000;
 const CLEANUP_TASK_ID = 'streaming-session-cleanup';
-
-function compactTitleSeed(text: string): string | null {
-  const normalized = text.replace(/\s+/g, ' ').trim();
-  if (!normalized) return null;
-  return normalized.length > 80 ? `${normalized.slice(0, 77).trimEnd()}…` : normalized;
-}
-
-// Leading `[Context: …]` view hint that sendChatMessage prepends to the user's
-// first turn. It steers the model but must not leak into the derived tab title.
-const CONTEXT_HINT_PREFIX = /^\[Context:[^\]]*\]\s*/;
-
-export function sanitizeSessionTitle(summary: string, fallbackSeed?: string): string | null {
-  const normalized = summary.replace(/\s+/g, ' ').trim().replace(CONTEXT_HINT_PREFIX, '').trim();
-  if (!normalized) return fallbackSeed ? compactTitleSeed(fallbackSeed) : null;
-
-  if (normalized.startsWith('# Focused Selection') || normalized.startsWith('Focused Selection')) {
-    return fallbackSeed ? compactTitleSeed(fallbackSeed) : null;
-  }
-
-  return normalized;
-}
 
 /**
  * Trim stored chat messages into a replay preface for a fresh SDK session.
@@ -197,10 +177,11 @@ function sendQueueCleared(
  */
 interface MessageEnvelope {
   text: string;
-  /** Raw user text before per-turn context injection; used for clean session titles. */
-  titleSeed?: string;
   attachments?: ChatAttachment[];
 }
+
+/** Withdrawn sends never reached the model and must not be saved to history. */
+export type ChatSendDisposition = 'sent' | 'withdrawn';
 
 /** Info about an active session (for UI display) */
 export interface ActiveSessionInfo {
@@ -208,7 +189,6 @@ export interface ActiveSessionInfo {
   scope: ChatSessionScope;
   state: SessionState;
   isProcessing: boolean;
-  /** Persisted SDK-derived title (null for legacy rows). */
   title?: string | null;
   /**
    * Assistant text streamed so far in the turn that is still in flight, if
@@ -239,9 +219,6 @@ const getSessionConfig = () => getConfig().session;
 // =============================================================================
 
 export interface StreamingSessionServiceDeps {
-  /** Authoritative per-Chat choice resolver. Optional only for legacy unit-test construction. */
-  modelChoice?: Pick<ChatModelChoiceService, 'resolveForTurn'>;
-
   /** Project repository for session persistence */
   projectRepository: {
     get(id: string): Project | undefined;
@@ -263,10 +240,12 @@ export interface StreamingSessionServiceDeps {
       cache_read_input_tokens?: number | null;
     };
     totalCostUsd?: number | null;
+    costUnknown?: boolean;
     sdkSessionId?: string | null;
     sdkResultUuid?: string | null;
     sdkCostScope?: string | null;
     isCumulativeCostSnapshot?: boolean;
+    isCumulativeUsageSnapshot?: boolean;
     ttftMs?: number | null;
     durationMs?: number | null;
   }) => void;
@@ -286,23 +265,24 @@ export interface StreamingSessionServiceDeps {
       sessionId: string,
       chatSessionId: string
     ): { role: 'user' | 'assistant'; content: string }[];
+    countAssistantMessages(sessionId: string, chatSessionId: string): number;
+    deleteUserMessageByClientMessageId(sessionId: string, chatSessionId: string, clientMessageId: string): void;
   };
 
-  /** Chat session repository for Claude SDK session ID storage */
+  /** Chat session repository for native provider session ID storage */
   chatSessionRepository: {
     get(id: string): {
-      claude_session_id: string | null;
       provider?: ChatProvider | null;
       provider_session_id?: string | null;
       title: string | null;
+      title_source?: ChatTitleSource | null;
+      title_turn?: number | null;
       scope?: ChatSessionScope | null;
     } | undefined;
     create(id: string, projectId: string, provider?: ChatProvider): { id: string };
-    updateClaudeSessionId(id: string, claudeSessionId: string): void;
-    updateProviderSessionId?(id: string, provider: ChatProvider, providerSessionId: string): void;
-    updateTitle(id: string, title: string): void;
-    clearClaudeSessionIdsByProject(projectId: string): void;
-    clearProviderSessionIdsByProject?(projectId: string): void;
+    updateProviderSessionId(id: string, provider: ChatProvider, providerSessionId: string): void;
+    updateTitle(id: string, title: string | null, source: ChatTitleSource | null, turn: number | null): void;
+    clearProviderSessionIdsByProject(projectId: string): void;
   };
 
   /** Function to get the main window for IPC */
@@ -364,7 +344,7 @@ export interface StreamingSessionServiceDeps {
  * table instead of branching on `provider === 'claude' | 'codex'`.
  */
 interface ChatProviderConfig {
-  usageModel: (managed: Pick<ManagedSession, 'model'>) => string;
+  usageModel: (managed: Pick<ManagedSession, 'selection'>) => string;
   resolveResumeSessionId: (
     chatSession: ReturnType<StreamingSessionServiceDeps['chatSessionRepository']['get']>
   ) => string | undefined;
@@ -374,11 +354,16 @@ interface ChatProviderConfig {
     sessionId: string
   ) => void;
   /** Absent for providers with no session-summary concept (e.g. Codex). */
-  fetchSessionSummary?: (sdkSessionId: string) => Promise<{ summary?: string } | undefined>;
+  fetchSessionSummary?: (sdkSessionId: string) => Promise<ProviderSessionSummary | undefined>;
 }
 
-function getManagedDisplayModel(managed: Pick<ManagedSession, 'provider' | 'model' | 'providerModel'>): string {
-  return managed.provider !== 'claude' && managed.providerModel ? managed.providerModel : managed.model;
+/** The launch-relevant part of a turn's choice; effort and revision are tracked apart. */
+function choiceSelection(choice: ResolvedChatChoice): ChatModelSelection {
+  switch (choice.provider) {
+    case 'claude': return { provider: 'claude', model: choice.model };
+    case 'codex': return { provider: 'codex', model: choice.model };
+    case 'pi': return { provider: 'pi', model: choice.model };
+  }
 }
 
 /**
@@ -399,13 +384,18 @@ export function resolveTurnContextWindow(
   if (!modelUsage || typeof modelUsage !== 'object') return undefined;
 
   const byModel = modelUsage as Record<string, { contextWindow?: unknown } | undefined>;
-  const entries = Object.values(byModel);
-  const entry = resolvedModel ? byModel[resolvedModel] : entries.length === 1 ? entries[0] : undefined;
-
-  const contextWindow = entry?.contextWindow;
+  const mainModel = resolveMainModelUsageKey(byModel, resolvedModel);
+  const contextWindow = mainModel ? byModel[mainModel]?.contextWindow : undefined;
   return typeof contextWindow === 'number' && Number.isFinite(contextWindow) && contextWindow > 0
     ? contextWindow
     : undefined;
+}
+
+/** The `modelUsage` key of the turn's main model, or undefined when it can't be told apart from subagent models. */
+function resolveMainModelUsageKey(modelUsage: Record<string, unknown>, resolvedModel: string | undefined): string | undefined {
+  const keys = Object.keys(modelUsage);
+  if (resolvedModel) return keys.includes(resolvedModel) ? resolvedModel : undefined;
+  return keys.length === 1 ? keys[0] : undefined;
 }
 
 function resolveReportedContextWindow(
@@ -430,21 +420,20 @@ function authErrorMessage(provider: ChatProvider): string {
 
 export const CHAT_PROVIDER_CONFIG: Record<ChatProvider, ChatProviderConfig> = {
   claude: {
-    usageModel: (managed) => managed.model,
+    usageModel: (managed) => managed.selection.model,
     resolveResumeSessionId: (chatSession) =>
-      chatSession?.provider === 'claude' ? chatSession.claude_session_id ?? undefined : undefined,
+      chatSession?.provider === 'claude' ? chatSession.provider_session_id ?? undefined : undefined,
     persistSessionId: (repo, chatSessionId, sessionId) => {
-      repo.updateClaudeSessionId(chatSessionId, sessionId);
-      repo.updateProviderSessionId?.(chatSessionId, 'claude', sessionId);
+      repo.updateProviderSessionId(chatSessionId, 'claude', sessionId);
     },
     fetchSessionSummary: getSessionInfo,
   },
   codex: {
-    usageModel: () => 'codex',
+    usageModel: (managed) => managed.selection.model,
     resolveResumeSessionId: (chatSession) =>
       chatSession?.provider === 'codex' ? chatSession.provider_session_id ?? undefined : undefined,
     persistSessionId: (repo, chatSessionId, sessionId) => {
-      repo.updateProviderSessionId?.(chatSessionId, 'codex', sessionId);
+      repo.updateProviderSessionId(chatSessionId, 'codex', sessionId);
     },
   },
   pi: {
@@ -452,7 +441,7 @@ export const CHAT_PROVIDER_CONFIG: Record<ChatProvider, ChatProviderConfig> = {
     resolveResumeSessionId: (chatSession) =>
       chatSession?.provider === 'pi' ? chatSession.provider_session_id ?? undefined : undefined,
     persistSessionId: (repo, chatSessionId, sessionId) => {
-      repo.updateProviderSessionId?.(chatSessionId, 'pi', sessionId);
+      repo.updateProviderSessionId(chatSessionId, 'pi', sessionId);
     },
   },
 };
@@ -544,11 +533,14 @@ export function finalizeTurnResult(
     toolCallLogger?: StreamingSessionServiceDeps['toolCallLogger'];
     recordUsage?: StreamingSessionServiceDeps['recordUsage'];
     projectRepository: StreamingSessionServiceDeps['projectRepository'];
+    titler: Pick<ChatTitler, 'onTurnCompleted'>;
     disconnectSession: (key: string, options?: { silent?: boolean; reason?: string; source?: string }) => Promise<void>;
   },
 ): void {
   const resultTime = Date.now();
   const { ttftMs, durationMs } = computeTurnTimings(managed, resultTime);
+  // Read before a promoted follow-up clears it below.
+  const turnModel = managed.resolvedModel;
 
   // In streaming-input mode the SDK input generator may already be waiting
   // on pull(), so a mid-turn send can be handed straight to the model as
@@ -580,23 +572,25 @@ export function finalizeTurnResult(
     resetToReady(managed);
     // The SDK consumed any follow-up into this turn (or there was none).
   }
-  const maxTokensReached = isMaxTokensReached(sdkMsg);
+  // Claude reports truncation as its API stop_reason; Codex and pi adapters
+  // flag it on the result they build (providerChatMessage.ts).
+  const maxTokensReached = isMaxTokensReached(sdkMsg) || sdkMsg.outputLimitReached === true;
 
   // Check if response was truncated
   if (maxTokensReached) {
     console.log(`[StreamingSessionService] Response truncated (max_tokens) for ${key}`);
-    emitAppEvent(mainWindow?.webContents, chatEvents.truncated, {
-      projectId,
-      chatSessionId,
-      reason: 'max_tokens',
-    });
   }
+
+  // End-of-turn banners are sent after the turn is finalized below: an error
+  // arriving first would close the bubble as interrupted and drop the model
+  // and token details the finalize step attaches.
+  let endOfTurnError: string | undefined;
 
   // Check if response hit max turns limit
   if (isMaxTurnsReached(sdkMsg)) {
     const numTurns = 'num_turns' in sdkMsg ? sdkMsg.num_turns : undefined;
     console.log(`[StreamingSessionService] Response truncated (max_turns: ${numTurns}) for ${key}`);
-    sendChatError(mainWindow, projectId, chatSessionId, `Response reached the turn limit (${numTurns ?? 'unknown'} turns). Send another message to continue.`);
+    endOfTurnError = `Response reached the turn limit (${numTurns ?? 'unknown'} turns). Send another message to continue.`;
   }
 
   // Surface other terminal reasons that stopped the session. Skip when a
@@ -604,22 +598,10 @@ export function finalizeTurnResult(
   // an `overloaded` failure that also reports terminal_reason 'model_error')
   // so the user sees one actionable banner, not two.
   const terminalReason = getTerminalReason(sdkMsg);
-  if (terminalReason && terminalReason !== 'completed' && terminalReason !== 'max_turns' && !managed.turnErrorSurfaced) {
-    const terminalMessages: Partial<Record<typeof terminalReason, string>> = {
-      aborted_tools: 'Response stopped: tool execution was aborted.',
-      blocking_limit: 'Response stopped: rate limit reached. Send another message to continue.',
-      hook_stopped: 'Response stopped by a hook.',
-      stop_hook_prevented: 'Response stopped: a stop hook prevented continuation.',
-      tool_deferred: 'Response paused: a tool is waiting for approval.',
-      prompt_too_long: 'Response stopped: the prompt exceeded the context limit.',
-      model_error: 'Response stopped due to a model error.',
-      rapid_refill_breaker: 'Response stopped: too many rapid requests. Please wait a moment.',
-    };
-    const message = terminalMessages[terminalReason];
-    if (message) {
-      console.log(`[StreamingSessionService] Terminal reason: ${terminalReason} for ${key}`);
-      sendChatError(mainWindow, projectId, chatSessionId, message);
-    }
+  const terminalMessage = terminalReason ? describeTerminalReason(terminalReason) : undefined;
+  if (terminalMessage && !managed.turnErrorSurfaced) {
+    console.log(`[StreamingSessionService] Terminal reason: ${terminalReason} for ${key}`);
+    endOfTurnError ??= terminalMessage;
   }
 
   // Detect auth error responses before resetting accumulatedResponse
@@ -635,8 +617,8 @@ export function finalizeTurnResult(
         finalResponse,
         managed.chatSessionId,
         undefined,
-        managed.provider,
-        managed.resolvedModel ?? getManagedDisplayModel(managed),
+        managed.selection.provider,
+        managed.resolvedModel ?? managed.selection.model,
       );
     }
   } catch (dbError) {
@@ -672,13 +654,15 @@ export function finalizeTurnResult(
     Array.isArray(rawIterations) && rawIterations.length > 0
       ? rawIterations[rawIterations.length - 1]
       : null;
-  const ctxSource = lastIter ?? sdkMsg.usage;
+  // Adapters whose `usage` is a multi-request turn total say which request
+  // was last through `contextUsage`.
+  const ctxSource = sdkMsg.contextUsage ?? lastIter ?? sdkMsg.usage;
 
   managed.report.endTurn({
     cause: 'result',
     hasQueuedFollowUp,
     outcome: {
-      model: managed.resolvedModel ?? getManagedDisplayModel(managed),
+      model: managed.resolvedModel ?? managed.selection.model,
       hasQueuedFollowUp,
       queuedClientMessageId: nextQueuedClientMessageId,
       consumedQueuedClientMessageId: firstLiveFollowUpClientMessageId,
@@ -696,6 +680,7 @@ export function finalizeTurnResult(
       contextWindow: resolveReportedContextWindow(sdkMsg, managed.resolvedModel),
     },
   });
+  if (endOfTurnError) sendChatError(mainWindow, projectId, chatSessionId, endOfTurnError);
 
   // Clear the queued envelope now — the SDK has the message and is about
   // to feed it to Claude as the next turn. Any further sends on this
@@ -715,35 +700,16 @@ export function finalizeTurnResult(
     managed.resolvedModel = undefined;
   }
 
-  // Fire-and-forget: fetch the SDK's session summary so the renderer can
-  // show a meaningful tab title instead of the numeric "Claude N" label.
-  // Auto-summary generation runs alongside the first turn, so this is the
-  // earliest moment we can read it. Re-fetched after every turn so a
-  // user-renamed session updates the UI on next reply too.
-  const fetchSessionSummary = CHAT_PROVIDER_CONFIG[managed.provider].fetchSessionSummary;
-  if (fetchSessionSummary && managed.sessionId && managed.persistHistory) {
-    const sdkSessionId = managed.sessionId;
-    void fetchSessionSummary(sdkSessionId)
-      .then((info) => {
-        if (!info?.summary) return;
-        const title = sanitizeSessionTitle(info.summary, managed.titleSeed);
-        if (!title) return;
-        // Persist for the history dropdown so old sessions keep their
-        // meaningful label after a reload, then notify the live UI.
-        try {
-          deps.chatSessionRepository.updateTitle(chatSessionId, title);
-        } catch (err) {
-          console.warn('[StreamingSessionService] updateTitle failed:', err);
-        }
-        emitAppEvent(mainWindow?.webContents, chatEvents.sessionTitle, {
-          projectId,
-          chatSessionId,
-          title,
-        });
-      })
-      .catch((err: unknown) => {
-        console.warn('[StreamingSessionService] getSessionInfo failed:', err);
-      });
+  const fetchSessionSummary = CHAT_PROVIDER_CONFIG[managed.selection.provider].fetchSessionSummary;
+  const sdkSessionId = managed.sessionId;
+  if (managed.persistHistory) {
+    void deps.titler.onTurnCompleted({
+      projectId,
+      chatSessionId,
+      fetchProviderSummary: fetchSessionSummary && sdkSessionId
+        ? () => fetchSessionSummary(sdkSessionId)
+        : undefined,
+    });
   }
 
   if (maxTokensReached) {
@@ -755,7 +721,7 @@ export function finalizeTurnResult(
   // actionable banner naming how to reconnect the failing provider.
   if (isAuthError) {
     console.log(`[StreamingSessionService] Auth error detected for ${key} — tearing down session`);
-    sendChatError(mainWindow, projectId, chatSessionId, authErrorMessage(managed.provider));
+    sendChatError(mainWindow, projectId, chatSessionId, authErrorMessage(managed.selection.provider));
     void deps.disconnectSession(key, { silent: true });
   }
 
@@ -775,6 +741,8 @@ export function finalizeTurnResult(
       total_cost_usd?: number | null;
       /** Set by adapters that build their own result (see providerChatMessage.ts). */
       cost?: TurnCost;
+      costUnknown?: true;
+      model?: string;
       session_id?: string | null;
       uuid?: string | null;
       modelUsage?: Record<string, {
@@ -797,6 +765,9 @@ export function finalizeTurnResult(
           : null;
 
         if (perModel) {
+          // Turn timings belong to the main model; a subagent model's row would
+          // otherwise report the whole turn's latency as its own.
+          const mainModel = resolveMainModelUsageKey(resultMsg.modelUsage ?? {}, turnModel);
           for (const [modelId, mu] of perModel) {
             deps.recordUsage({
               projectId,
@@ -812,14 +783,17 @@ export function finalizeTurnResult(
               sdkResultUuid: resultMsg.uuid ?? null,
               sdkCostScope: modelId,
               isCumulativeCostSnapshot: true,
+              isCumulativeUsageSnapshot: true,
+              ...(modelId === mainModel ? { ttftMs, durationMs } : {}),
             });
           }
         } else {
           deps.recordUsage({
             projectId,
-            model: CHAT_PROVIDER_CONFIG[managed.provider].usageModel(managed),
+            model: resultMsg.model ?? CHAT_PROVIDER_CONFIG[managed.selection.provider].usageModel(managed),
             usage: sdkMsg.usage,
             totalCostUsd: totalCostUsd ?? null,
+            ...(resultMsg.costUnknown ? { costUnknown: true } : {}),
             sdkSessionId: resultMsg.session_id ?? null,
             sdkResultUuid: resultMsg.uuid ?? null,
             sdkCostScope: '__total__',
@@ -856,13 +830,40 @@ export function finalizeTurnResult(
 // Factory Function
 // =============================================================================
 
+/** Manage provider chat sessions, streamed events, history, and cleanup. */
 export function createStreamingSessionService(deps: StreamingSessionServiceDeps) {
   const sessions = new Map<string, ManagedSession>();
+  const fileUpdates = createFileUpdateOutbox(
+    (update) => emitAppEvent(deps.getMainWindow()?.webContents, chatEvents.proposal, { kind: 'file-update', ...update }),
+    getConfig().session.fileUpdateQuietMs,
+  );
+
+  /**
+   * End of a turn's edits: later edits start again from disk, and any edits
+   * still held go to the approval queue as one proposal per file.
+   */
+  function settleTurnEdits(key: string, chatSessionId: string | undefined): void {
+    if (chatSessionId) clearPendingDocumentContent(chatSessionId);
+    void fileUpdates.flush(key);
+  }
   let cleanupInterval: NodeJS.Timeout | null = null;
   let cleanupTaskRegistered = false;
 
   // Start cleanup task on creation
   startCleanupTask();
+
+  const titler = createChatTitler({
+    countCompletedTurns: (projectId, chatSessionId) =>
+      deps.chatMessageRepository.countAssistantMessages(projectId, chatSessionId),
+    getChat: (chatSessionId) => deps.chatSessionRepository.get(chatSessionId),
+    getMessages: (projectId, chatSessionId) =>
+      deps.chatMessageRepository.getMessagesByChatSession(projectId, chatSessionId),
+    saveTitle: (chatSessionId, title, source, turn) =>
+      deps.chatSessionRepository.updateTitle(chatSessionId, title, source, turn),
+    onTitle: (projectId, chatSessionId, title) =>
+      emitAppEvent(deps.getMainWindow()?.webContents, chatEvents.sessionTitle, { projectId, chatSessionId, title }),
+    generate: runGeneration,
+  });
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Multi-Session Helpers
@@ -1014,7 +1015,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     envelope: MessageEnvelope,
     clientMessageId: string | undefined,
     createSession: () => Promise<ServiceResult<{ sessionId: string }>>
-  ): AsyncResult<void> {
+  ): AsyncResult<ChatSendDisposition> {
     let managed = sessions.get(key);
 
     // Create new session with this message if none exists or error state
@@ -1024,7 +1025,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         return failure(createResult.error);
       }
       // Session was created and message was sent as initial message
-      return success(undefined);
+      return success('sent');
     }
 
     // Wait for connecting session to become ready (with timeout)
@@ -1039,10 +1040,9 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     if (managed?.state !== 'ready') {
       switch (managed?.state) {
         case 'processing':
-          // Queue the follow-up behind the in-flight turn. The SDK pulls it
-          // when the current turn finishes, preserving the partial response
-          // and avoiding wasted compute. Explicit interrupt (chat:cancel)
-          // remains available if the user actually wants to stop the turn.
+          // Each provider delivers a live follow-up as steering input or a
+          // queued turn. Delivery echoes clear its pending badge; Stop remains
+          // the explicit action for interrupting work.
           return queueMessageOnSession(key, envelope, clientMessageId);
         case 'connecting':
           return failure('Session is still connecting. Please wait a moment.');
@@ -1073,12 +1073,12 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         emitAppEvent(mainWindow?.webContents, chatEvents.sessionDeactivated, reconnectMeta);
         return failure(createResult.error);
       }
-      return success(undefined);
+      return success('sent');
     }
 
     // Clear pending document content cache from prior turns so edits
     // in this new message start fresh against on-disk content.
-    if (managed.chatSessionId) clearPendingDocumentContent(managed.chatSessionId);
+    settleTurnEdits(key, managed.chatSessionId);
 
     managed.hasStreamedResponseText = false;
     managed.resolvedModel = undefined;
@@ -1092,14 +1092,13 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         { projectId: managed.projectId, chatSessionId: managed.chatSessionId },
         async () => {
           if (envelope.attachments && envelope.attachments.length > 0) {
-            const blocks = await buildUserContentBlocks(envelope.text, envelope.attachments);
-            await managed.session.sendUserContent(blocks);
+            await managed.session.sendWithAttachments(envelope.text, envelope.attachments);
           } else {
-            managed.session.send(envelope.text);
+            await managed.session.send(envelope.text);
           }
         }
       );
-      return success(undefined);
+      return success('sent');
     } catch (error) {
       // Roll back the optimistic 'processing' transition so the session
       // doesn't appear stuck if the SDK send fails (e.g. attachment read
@@ -1117,11 +1116,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     key: string;
     projectId: string;
     chatSessionId?: string;
-    provider: ChatProvider;
+    selection: ChatModelSelection;
     initialMessage: MessageEnvelope;
-    model: ModelType;
-    /** pi-only `"<provider>/<modelId>"` selection; ignored unless `provider` is `'pi'`. */
-    providerModel?: string;
     effort?: ChatChoiceEffort | null;
     resumeSessionId?: string;
     context: PlanContext;
@@ -1147,8 +1143,12 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
       if (proposal.projectId !== projectId || !matchesSession) return;
 
+      const emitProposal = (data: ChatProposalEventData) =>
+        emitAppEvent(mainWindow?.webContents, chatEvents.proposal, data);
+
       if (proposal.type === 'plan-actions') {
-        emitAppEvent(mainWindow?.webContents, chatEvents.planActions, {
+        emitProposal({
+          kind: 'plan-actions',
           projectId: proposal.projectId,
           chatSessionId: proposal.chatSessionId,
           actions: proposal.actions,
@@ -1159,7 +1159,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       if (proposal.type === 'project-context-update') {
         // The tool already read the file to validate old_string; reuse what
         // it captured rather than reading disk a second time.
-        emitAppEvent(mainWindow?.webContents, chatEvents.fileUpdate, {
+        fileUpdates.stage(key, {
           projectId,
           chatSessionId,
           filePath: proposal.filename ?? DEFAULT_CONTEXT_FILENAME,
@@ -1173,7 +1173,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       if (proposal.type === 'document-update') {
         // The tool already has the pre-edit content (or null for create);
         // forward it instead of re-reading disk.
-        emitAppEvent(mainWindow?.webContents, chatEvents.fileUpdate, {
+        fileUpdates.stage(key, {
           projectId,
           chatSessionId,
           filePath: proposal.filePath,
@@ -1185,7 +1185,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       }
 
       if (proposal.type === 'file-move') {
-        emitAppEvent(mainWindow?.webContents, chatEvents.fileMove, {
+        emitProposal({
+          kind: 'file-move',
           projectId,
           chatSessionId,
           sourcePath: proposal.sourcePath,
@@ -1195,11 +1196,32 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       }
 
       if (proposal.type === 'file-delete') {
-        emitAppEvent(mainWindow?.webContents, chatEvents.fileDelete, {
+        emitProposal({
+          kind: 'file-delete',
           projectId,
           chatSessionId,
           path: proposal.path,
           isDirectory: proposal.isDirectory,
+        });
+        return;
+      }
+
+      if (proposal.type === 'config-change') {
+        emitProposal({
+          kind: 'config-change',
+          projectId,
+          chatSessionId,
+          change: proposal.change,
+        });
+        return;
+      }
+
+      if (proposal.type === 'board-change') {
+        emitProposal({
+          kind: 'board-change',
+          projectId,
+          chatSessionId,
+          change: proposal.change,
         });
         return;
       }
@@ -1219,7 +1241,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     mainWindow: BrowserWindow | null,
     launched: { session?: IChatSession },
   ): ChatSessionHost {
-    const { key, projectId, chatSessionId, provider, persistHistory, forceApprovalReview, onMessage } = config;
+    const { key, projectId, chatSessionId, persistHistory, forceApprovalReview, onMessage } = config;
+    const { provider } = config.selection;
 
     /**
      * The registry entry this launch owns, or nothing once a reconnect has
@@ -1282,15 +1305,6 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         ].sort((a, b) => a.name.localeCompare(b.name));
         emitAppEvent(mainWindow?.webContents, chatEvents.slashCommands, { projectId, chatSessionId, commands: merged });
       },
-      requestWriteConsent: () =>
-        projectWriteGrants.request(projectId, async () => {
-          const result = await promptUser(mainWindow, projectId, 'Write', {}, {
-            chatSessionId,
-            kind: 'write-access',
-          });
-          return result.behavior === 'allow';
-        }),
-      hasWriteAccess: () => projectWriteGrants.has(projectId),
       requestApproval: async (toolName, input) => {
         const result = await promptUser(mainWindow, projectId, toolName, input, {
           chatSessionId,
@@ -1322,33 +1336,31 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         // this turn builds on this content instead of stale disk — the
         // interception denies the write, so disk never reflects it.
         recordPendingDocumentContent(chatSessionId, CONTEXT_FILE_PENDING_CACHE_KEY, newContent);
-        void (async () => {
+        fileUpdates.stage(key, (async () => {
           const currentContent = await deps.readProjectContextFile(editProjectId);
-          emitAppEvent(mainWindow?.webContents, chatEvents.contextFileUpdate, {
+          return {
             projectId: editProjectId,
+            chatSessionId,
+            filePath: currentContent.filename ?? DEFAULT_CONTEXT_FILENAME,
+            content: newContent,
             oldContent: currentContent.success ? currentContent.content : null,
-            newContent,
-            forceReview: forceApprovalReview,
-          });
-        })().catch((error) => {
-          console.error('[StreamingSessionService] Failed to read context file for intercepted edit:', error);
-        });
+            forceReview: sessions.get(key)?.forceApprovalReview ?? forceApprovalReview,
+          };
+        })());
       },
       onProjectFileWrite: (writeProjectId, filePath, content) => {
         recordPendingDocumentContent(chatSessionId, filePath, content);
-        void (async () => {
+        fileUpdates.stage(key, (async () => {
           const currentContent = await deps.readDocumentFile(writeProjectId, filePath);
-          emitAppEvent(mainWindow?.webContents, chatEvents.fileUpdate, {
+          return {
             projectId: writeProjectId,
             chatSessionId,
             filePath,
             content,
             oldContent: currentContent.success ? currentContent.content : null,
-            forceReview: forceApprovalReview,
-          });
-        })().catch((error) => {
-          console.error('[StreamingSessionService] Failed to read file for intercepted write:', error);
-        });
+            forceReview: sessions.get(key)?.forceApprovalReview ?? forceApprovalReview,
+          };
+        })());
       },
       // Successive Edit/Write calls to one file in a turn must accumulate;
       // the interception denies each write, so disk stays unchanged.
@@ -1388,15 +1400,12 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         key,
         projectId,
         chatSessionId,
-        provider: config.provider,
-        model: config.model,
-        providerModel: config.providerModel,
+        selection: config.selection,
         effort: config.effort,
         context: config.context,
         resumeSessionId: config.resumeSessionId,
         persistHistory: config.persistHistory,
         forceApprovalReview: config.forceApprovalReview,
-        titleSeed: initialMessage.titleSeed,
         mainWindow,
         getMainWindow: deps.getMainWindow,
         unsubscribeToolProposals,
@@ -1409,16 +1418,11 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       // session to tear down.
       sessions.set(key, launch.managed);
 
-      // Start session WITH the initial message (required by SDK).
-      // For attachments, build native multimodal blocks and seed them into
-      // the SDK's first turn rather than waiting until after start() resolves.
+      // Start session WITH the initial message (required by SDK), attachments
+      // included, rather than waiting until after start() resolves.
       // Can throw on timeout or MCP connection failure.
-      const seedContent =
-        initialMessage.attachments && initialMessage.attachments.length > 0
-          ? await buildUserContentBlocks(initialMessage.text, initialMessage.attachments)
-          : initialMessage.text;
       await runWithToolExecutionContext({ projectId, chatSessionId }, () =>
-        launch.session.start(seedContent)
+        launch.session.start(initialMessage.text, initialMessage.attachments)
       );
 
       const managed = sessions.get(key);
@@ -1440,7 +1444,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       if (managed) {
         managed.state = 'error';
         managed.suppressLifecycleEventsOnEnd = true;
-        if (managed.chatSessionId) clearPendingDocumentContent(managed.chatSessionId);
+        settleTurnEdits(key, managed.chatSessionId);
         managed.unsubscribeToolProposals();
         try {
           await managed.session.close();
@@ -1484,32 +1488,23 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       });
     } else {
       // Disconnect all sessions for project (worktree switch / project close).
-      // Also null out persisted claude_session_ids so the next send spawns a
-      // fresh SDK session: resuming would re-use the old spawn-time cwd even
+      // Also null out persisted provider session ids so the next send spawns a
+      // fresh session: resuming would re-use the old spawn-time cwd even
       // after the repo's active_worktree_path has changed.
       const keys = getSessionKeysForProject(projectId);
       await Promise.all(keys.map(key => disconnectSession(key, {
         reason: 'disconnect_all_sessions',
         source: 'disconnectChatSession',
       })));
-      deps.chatSessionRepository.clearClaudeSessionIdsByProject(projectId);
-      deps.chatSessionRepository.clearProviderSessionIdsByProject?.(projectId);
+      deps.chatSessionRepository.clearProviderSessionIdsByProject(projectId);
     }
     return success(undefined);
   }
 
   /** Options for sending a chat message */
   interface SendChatMessageOptions {
-    /** Main-process-only snapshot resolved by ChatService at turn acceptance. */
-    authoritativeChoice?: ResolvedChatChoice;
-    /** @deprecated Main-process callers use modelChoice; retained for headless tests. */
-    provider?: ChatProvider;
-    /** @deprecated Main-process callers use modelChoice; retained for headless tests. */
-    model?: ModelType;
-    /** @deprecated Main-process callers use modelChoice; retained for headless tests. */
-    providerModel?: string;
-    /** @deprecated Main-process callers use modelChoice; retained for headless tests. */
-    effort?: ChatChoiceEffort | null;
+    /** Resolved by ChatService when it accepts the turn. */
+    choice: ResolvedChatChoice;
     focusedResources?: FocusedResource[];
     chatSessionId?: string;
     /** Current UI view - injected as a per-message `[Context: …]` hint */
@@ -1532,54 +1527,34 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
   async function sendChatMessage(
     projectId: string,
     message: string,
-    options: SendChatMessageOptions = {}
-  ): AsyncResult<void> {
+    options: SendChatMessageOptions,
+  ): AsyncResult<ChatSendDisposition> {
     // chatSessionId is required for multi-session support
     const chatSessionId = options.chatSessionId;
     if (!chatSessionId) {
       return failure('chatSessionId is required');
     }
 
-    let selected = options.authoritativeChoice;
-    if (!selected && deps.modelChoice) {
-      const resolved = await deps.modelChoice.resolveForTurn(projectId, chatSessionId);
-      if (!resolved.ok) return failure(resolved.error);
-      selected = resolved.data;
-    }
-    if (selected) {
-      if (selected.provider === 'claude' && selected.model !== 'sonnet' && selected.model !== 'opus') {
-        return failure(`The saved Claude model “${selected.model}” is unavailable. Choose another model.`);
-      }
-      options = {
-        ...options,
-        provider: selected.provider,
-        model: selected.provider === 'claude' ? selected.model as ModelType : 'sonnet',
-        providerModel: selected.provider === 'claude' ? undefined : selected.model,
-        effort: selected.effort,
-      };
-    }
-
-    const provider = options.provider ?? 'claude';
-    const desiredModel = options.model ?? 'sonnet';
+    const { choice } = options;
     const key = buildSessionKey(projectId, chatSessionId);
     const managed = sessions.get(key);
 
     if (managed) {
-      const providerChanged = managed.provider !== provider;
-      const nativeOptionsChanged = provider !== 'claude' && (
-        managed.providerModel !== options.providerModel || managed.effort !== options.effort
-      );
-      const claudeEffortChanged = provider === 'claude' && managed.effort !== options.effort;
-      if (providerChanged || nativeOptionsChanged || claudeEffortChanged) {
+      const live = managed.selection;
+      const providerChanged = live.provider !== choice.provider;
+      const effortChanged = managed.effort !== choice.effort;
+      // Claude can switch models in place; Codex and pi bake theirs in at launch.
+      const nativeModelChanged = choice.provider !== 'claude' && live.model !== choice.model;
+      if (providerChanged || nativeModelChanged || effortChanged) {
         await disconnectSession(key, {
           reason: providerChanged ? 'provider_changed' : 'provider_model_or_effort_changed',
           source: 'sendChatMessage',
         });
-      } else if (provider === 'claude' && managed.model !== desiredModel) {
+      } else if (choice.provider === 'claude' && live.model !== choice.model) {
         if (managed.session.setModel) {
           try {
-            await managed.session.setModel(desiredModel);
-            managed.model = desiredModel;
+            await managed.session.setModel(choice.model);
+            managed.selection = { provider: 'claude', model: choice.model };
           } catch (error) {
             return failure(`Failed to apply Chat model choice: ${(error as Error).message}`);
           }
@@ -1611,19 +1586,33 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       if (prefix.trim()) focusedPrefix = prefix;
     }
 
+    // An explicit `$KPM_CONTEXT` always gets the full block. Otherwise a live
+    // session that already holds this exact block only needs the reminder;
+    // an idle or errored session is relaunched, so it gets the full block.
+    const live = sessions.get(key);
+    const reusesLiveSession = !!live && live.state !== 'idle' && live.state !== 'error';
+    const sendReminder = !!focusedPrefix && !hasContextPlaceholder
+      && reusesLiveSession && live.lastFocusedSection === focusedPrefix;
+    const focusedText = focused && sendReminder ? buildFocusedReminder(focused) : focusedPrefix;
+
     const messageWithContext = hasContextPlaceholder
       ? message.replaceAll(KPM_CONTEXT_PLACEHOLDER, focusedPrefix?.trim() ?? '')
       : message;
-    const prefixLines = [viewHint, hasContextPlaceholder ? undefined : focusedPrefix].filter((line): line is string => !!line);
+    const prefixLines = [viewHint, hasContextPlaceholder ? undefined : focusedText].filter((line): line is string => !!line);
     const messageText = prefixLines.length > 0 ? `${prefixLines.join('\n\n')}\n\n${messageWithContext}` : messageWithContext;
 
-    const envelope: MessageEnvelope = { text: messageText, titleSeed: message, attachments: options.attachments };
-    return sendMessageToSession(
+    const envelope: MessageEnvelope = { text: messageText, attachments: options.attachments };
+    const result = await sendMessageToSession(
       key,
       envelope,
       options.clientMessageId,
       () => createChatSession(projectId, envelope, options),
     );
+    if (result.ok && focusedPrefix) {
+      const sent = sessions.get(key);
+      if (sent) sent.lastFocusedSection = focusedPrefix;
+    }
+    return result;
   }
 
   /**
@@ -1634,7 +1623,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
   async function createChatSession(
     projectId: string,
     initialMessage: MessageEnvelope,
-    options: SendChatMessageOptions = {}
+    options: SendChatMessageOptions,
   ): AsyncResult<{ sessionId: string }> {
     const project = deps.projectRepository.get(projectId);
     if (!project) {
@@ -1661,7 +1650,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
     // Get or create chat session for Claude SDK session tracking
     let resumeSessionId: string | undefined;
-    const provider = options.provider ?? 'claude';
+    const { choice } = options;
+    const { provider } = choice;
 
     if (persistHistory) {
       // Look up existing chat session for resume
@@ -1675,7 +1665,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     }
 
     // When spawning a fresh SDK session for a chat that already has KPM-side
-    // history (e.g. after a worktree switch cleared the claude_session_id),
+    // history (e.g. after a worktree switch cleared the provider session id),
     // seed the fresh session with a replay of prior turns so the conversation
     // keeps its thread. Skipped for normal resumes — the SDK's own transcript
     // carries that context.
@@ -1691,11 +1681,9 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       key: sessionKey,
       projectId,
       chatSessionId,
-      provider,
+      selection: choiceSelection(choice),
       initialMessage,
-      model: options.model ?? 'sonnet',
-      providerModel: options.providerModel,
-      effort: options.effort,
+      effort: choice.effort,
       resumeSessionId,
       context,
       persistHistory,
@@ -1733,8 +1721,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     // can clear the queued bubble.
     const cancelledFollowUps = managed.followUps.cancelAll(() => Boolean(managed.session.cancelLastQueued()));
     for (const cancelledClientMessageId of cancelledFollowUps) {
-      const mainWindow = deps.getMainWindow();
-      sendQueueCleared(mainWindow, managed.projectId, managed.chatSessionId, cancelledClientMessageId, 'cancelled');
+      withdrawFollowUp(managed.projectId, managed.chatSessionId, cancelledClientMessageId, 'cancelled');
     }
 
     const INTERRUPT_TIMEOUT_MS = 5000; // 5 seconds max for interrupt
@@ -1760,6 +1747,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
       // Reset state to ready so new messages can be sent
       resetToReady(managed);
+      settleTurnEdits(sessionKey, managed.chatSessionId);
       return success(undefined);
     } catch (error) {
       // If interrupt fails, try to disconnect the session
@@ -1773,16 +1761,15 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
   }
 
   /**
-   * Send a live follow-up while a turn is streaming. The Claude SDK may pull
-   * this immediately as steering input for the current turn, or leave it in
-   * the input queue to become the next turn. The renderer presents it as a
-   * live interjection until the SDK/result events tell us which happened.
+   * Send a live follow-up while a turn is streaming. Claude feeds its SDK
+   * input stream; Codex steers its active turn or queues if that turn ended;
+   * pi queues the next turn. Delivery echoes settle the pending interjection.
    */
   async function queueMessageOnSession(
     key: string,
     envelope: MessageEnvelope,
     clientMessageId: string | undefined,
-  ): AsyncResult<void> {
+  ): AsyncResult<ChatSendDisposition> {
     const managed = sessions.get(key);
     if (!managed) {
       return failure('No active session');
@@ -1796,32 +1783,43 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
     try {
       if (envelope.attachments && envelope.attachments.length > 0) {
-        const blocks = await buildUserContentBlocks(envelope.text, envelope.attachments);
-        await managed.session.sendUserContent(blocks);
+        await managed.session.sendWithAttachments(envelope.text, envelope.attachments);
       } else {
-        managed.session.send(envelope.text);
+        await managed.session.send(envelope.text);
       }
     } catch (error) {
       managed.followUps.withdraw(clientMessageId);
+      if (error instanceof FollowUpDroppedError) {
+        withdrawFollowUp(managed.projectId, managed.chatSessionId, clientMessageId, 'cancelled');
+        return success('withdrawn');
+      }
       return failure(`Failed to add follow-up: ${(error as Error).message}`);
     }
 
     managed.queuedFollowUpAt = Date.now();
+    return success('sent');
+  }
 
-    const mainWindow = deps.getMainWindow();
-    emitAppEvent(mainWindow?.webContents, chatEvents.queued, {
-      projectId: managed.projectId,
-      chatSessionId: managed.chatSessionId,
-      clientMessageId,
-    });
-
-    return success(undefined);
+  /** Delete undelivered input from history and notify the renderer to restore its draft. */
+  function withdrawFollowUp(
+    projectId: string,
+    chatSessionId: string | undefined,
+    clientMessageId: string | undefined,
+    reason: 'cancelled' | 'session_disconnected',
+  ): void {
+    if (chatSessionId && clientMessageId) {
+      try {
+        deps.chatMessageRepository.deleteUserMessageByClientMessageId(projectId, chatSessionId, clientMessageId);
+      } catch (error) {
+        console.error('[StreamingSessionService] Failed to delete withdrawn follow-up:', error);
+      }
+    }
+    sendQueueCleared(deps.getMainWindow(), projectId, chatSessionId, clientMessageId, reason);
   }
 
   /**
-   * Cancel the message queued behind an in-flight turn, if any. The SDK
-   * does not consume queued messages until a turn boundary, so cancelling
-   * is reliable as long as the in-flight turn has not yet finished.
+   * Cancel the latest follow-up still in the provider's queue. Input already
+   * dispatched for steering cannot be withdrawn.
    */
   function cancelQueuedMessage(
     projectId: string,
@@ -1831,19 +1829,18 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     const key = buildSessionKey(projectId, chatSessionId);
     const managed = sessions.get(key);
     if (!managed) {
-      const mainWindow = deps.getMainWindow();
-      sendQueueCleared(mainWindow, projectId, chatSessionId, requestedClientMessageId, 'session_disconnected');
+      withdrawFollowUp(projectId, chatSessionId, requestedClientMessageId, 'session_disconnected');
       return failure('No active session');
     }
 
     const outcome = managed.followUps.cancelLast(requestedClientMessageId, () => Boolean(managed.session.cancelLastQueued()));
-    const mainWindow = deps.getMainWindow();
 
     if (outcome.ok) {
-      sendQueueCleared(mainWindow, projectId, chatSessionId, outcome.clientMessageId, 'cancelled');
+      withdrawFollowUp(projectId, chatSessionId, outcome.clientMessageId, 'cancelled');
       return success(undefined);
     }
 
+    const mainWindow = deps.getMainWindow();
     // Every failure reason clears the renderer's "queued" badge the same way —
     // only the returned error message tells the caller why cancellation failed.
     sendQueueCleared(mainWindow, projectId, chatSessionId, outcome.clientMessageId, 'already_sent');
@@ -1853,24 +1850,6 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       'already-sent': 'Message was already sent to the model.',
     };
     return failure(CANCEL_FAILURE_MESSAGES[outcome.reason]);
-  }
-
-  /**
-   * Change the model for a session.
-   */
-  async function setModel(sessionKey: string, model: ModelType): AsyncResult<void> {
-    const managed = sessions.get(sessionKey);
-    if (!managed) {
-      return failure('No active session');
-    }
-
-    try {
-      await managed.session.setModel?.(model);
-      managed.model = model;
-      return success(undefined);
-    } catch (error) {
-      return failure(`Failed to set model: ${(error as Error).message}`);
-    }
   }
 
   /**
@@ -1897,6 +1876,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
   // Internal Helpers
   // ─────────────────────────────────────────────────────────────────────────────
 
+  /** Settle edits, restore undelivered input, and close a live session. */
   async function disconnectSession(
     key: string,
     options: { silent?: boolean; reason?: string; source?: string } = {}
@@ -1905,20 +1885,16 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     if (!managed) return;
     const stateBefore = managed.state;
 
-    if (managed.chatSessionId) clearPendingDocumentContent(managed.chatSessionId);
+    settleTurnEdits(key, managed.chatSessionId);
     managed.state = 'closing';
     managed.unsubscribeToolProposals();
     managed.suppressLifecycleEventsOnEnd = !!options.silent;
 
-    // If a follow-up was queued behind a turn that never got to deliver it,
-    // tell the renderer so the queued bubble can clear its pending indicator
-    // (the message is lost — the user can resend after reconnect).
-    const droppedFollowUps = managed.followUps.clear();
-    if (!options.silent) {
-      const mainWindow = deps.getMainWindow();
-      for (const clientMessageId of droppedFollowUps) {
-        sendQueueCleared(mainWindow, managed.projectId, managed.chatSessionId, clientMessageId, 'session_disconnected');
-      }
+    // Match Stop's newest-first withdrawals so the composer can prepend each
+    // message and preserve submission order.
+    const droppedFollowUps = managed.followUps.clear().reverse();
+    for (const clientMessageId of droppedFollowUps) {
+      withdrawFollowUp(managed.projectId, managed.chatSessionId, clientMessageId, 'session_disconnected');
     }
 
     try {
@@ -1978,7 +1954,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       // When partial streaming is on, the main response text is revealed from
       // `stream_event` deltas; the complete assistant message is then used
       // only for accumulation/persistence so we don't double-emit each segment.
-      streamPartialsEnabled: getConfig().claude.includePartialMessages,
+      streamPartialsEnabled: managed.selection.provider === 'codex' || getConfig().claude.includePartialMessages,
       now: Date.now(),
       queuedFollowUpCount: managed.followUps.queuedCount,
     });
@@ -2056,8 +2032,10 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
             toolCallLogger: deps.toolCallLogger,
             recordUsage: deps.recordUsage,
             projectRepository: deps.projectRepository,
+            titler,
             disconnectSession,
           });
+          settleTurnEdits(key, chatSessionId);
           break;
       }
     }
@@ -2072,7 +2050,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
   ): void {
     const stateBefore = managed.state;
 
-    if (managed.chatSessionId) clearPendingDocumentContent(managed.chatSessionId);
+    settleTurnEdits(key, managed.chatSessionId);
     managed.unsubscribeToolProposals();
 
     sessions.delete(key);
@@ -2283,8 +2261,6 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
       interrupt(buildSessionKey(projectId, chatSessionId)),
     cancelQueuedChatMessage: (projectId: string, chatSessionId: string, clientMessageId?: string) =>
       cancelQueuedMessage(projectId, chatSessionId, clientMessageId),
-    setChatModel: (projectId: string, chatSessionId: string, model: ModelType) =>
-      setModel(buildSessionKey(projectId, chatSessionId), model),
     disposeAll,
   };
 }
