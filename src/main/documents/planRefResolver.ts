@@ -12,7 +12,7 @@
  */
 
 import type { PlanItem } from '../../shared/types';
-import { findMarkdownLinks, findRefs, serializeRef } from '../../shared/planRefs';
+import { MISSING_PLAN_ITEM_TEXT, findMarkdownLinks, findRefs, serializeRef } from '../../shared/planRefs';
 
 export type RefDestination =
   | 'jira'
@@ -31,8 +31,9 @@ export type RefDestination =
 
 /**
  * Replace every `@plan/<uuid>` in `markdown` with native syntax for
- * `destination`. Unknown UUIDs and items without a tracker linkage degrade to
- * the item's title (or to literal `@plan/<uuid>` if the UUID is unknown).
+ * `destination`. Items without a tracker linkage degrade to the item's title.
+ * An unknown UUID becomes `MISSING_PLAN_ITEM_TEXT`, except in a shared doc,
+ * which keeps the literal `@plan/<uuid>`.
  */
 export function resolvePlanRefs(
   markdown: string,
@@ -82,8 +83,10 @@ function renderRef(
   destination: RefDestination,
 ): string {
   if (!item) {
-    // Unknown ref. Leave the literal token so reviewers see it's broken.
-    return `@plan/${id}`;
+    // A shared doc keeps the literal token so its reader sees the link is
+    // broken. Anywhere else the token is a local ID that means nothing to the
+    // reader (P6), so it never leaves.
+    return destination === 'shared-doc' ? `@plan/${id}` : MISSING_PLAN_ITEM_TEXT;
   }
 
   const title = item.title;

@@ -79,10 +79,15 @@ describe('resolvePlanRefs', () => {
     expect(resolvePlanRefs(`See @plan/${A}.`, items, 'jira')).toBe('See Foo.');
   });
 
-  it('leaves literal token for unknown refs (broken-link signal)', () => {
-    expect(resolvePlanRefs(`See @plan/${A}.`, [], 'jira')).toBe(
-      `See @plan/${A}.`,
-    );
+  it.each(['jira', 'linear', 'confluence', 'github', 'plain'] as const)(
+    'never sends an unknown ref to %s as a raw token',
+    (destination) => {
+      expect(resolvePlanRefs(`See @plan/${A}.`, [], destination)).toBe('See (plan item not found).');
+    },
+  );
+
+  it('keeps the literal token for an unknown ref in a shared doc (broken-link signal)', () => {
+    expect(resolvePlanRefs(`See @plan/${A}.`, [], 'shared-doc')).toBe(`See @plan/${A}.`);
   });
 
   it('does not rewrite refs inside fenced code blocks', () => {
@@ -271,9 +276,8 @@ describe('restorePlanRefs', () => {
     expect(restorePlanRefs(external, items, 'linear')).toBe('See Local only.');
   });
 
-  it('leaves an unknown ref alone, which keeps it round-tripping as a literal', () => {
-    const local = `See @plan/${B}.`;
-    const external = resolvePlanRefs(local, [LINKED_ITEM], 'linear');
-    expect(restorePlanRefs(external, [LINKED_ITEM], 'linear')).toBe(local);
+  it('cannot restore an unknown ref, which went out as placeholder text', () => {
+    const external = resolvePlanRefs(`See @plan/${B}.`, [LINKED_ITEM], 'linear');
+    expect(restorePlanRefs(external, [LINKED_ITEM], 'linear')).toBe('See (plan item not found).');
   });
 });

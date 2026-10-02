@@ -16,7 +16,7 @@ import type { AttachWorktreePreview } from '../../services/repo/DevSessionServic
 import type { LinkPrPreview } from '../../services/repo/GitHubService';
 import type { BoardChange, WorktreeCandidate } from '../../../shared/boardChanges';
 import type { Repo } from '../../../shared/types';
-import { resolveEffectiveRepoPath } from '../../../shared/repoPath';
+import { resolveConnectedRepo } from './connectedRepo';
 import { parsePrIdentifier } from '../../services/repo/ghUtils';
 import { getCurrentToolExecutionContext } from '../runtime';
 
@@ -70,17 +70,6 @@ function realDirectory(dir: string): string {
   }
 }
 
-function isWithinDir(target: string, base: string): boolean {
-  const rel = path.relative(base, target);
-  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
-}
-
-function findRepoByPath(repos: Repo[], requestedPath: string): Repo | undefined {
-  const target = realDirectory(requestedPath);
-  return repos.find((repo) =>
-    isWithinDir(target, realDirectory(repo.path)) || isWithinDir(target, realDirectory(resolveEffectiveRepoPath(repo))));
-}
-
 function connectedPaths(repos: Repo[]): string {
   return repos.map((repo) => repo.path).join(', ');
 }
@@ -108,8 +97,8 @@ export function createBoardTools(deps: BoardToolDeps) {
 
   const scopeRepos = (repos: Repo[], repoPath: string | undefined): Repo[] | { error: string } => {
     if (!repoPath) return repos;
-    const match = findRepoByPath(repos, repoPath);
-    return match ? [match] : { error: `"${repoPath}" is not within a connected repository. Connected: ${connectedPaths(repos)}` };
+    const match = resolveConnectedRepo(repos, repoPath);
+    return match.ok ? [match.repo] : { error: match.reason };
   };
 
   async function proposeAttach(params: {

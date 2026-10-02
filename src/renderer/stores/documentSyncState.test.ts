@@ -17,6 +17,7 @@ const preview: DocumentSyncPreview = {
   remoteVersion: 1,
   pushReceipt: 'push-receipt',
   pullReceipt: 'pull-receipt',
+  missingRefCount: 0,
 };
 
 function createHarness(overrides: Partial<DocumentSyncOperations> = {}) {

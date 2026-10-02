@@ -53,17 +53,6 @@ export interface DocumentLinkStore {
   remove(linkId: string): void;
 }
 
-export interface DocumentSyncPreview {
-  hasConflict: boolean;
-  localChanged: boolean;
-  remoteChanged: boolean;
-  isInitialSync: boolean;
-  hasContentDifference: boolean;
-  localContent: string;
-  remoteContent: string;
-  remoteVersion: number;
-  pushReceipt: string;
-  pullReceipt: string;
-}
+export type { DocumentSyncPreview } from '../../../shared/types';
 
 export class StaleContentError extends Error {}

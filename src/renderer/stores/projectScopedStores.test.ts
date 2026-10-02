@@ -260,7 +260,7 @@ describe('resetAllProjectScopedStores', () => {
       syncPreview: {
         hasConflict: false, localChanged: true, remoteChanged: false, isInitialSync: false,
         hasContentDifference: true, localContent: 'local', remoteContent: 'remote',
-        remoteVersion: 1, pushReceipt: 'push-receipt', pullReceipt: 'pull-receipt',
+        remoteVersion: 1, pushReceipt: 'push-receipt', pullReceipt: 'pull-receipt', missingRefCount: 0,
       },
     });
 

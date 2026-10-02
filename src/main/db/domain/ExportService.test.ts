@@ -832,6 +832,36 @@ describe('ExportService', () => {
     });
   });
 
+  it('warns in the review when a queued description references a deleted plan item', async () => {
+    const ctx = createTestRepositoryContext();
+    const { project, association } = setupAssociation(ctx, 'Missing Ref Project');
+    const deleted = 'bbbbbbbb-bbbb-4bbb-9bbb-bbbbbbbbbbbb';
+
+    ctx.repos.planItems.add(createPlanItem({
+      id: 'plan-live',
+      project_id: project.id,
+      title: 'Live work',
+      description: `Blocked on @plan/${deleted}.`,
+    }));
+    ctx.repos.outboundChanges.add({
+      kpm_project_id: project.id,
+      plan_item_id: 'plan-live',
+      association_id: association.id,
+      operation: 'create',
+      target_issue_type_id: null,
+      target_issue_type_name: null,
+      target_parent_key: null,
+      target_status_category: null,
+      queued_by: 'user',
+    });
+
+    const review = await createService(ctx, createLinearClient()).generateSyncReview(project.id, association.id);
+
+    expect(review.warnings).toContain(
+      '1 plan reference(s) point to items that no longer exist and will export as "(plan item not found)"',
+    );
+  });
+
   describe('deletion drain', () => {
     it('calls deleteIssue with the snapshotted external key and drains the queue row on success', async () => {
       const ctx = createTestRepositoryContext();

@@ -192,3 +192,45 @@ describe('read_pull_request reviews', () => {
     expect(text).toContain(`${'x'.repeat(1_000)}\n[truncated at 1,000 characters]`);
   });
 });
+
+describe('get_pr_context', () => {
+  it("describes the task's worktree branch, not whatever the main checkout has out", async () => {
+    const { execFileSync } = await import('child_process');
+    const fs = await import('fs');
+    const os = await import('os');
+    const path = await import('path');
+    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'kpm-pr-context-')));
+    const mainCheckout = path.join(root, 'repo');
+    const worktree = path.join(root, 'task-worktree');
+    const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, stdio: 'pipe' });
+    try {
+      fs.mkdirSync(mainCheckout);
+      git(mainCheckout, 'init', '-q', '-b', 'main');
+      git(mainCheckout, 'config', 'user.email', 't@example.com');
+      git(mainCheckout, 'config', 'user.name', 'T');
+      fs.writeFileSync(path.join(mainCheckout, 'a.txt'), 'base\n');
+      git(mainCheckout, 'add', '.');
+      git(mainCheckout, 'commit', '-q', '-m', 'base');
+      git(mainCheckout, 'worktree', 'add', '-q', '-b', 'task-branch', worktree);
+      fs.writeFileSync(path.join(worktree, 'a.txt'), 'task change\n');
+      git(worktree, 'commit', '-q', '-am', 'Task commit');
+
+      const repo = { id: 'repo-1', project_id: PROJECT_ID, path: mainCheckout, active_worktree_path: null };
+      const tools = createGitHubTools(
+        { get: () => ({ id: 'item-1', title: 'Task', description: null, external_key: null, parent_id: null, project_id: PROJECT_ID }) } as never,
+        { getById: () => repo, getByProject: () => [repo] } as never,
+        { getByPlanItem: () => ({ repo_id: 'repo-1', worktree_path: worktree, initial_instructions: null }) } as never,
+      ) as any[];
+      const prContext = tools.find((tool) => tool.name === 'get_pr_context');
+      const result = await runWithToolExecutionContext({ projectId: PROJECT_ID }, () =>
+        prContext.handler({ plan_item_id: 'item-1', base_branch: 'main' }));
+      const text = result.content[0].text as string;
+
+      expect(text).toContain('Branch: `task-branch` -> `main`');
+      expect(text).toContain('+task change');
+      expect(text).toContain('Task commit');
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+});

@@ -296,6 +296,21 @@ describe('executePush', () => {
     ]);
   });
 
+  it('warns about refs to deleted plan items in the preview, then pushes a placeholder for them', async () => {
+    const kept = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const deleted = 'bbbbbbbb-bbbb-4bbb-9bbb-bbbbbbbbbbbb';
+    const planItems = {
+      getByProject: () => [{ id: kept, title: 'Ship it' } as unknown as PlanItem],
+    } as unknown as IPlanItemRepository;
+    const { service, remote } = harness({ localContent: `see @plan/${kept} and @plan/${deleted}`, planItems });
+
+    const preview = await service.generateSyncPreview(PROJECT, PATH);
+    expect(preview).toMatchObject({ ok: true, data: { missingRefCount: 1 } });
+
+    await executePush(service);
+    expect(remote.written).toEqual(['see Ship it and (plan item not found)']);
+  });
+
   it('records the remote title alongside the sync state', async () => {
     const { service, links } = harness({ localContent: 'body' });
     await executePush(service);

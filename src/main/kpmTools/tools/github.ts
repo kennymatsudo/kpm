@@ -29,8 +29,9 @@ import {
   repoOfPrUrl,
 } from '../../services/repo/ghUtils';
 import { MAX_DIFF_CHARS, MAX_REVIEW_COMMENT_CHARS, renderPullRequest } from './pullRequestText';
-import { resolveConnectedRepoPath } from './connectedRepo';
+import { resolveConnectedRepo } from './connectedRepo';
 import { resolveEffectiveRepoPath } from '../../../shared/repoPath';
+import { sessionCheckoutPath } from '../../services/repo/worktreeScaffold';
 
 const MAX_CONTEXT_DIFF_CHARS = 50_000;
 const DEFAULT_PR_SEARCH_LIMIT = 20;
@@ -66,6 +67,7 @@ export function createGitHubTools(
           // Resolve repo
           let resolvedRepoId = repo_id;
           let planItem: { id: string; title: string; description: string | null; external_key: string | null; parent_id: string | null; project_id: string } | undefined;
+          const devSession = plan_item_id ? devSessionRepo.getByPlanItem(plan_item_id) : undefined;
 
           if (plan_item_id) {
             planItem = planItemRepo.get(plan_item_id) as typeof planItem;
@@ -75,7 +77,6 @@ export function createGitHubTools(
 
             // If no repo specified, try to find via dev session
             if (!resolvedRepoId) {
-              const devSession = devSessionRepo.getByPlanItem(plan_item_id);
               if (devSession) {
                 resolvedRepoId = devSession.repo_id;
               } else {
@@ -99,8 +100,10 @@ export function createGitHubTools(
             return toolError(`No connected repo ${resolvedRepoId} in this project.`);
           }
 
-          // Gather context
-          const repoPath = resolveEffectiveRepoPath(repo);
+          // A task's branch lives in its session worktree, not in whatever the repo's checkout is on.
+          const repoPath = devSession?.repo_id === repo.id
+            ? sessionCheckoutPath(devSession, resolveEffectiveRepoPath(repo))
+            : resolveEffectiveRepoPath(repo);
           const baseBranch = base_branch || await resolveDefaultBranch(repoPath);
           const currentBranch = await resolveCurrentBranch(repoPath);
           const diff = await getCommittedDiff(repoPath, baseBranch, MAX_CONTEXT_DIFF_CHARS);
@@ -140,11 +143,8 @@ export function createGitHubTools(
           }
 
           // Dev session instructions
-          if (plan_item_id) {
-            const devSession = devSessionRepo.getByPlanItem(plan_item_id);
-            if (devSession?.initial_instructions) {
-              sections.push(`Implementation instructions:\n${devSession.initial_instructions}`);
-            }
+          if (devSession?.initial_instructions) {
+            sections.push(`Implementation instructions:\n${devSession.initial_instructions}`);
           }
 
           // Cross-repo changes
@@ -187,7 +187,7 @@ export function createGitHubTools(
         includeChecks: z.boolean().default(false).describe('Include CI check counts with failing and pending names, review decision, and mergeable state'),
       },
       projectScoped(async ({ projectId, pr, repoPath, includeDiff, paths, includeReviews, includeResolvedThreads, includeChecks }) => {
-        const resolution = resolveConnectedRepoPath(repoRepo.getByProject(projectId), repoPath);
+        const resolution = resolveConnectedRepo(repoRepo.getByProject(projectId), repoPath);
         if (!resolution.ok) return toolError(resolution.reason);
         const cwd = resolution.repoPath;
 
@@ -238,7 +238,7 @@ export function createGitHubTools(
         includeChecks: z.boolean().default(false).describe('Add each PR\'s CI checks and merge readiness'),
       },
       projectScoped(async ({ projectId, repo, repoPath, head, author, state, search, limit, includeChecks }) => {
-        const resolution = resolveConnectedRepoPath(repoRepo.getByProject(projectId), repoPath);
+        const resolution = resolveConnectedRepo(repoRepo.getByProject(projectId), repoPath);
         if (!resolution.ok) return toolError(resolution.reason);
         const cwd = resolution.repoPath;
 

@@ -52,6 +52,7 @@ function syncErrorHint(error: string, trackerLabel: string): string | null {
 export function SyncReviewModal({ projectId, associationId, onClose, onExportComplete }: Props) {
   const {
     phase,
+    reviewData,
     items,
     deleteItems,
     exportResult,
@@ -328,6 +329,14 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
 
   return (
     <ModalShell onClose={handleClose} wide trackerLabel={trackerLabel} headerAction={headerAction}>
+      {reviewData && reviewData.warnings.length > 0 && (
+        <div className="flex-shrink-0 px-4 py-2 border-b border-warning/30 bg-warning/10 space-y-0.5">
+          {reviewData.warnings.map((warning) => (
+            <p key={warning} className="text-warning text-xs">{warning}</p>
+          ))}
+        </div>
+      )}
+
       {/* Split view container */}
       <div className="flex-1 flex min-h-0 overflow-hidden">
         {/* Left panel - Item list */}

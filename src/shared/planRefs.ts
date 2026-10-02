@@ -80,6 +80,22 @@ export function findRefs(text: string): PlanRefMatch[] {
   return out;
 }
 
+/** What an export shows in place of a ref to a plan item that no longer exists. */
+export const MISSING_PLAN_ITEM_TEXT = '(plan item not found)';
+
+/**
+ * Count refs in `text` that name no item in `planItems`: the item was deleted,
+ * or the UUID was never real. Exports render these as a placeholder, so this
+ * is the pre-export check that tells the user before that happens.
+ */
+export function countMissingRefs(text: string, planItems: readonly { id: string }[]): number {
+  if (!text) return 0;
+  const matches = findRefs(text);
+  if (matches.length === 0) return 0;
+  const known = new Set(planItems.map((item) => item.id.toLowerCase()));
+  return matches.filter((match) => !known.has(match.id)).length;
+}
+
 /**
  * One alternation per span a tracker key must not be rewritten inside (inline
  * code, a link, an autolink, a bare URL), then a bare key. Inline code is

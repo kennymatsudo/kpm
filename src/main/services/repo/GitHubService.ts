@@ -5,8 +5,6 @@
  * Follows the factory + DI pattern used by other services.
  */
 
-import { existsSync } from 'fs';
-import { join } from 'path';
 import { runGeneration } from '../../generation';
 import { randomUUID } from 'crypto';
 import type { IDevSessionRepository, IRepoRepository, IPlanItemRepository } from '../../db/interfaces';
@@ -50,6 +48,7 @@ import {
 } from './gitUtils';
 import { classifyPushTarget, resolveBaseBranch, resolveCurrentBranch, resolveUpstreamBranchName } from './branchFacts';
 import { publishBranch } from './gitWrites';
+import { sessionCheckoutPath } from './worktreeScaffold';
 import { collectLinkedRefKeys } from '../../documents/planRefResolver';
 import { toExternalMarkdown, type ExternalMarkdown } from '../../documents/exportBoundary';
 
@@ -155,12 +154,6 @@ function truncateFeatureContextDoc(content: string): string {
  * query the PR. Linked-PR stubs store an empty path, which `join` would resolve
  * against the app's own cwd.
  */
-function sessionCheckoutPath(session: DevSession, repoPath: string): string {
-  return session.worktree_path && existsSync(join(session.worktree_path, '.git'))
-    ? session.worktree_path
-    : repoPath;
-}
-
 export interface LinkPrPreview {
   item: PlanItem;
   projectId: string;

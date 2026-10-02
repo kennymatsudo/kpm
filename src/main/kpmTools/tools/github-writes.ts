@@ -24,7 +24,7 @@ import {
   isBranchPushed,
   parsePrRef,
 } from '../../services/repo/ghUtils';
-import { resolveConnectedRepoPath } from './connectedRepo';
+import { resolveConnectedRepo } from './connectedRepo';
 
 export interface PullRequestWriteRequest {
   action: 'create' | 'edit';
@@ -65,7 +65,7 @@ export function createGitHubWriteTools(deps: GitHubWriteToolDeps) {
       },
       // Defaulted here too, so a caller that skips schema parsing still gets a draft.
       projectScoped(async ({ projectId, title, body, base, draft = true, repoPath }) => {
-        const resolution = resolveConnectedRepoPath(deps.repos.getByProject(projectId), repoPath);
+        const resolution = resolveConnectedRepo(deps.repos.getByProject(projectId), repoPath);
         if (!resolution.ok) return toolError(resolution.reason);
         const cwd = resolution.repoPath;
 
@@ -122,7 +122,7 @@ export function createGitHubWriteTools(deps: GitHubWriteToolDeps) {
           return toolError('Nothing to change: pass title, body, or both.');
         }
 
-        const resolution = resolveConnectedRepoPath(deps.repos.getByProject(projectId), repoPath);
+        const resolution = resolveConnectedRepo(deps.repos.getByProject(projectId), repoPath);
         if (!resolution.ok) return toolError(resolution.reason);
         const cwd = resolution.repoPath;
 

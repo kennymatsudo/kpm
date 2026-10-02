@@ -12,6 +12,13 @@ import type { DevSession } from '../../../shared/types';
 import { gitExec, resolveUpstreamBranch, getMergeBase } from './gitUtils';
 import { resolveCurrentBranch } from './branchFacts';
 
+/** The session's worktree while it is still a checkout, otherwise `repoPath`. */
+export function sessionCheckoutPath(session: Pick<DevSession, 'worktree_path'>, repoPath: string): string {
+  return session.worktree_path && fs.existsSync(path.join(session.worktree_path, '.git'))
+    ? session.worktree_path
+    : repoPath;
+}
+
 /**
  * Get the worktrees directory for a repo
  */

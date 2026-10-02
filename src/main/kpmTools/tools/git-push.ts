@@ -17,7 +17,7 @@ import type { IRepoRepository } from '../../db/interfaces';
 import type { WriteDecision } from '../../chat/writeGrants';
 import { resolveCurrentBranch } from '../../services/repo/branchFacts';
 import { publishBranch } from '../../services/repo/gitWrites';
-import { resolveConnectedRepoPath } from './connectedRepo';
+import { resolveConnectedRepo } from './connectedRepo';
 
 export interface GitPushConsentRequest {
   remote: string;
@@ -45,7 +45,7 @@ export function createGitPushTools(deps: GitPushToolDeps) {
           .describe('Absolute path of a connected repo (or a path inside it). Optional when exactly one repo is connected.'),
       },
       projectScoped(async ({ projectId, remote, repoPath }) => {
-        const resolution = resolveConnectedRepoPath(deps.repos.getByProject(projectId), repoPath);
+        const resolution = resolveConnectedRepo(deps.repos.getByProject(projectId), repoPath);
         if (!resolution.ok) return toolError(resolution.reason);
         const cwd = resolution.repoPath;
 

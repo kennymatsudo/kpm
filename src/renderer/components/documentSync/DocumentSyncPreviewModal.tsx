@@ -6,6 +6,7 @@ import { Modal, ModalBody, ModalFooter, ModalHeader } from '../ui/Modal';
 import { MotionButton } from '../ui/MotionButton';
 import { Tooltip } from '../ui/Tooltip';
 import type { DocumentSyncActionResult } from '../../stores/documentSyncState';
+import { MISSING_PLAN_ITEM_TEXT } from '../../../shared/planRefs';
 
 interface DocumentSyncLink {
   readonly documentPath: string;
@@ -137,6 +138,15 @@ export function DocumentSyncPreviewModal({
             </div>
           ) : (
             <SyncStatus preview={syncPreview} remoteContentLabel={remoteContentLabel} />
+          )}
+
+          {syncPreview && syncPreview.missingRefCount > 0 && (
+            <StatusNotice color="yellow" title="Missing plan items">
+              {syncPreview.missingRefCount === 1
+                ? 'One plan reference points to an item that no longer exists.'
+                : `${syncPreview.missingRefCount} plan references point to items that no longer exist.`}
+              {` Pushing sends "${MISSING_PLAN_ITEM_TEXT}" in their place.`}
+            </StatusNotice>
           )}
 
           {syncPreview && <SyncDiff preview={syncPreview} remoteContentLabel={remoteContentLabel} showDiff={showDiff} onShowDiffChange={setShowDiff} direction={diffDirection} onDirectionChange={setDiffDirection} />}

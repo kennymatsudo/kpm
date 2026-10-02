@@ -8,6 +8,7 @@ import {
   type ExternalDestination,
 } from '../../documents/exportBoundary';
 import { StaleContentError } from './types';
+import { countMissingRefs } from '../../../shared/planRefs';
 import type {
   DocumentLinkStore,
   DocumentSyncPreview,
@@ -153,6 +154,7 @@ export function createDocumentSyncService(deps: DocumentSyncDeps) {
           remoteVersion: remoteDocument.revision,
           pushReceipt: createReceipt(projectId, documentPath, 'push', remoteHash),
           pullReceipt: createReceipt(projectId, documentPath, 'pull', localHash),
+          missingRefCount: countMissingRefs(localContent, deps.planItems.getByProject(projectId)),
         };
       }, 'Failed to generate sync preview');
     },

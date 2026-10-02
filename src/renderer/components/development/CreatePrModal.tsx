@@ -3,9 +3,11 @@
  * Fetches context from GitHubService, lets user edit title/body, then creates the PR.
  */
 
-import { useCallback, useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import type { DevSessionWithPlanItem } from '../../../shared/types';
 import { useDevSessionsStore } from '../../stores/devSessions';
+import { usePlanDomainStore, useProjectDomainStore } from '../../stores/projectDomains';
+import { MISSING_PLAN_ITEM_TEXT, countMissingRefs } from '../../../shared/planRefs';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { MotionButton } from '../ui/MotionButton';
 import { InlineAlert } from '../ui/InlineAlert';
@@ -38,6 +40,14 @@ export function CreatePrModal({ isOpen, onClose, session, onPrCreated }: CreateP
   const [isLoadingContextDocuments, setIsLoadingContextDocuments] = useState(false);
   const [featureContextPath, setFeatureContextPath] = useState<string>('');
   const titleRef = useRef<HTMLInputElement>(null);
+  const planItems = usePlanDomainStore((state) => state.planItems);
+  const isSessionProjectLoaded = useProjectDomainStore((state) => state.currentProjectId === session.project_id);
+  // Plan items are loaded for the open project only; any other project's
+  // refs would all look missing, so the check waits until that one is open.
+  const missingRefCount = useMemo(
+    () => isSessionProjectLoaded ? countMissingRefs(`${title}\n${body}`, planItems) : 0,
+    [isSessionProjectLoaded, title, body, planItems],
+  );
   const loadContextRequestIdRef = useRef(0);
   const isOpenRef = useRef(isOpen);
 
@@ -285,6 +295,15 @@ export function CreatePrModal({ isOpen, onClose, session, onPrCreated }: CreateP
                   : 'Using commit summary because drafting was unavailable.'}
               </p>
             </div>
+
+            {missingRefCount > 0 && (
+              <InlineAlert variant="warning" title="Missing plan items">
+                {missingRefCount === 1
+                  ? 'One plan reference points to an item that no longer exists.'
+                  : `${missingRefCount} plan references point to items that no longer exist.`}
+                {` GitHub will show "${MISSING_PLAN_ITEM_TEXT}" in their place.`}
+              </InlineAlert>
+            )}
 
             {/* Draft toggle */}
             <label className="flex items-center gap-2 cursor-pointer">

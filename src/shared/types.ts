@@ -1635,6 +1635,8 @@ export interface DocumentSyncPreview {
   remoteVersion: number;
   pushReceipt: string;
   pullReceipt: string;
+  /** Refs in the local document that name no plan item; a push sends a placeholder for each. */
+  missingRefCount: number;
 }
 
 export type ConfluenceSyncPreview = DocumentSyncPreview;

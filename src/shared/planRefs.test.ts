@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   PLAN_REF_REGEX,
+  countMissingRefs,
   expandPlanRefs,
   findMarkdownLinks,
   findRefs,
@@ -369,5 +370,17 @@ describe('linkPlanItemKeys', () => {
   it('rewrites a key after a fenced code block that mentions it', () => {
     const text = ['```', 'ASUP-537', '```', 'Then ASUP-537'].join('\n');
     expect(link(text)).toBe(['```', 'ASUP-537', '```', `Then @plan/${A}`].join('\n'));
+  });
+});
+
+describe('countMissingRefs', () => {
+  it('counts every ref that names no plan item, including repeats', () => {
+    const text = `@plan/${A} needs @plan/${B}, and @plan/${B.toUpperCase()} again; @plan/${C} too.`;
+    expect(countMissingRefs(text, [makeItem(A, 'Kept')])).toBe(3);
+  });
+
+  it('ignores refs inside fenced code, which exports leave alone', () => {
+    const text = ['Top: @plan/' + A, '```', '@plan/' + B, '```'].join('\n');
+    expect(countMissingRefs(text, [makeItem(A, 'Kept')])).toBe(0);
   });
 });

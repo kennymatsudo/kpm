@@ -43,6 +43,7 @@ import { createStatusReconciler } from '../../trackers/StatusReconciler';
 import type { ExternalDestination, ExternalMarkdown } from '../../documents/exportBoundary';
 import { normalizeMarkdown } from '../../documents';
 import { workBriefFromPlanItem } from '../../../shared/workBrief';
+import { MISSING_PLAN_ITEM_TEXT, countMissingRefs } from '../../../shared/planRefs';
 import { projectWorkBriefToTracker, projectWorkBriefToTrackerUpdate } from '../../workBrief/projections';
 import { hasRemoteFieldDrifted } from './trackerReconciliation';
 import { recordTrackerAgreement } from './trackerAgreement';
@@ -490,6 +491,14 @@ export async function resolveExportPlan(
   const itemsWithoutLabel = entries.filter((e) => !e.planItem.label && e.issueType);
   if (itemsWithoutLabel.length > 0) {
     warnings.push(`${itemsWithoutLabel.length} item(s) using depth-based type fallback (no label set)`);
+  }
+
+  const missingRefCount = entries.reduce(
+    (count, entry) => count + countMissingRefs(itemsById.get(entry.planItem.id)?.description ?? '', allItems),
+    0,
+  );
+  if (missingRefCount > 0) {
+    warnings.push(`${missingRefCount} plan reference(s) point to items that no longer exist and will export as "${MISSING_PLAN_ITEM_TEXT}"`);
   }
 
   return {

@@ -14,7 +14,7 @@ import { tool, toolResult, toolError, toolLog, projectScoped } from './index';
 import type { IRepoRepository } from '../../db/interfaces';
 import { gitExecCaptured } from '../../services/repo/gitUtils';
 import { READ_GIT_SUBCOMMANDS, classifyGitInvocation } from '../../services/repo/gitReadOnly';
-import { resolveConnectedRepoPath } from './connectedRepo';
+import { resolveConnectedRepo } from './connectedRepo';
 
 interface GitReadToolDeps {
   repos: Pick<IRepoRepository, 'getByProject'>;
@@ -46,7 +46,7 @@ export function createGitReadTools(deps: GitReadToolDeps) {
           .describe('Absolute path of a connected repo (or a path inside it). Optional when exactly one repo is connected.'),
       },
       projectScoped(async ({ projectId, operation, args, repoPath }) => {
-        const resolution = resolveConnectedRepoPath(deps.repos.getByProject(projectId), repoPath);
+        const resolution = resolveConnectedRepo(deps.repos.getByProject(projectId), repoPath);
         if (!resolution.ok) return toolError(resolution.reason);
         const cwd = resolution.repoPath;
 
