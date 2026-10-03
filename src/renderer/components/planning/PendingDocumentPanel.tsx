@@ -236,7 +236,7 @@ export function PendingDocumentPanel({
             {/* Content */}
             <div className="flex-1 overflow-auto p-4 bg-surface-1">
               {viewMode === 'diff' ? (
-                <DiffViewer oldContent={oldContent || ''} newContent={editedContent} diffLines={editedDiffLines} changesOnly />
+                <DiffViewer oldContent={oldContent || ''} newContent={editedContent} diffLines={editedDiffLines} autoScrollToFirstChange />
               ) : viewMode === 'preview' ? (
                 <div className="prose prose-panel bg-surface-2 p-4 rounded-lg border border-border-subtle overflow-y-auto overflow-x-hidden">
                   <Markdown options={markdownOptions}>
@@ -363,7 +363,7 @@ export function PendingDocumentPanel({
         {/* Content area */}
         <div className="flex-1 overflow-auto p-4 bg-surface-1">
           {viewMode === 'diff' ? (
-            <DiffViewer oldContent={oldContent || ''} newContent={editedContent} diffLines={editedDiffLines} changesOnly />
+            <DiffViewer oldContent={oldContent || ''} newContent={editedContent} diffLines={editedDiffLines} autoScrollToFirstChange />
           ) : viewMode === 'preview' ? (
             <div className="prose prose-panel bg-surface-2 p-4 rounded-lg border border-border-subtle overflow-y-auto overflow-x-hidden">
               <Markdown options={markdownOptions}>
