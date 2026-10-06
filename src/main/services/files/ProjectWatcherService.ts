@@ -38,13 +38,6 @@ const IGNORE_GLOBS = getNativeWatcherIgnoreGlobs();
 export interface ProjectWatcherServiceDeps {
   getMainWindow: () => BrowserWindow | null;
   getProjectFolder: (projectId: string) => string | null;
-  /** Optional callback invoked for each external file change after the renderer is notified */
-  onExternalFileChange?: (event: {
-    projectId: string;
-    type: 'created' | 'updated' | 'deleted';
-    path: string;
-    isDirectory: boolean;
-  }) => void;
 }
 
 type ChangeType = 'created' | 'updated' | 'deleted';
@@ -82,7 +75,6 @@ export function createProjectWatcherService(deps: ProjectWatcherServiceDeps) {
   function flushPendingChanges(projectId: string): void {
     for (const [relativePath, { type, isDirectory }] of pendingChanges) {
       emitFileChange(projectId, type, relativePath, isDirectory);
-      deps.onExternalFileChange?.({ projectId, type, path: relativePath, isDirectory });
     }
     pendingChanges.clear();
   }

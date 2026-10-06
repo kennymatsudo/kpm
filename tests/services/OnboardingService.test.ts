@@ -30,7 +30,7 @@ describe('OnboardingService', () => {
 
     expect(result).toEqual({ success: true });
     expect(fs.readFileSync(path.join(tempDir, 'AGENTS.md'), 'utf-8')).toBe('# Project Context');
-    expect(fs.existsSync(path.join(tempDir, 'CLAUDE.md'))).toBe(true);
+    expect(fs.existsSync(path.join(tempDir, 'CLAUDE.md'))).toBe(false);
   });
 
   it('returns an error when the project folder is unavailable', () => {

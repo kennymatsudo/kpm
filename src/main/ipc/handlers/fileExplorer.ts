@@ -6,6 +6,7 @@ import type { ProjectWatcherService } from '../../services/files/ProjectWatcherS
 import { unwrapOrThrow } from '../../services/result';
 import { toIpcResponse } from '../response';
 import { openDirectoryInCodeEditor } from '../../services/repo/editorLauncher';
+import { openHtmlPreview } from '../../bootstrap/htmlPreviewWindow';
 import { emitAppEvent } from '../../../shared/ipc/appEvents';
 import { fileExplorerEvents, type FileExplorerFileChangedEventData } from '../../../shared/ipc/fileExplorerEvents';
 
@@ -138,6 +139,12 @@ function buildFileExplorerHandlers(
     showItemInFolder: async ({ projectId, path }) => {
       const fullPath = unwrapOrThrow(await fileExplorerService.getFullPath(projectId, path));
       shell.showItemInFolder(fullPath);
+      return { success: true };
+    },
+
+    openHtmlPreview: async ({ projectId, path }) => {
+      const fullPath = unwrapOrThrow(await fileExplorerService.getFullPath(projectId, path));
+      unwrapOrThrow(await openHtmlPreview(fullPath));
       return { success: true };
     },
 

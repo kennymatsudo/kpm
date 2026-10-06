@@ -14,7 +14,6 @@ import type { IConfluenceLinkRepository } from './confluence';
 import type { ILinearDocumentLinkRepository } from './linearDocuments';
 import type { IAgentReviewRepository, IReviewOwnershipRepository, IReviewSyncStateRepository, IReviewTaskRepository } from './review';
 import type { IClaudeUsageRepository } from './usage';
-import type { IProjectFileMetadataRepository } from './files';
 import type { IPlaybookRepository } from './playbook';
 import type { IActionRepository, IActionRunRepository } from './actions';
 
@@ -47,7 +46,6 @@ export interface IRepositoryContainer {
   reviewOwnership: IReviewOwnershipRepository;
   reviewSyncState: IReviewSyncStateRepository;
   claudeUsage: IClaudeUsageRepository;
-  projectFileMetadata: IProjectFileMetadataRepository;
   playbooks: IPlaybookRepository;
   actions: IActionRepository;
   actionRuns: IActionRunRepository;

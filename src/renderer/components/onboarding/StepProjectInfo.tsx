@@ -215,9 +215,9 @@ export function StepProjectInfo({
                 >
                   <WarningTriangleIcon className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
                   <span>
-                    This folder is a git repository, so KPM&apos;s AGENTS.md and CLAUDE.md will
-                    show up in its <span className="font-mono">git status</span>. To work on its
-                    code, add it as a repository above instead.
+                    This folder is a git repository, so KPM&apos;s AGENTS.md will show up in its{' '}
+                    <span className="font-mono">git status</span>. To work on its code, add it as
+                    a repository above instead.
                   </span>
                 </m.div>
               )}

@@ -6,7 +6,7 @@
  */
 
 import * as fs from 'fs/promises';
-import type { Dirent } from 'fs';
+import { existsSync, type Dirent } from 'fs';
 import * as path from 'path';
 import { subscribe, type AsyncSubscription } from '@parcel/watcher';
 import type { Database } from 'better-sqlite3';
@@ -15,11 +15,7 @@ import { success, failure } from '../result';
 import type { PlanItem, SearchResult, StatusCategory } from '../../../shared/types';
 import { getConfig } from '../../config';
 import { findRefs } from '../../../shared/planRefs';
-import {
-  containsHiddenFileTreeSegment,
-  getNativeWatcherIgnoreGlobs,
-  shouldHideFileTreeEntry,
-} from '../files/fileTreeVisibility';
+import { getNativeWatcherIgnoreGlobs, shouldHideFileTreeEntry } from '../files/fileTreeVisibility';
 
 export interface SearchServiceDeps {
   getDatabase: () => Database;
@@ -57,6 +53,8 @@ interface DocumentSyncState {
   subscription: AsyncSubscription | null;
   subscribeOperation: Promise<void> | null;
   watchedFolderPath: string | null;
+  /** Folder last found missing, so the warning and index cleanup happen once per path. */
+  missingFolderPath: string | null;
   watchGeneration: number;
 }
 
@@ -140,7 +138,13 @@ const FTS_SEARCH_SQL = `
   LIMIT ?
 `;
 
-function buildFtsMatchQuery(rawQuery: string): string | null {
+/**
+ * Each token becomes a quoted prefix phrase. Bare, FTS5 reads `data-race` as a
+ * column filter ("no such column: race") and `NOT` or `OR` as operators; quoted,
+ * the tokenizer splits `data-race` into the phrase "data race". Quotes are
+ * stripped from tokens, so none can close the phrase early.
+ */
+export function buildFtsMatchQuery(rawQuery: string): string | null {
   const tokens = rawQuery
     .trim()
     .split(/\s+/)
@@ -151,7 +155,7 @@ function buildFtsMatchQuery(rawQuery: string): string | null {
     return null;
   }
 
-  return tokens.map((token) => `${token}*`).join(' AND ');
+  return tokens.map((token) => `"${token}"*`).join(' AND ');
 }
 
 function toEntityTitle(relativePath: string): string {
@@ -167,10 +171,13 @@ function shouldSkipDocumentDirectory(name: string): boolean {
   return name.startsWith('.') || SEARCH_SKIP_DIRECTORIES.has(name) || shouldHideFileTreeEntry(name);
 }
 
-function containsSearchSkippedSegment(filePath: string): boolean {
-  const segments = filePath.split(/[\\/]+/);
-  return segments.some((segment) => SEARCH_SKIP_DIRECTORIES.has(segment)) ||
-    containsHiddenFileTreeSegment(filePath);
+/** Mirrors the walk in `listDocumentFiles`, so a change it would never index triggers no sync. */
+function isInSkippedDirectory(relativePath: string): boolean {
+  return relativePath.split(/[\\/]+/).slice(0, -1).some(shouldSkipDocumentDirectory);
+}
+
+function isMissingPathError(error: unknown): boolean {
+  return (error as NodeJS.ErrnoException).code === 'ENOENT';
 }
 
 /**
@@ -265,50 +272,60 @@ async function mapWithConcurrency<T, R>(
   return results;
 }
 
-async function listDocumentFiles(projectFolder: string): Promise<IndexedDocument[]> {
-  let rootEntries: Dirent[];
+/** Reads a directory, treating one deleted mid-walk as empty. */
+async function readDirectoryEntries(absoluteDir: string): Promise<Dirent[]> {
   try {
-    rootEntries = await fs.readdir(projectFolder, { withFileTypes: true });
+    return await fs.readdir(absoluteDir, { withFileTypes: true });
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return [];
-    }
+    if (isMissingPathError(error)) return [];
     throw error;
   }
+}
 
-  const documents: IndexedDocument[] = [];
-  const queue: { absoluteDir: string; entries: Dirent[] }[] = [{ absoluteDir: projectFolder, entries: rootEntries }];
+async function listDocumentFiles(projectFolder: string): Promise<IndexedDocument[]> {
+  const documentPaths: string[] = [];
+  const pendingDirs = [projectFolder];
 
-  while (queue.length > 0) {
-    const current = queue.pop();
-    if (!current) break;
+  while (pendingDirs.length > 0) {
+    const absoluteDir = pendingDirs.pop();
+    if (!absoluteDir) break;
 
-    for (const entry of current.entries) {
-      const absolutePath = path.join(current.absoluteDir, entry.name);
+    for (const entry of await readDirectoryEntries(absoluteDir)) {
+      const absolutePath = path.join(absoluteDir, entry.name);
 
       if (entry.isDirectory()) {
-        if (shouldSkipDocumentDirectory(entry.name)) continue;
-        const childEntries = await fs.readdir(absolutePath, { withFileTypes: true });
-        queue.push({ absoluteDir: absolutePath, entries: childEntries });
+        if (!shouldSkipDocumentDirectory(entry.name)) pendingDirs.push(absolutePath);
         continue;
       }
 
-      if (!entry.isFile()) continue;
-      const extension = path.extname(entry.name).toLowerCase();
-      if (!DOCUMENT_EXTENSIONS.has(extension)) continue;
-
-      const stat = await fs.stat(absolutePath);
-      const relativePath = path.relative(projectFolder, absolutePath).split(path.sep).join('/');
-      documents.push({
-        entityId: relativePath,
-        absolutePath,
-        title: toEntityTitle(relativePath),
-        updatedAt: toIndexTimestamp(stat.mtime),
-      });
+      if (entry.isFile() && DOCUMENT_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
+        documentPaths.push(absolutePath);
+      }
     }
   }
 
-  return documents;
+  const documents = await mapWithConcurrency(
+    documentPaths,
+    DOCUMENT_INDEX_READ_CONCURRENCY,
+    async (absolutePath): Promise<IndexedDocument | null> => {
+      let mtime: Date;
+      try {
+        ({ mtime } = await fs.stat(absolutePath));
+      } catch (error) {
+        if (isMissingPathError(error)) return null;
+        throw error;
+      }
+      const relativePath = path.relative(projectFolder, absolutePath).split(path.sep).join('/');
+      return {
+        entityId: relativePath,
+        absolutePath,
+        title: toEntityTitle(relativePath),
+        updatedAt: toIndexTimestamp(mtime),
+      };
+    },
+  );
+
+  return documents.filter((doc): doc is IndexedDocument => doc !== null);
 }
 
 export function createSearchService(deps: SearchServiceDeps) {
@@ -376,6 +393,7 @@ export function createSearchService(deps: SearchServiceDeps) {
       subscription: null,
       subscribeOperation: null,
       watchedFolderPath: null,
+      missingFolderPath: null,
       watchGeneration: 0,
     };
     documentSyncState.set(projectId, initial);
@@ -433,10 +451,10 @@ export function createSearchService(deps: SearchServiceDeps) {
 
   function shouldSyncForWatchPath(filePath: string, projectFolderPath: string): boolean {
     const relativePath = path.relative(projectFolderPath, filePath);
-    const pathForFilter = relativePath.startsWith('..') || path.isAbsolute(relativePath)
-      ? filePath
-      : relativePath;
-    if (containsSearchSkippedSegment(pathForFilter)) {
+    if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+      return false;
+    }
+    if (isInSkippedDirectory(relativePath)) {
       return false;
     }
     return DOCUMENT_EXTENSIONS.has(path.extname(filePath).toLowerCase());
@@ -476,7 +494,9 @@ export function createSearchService(deps: SearchServiceDeps) {
     // FTS body so a search for "export pipeline" finds docs that reference
     // @plan/<uuid-of-export-pipeline-item> via the chip token alone — not
     // just docs that mention the title in prose.
-    const planItemsById = loadPlanItemsById(db, projectId);
+    const planItemsById = docsNeedingUpdate.length > 0
+      ? loadPlanItemsById(db, projectId)
+      : new Map<string, Pick<PlanItem, 'title' | 'external_key'>>();
 
     const indexedBodies = await mapWithConcurrency(
       docsNeedingUpdate,
@@ -641,6 +661,21 @@ export function createSearchService(deps: SearchServiceDeps) {
 
     for (const project of projects) {
       const state = getOrCreateSyncState(project.id);
+
+      // A missing folder can't be watched, and retrying every reconcile only
+      // repeats the same failure. Drop its stale results once and wait for
+      // the folder to come back (or the project to be repointed).
+      if (!existsSync(project.folder_path)) {
+        if (state.missingFolderPath !== project.folder_path) {
+          console.warn('[SearchService] Project folder not found, skipping indexing:', project.folder_path);
+          state.missingFolderPath = project.folder_path;
+          void closeProjectWatcher(project.id);
+          scheduleFilesystemDocumentIndexSync(project.id, false);
+        }
+        continue;
+      }
+      state.missingFolderPath = null;
+
       if (state.watchedFolderPath !== project.folder_path) {
         watchProjectFolderForDocs(project.id, project.folder_path);
         scheduleFilesystemDocumentIndexSync(project.id, false);

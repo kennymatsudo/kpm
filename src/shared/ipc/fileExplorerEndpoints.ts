@@ -104,6 +104,11 @@ export const fileExplorerEndpoints = {
     params: z.object({ projectId: uuid, path: relativePath.min(1) }),
     result: resultOf<{ success: true }>(),
   },
+  openHtmlPreview: {
+    channel: 'file-explorer:open-html-preview',
+    params: z.object({ projectId: uuid, path: relativePath.min(1) }),
+    result: resultOf<{ success: true }>(),
+  },
   openInEditor: {
     channel: 'file-explorer:open-in-editor',
     params: z.object({ projectId: uuid, path: relativePath.min(1) }),

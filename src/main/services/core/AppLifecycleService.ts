@@ -9,11 +9,10 @@ import type { TerminalService } from '../streaming/TerminalService';
 import type { ActivityService } from './ActivityService';
 import type { AgentSessionManager } from '../agents/AgentSessionManager';
 import type { HookServer } from '../agents/hookServer';
-import type { FileSummaryService } from '../files/FileSummaryService';
 
 export interface AppLifecycleServiceDeps {
   searchService: Pick<SearchService, 'startBackgroundIndexing' | 'disposeBackgroundIndexing'>;
-  devSessionService: Pick<DevSessionService, 'markActiveAsInactive'>;
+  devSessionService: Pick<DevSessionService, 'recoverAfterRestart'>;
   pollScheduler: Pick<PollScheduler, 'stopAll'>;
   repoWatcherService?: Pick<RepoWatcherService, 'unwatchAll'>;
   projectWatcherService?: Pick<ProjectWatcherService, 'unwatchProject'>;
@@ -22,7 +21,6 @@ export interface AppLifecycleServiceDeps {
   activityService?: Pick<ActivityService, 'stop'>;
   agentSessionManager?: Pick<AgentSessionManager, 'stopAll'>;
   hookServer?: Pick<HookServer, 'stop'>;
-  fileSummaryService?: Pick<FileSummaryService, 'dispose'>;
   disposeClaudeClients: () => void;
 }
 
@@ -43,7 +41,7 @@ export function createAppLifecycleService(deps: AppLifecycleServiceDeps) {
       startupApplied = true;
 
       deps.searchService.startBackgroundIndexing();
-      deps.devSessionService.markActiveAsInactive();
+      deps.devSessionService.recoverAfterRestart();
     },
 
     async shutdown(): Promise<void> {
@@ -57,12 +55,6 @@ export function createAppLifecycleService(deps: AppLifecycleServiceDeps) {
         deps.pollScheduler.stopAll();
       } catch (err) {
         console.error('[AppLifecycleService] Error stopping poll scheduler:', err);
-      }
-
-      try {
-        deps.fileSummaryService?.dispose();
-      } catch (err) {
-        console.error('[AppLifecycleService] Error disposing file summaries:', err);
       }
 
       if (chatRuntime) {

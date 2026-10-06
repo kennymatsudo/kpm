@@ -14,7 +14,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { gitExec } from '../repo/gitUtils';
 import { getConfig } from '../../config';
-import { writeProjectContextFilesSync } from '../../project-context/contextFileCompat';
+import { writeProjectContextFileSync } from '../../project-context/projectContextFile';
 import { getClaudeSdkSpawnOptions } from '../../claude/findClaude';
 import { runClaudeQuery, type ClaudeQueryUsage } from '../../claude/runClaudeQuery';
 import type { IProjectRepository } from '../../db/interfaces';
@@ -480,7 +480,7 @@ export function createOnboardingService(deps: OnboardingServiceDeps) {
           return { success: false, error: 'Project folder not found' };
         }
 
-        writeProjectContextFilesSync(fs, folderPath, content);
+        writeProjectContextFileSync(fs, folderPath, content);
         return { success: true };
       } catch (error) {
         const msg = error instanceof Error ? error.message : 'Unknown error';

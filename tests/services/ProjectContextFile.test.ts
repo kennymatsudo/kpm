@@ -2,9 +2,9 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { writeProjectContextFiles } from '../../src/main/project-context/contextFileCompat';
+import { writeProjectContextFile } from '../../src/main/project-context/projectContextFile';
 
-describe('contextFileCompat', () => {
+describe('projectContextFile', () => {
   let tempDir: string | null = null;
 
   afterEach(() => {
@@ -14,22 +14,22 @@ describe('contextFileCompat', () => {
     }
   });
 
-  it('writes AGENTS.md and creates a CLAUDE.md compatibility artifact', async () => {
+  it('writes AGENTS.md without creating a CLAUDE.md mirror', async () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kpm-context-compat-'));
 
-    await writeProjectContextFiles(tempDir, '# Context');
+    await writeProjectContextFile(tempDir, '# Context');
 
     expect(fs.readFileSync(path.join(tempDir, 'AGENTS.md'), 'utf-8')).toBe('# Context');
-    expect(fs.existsSync(path.join(tempDir, 'CLAUDE.md'))).toBe(true);
+    expect(fs.existsSync(path.join(tempDir, 'CLAUDE.md'))).toBe(false);
   });
 
-  it('migrates a legacy CLAUDE.md-only workspace to AGENTS.md on write', async () => {
+  it('migrates a legacy CLAUDE.md-only workspace to AGENTS.md on write, leaving CLAUDE.md untouched', async () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kpm-context-compat-'));
     fs.writeFileSync(path.join(tempDir, 'CLAUDE.md'), '# Legacy', 'utf-8');
 
-    await writeProjectContextFiles(tempDir, '# Updated');
+    await writeProjectContextFile(tempDir, '# Updated');
 
     expect(fs.readFileSync(path.join(tempDir, 'AGENTS.md'), 'utf-8')).toBe('# Updated');
-    expect(fs.readFileSync(path.join(tempDir, 'CLAUDE.md'), 'utf-8')).toBe('# Updated');
+    expect(fs.readFileSync(path.join(tempDir, 'CLAUDE.md'), 'utf-8')).toBe('# Legacy');
   });
 });

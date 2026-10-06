@@ -18,7 +18,6 @@ import {
   checkExternalTargetAllowed,
   type RealpathAccessResult,
 } from './pathSecurity';
-import type { FileSummaryService } from './FileSummaryService';
 import { resolvePlanRefs } from '../../documents/planRefResolver';
 import { findEnclosingGitRoot } from '../repo/gitUtils';
 import { markIgnoredNodes, resolveGitRoot } from '../repo/ignoreSet';
@@ -28,8 +27,7 @@ import { shouldHideFileTreeEntry } from './fileTreeVisibility';
 const MARKDOWN_EXT_REGEX = /\.(md|mdx|markdown)$/i;
 
 const MAX_BINARY_BYTES = 50 * 1024 * 1024; // 50MB
-const MAX_SUMMARY_BACKFILL_PER_LIST = 25;
-const DEFAULT_RECURSIVE_NODE_LIMIT = 500;
+const DEFAULT_RECURSIVE_NODE_LIMIT = 200;
 
 /** Flatten a nested FileNode tree into a DFS-ordered flat list, stripping the children field. */
 function flattenDFS(nodes: FileNode[]): FileNode[] {
@@ -76,7 +74,6 @@ export interface ExternalAccessEvent {
 
 export interface FileExplorerServiceDeps {
   getProjectFolder: (projectId: string) => string | null;
-  fileSummaryService?: FileSummaryService;
   /**
    * Optional lookup for the save-time `@plan/<uuid>` rewrite. When provided
    * and the saved file is markdown in a git-tracked folder, `writeFile`
@@ -98,18 +95,16 @@ export interface FileExplorerServiceDeps {
 export interface FileExplorerListDirectoryOptions {
   recursive?: boolean;
   depth?: number;
-  backfillMissingSummaries?: boolean;
 }
 
 export interface FileExplorerListDirectoryPagedOptions {
   recursive?: boolean;
   depth?: number;
-  backfillMissingSummaries?: boolean;
   /** Max nodes to return. Defaults to 500 when recursive is true. */
   limit?: number;
   /** Opaque cursor from a previous truncated response. */
   cursor?: string;
-  /** When true, each node contains only name, path, isDirectory, isSymlink — omits size, modifiedAt, summary, etc. */
+  /** When true, each node contains only name, path, isDirectory, and isSymlink — omits size, modifiedAt, etc. */
   structureOnly?: boolean;
 }
 
@@ -120,57 +115,6 @@ export interface FileNodeListing {
   truncated: boolean;
   /** Pass as cursor in the next call to continue from where this response stopped. */
   nextCursor?: string;
-}
-
-function enrichWithSummaries(nodes: FileNode[], summaryMap: Map<string, string>): void {
-  for (const node of nodes) {
-    if (!node.isDirectory) {
-      const summary = summaryMap.get(node.path);
-      if (summary) node.summary = summary;
-    }
-    if (node.children) enrichWithSummaries(node.children, summaryMap);
-  }
-}
-
-function queueMissingSummaries(
-  projectId: string,
-  projectFolder: string,
-  nodes: FileNode[],
-  summaryMap: Map<string, string>,
-  fileSummaryService: FileSummaryService,
-  remaining: { count: number }
-): void {
-  if (remaining.count <= 0) {
-    return;
-  }
-
-  for (const node of nodes) {
-    if (remaining.count <= 0) {
-      return;
-    }
-
-    if (node.isDirectory) {
-      if (node.children) {
-        queueMissingSummaries(
-          projectId,
-          projectFolder,
-          node.children,
-          summaryMap,
-          fileSummaryService,
-          remaining
-        );
-      }
-      continue;
-    }
-
-    if (node.isSymlink || summaryMap.has(node.path) || !fileSummaryService.shouldSummarizePath(node.path)) {
-      continue;
-    }
-
-    if (fileSummaryService.enqueueFileFromDisk(projectId, node.path, path.join(projectFolder, node.path))) {
-      remaining.count -= 1;
-    }
-  }
 }
 
 export function createFileExplorerService(deps: FileExplorerServiceDeps) {
@@ -273,16 +217,6 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
           nodes = nodes.filter((node) => node.name !== COMPAT_CONTEXT_FILENAME);
         }
 
-        const summaryMap = deps.fileSummaryService?.getMetadataMap(projectId);
-        if (summaryMap) {
-          enrichWithSummaries(nodes, summaryMap);
-        }
-        if (options.backfillMissingSummaries && summaryMap && deps.fileSummaryService) {
-          queueMissingSummaries(projectId, projectFolder, nodes, summaryMap, deps.fileSummaryService, {
-            count: MAX_SUMMARY_BACKFILL_PER_LIST,
-          });
-        }
-
         return success(nodes);
       } catch (error) {
         return failure(`Failed to list directory: ${error}`);
@@ -347,7 +281,6 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         await ensureParentDirectory(fullPath);
 
         await fs.promises.writeFile(fullPath, content, 'utf-8');
-        void deps.fileSummaryService?.processFile(projectId, relativePath, content);
         audit(projectId, 'write', relativePath, access);
         return success(await getScopedEntryInfo(fullPath, relativePath));
       } catch (error) {
@@ -461,12 +394,6 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
           await fs.promises.unlink(fullPath);
         }
 
-        if (stats.isDirectory() && !stats.isSymbolicLink()) {
-          deps.fileSummaryService?.deleteFolder(projectId, relativePath);
-        } else {
-          deps.fileSummaryService?.deleteEntry(projectId, relativePath);
-        }
-
         if (access) audit(projectId, 'delete', relativePath, access);
         return success(undefined);
       } catch (error) {
@@ -541,14 +468,6 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         }
 
         const node = await getScopedEntryInfo(newFullPath, newPath, path.basename(projectFolder));
-        if (node.isDirectory && !node.isSymlink) {
-          deps.fileSummaryService?.deleteFolder(projectId, oldPath);
-        } else {
-          deps.fileSummaryService?.deleteEntry(projectId, oldPath);
-          if (!node.isSymlink) {
-            void deps.fileSummaryService?.processFileFromDisk(projectId, newPath, newFullPath);
-          }
-        }
 
         if (oldAccess?.external) {
           audit(projectId, 'rename', oldPath, oldAccess);
@@ -702,7 +621,6 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         await ensureParentDirectory(fullPath);
 
         await fs.promises.writeFile(fullPath, finalContent, 'utf-8');
-        void deps.fileSummaryService?.processFile(projectId, relativePath, finalContent);
         audit(projectId, 'write', relativePath, access);
         return success(undefined);
       } catch (error) {
@@ -803,7 +721,6 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
         await fs.promises.copyFile(sourcePath, fullPath, fs.constants.COPYFILE_EXCL);
 
         const stats = await fs.promises.stat(fullPath);
-        void deps.fileSummaryService?.processFileFromDisk(projectId, relativePath, fullPath);
         audit(projectId, 'copy-into', relativePath, access);
         return success({
           name: path.basename(relativePath),
@@ -868,7 +785,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
      *
      * Unlike listDirectory, this always returns a flat array (no nested children field).
      * Use limit + cursor to page through trees that would otherwise overflow the
-     * tool-output budget.  Use structureOnly for a name/path/type-only view.
+     * tool-output budget.  Use structureOnly for a name/path/type view.
      */
     async listDirectoryPaged(
       projectId: string,
@@ -878,8 +795,6 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
       const directoryResult = await service.listDirectory(projectId, relativePath, {
         recursive: options.recursive,
         depth: options.depth,
-        // Skip summary backfill when structureOnly — summaries are dropped from the response anyway.
-        backfillMissingSummaries: options.structureOnly ? false : (options.backfillMissingSummaries ?? false),
       });
 
       if (!directoryResult.ok) {
@@ -889,7 +804,7 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
       // Flatten nested tree into a DFS-ordered list with the children field stripped.
       const allNodes = flattenDFS(directoryResult.data);
 
-      // Apply limit — default to 500 for recursive listings to prevent output overflow.
+      // Apply limit — default to 200 for recursive listings to stay well under Claude Code's 25K-token tool result cap.
       const limit = options.limit ?? (options.recursive ? DEFAULT_RECURSIVE_NODE_LIMIT : undefined);
 
       // Decode cursor into a starting offset.
@@ -908,7 +823,12 @@ export function createFileExplorerService(deps: FileExplorerServiceDeps) {
 
       // Strip metadata when structureOnly.
       const nodes: FileNode[] = options.structureOnly
-        ? (slice.map(n => ({ name: n.name, path: n.path, isDirectory: n.isDirectory, isSymlink: n.isSymlink })) as unknown as FileNode[])
+        ? (slice.map(n => ({
+            name: n.name,
+            path: n.path,
+            isDirectory: n.isDirectory,
+            isSymlink: n.isSymlink,
+          })) as unknown as FileNode[])
         : slice;
 
       return success({

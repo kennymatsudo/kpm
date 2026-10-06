@@ -57,7 +57,7 @@ import { configureGeneration, type GenerationPurpose } from '../generation';
 const GENERATION_PURPOSE_TO_USAGE_SOURCE: Record<GenerationPurpose, UsageSource> = {
   pr_description: 'pr_description',
   commit_message: 'commit_message',
-  file_summary: 'file-summary',
+  chat_title: 'chat-title',
 };
 
 // Confluence services
@@ -69,7 +69,6 @@ import { AnthropicAuth } from '../claude/auth';
 import { clientManager } from '../claude/clientManager';
 import { createRepoServices } from './composition/repoServices';
 import { createGenerationServices } from './composition/generationServices';
-import { createFileSummaryService } from './files/FileSummaryService';
 import { classifyAttachment, saveTempAttachment } from './files/TempImageService';
 import { createAgentSessionManager } from './agents/AgentSessionManager';
 import { createHookServer } from './agents/hookServer';
@@ -85,9 +84,11 @@ import { planEvents } from '../../shared/ipc/planEvents';
 // Application Services Factory
 // =============================================================================
 
-export function createAppServices(container: IRepositoryContainer) {
+export function createAppServices(
+  container: IRepositoryContainer,
+  getMainWindow: () => BrowserWindow | null,
+) {
   const database = getDatabase();
-  const getPrimaryWindow = () => BrowserWindow.getAllWindows()[0] ?? null;
   const broadcastToWindows = (channel: string, payload: unknown) => {
     for (const win of BrowserWindow.getAllWindows()) {
       if (!win.isDestroyed()) {
@@ -142,7 +143,7 @@ export function createAppServices(container: IRepositoryContainer) {
   const claudeUsageService = createClaudeUsageService({
     claudeUsage: container.claudeUsage,
     projects: container.projects,
-    getMainWindow: getPrimaryWindow,
+    getMainWindow,
   });
 
   // Route the one-shot generation seam's usage through the same central
@@ -150,7 +151,7 @@ export function createAppServices(container: IRepositoryContainer) {
   // per-site recordUsage plumbing is gone; this maps the neutral (purpose,
   // usage) shape onto the ledger's source + raw token block.
   configureGeneration({
-    recordUsage: ({ purpose, model, projectId, usage, totalCostUsd }) => {
+    recordUsage: ({ purpose, model, projectId, usage, totalCostUsd, costUnknown }) => {
       claudeUsageService.recordUsage({
         projectId,
         source: GENERATION_PURPOSE_TO_USAGE_SOURCE[purpose],
@@ -162,6 +163,7 @@ export function createAppServices(container: IRepositoryContainer) {
           cache_creation_input_tokens: usage.cacheWriteTokens ?? 0,
         },
         totalCostUsd,
+        costUnknown,
       });
     },
   });
@@ -171,7 +173,7 @@ export function createAppServices(container: IRepositoryContainer) {
   // ─────────────────────────────────────────────────────────────────────────────
 
   const repoWatcherService = createRepoWatcherService({
-    getMainWindow: getPrimaryWindow,
+    getMainWindow,
     eventBus: updateEventBus,
   });
 
@@ -261,6 +263,7 @@ export function createAppServices(container: IRepositoryContainer) {
       externalPlanItems: container.externalPlanItems,
       sync: container.sync,
       tracker: container.tracker,
+      outboundChanges: container.outboundChanges,
     }),
   });
 
@@ -314,7 +317,7 @@ export function createAppServices(container: IRepositoryContainer) {
   });
 
   const agentSessionManager = createAgentSessionManager({
-    getMainWindow: getPrimaryWindow,
+    getMainWindow,
     ...boardAgentOrchestrator,
   });
   agentSessionManagerRef = agentSessionManager;
@@ -331,10 +334,6 @@ export function createAppServices(container: IRepositoryContainer) {
     console.error('[AppServices] Failed to start hook server:', err);
   });
 
-  const fileSummaryService = createFileSummaryService({
-    repository: container.projectFileMetadata,
-  });
-
   const {
     repoService,
     fileExplorerService,
@@ -348,7 +347,7 @@ export function createAppServices(container: IRepositoryContainer) {
   } = createRepoServices({
     container,
     repoWatcherService,
-    getMainWindow: getPrimaryWindow,
+    getMainWindow,
     userDataPath: getUserDataPath(),
     agentSessionManager,
     phaseMachine,
@@ -357,7 +356,6 @@ export function createAppServices(container: IRepositoryContainer) {
       contextFileService.buildContextPrefix(projectId, contextPaths),
     readProjectContextFile: (projectId) => contextFileService.readProjectContextFile(projectId),
     claudeUsageService,
-    fileSummaryService,
     playbookService,
     listBoardProviders,
     getSkillBody: slashCommandService.getSkillBody,
@@ -419,7 +417,6 @@ export function createAppServices(container: IRepositoryContainer) {
     activityService,
     agentSessionManager,
     hookServer,
-    fileSummaryService,
     disposeClaudeClients: () => clientManager.disposeAll(),
   });
 
@@ -475,7 +472,7 @@ export function createAppServices(container: IRepositoryContainer) {
     mcpDiscoveryService,
     getDefaultClaudeModel: () => getSetting(container.appSettings, 'chatModel'),
     getFallbackProjectId: () => getSetting(container.appSettings, 'lastOpenedProjectId'),
-    getMainWindow: getPrimaryWindow,
+    getMainWindow,
     broadcastToWindows,
   });
 

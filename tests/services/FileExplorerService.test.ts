@@ -1,9 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { createFileExplorerService } from '../../src/main/services/files/FileExplorerService';
-import type { FileSummaryService } from '../../src/main/services/files/FileSummaryService';
 import { createTestConfig, setConfig } from '../../src/main/config';
 
 // Create a temp directory for each test
@@ -182,98 +181,6 @@ describe('FileExplorerService', () => {
       if (result.ok) {
         expect(result.data.map((node) => node.name)).toEqual(['CLAUDE.md']);
       }
-    });
-
-    it('enriches listed files with summaries and queues missing text summaries when requested', async () => {
-      fs.writeFileSync(path.join(tempDir, 'summarized.md'), '# Summarized');
-      fs.writeFileSync(path.join(tempDir, 'missing.md'), '# Missing');
-      fs.writeFileSync(path.join(tempDir, 'image.png'), 'png');
-
-      const enqueueFileFromDisk = vi.fn().mockReturnValue(true);
-      const summaryService = {
-        getMetadataMap: () => new Map([['summarized.md', 'Existing summary']]),
-        shouldSummarizePath: (filePath: string) => path.extname(filePath) === '.md',
-        enqueueFileFromDisk,
-        processFileFromDisk: vi.fn().mockResolvedValue(undefined),
-        processFile: vi.fn().mockResolvedValue(undefined),
-        deleteEntry: vi.fn(),
-        deleteFolder: vi.fn(),
-      } as unknown as FileSummaryService;
-
-      const serviceWithSummaries = createFileExplorerService({
-        getProjectFolder: (projectId: string) => (projectId === 'test-project' ? tempDir : null),
-        fileSummaryService: summaryService,
-      });
-
-      const result = await serviceWithSummaries.listDirectory('test-project', '', {
-        backfillMissingSummaries: true,
-      });
-
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        expect(result.data.find((node) => node.name === 'summarized.md')?.summary).toBe('Existing summary');
-        expect(result.data.find((node) => node.name === 'missing.md')?.summary).toBeUndefined();
-      }
-      expect(enqueueFileFromDisk).toHaveBeenCalledTimes(1);
-      expect(enqueueFileFromDisk).toHaveBeenCalledWith(
-        'test-project',
-        'missing.md',
-        path.join(tempDir, 'missing.md')
-      );
-    });
-
-    it('does not queue missing summaries during regular UI listings', async () => {
-      fs.writeFileSync(path.join(tempDir, 'missing.md'), '# Missing');
-
-      const enqueueFileFromDisk = vi.fn().mockReturnValue(true);
-      const summaryService = {
-        getMetadataMap: () => new Map(),
-        shouldSummarizePath: () => true,
-        enqueueFileFromDisk,
-        processFileFromDisk: vi.fn().mockResolvedValue(undefined),
-        processFile: vi.fn().mockResolvedValue(undefined),
-        deleteEntry: vi.fn(),
-        deleteFolder: vi.fn(),
-      } as unknown as FileSummaryService;
-
-      const serviceWithSummaries = createFileExplorerService({
-        getProjectFolder: (projectId: string) => (projectId === 'test-project' ? tempDir : null),
-        fileSummaryService: summaryService,
-      });
-
-      const result = await serviceWithSummaries.listDirectory('test-project');
-
-      expect(result.ok).toBe(true);
-      expect(enqueueFileFromDisk).not.toHaveBeenCalled();
-    });
-
-    it('caps missing summary backfill per listing', async () => {
-      for (let i = 0; i < 30; i += 1) {
-        fs.writeFileSync(path.join(tempDir, `missing-${i}.md`), `# Missing ${i}`);
-      }
-
-      const enqueueFileFromDisk = vi.fn().mockReturnValue(true);
-      const summaryService = {
-        getMetadataMap: () => new Map(),
-        shouldSummarizePath: () => true,
-        enqueueFileFromDisk,
-        processFileFromDisk: vi.fn().mockResolvedValue(undefined),
-        processFile: vi.fn().mockResolvedValue(undefined),
-        deleteEntry: vi.fn(),
-        deleteFolder: vi.fn(),
-      } as unknown as FileSummaryService;
-
-      const serviceWithSummaries = createFileExplorerService({
-        getProjectFolder: (projectId: string) => (projectId === 'test-project' ? tempDir : null),
-        fileSummaryService: summaryService,
-      });
-
-      const result = await serviceWithSummaries.listDirectory('test-project', '', {
-        backfillMissingSummaries: true,
-      });
-
-      expect(result.ok).toBe(true);
-      expect(enqueueFileFromDisk).toHaveBeenCalledTimes(25);
     });
   });
 
@@ -643,7 +550,7 @@ describe('FileExplorerService', () => {
       expect(new Set(allNames).size).toBe(5); // no overlap
     });
 
-    it('applies structureOnly mode — strips size, modifiedAt, summary', async () => {
+    it('applies structureOnly mode — strips size and modifiedAt', async () => {
       fs.writeFileSync(path.join(tempDir, 'test.txt'), 'content');
 
       const result = await service.listDirectoryPaged('test-project', '', { structureOnly: true });
@@ -658,7 +565,6 @@ describe('FileExplorerService', () => {
         const keys = Object.keys(node);
         expect(keys).not.toContain('modifiedAt');
         expect(keys).not.toContain('size');
-        expect(keys).not.toContain('summary');
       }
     });
 

@@ -283,27 +283,34 @@ const FileTreeRow = memo(function FileTreeRow({
           ))}
 
         <div className="flex items-center gap-2 flex-1 min-w-0" style={{ paddingLeft: `${node.level * 16}px` }}>
-          {node.isInternal ? (
-            <button
-              onClick={handleChevronClick}
-              className="w-4 h-4 flex items-center justify-center text-text-muted hover:text-text-primary rounded-sm transition-colors flex-shrink-0 -ml-1"
-              disabled={isLoading}
-              aria-expanded={node.isOpen}
-              aria-label={`${node.isOpen ? 'Collapse' : 'Expand'} ${node.data.name}`}
-            >
-              {isLoading ? (
-                <div className="w-3 h-3 rounded-full border-[1.5px] border-border-default border-t-accent spinner-refined" />
-              ) : (
-                <ChevronRightIcon
-                  className={`w-3 h-3 transition-transform duration-200 ${node.isOpen ? 'rotate-90' : ''}`}
-                />
-              )}
-            </button>
-          ) : (
-            <div className="w-4 h-4 flex-shrink-0" />
-          )}
-
-          <FileIcon node={node.data} isExpanded={node.isOpen} />
+          {/* Chevron and icon share one gapless column, like the section header.
+              The chevron glyph only fills the middle of its 16px hit box, so a
+              gap-2 on top read as a hole. The leaf spacer carries the same -ml-1
+              so file icons line up with folder icons. */}
+          <span className="flex items-center flex-shrink-0">
+            {node.isInternal ? (
+              <button
+                onClick={handleChevronClick}
+                className="w-4 h-4 flex items-center justify-center text-text-muted hover:text-text-primary rounded-sm transition-colors flex-shrink-0 -ml-1"
+                disabled={isLoading}
+                aria-expanded={node.isOpen}
+                aria-label={`${node.isOpen ? 'Collapse' : 'Expand'} ${node.data.name}`}
+              >
+                {isLoading ? (
+                  <div className="w-3 h-3 rounded-full border-[1.5px] border-border-default border-t-accent spinner-refined" />
+                ) : (
+                  <ChevronRightIcon
+                    className={`w-3 h-3 transition-transform duration-200 ${node.isOpen ? 'rotate-90' : ''}`}
+                  />
+                )}
+              </button>
+            ) : (
+              <div className="w-4 h-4 flex-shrink-0 -ml-1" />
+            )}
+            <span className="-ml-0.5 flex">
+              <FileIcon node={node.data} isExpanded={node.isOpen} />
+            </span>
+          </span>
 
           {node.isEditing ? (
             <input

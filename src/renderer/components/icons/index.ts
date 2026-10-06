@@ -7,6 +7,7 @@ export { ChevronRightIcon } from './ChevronRightIcon';
 export { ClockIcon } from './ClockIcon';
 export { CloseIcon } from './CloseIcon';
 export { CopyIcon } from './CopyIcon';
+export { EyeIcon } from './EyeIcon';
 export { FileTextIcon } from './FileTextIcon';
 export { FolderIcon } from './FolderIcon';
 export { GitBranchIcon } from './GitBranchIcon';

@@ -50,6 +50,11 @@ export const repoFilesEndpoints = {
     params: z.object({ repoId: uuid, path: relativePath.min(1) }),
     result: resultOf<{ success: true }>(),
   },
+  openHtmlPreview: {
+    channel: 'repo-files:open-html-preview',
+    params: z.object({ repoId: uuid, path: relativePath.min(1) }),
+    result: resultOf<{ success: true }>(),
+  },
 } satisfies Record<string, EndpointDefinition>;
 
 export type RepoFilesEndpoints = typeof repoFilesEndpoints;

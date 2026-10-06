@@ -17,19 +17,28 @@ export function buildApplicationMenu(deps: ApplicationMenuDeps): void {
   const recentProjects = deps.getRecentProjects();
   const recentProjectsSubmenu: MenuItemConstructorOptions[] = recentProjects.slice(0, 10).map((project) => ({
     label: project.name,
-    click: () => {
-      const win = BrowserWindow.getFocusedWindow() || deps.getMainWindow();
-      emitAppEvent(win?.webContents, menuEvents.openProject, { projectId: project.id });
-    },
+    click: () => sendToMainWindow(menuEvents.openProject, { projectId: project.id }),
   }));
 
   if (recentProjectsSubmenu.length === 0) {
     recentProjectsSubmenu.push({ label: 'No recent projects', enabled: false });
   }
 
-  function sendToFocusedOrMainWindow<E extends EventDefinition>(event: E, payload?: EventPayload<E>): void {
-    const win = BrowserWindow.getFocusedWindow() || deps.getMainWindow();
+  // KPM's UI lives in the main window only. Other windows (HTML previews) have
+  // no renderer listening for these events.
+  function sendToMainWindow<E extends EventDefinition>(event: E, payload?: EventPayload<E>): void {
+    const win = deps.getMainWindow();
+    win?.focus();
     emitAppEvent(win?.webContents, event, payload!);
+  }
+
+  function closeFocusedContext(): void {
+    const focused = BrowserWindow.getFocusedWindow();
+    if (focused && focused !== deps.getMainWindow()) {
+      focused.close();
+      return;
+    }
+    sendToMainWindow(menuEvents.closeContext);
   }
 
   const template: MenuItemConstructorOptions[] = [
@@ -52,7 +61,7 @@ export function buildApplicationMenu(deps: ApplicationMenuDeps): void {
       submenu: [
         {
           label: 'New Project',
-          click: () => sendToFocusedOrMainWindow(menuEvents.newProject),
+          click: () => sendToMainWindow(menuEvents.newProject),
         },
         { type: 'separator' as const },
         {
@@ -63,7 +72,7 @@ export function buildApplicationMenu(deps: ApplicationMenuDeps): void {
         {
           label: 'Close',
           accelerator: 'CmdOrCtrl+W',
-          click: () => sendToFocusedOrMainWindow(menuEvents.closeContext),
+          click: closeFocusedContext,
         },
       ] as MenuItemConstructorOptions[],
     },

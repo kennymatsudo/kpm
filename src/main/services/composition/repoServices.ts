@@ -12,9 +12,6 @@ import type { RepoWatcherService } from '../repo/RepoWatcherService';
 import { createFileExplorerService } from '../files/FileExplorerService';
 import { createProjectWatcherService } from '../files/ProjectWatcherService';
 import { createRepoFileService } from '../files/RepoFileService';
-import { getConfig } from '../../config';
-import { resolveScopedPath } from '../files/scopedFs';
-import type { FileSummaryService } from '../files/FileSummaryService';
 import type { AgentSessionManager } from '../agents/AgentSessionManager';
 import type { AutomationPhaseMachine } from '../agents/automationPhaseMachine';
 import { emitAppEvent } from '../../../shared/ipc/appEvents';
@@ -39,7 +36,6 @@ export interface RepoServicesCompositionDeps {
   readProjectContextFile: (projectId: string) => ReturnType<ContextFileService['readProjectContextFile']>;
   /** Centralized Claude token + cost tracker. */
   claudeUsageService: ClaudeUsageService;
-  fileSummaryService?: FileSummaryService;
   playbookService: Pick<PlaybookService, 'get' | 'getDefault'>;
   listBoardProviders: () => Promise<BoardProvider[]>;
   getSkillBody: (name: string) => ServiceResult<string>;
@@ -58,7 +54,6 @@ export function createRepoServices({
   buildContextPrefix,
   readProjectContextFile,
   claudeUsageService,
-  fileSummaryService,
   playbookService,
   listBoardProviders,
   getSkillBody,
@@ -80,7 +75,6 @@ export function createRepoServices({
 
   const fileExplorerService = createFileExplorerService({
     getProjectFolder,
-    fileSummaryService,
     getPlanItems: (projectId) => container.planItems.getByProject(projectId),
     onExternalAccess: (event) => {
       const window = getMainWindow();
@@ -144,30 +138,6 @@ export function createRepoServices({
   const projectWatcherService = createProjectWatcherService({
     getMainWindow,
     getProjectFolder,
-    onExternalFileChange: fileSummaryService
-      ? ({ projectId, type, path: filePath, isDirectory }) => {
-          if (isDirectory) {
-            if (type === 'deleted') fileSummaryService.deleteFolder(projectId, filePath);
-            return;
-          }
-          if (type === 'deleted') {
-            fileSummaryService.deleteEntry(projectId, filePath);
-          } else {
-            if (!fileSummaryService.shouldSummarizePath(filePath)) {
-              fileSummaryService.deleteEntry(projectId, filePath);
-              return;
-            }
-
-            const projectFolder = getProjectFolder(projectId);
-            if (projectFolder) {
-              const scopedPath = resolveScopedPath(projectFolder, filePath);
-              if (scopedPath.valid) {
-                fileSummaryService.enqueueFileFromDisk(projectId, filePath, scopedPath.fullPath, getConfig().watcher.summarizationDebounceMs);
-              }
-            }
-          }
-        }
-      : undefined,
   });
 
   const repoFileService = createRepoFileService({

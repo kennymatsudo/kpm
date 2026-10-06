@@ -4,6 +4,7 @@ import type { HandlerFor } from '../../../shared/ipc/endpoints';
 import type { RepoFileService } from '../../services/files/RepoFileService';
 import { unwrapOrThrow } from '../../services/result';
 import { toIpcResponse } from '../response';
+import { openHtmlPreview } from '../../bootstrap/htmlPreviewWindow';
 
 /**
  * One handler per `repoFilesEndpoints` entry. A registry entry without a
@@ -25,6 +26,12 @@ function buildRepoFilesHandlers(repoFileService: RepoFileService): RepoFilesHand
     showItemInFolder: async ({ repoId, path }) => {
       const fullPath = unwrapOrThrow(await repoFileService.getFullPath(repoId, path));
       shell.showItemInFolder(fullPath);
+      return { success: true };
+    },
+
+    openHtmlPreview: async ({ repoId, path }) => {
+      const fullPath = unwrapOrThrow(await repoFileService.getFullPath(repoId, path));
+      unwrapOrThrow(await openHtmlPreview(fullPath));
       return { success: true };
     },
   };

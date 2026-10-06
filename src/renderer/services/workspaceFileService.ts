@@ -15,6 +15,22 @@ export function readWorkspaceFile(
   return window.api.repoFiles.readFile({ repoId: source, path });
 }
 
+export async function openWorkspaceHtmlPreview(
+  source: WorkspaceFileSource,
+  path: string,
+  projectId?: string | null
+): Promise<void> {
+  if (source === 'project') {
+    if (!projectId) {
+      throw new Error('No project selected');
+    }
+    await window.api.fileExplorer.openHtmlPreview({ projectId, path });
+    return;
+  }
+
+  await window.api.repoFiles.openHtmlPreview({ repoId: source, path });
+}
+
 export function readProjectBinaryFile(
   projectId: string,
   path: string

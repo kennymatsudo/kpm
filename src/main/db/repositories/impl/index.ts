@@ -29,7 +29,6 @@ export * from './AgentReviewRepository';
 export * from './ReviewOwnershipRepository';
 export * from './ReviewSyncStateRepository';
 export * from './ClaudeUsageRepository';
-export * from './ProjectFileMetadataRepository';
 export * from './PlaybookRepository';
 export * from './ActionRepository';
 export * from './ActionRunRepository';

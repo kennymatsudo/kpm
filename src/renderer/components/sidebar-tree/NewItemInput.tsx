@@ -46,12 +46,15 @@ export function NewItemInput({ type, indentPx = 0, onSubmit, onCancel }: NewItem
           className="flex items-center gap-2 flex-1 min-w-0"
           style={{ paddingLeft: `${indentPx}px` }}
         >
-          <div className="w-4 h-4 flex-shrink-0" />
-          {type === 'folder' ? (
-            <FolderIcon className="w-4 h-4 flex-shrink-0 text-text-tertiary" />
-          ) : (
-            <FileTextIcon className="w-4 h-4 flex-shrink-0 text-text-tertiary" />
-          )}
+          {/* Matches the chevron + icon column in ProjectTreeNode. */}
+          <span className="flex items-center flex-shrink-0">
+            <div className="w-4 h-4 flex-shrink-0 -ml-1" />
+            {type === 'folder' ? (
+              <FolderIcon className="w-4 h-4 flex-shrink-0 -ml-0.5 text-text-tertiary" />
+            ) : (
+              <FileTextIcon className="w-4 h-4 flex-shrink-0 -ml-0.5 text-text-tertiary" />
+            )}
+          </span>
           <input
             type="text"
             value={value}
