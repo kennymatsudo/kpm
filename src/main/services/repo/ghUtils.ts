@@ -18,7 +18,9 @@ import type {
   PrTopLevelReview,
 } from '../../../shared/types';
 import type { GhAuthState } from '../../../shared/ghAuth';
+import { describeGhAuth } from '../../../shared/ghAuth';
 import { gitExec } from './gitUtils';
+import type { ExternalMarkdown } from '../../documents/exportBoundary';
 
 const execFileAsync = promisify(execFile);
 
@@ -37,6 +39,8 @@ export interface GhPrStatus {
   state: 'OPEN' | 'CLOSED' | 'MERGED';
   reviewDecision: 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED' | null;
   baseRefName: string | null;
+  title?: string | null;
+  headRefName?: string | null;
   checksStatus: 'SUCCESS' | 'FAILURE' | 'PENDING' | null;
   additions: number;
   deletions: number;
@@ -58,6 +62,65 @@ export interface GhPrDetails {
   deletions: number;
   changedFiles: number;
   files: { path: string; additions: number; deletions: number }[];
+  readiness?: GhPrReadiness;
+}
+
+/** One entry of gh's `statusCheckRollup`: a check run (Actions, Buildkite) or a legacy commit status. */
+export interface GhCheckNode {
+  name?: string | null;
+  context?: string | null;
+  status?: string | null;
+  conclusion?: string | null;
+  state?: string | null;
+  detailsUrl?: string | null;
+  targetUrl?: string | null;
+}
+
+export interface GhChecksSummary {
+  passed: number;
+  failed: number;
+  pending: number;
+  skipped: number;
+  failing: { name: string; url: string | null }[];
+  pendingNames: string[];
+}
+
+/** CI and merge readiness, fetched only on request: the check rollup is the heaviest field gh returns. */
+export interface GhPrReadiness {
+  checks: GhChecksSummary | null;
+  reviewDecision: GhPrStatus['reviewDecision'];
+  mergeable: GhPrStatus['mergeable'];
+  /** GitHub's merge gate: CLEAN, BLOCKED, BEHIND, DIRTY, UNSTABLE, DRAFT, HAS_HOOKS, or UNKNOWN. */
+  mergeStateStatus: string;
+}
+
+export type GhPrListState = 'open' | 'closed' | 'merged' | 'all';
+
+export interface GhPrListFilters {
+  /** `owner/name`; omitted means the repository `cwd` belongs to. */
+  repo?: string;
+  head?: string;
+  author?: string;
+  /** GitHub search syntax, e.g. `review-requested:@me` or words in the title. */
+  search?: string;
+  state: GhPrListState;
+  limit: number;
+  includeReadiness?: boolean;
+}
+
+export interface GhPrListEntry {
+  number: number;
+  url: string;
+  title: string;
+  state: GhPrStatus['state'];
+  isDraft: boolean;
+  author: string | null;
+  headRefName: string | null;
+  baseRefName: string | null;
+  reviewDecision: GhPrStatus['reviewDecision'];
+  updatedAt: string | null;
+  mergedAt: string | null;
+  readiness?: GhPrReadiness;
 }
 
 export interface GhReviewThreadState {
@@ -69,8 +132,8 @@ export interface GhReviewThreadState {
 export interface GhPrCreateOptions {
   head: string;
   base: string;
-  title: string;
-  body: string;
+  title: ExternalMarkdown;
+  body: ExternalMarkdown;
   draft?: boolean;
 }
 
@@ -83,7 +146,7 @@ export interface GhPrCreateOptions {
  */
 async function ghExec(
   args: string[],
-  options: { cwd: string; maxBuffer?: number }
+  options: { cwd: string; maxBuffer?: number; timeout?: number }
 ): Promise<{ stdout: string; stderr: string }> {
   return execFileAsync('gh', args, options);
 }
@@ -223,8 +286,11 @@ export async function checkGhAuth(cwd: string): Promise<GhAuthState> {
 
 /**
  * Get the owner/repo slug for a repository (e.g., "octocat/hello-world").
+ *
+ * This is the repository gh resolves a bare PR number against, so it is the one
+ * to compare a pasted PR URL with.
  */
-async function getRepoSlug(cwd: string): Promise<string> {
+export async function getRepoSlug(cwd: string): Promise<string> {
   const { stdout } = await ghExec(
     ['repo', 'view', '--json', 'nameWithOwner', '--jq', '.nameWithOwner'],
     { cwd }
@@ -284,16 +350,32 @@ export function parseCreatePrOutput(stdout: string): GhPrCreateResult {
   };
 }
 
+/** gh was killed at its timeout, so the command may or may not have taken effect. */
+export class GhTimeoutError extends Error {}
+
 /**
  * Create a pull request.
  */
 export async function createPr(
   cwd: string,
-  opts: GhPrCreateOptions
+  opts: GhPrCreateOptions,
+  timeoutMs?: number
 ): Promise<GhPrCreateResult> {
   const args = buildCreatePrArgs(opts);
-  const { stdout } = await ghExec(args, { cwd });
-  return parseCreatePrOutput(stdout);
+  try {
+    const { stdout } = await ghExec(args, { cwd, timeout: timeoutMs });
+    return parseCreatePrOutput(stdout);
+  } catch (error) {
+    // execFile's own message on a kill is the full command line, PR body included.
+    if ((error as { killed?: boolean }).killed) {
+      throw new GhTimeoutError(
+        `gh pr create did not finish within ${Math.round((timeoutMs ?? 0) / 1000)} seconds. ` +
+          'Check GitHub before retrying: the pull request may have been created.',
+        { cause: error }
+      );
+    }
+    throw error;
+  }
 }
 
 /**
@@ -307,7 +389,7 @@ export async function getPrForBranch(
     const { stdout } = await ghExec(
       [
         'pr', 'view', branch,
-        '--json', 'number,url,state,reviewDecision,baseRefName,statusCheckRollup,additions,deletions,mergeable,isDraft',
+        '--json', 'number,url,title,state,reviewDecision,baseRefName,headRefName,statusCheckRollup,additions,deletions,mergeable,isDraft',
       ],
       { cwd }
     );
@@ -319,8 +401,13 @@ export async function getPrForBranch(
   }
 }
 
+// gh's wording when the repository has no PR with that number.
+const GH_PR_NOT_FOUND = /could not resolve to a pullrequest/i;
+
 /**
- * Get PR status by PR number. Returns null if no PR exists.
+ * Get PR status by PR number. Returns null only when the repository has no such
+ * PR; any other gh failure (missing gh, rejected credentials, no network) throws
+ * so the caller can say what actually went wrong.
  */
 export async function getPrByNumber(
   cwd: string,
@@ -330,15 +417,33 @@ export async function getPrByNumber(
     const { stdout } = await ghExec(
       [
         'pr', 'view', String(prNumber),
-        '--json', 'number,url,state,reviewDecision,baseRefName,statusCheckRollup,additions,deletions,mergeable,isDraft',
+        '--json', 'number,url,title,state,reviewDecision,baseRefName,headRefName,statusCheckRollup,additions,deletions,mergeable,isDraft',
       ],
       { cwd }
     );
 
     return parsePrViewOutput(stdout);
-  } catch {
-    return null;
+  } catch (error) {
+    if (GH_PR_NOT_FOUND.test(ghErrorOutput(error))) return null;
+    throw error;
   }
+}
+
+/**
+ * A gh failure is either "that PR isn't readable" or "gh can't talk to GitHub at
+ * all", and the two have different remedies. gh's own stderr says which PR it
+ * failed on; only an auth probe can say the credential is the problem, so it runs
+ * on the failure path rather than before every call.
+ */
+export async function describeGhFailure(cwd: string, error: unknown): Promise<string> {
+  if ((error as NodeJS.ErrnoException | null)?.code === 'ENOENT') {
+    return describeGhAuth({ authenticated: false, reason: 'not_installed' });
+  }
+  const stderr = (error as { stderr?: string })?.stderr?.trim();
+  const detail = stderr || (error instanceof Error ? error.message : String(error));
+  const auth = await checkGhAuth(cwd);
+  const credentialsAreClean = auth.authenticated && !auth.tokenEnvVar;
+  return credentialsAreClean ? detail : `${detail}\n\n${describeGhAuth(auth)}`;
 }
 
 /**
@@ -348,11 +453,16 @@ export async function getPrByNumber(
  * to tell "no such PR" apart from "gh is not authenticated", and only the error
  * carries that.
  */
-export async function getPrDetails(cwd: string, prRef: string): Promise<GhPrDetails> {
+export async function getPrDetails(
+  cwd: string,
+  prRef: string,
+  options: { includeReadiness?: boolean } = {}
+): Promise<GhPrDetails> {
+  const fields = 'number,url,title,state,isDraft,author,baseRefName,headRefName,body,additions,deletions,changedFiles,files';
   const { stdout } = await ghExec(
     [
       'pr', 'view', prRef,
-      '--json', 'number,url,title,state,isDraft,author,baseRefName,headRefName,body,additions,deletions,changedFiles,files',
+      '--json', options.includeReadiness ? `${fields},${READINESS_FIELDS}` : fields,
     ],
     { cwd, maxBuffer: 10 * 1024 * 1024 }
   );
@@ -366,6 +476,126 @@ export async function getPrDetails(cwd: string, prRef: string): Promise<GhPrDeta
 export async function getPrDiff(cwd: string, prRef: string): Promise<string> {
   const { stdout } = await ghExec(['pr', 'diff', prRef], { cwd, maxBuffer: 20 * 1024 * 1024 });
   return stdout;
+}
+
+const MAX_LISTED_CHECK_NAMES = 20;
+
+type CheckOutcome = 'passed' | 'failed' | 'pending' | 'skipped';
+
+function classifyCheck(check: GhCheckNode): CheckOutcome {
+  // Check runs report `status` + `conclusion`; legacy commit statuses report only `state`.
+  if (check.status && check.status !== 'COMPLETED') return 'pending';
+  switch (check.conclusion ?? check.state ?? null) {
+    case 'SUCCESS':
+      return 'passed';
+    case 'NEUTRAL':
+    case 'SKIPPED':
+      return 'skipped';
+    case null:
+    case 'PENDING':
+    case 'EXPECTED':
+      return 'pending';
+    default:
+      return 'failed';
+  }
+}
+
+export function summarizeChecks(rollup: GhCheckNode[] | null | undefined): GhChecksSummary | null {
+  if (!rollup || rollup.length === 0) return null;
+  const summary: GhChecksSummary = { passed: 0, failed: 0, pending: 0, skipped: 0, failing: [], pendingNames: [] };
+  for (const check of rollup) {
+    const outcome = classifyCheck(check);
+    summary[outcome] += 1;
+    const name = check.name ?? check.context ?? 'unnamed check';
+    if (outcome === 'failed' && summary.failing.length < MAX_LISTED_CHECK_NAMES) {
+      summary.failing.push({ name, url: check.detailsUrl ?? check.targetUrl ?? null });
+    }
+    if (outcome === 'pending' && summary.pendingNames.length < MAX_LISTED_CHECK_NAMES) {
+      summary.pendingNames.push(name);
+    }
+  }
+  return summary;
+}
+
+function overallChecksStatus(summary: GhChecksSummary | null): GhPrStatus['checksStatus'] {
+  if (!summary) return null;
+  if (summary.failed > 0) return 'FAILURE';
+  if (summary.pending > 0) return 'PENDING';
+  return 'SUCCESS';
+}
+
+const READINESS_FIELDS = 'statusCheckRollup,reviewDecision,mergeable,mergeStateStatus';
+
+interface RawReadiness {
+  statusCheckRollup?: GhCheckNode[] | null;
+  reviewDecision?: string | null;
+  mergeable?: string | null;
+  mergeStateStatus?: string | null;
+}
+
+function parseReadiness(raw: RawReadiness): GhPrReadiness {
+  return {
+    checks: summarizeChecks(raw.statusCheckRollup),
+    // gh reports "no review required" as an empty string.
+    reviewDecision: (raw.reviewDecision || null) as GhPrStatus['reviewDecision'],
+    mergeable: (raw.mergeable || 'UNKNOWN') as GhPrStatus['mergeable'],
+    mergeStateStatus: raw.mergeStateStatus || 'UNKNOWN',
+  };
+}
+
+const PR_LIST_FIELDS = 'number,url,title,state,isDraft,author,headRefName,baseRefName,reviewDecision,updatedAt,mergedAt';
+
+export function buildListPrArgs(filters: GhPrListFilters): string[] {
+  // `--flag=value` so a value starting with a dash is never read as another flag.
+  const fields = filters.includeReadiness ? `${PR_LIST_FIELDS},${READINESS_FIELDS}` : PR_LIST_FIELDS;
+  const args = ['pr', 'list', `--state=${filters.state}`, `--limit=${filters.limit}`, `--json=${fields}`];
+  if (filters.repo) args.push(`--repo=${filters.repo}`);
+  if (filters.head) args.push(`--head=${filters.head}`);
+  if (filters.author) args.push(`--author=${filters.author}`);
+  if (filters.search) args.push(`--search=${filters.search}`);
+  return args;
+}
+
+export async function listPrs(cwd: string, filters: GhPrListFilters): Promise<GhPrListEntry[]> {
+  const { stdout } = await ghExec(buildListPrArgs(filters), { cwd, maxBuffer: 10 * 1024 * 1024 });
+  const raw = JSON.parse(stdout) as (Omit<GhPrListEntry, 'author' | 'reviewDecision' | 'readiness'> & RawReadiness & {
+    author?: { login?: string | null } | null;
+  })[];
+  return raw.map(({ author, statusCheckRollup, mergeable, mergeStateStatus, ...entry }) => {
+    const readiness = parseReadiness({ statusCheckRollup, reviewDecision: entry.reviewDecision, mergeable, mergeStateStatus });
+    return {
+      ...entry,
+      author: author?.login ?? null,
+      reviewDecision: readiness.reviewDecision,
+      updatedAt: entry.updatedAt ?? null,
+      mergedAt: entry.mergedAt ?? null,
+      ...(filters.includeReadiness && { readiness }),
+    };
+  });
+}
+
+export interface GhPrEdit {
+  title?: ExternalMarkdown;
+  body?: ExternalMarkdown;
+}
+
+export function buildEditPrArgs(prRef: string, edit: GhPrEdit): string[] {
+  const args = ['pr', 'edit', prRef];
+  if (edit.title !== undefined) args.push(`--title=${edit.title}`);
+  // The body goes over stdin: it can be long, and execFile's error message
+  // repeats the whole command line.
+  if (edit.body !== undefined) args.push('--body-file=-');
+  return args;
+}
+
+/** Edit a PR's title and/or body. `prRef` must come from `parsePrRef`. */
+export async function editPr(cwd: string, prRef: string, edit: GhPrEdit): Promise<void> {
+  const args = buildEditPrArgs(prRef, edit);
+  if (edit.body === undefined) {
+    await ghExec(args, { cwd });
+  } else {
+    await ghExecWithInput(args, edit.body, { cwd });
+  }
 }
 
 /**
@@ -399,7 +629,7 @@ function parsePrDetailsOutput(stdout: string): GhPrDetails {
     deletions: number;
     changedFiles: number;
     files?: { path: string; additions: number; deletions: number }[] | null;
-  };
+  } & RawReadiness;
 
   return {
     number: raw.number,
@@ -415,6 +645,7 @@ function parsePrDetailsOutput(stdout: string): GhPrDetails {
     deletions: raw.deletions,
     changedFiles: raw.changedFiles,
     files: raw.files ?? [],
+    ...(raw.statusCheckRollup !== undefined && { readiness: parseReadiness(raw) }),
   };
 }
 
@@ -1024,11 +1255,7 @@ export async function getPrReviewSnapshot(
     throw new Error(`PR #${prNumber} not found in ${slug}`);
   }
 
-  const [threads, topLevelReviews, conversationComments] = await Promise.all([
-    fetchReviewThreads(cwd, owner, name, prNumber, pullRequest.url),
-    fetchTopLevelReviews(cwd, owner, name, prNumber),
-    fetchConversationComments(cwd, owner, name, prNumber),
-  ]);
+  const activity = await getPrReviewActivity(cwd, { owner, name }, prNumber, pullRequest.url);
 
   return {
     prNumber: pullRequest.number,
@@ -1042,11 +1269,39 @@ export async function getPrReviewSnapshot(
     updatedAt: pullRequest.updatedAt,
     isDraft: pullRequest.isDraft,
     fetchedAt: new Date().toISOString(),
+    ...activity,
+  };
+}
+
+export type PrReviewActivity = Pick<PrReviewSnapshot, 'summary' | 'threads' | 'topLevelReviews' | 'conversationComments'>;
+
+/**
+ * A PR's reviews, review threads, and discussion comments. The repository is
+ * named explicitly, so the PR need not belong to the repo `cwd` is in.
+ */
+export async function getPrReviewActivity(
+  cwd: string,
+  repo: { owner: string; name: string },
+  prNumber: number,
+  prUrl: string
+): Promise<PrReviewActivity> {
+  const [threads, topLevelReviews, conversationComments] = await Promise.all([
+    fetchReviewThreads(cwd, repo.owner, repo.name, prNumber, prUrl),
+    fetchTopLevelReviews(cwd, repo.owner, repo.name, prNumber),
+    fetchConversationComments(cwd, repo.owner, repo.name, prNumber),
+  ]);
+  return {
     summary: buildReviewSummary(threads, topLevelReviews, conversationComments),
     threads,
     topLevelReviews,
     conversationComments,
   };
+}
+
+/** The `owner/name` of the repository a pull request URL points at. */
+export function repoOfPrUrl(url: string): { owner: string; name: string } | null {
+  const match = /^https:\/\/[^/]+\/([^/\s]+)\/([^/\s]+)\/pull\/\d+/.exec(url);
+  return match ? { owner: match[1], name: match[2] } : null;
 }
 
 export async function replyToReviewThread(
@@ -1166,16 +1421,26 @@ export async function unresolveReviewThread(
   };
 }
 
+export interface PrIdentifier {
+  number: number;
+  /** The repository a URL names; null for a bare number, which gh resolves against the local repo. */
+  repo: { owner: string; name: string } | null;
+}
+
 /**
- * Parse a PR identifier string into a PR number.
- * Accepts: bare number, #number, or GitHub PR URL.
+ * Parse a PR identifier: bare number, #number, or GitHub PR URL.
+ *
+ * A URL keeps its owner/repo because the number alone means a different PR in
+ * every repository.
  */
-export function parsePrIdentifier(input: string): number | null {
+export function parsePrIdentifier(input: string): PrIdentifier | null {
   const trimmed = input.trim();
-  if (/^\d+$/.test(trimmed)) return parseInt(trimmed, 10);
-  if (/^#\d+$/.test(trimmed)) return parseInt(trimmed.slice(1), 10);
-  const urlMatch = /github\.com\/[^/]+\/[^/]+\/pull\/(\d+)/.exec(trimmed);
-  if (urlMatch) return parseInt(urlMatch[1], 10);
+  if (/^\d+$/.test(trimmed)) return { number: parseInt(trimmed, 10), repo: null };
+  if (/^#\d+$/.test(trimmed)) return { number: parseInt(trimmed.slice(1), 10), repo: null };
+  const urlMatch = /^https:\/\/([\w-]+\.)*github\.com\/([^/\s]+)\/([^/\s]+)\/pull\/(\d+)/.exec(trimmed);
+  if (urlMatch) {
+    return { number: parseInt(urlMatch[4], 10), repo: { owner: urlMatch[2], name: urlMatch[3] } };
+  }
   return null;
 }
 
@@ -1189,24 +1454,14 @@ function parsePrViewOutput(stdout: string): GhPrStatus {
     state: string;
     reviewDecision: string;
     baseRefName?: string | null;
-    statusCheckRollup: { state: string }[] | null;
+    title?: string | null;
+    headRefName?: string | null;
+    statusCheckRollup: GhCheckNode[] | null;
     additions: number;
     deletions: number;
     mergeable: string;
     isDraft: boolean;
   };
-
-  let checksStatus: GhPrStatus['checksStatus'] = null;
-  if (raw.statusCheckRollup && raw.statusCheckRollup.length > 0) {
-    const states = raw.statusCheckRollup.map(c => c.state);
-    if (states.every(s => s === 'SUCCESS')) {
-      checksStatus = 'SUCCESS';
-    } else if (states.some(s => s === 'FAILURE' || s === 'ERROR')) {
-      checksStatus = 'FAILURE';
-    } else {
-      checksStatus = 'PENDING';
-    }
-  }
 
   return {
     number: raw.number,
@@ -1214,7 +1469,9 @@ function parsePrViewOutput(stdout: string): GhPrStatus {
     state: raw.state as GhPrStatus['state'],
     reviewDecision: (raw.reviewDecision || null) as GhPrStatus['reviewDecision'],
     baseRefName: raw.baseRefName ?? null,
-    checksStatus,
+    title: raw.title ?? null,
+    headRefName: raw.headRefName ?? null,
+    checksStatus: overallChecksStatus(summarizeChecks(raw.statusCheckRollup)),
     additions: raw.additions,
     deletions: raw.deletions,
     mergeable: (raw.mergeable || 'UNKNOWN') as GhPrStatus['mergeable'],

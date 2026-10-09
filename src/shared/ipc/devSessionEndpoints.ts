@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { resultOf, type EndpointDefinition } from './endpoints';
 import { uuid } from './sharedSchemas';
 import type { DevSession, DevSessionWithPlanItem } from '../types';
+import type { WorktreeCandidate } from '../boardChanges';
 
 /**
  * Response shape for endpoints registered through `createRegistryIpcHandlers`
@@ -72,6 +73,16 @@ export const devSessionEndpoints = {
     channel: 'dev-session:destroy',
     params: z.object({ sessionId: uuid }),
     result: resultOf<RegistryResponse>(),
+  },
+  listAttachableWorktrees: {
+    channel: 'dev-session:list-attachable-worktrees',
+    params: z.object({ repoId: uuid }),
+    result: resultOf<RegistryResponse<{ worktrees: WorktreeCandidate[] }>>(),
+  },
+  attachWorktree: {
+    channel: 'dev-session:attach-worktree',
+    params: z.object({ planItemId: uuid, repoId: uuid, worktreePath: z.string().min(1).max(4096) }),
+    result: resultOf<RegistryResponse<{ session: DevSession }>>(),
   },
   checkDirty: {
     channel: 'dev-session:check-dirty',

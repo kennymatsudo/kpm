@@ -15,9 +15,16 @@ const branchMocks = vi.hoisted(() => ({
   resolveCurrentBranch: vi.fn(),
   resolveBaseBranch: vi.fn(),
   classifyPushTarget: vi.fn(),
+  resolveUpstreamBranchName: vi.fn(),
 }));
 const ghMocks = vi.hoisted(() => ({
   probePrReviewState: vi.fn(),
+  createPr: vi.fn(),
+  getPrForBranch: vi.fn(),
+  isBranchPushed: vi.fn(),
+  getPrByNumber: vi.fn(),
+  getRepoSlug: vi.fn(),
+  describeGhFailure: vi.fn(),
 }));
 
 vi.mock('../../generation', () => ({
@@ -28,6 +35,9 @@ vi.mock('../../config', () => ({
   getConfig: () => ({
     generation: {
       prGenerationTimeoutMs: 60_000,
+    },
+    agentSession: {
+      prCreateTimeoutMs: 120_000,
     },
     claude: {
       debug: false,
@@ -44,6 +54,7 @@ vi.mock('./ghUtils', async (importOriginal) => ({
   ...ghMocks,
 }));
 
+import { GhTimeoutError } from './ghUtils';
 import { createGitHubService } from './GitHubService';
 
 function buildService(overrides: Partial<Parameters<typeof createGitHubService>[0]> = {}) {
@@ -78,6 +89,7 @@ function buildService(overrides: Partial<Parameters<typeof createGitHubService>[
   const service = createGitHubService({
     devSessions: {
       get: vi.fn(() => session),
+      getByProject: vi.fn(() => [session]),
       updatePrInfo: vi.fn(),
     } as unknown as IDevSessionRepository,
     repos: {
@@ -217,11 +229,11 @@ describe('GitHubService PR generation', () => {
     );
 
     const systemPrompt = runGenerationMock.mock.calls[0][0].systemPrompt as string;
-    expect(systemPrompt).toContain('Use it as the scaffold');
+    expect(systemPrompt).toContain('Use its section headings');
     expect(systemPrompt).toContain('## PR Template');
     expect(systemPrompt).toContain('## Manual Test Plan');
-    // The overview must lead the body even when the template has no Description section.
-    expect(systemPrompt).toContain('BEFORE the first template heading');
+    // The change list must lead the body even when the template has no Description section.
+    expect(systemPrompt).toContain('before the first template heading');
   });
 
   it('falls back to the primary checkout PR template when a worktree lacks one', async () => {
@@ -287,6 +299,39 @@ describe('GitHubService PR generation', () => {
       expect(ghMocks.probePrReviewState).toHaveBeenCalledWith('/repo', 42);
     } finally {
       rmSync(staleWorktreePath, { recursive: true, force: true });
+    }
+  });
+
+  it('uses the primary checkout for a linked-PR session with no worktree path', async () => {
+    const unrelatedCheckout = mkdtempSync(join(tmpdir(), 'kpm-unrelated-checkout-'));
+    const originalCwd = process.cwd();
+    try {
+      mkdirSync(join(unrelatedCheckout, '.git'));
+      process.chdir(unrelatedCheckout);
+      ghMocks.probePrReviewState.mockResolvedValue({ digest: 'unchanged' });
+      const session = {
+        id: 'session-1',
+        project_id: 'project-1',
+        plan_item_id: 'plan-1',
+        repo_id: 'repo-1',
+        worktree_path: '',
+        branch_name: '',
+        base_branch: '',
+        pr_number: 42,
+      };
+      const { service } = buildService({
+        devSessions: {
+          get: vi.fn(() => session),
+          updatePrInfo: vi.fn(),
+        } as unknown as IDevSessionRepository,
+      });
+
+      await service.probePrReviewState('session-1');
+
+      expect(ghMocks.probePrReviewState).toHaveBeenCalledWith('/repo', 42);
+    } finally {
+      process.chdir(originalCwd);
+      rmSync(unrelatedCheckout, { recursive: true, force: true });
     }
   });
 
@@ -365,5 +410,283 @@ describe('GitHubService PR generation', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.data).toEqual({ title: 'Raw title', body: 'Raw body' });
+  });
+});
+
+describe('GitHubService.createPr after gh times out', () => {
+  const openPr = {
+    number: 42,
+    url: 'https://github.com/example/repo/pull/42',
+    state: 'OPEN',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    branchMocks.resolveBaseBranch.mockResolvedValue('main');
+    branchMocks.classifyPushTarget.mockResolvedValue({ ok: true, branch: 'feature/support-attachments' });
+    gitMocks.countCommitsAhead.mockResolvedValue(1);
+    ghMocks.isBranchPushed.mockResolvedValue(true);
+    ghMocks.createPr.mockRejectedValue(new GhTimeoutError('gh pr create did not finish within 120 seconds.'));
+  });
+
+  it('links the pull request GitHub created before the kill', async () => {
+    ghMocks.getPrForBranch
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue(openPr);
+    const updatePrInfo = vi.fn();
+    const { service } = buildService({
+      devSessions: {
+        get: vi.fn(() => ({
+          id: 'session-1',
+          project_id: 'project-1',
+          repo_id: 'repo-1',
+          worktree_path: '/path/that/does/not/exist',
+          branch_name: 'feature/support-attachments',
+          base_branch: 'main',
+        })),
+        updatePrInfo,
+      } as unknown as IDevSessionRepository,
+    });
+
+    const result = await service.createPr('session-1', 'Title', 'Body', true);
+
+    expect(result).toEqual({ ok: true, data: { number: 42, url: openPr.url } });
+    expect(updatePrInfo).toHaveBeenCalledWith('session-1', 42, openPr.url, 'OPEN', null, true);
+  });
+
+  it.each([
+    ['no pull request exists for the branch', null],
+    ['the branch only has a closed pull request', { ...openPr, state: 'CLOSED' }],
+  ])('reports the timeout when %s', async (_case, found) => {
+    ghMocks.getPrForBranch
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue(found);
+    const { service } = buildService();
+
+    const result = await service.createPr('session-1', 'Title', 'Body');
+
+    expect(result).toEqual({ ok: false, error: 'gh pr create did not finish within 120 seconds.' });
+  });
+});
+
+describe('GitHubService.createPr with an existing pull request', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    branchMocks.classifyPushTarget.mockResolvedValue({ ok: true, branch: 'feature/support-attachments' });
+  });
+
+  it('links the branch\'s open pull request without creating another one', async () => {
+    const existingPr = {
+      number: 42,
+      url: 'https://github.com/example/repo/pull/42',
+      state: 'OPEN' as const,
+      reviewDecision: 'REVIEW_REQUIRED' as const,
+      isDraft: true,
+    };
+    ghMocks.getPrForBranch.mockResolvedValue(existingPr);
+    const updatePrInfo = vi.fn();
+    const { service } = buildService({
+      devSessions: {
+        get: vi.fn(() => ({
+          id: 'session-1',
+          project_id: 'project-1',
+          repo_id: 'repo-1',
+          worktree_path: '/path/that/does/not/exist',
+          branch_name: 'feature/support-attachments',
+          base_branch: 'main',
+        })),
+        updatePrInfo,
+      } as unknown as IDevSessionRepository,
+    });
+
+    const result = await service.createPr('session-1', 'Title', 'Body');
+
+    expect(result).toEqual({ ok: true, data: { number: 42, url: existingPr.url } });
+    expect(updatePrInfo).toHaveBeenCalledWith(
+      'session-1', 42, existingPr.url, 'OPEN', 'REVIEW_REQUIRED', true
+    );
+    expect(gitMocks.countCommitsAhead).not.toHaveBeenCalled();
+    expect(ghMocks.createPr).not.toHaveBeenCalled();
+  });
+});
+
+describe('GitHubService.createPr export boundary', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    branchMocks.resolveBaseBranch.mockResolvedValue('main');
+    branchMocks.classifyPushTarget.mockResolvedValue({ ok: true, branch: 'feature/support-attachments' });
+    gitMocks.countCommitsAhead.mockResolvedValue(1);
+    ghMocks.isBranchPushed.mockResolvedValue(true);
+    ghMocks.getPrForBranch.mockResolvedValue(null);
+    ghMocks.createPr.mockResolvedValue({ number: 7, url: 'https://github.com/example/repo/pull/7' });
+  });
+
+  it('rewrites plan refs in the title as well as the body', async () => {
+    const planItem = { id: '11111111-1111-4111-8111-111111111111', project_id: 'project-1', title: 'Task', external_key: 'PROJ-184' };
+    const { service } = buildService({
+      planItems: { getByProject: vi.fn(() => [planItem]) } as unknown as IPlanItemRepository,
+    });
+
+    await service.createPr('session-1', `Fix @plan/${planItem.id}`, `Part of @plan/${planItem.id}`);
+
+    const sent = ghMocks.createPr.mock.calls[0][1];
+    expect(sent.title).toBe('Fix Task');
+    expect(sent.body).toBe('Part of Task\n\nCloses PROJ-184\n');
+  });
+});
+
+describe('GitHubService.linkPr', () => {
+  const pr12 = {
+    number: 12,
+    url: 'https://github.com/org/a/pull/12',
+    state: 'OPEN',
+    reviewDecision: null,
+    isDraft: false,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    ghMocks.getRepoSlug.mockResolvedValue('org/a');
+    ghMocks.getPrByNumber.mockResolvedValue(pr12);
+  });
+
+  it('rejects a URL from another repository instead of linking the same number here', async () => {
+    const { service } = buildService();
+
+    const result = await service.linkPr('session-1', 'https://github.com/org/b/pull/12');
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain('org/b');
+    expect(result.error).toContain('org/a');
+    expect(ghMocks.getPrByNumber).not.toHaveBeenCalled();
+  });
+
+  it('accepts a URL for the session repository regardless of case', async () => {
+    const { service } = buildService();
+
+    const result = await service.linkPr('session-1', 'https://github.com/Org/A/pull/12');
+
+    expect(result).toEqual({ ok: true, data: pr12 });
+    expect(ghMocks.getPrByNumber).toHaveBeenCalledWith('/repo', 12);
+  });
+
+  it('does not need the repository slug for a bare number', async () => {
+    const { service } = buildService();
+
+    const result = await service.linkPr('session-1', '#12');
+
+    expect(result.ok).toBe(true);
+    expect(ghMocks.getRepoSlug).not.toHaveBeenCalled();
+  });
+
+  it('reports why gh failed rather than calling the PR missing', async () => {
+    const authError = Object.assign(new Error('gh failed'), { stderr: 'HTTP 401: Bad credentials' });
+    ghMocks.getPrByNumber.mockRejectedValue(authError);
+    ghMocks.describeGhFailure.mockResolvedValue('HTTP 401: Bad credentials\n\nRun `gh auth refresh`.');
+    const { service } = buildService();
+
+    const result = await service.linkPr('session-1', '12');
+
+    expect(result).toEqual({ ok: false, error: 'HTTP 401: Bad credentials\n\nRun `gh auth refresh`.' });
+    expect(ghMocks.describeGhFailure).toHaveBeenCalledWith('/repo', authError);
+  });
+
+  it('says not found only when gh found no such PR', async () => {
+    ghMocks.getPrByNumber.mockResolvedValue(null);
+    const { service } = buildService();
+
+    const result = await service.linkPr('session-1', 'https://github.com/org/a/pull/99');
+
+    expect(result).toEqual({ ok: false, error: 'PR #99 not found in org/a.' });
+  });
+
+  it('refuses a PR another task already has', async () => {
+    const devSessions = {
+      get: vi.fn(() => ({ id: 'session-1', project_id: 'project-1', plan_item_id: 'plan-1', repo_id: 'repo-1', worktree_path: '', branch_name: '' })),
+      getByProject: vi.fn(() => [{ id: 'session-2', plan_item_id: 'plan-2', repo_id: 'repo-1', pr_number: 12 }]),
+      updatePrInfo: vi.fn(),
+    };
+    const { service } = buildService({
+      devSessions: devSessions as unknown as IDevSessionRepository,
+      planItems: { get: vi.fn(() => ({ id: 'plan-2', title: 'Other task' })) } as unknown as IPlanItemRepository,
+    });
+
+    const result = await service.linkPr('session-1', '12');
+
+    expect(result).toEqual({ ok: false, error: 'PR #12 is already linked to "Other task". Unlink it there first.' });
+    expect(devSessions.updatePrInfo).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['refuses a PR from another branch', 'other-branch', null, false],
+    ['accepts a PR opened from the branch it was pushed as', 'pushed-name', 'pushed-name', true],
+    ['accepts a PR on the worktree branch', 'feature/support-attachments', null, true],
+  ])('%s', async (_case, headRefName, upstreamName, linked) => {
+    ghMocks.getPrByNumber.mockResolvedValue({ ...pr12, headRefName });
+    branchMocks.resolveUpstreamBranchName.mockResolvedValue(upstreamName);
+    const { service } = buildService();
+
+    const result = await service.linkPr('session-1', '12');
+
+    expect(result.ok).toBe(linked);
+    if (!linked) expect(result).toMatchObject({ error: 'PR #12 is on branch other-branch, but this task\'s worktree is on feature/support-attachments.' });
+  });
+});
+
+describe('GitHubService.linkPrToItem', () => {
+  const pr12 = { number: 12, url: 'https://github.com/org/a/pull/12', state: 'OPEN', reviewDecision: null, isDraft: false };
+  const planItem = { id: 'plan-1', project_id: 'project-1', title: 'Task' };
+
+  function buildItemService(sessions: Record<string, unknown>[]) {
+    const devSessions = {
+      getByProject: vi.fn(() => sessions),
+      create: vi.fn((session) => session),
+      updatePrInfo: vi.fn(),
+    };
+    const { service } = buildService({
+      devSessions: devSessions as unknown as IDevSessionRepository,
+      repos: { getById: vi.fn((id: string) => ({ id, path: `/${id}` })) } as unknown as IRepoRepository,
+      planItems: { get: vi.fn(() => planItem) } as unknown as IPlanItemRepository,
+    });
+    return { service, devSessions };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    ghMocks.getPrByNumber.mockResolvedValue(pr12);
+  });
+
+  it('links onto the task\'s session in the chosen repo, not its newest session elsewhere', async () => {
+    const { service, devSessions } = buildItemService([
+      { id: 'newest-in-b', plan_item_id: 'plan-1', repo_id: 'repo-b', worktree_path: '', branch_name: '' },
+      { id: 'older-in-a', plan_item_id: 'plan-1', repo_id: 'repo-a', worktree_path: '', branch_name: '' },
+    ]);
+
+    const result = await service.linkPrToItem('plan-1', 'repo-a', '12');
+
+    expect(result.ok).toBe(true);
+    expect(devSessions.updatePrInfo).toHaveBeenCalledWith('older-in-a', 12, pr12.url, 'OPEN', null, false);
+    expect(devSessions.create).not.toHaveBeenCalled();
+  });
+
+  it('leaves no stub session behind when the PR is refused', async () => {
+    ghMocks.getPrByNumber.mockResolvedValue(null);
+    const { service, devSessions } = buildItemService([]);
+
+    const result = await service.linkPrToItem('plan-1', 'repo-a', '12');
+
+    expect(result).toEqual({ ok: false, error: 'PR #12 not found in this repository.' });
+    expect(devSessions.create).not.toHaveBeenCalled();
+  });
+
+  it('creates a stub session for a task with none in that repo', async () => {
+    const { service, devSessions } = buildItemService([]);
+
+    const result = await service.linkPrToItem('plan-1', 'repo-a', '12');
+
+    expect(result.ok).toBe(true);
+    expect(devSessions.create).toHaveBeenCalledWith(expect.objectContaining({ plan_item_id: 'plan-1', repo_id: 'repo-a', worktree_path: '' }));
+    expect(ghMocks.getPrByNumber).toHaveBeenCalledWith('/repo-a', 12);
   });
 });

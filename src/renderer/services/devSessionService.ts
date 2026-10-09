@@ -34,6 +34,16 @@ export function checkDevSessionDirty(payload: { sessionId: string }): Promise<Se
   return window.api.devSessions.checkDirty(payload);
 }
 
+export function listAttachableWorktrees(payload: { repoId: string }) {
+  return window.api.devSessions.listAttachableWorktrees(payload);
+}
+
+export function attachWorktreeToPlanItem(
+  payload: { planItemId: string; repoId: string; worktreePath: string }
+) {
+  return window.api.devSessions.attachWorktree(payload);
+}
+
 export function openDevSessionInEditor(
   payload: { sessionId: string }
 ): Promise<{ success: boolean; error?: string }> {

@@ -3,9 +3,11 @@
  * Fetches context from GitHubService, lets user edit title/body, then creates the PR.
  */
 
-import { useCallback, useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import type { DevSessionWithPlanItem } from '../../../shared/types';
 import { useDevSessionsStore } from '../../stores/devSessions';
+import { usePlanDomainStore, useProjectDomainStore } from '../../stores/projectDomains';
+import { MISSING_PLAN_ITEM_TEXT, countMissingRefs } from '../../../shared/planRefs';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { MotionButton } from '../ui/MotionButton';
 import { InlineAlert } from '../ui/InlineAlert';
@@ -23,20 +25,39 @@ interface CreatePrModalProps {
 export function CreatePrModal({ isOpen, onClose, session, onPrCreated }: CreatePrModalProps) {
   const loadPrContext = useDevSessionsStore((state) => state.loadPrContext);
   const createPullRequest = useDevSessionsStore((state) => state.createPullRequest);
+  const isCreating = useDevSessionsStore((state) => state.prCreatingIds.has(session.id));
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [draft, setDraft] = useState(true);
   const [isLoadingContext, setIsLoadingContext] = useState(false);
-  const [isCreating, setIsCreating] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [noCommits, setNoCommits] = useState(false);
   const [aiGenerated, setAiGenerated] = useState(false);
+  const [branchPushed, setBranchPushed] = useState<boolean | undefined>(undefined);
   const [hasGeneratedContext, setHasGeneratedContext] = useState(false);
   const [contextDocuments, setContextDocuments] = useState<PrContextDocumentTarget[]>([]);
   const [isLoadingContextDocuments, setIsLoadingContextDocuments] = useState(false);
   const [featureContextPath, setFeatureContextPath] = useState<string>('');
   const titleRef = useRef<HTMLInputElement>(null);
+  const planItems = usePlanDomainStore((state) => state.planItems);
+  const isSessionProjectLoaded = useProjectDomainStore((state) => state.currentProjectId === session.project_id);
+  // Plan items are loaded for the open project only; any other project's
+  // refs would all look missing, so the check waits until that one is open.
+  const missingRefCount = useMemo(
+    () => isSessionProjectLoaded ? countMissingRefs(`${title}\n${body}`, planItems) : 0,
+    [isSessionProjectLoaded, title, body, planItems],
+  );
   const loadContextRequestIdRef = useRef(0);
+  const isOpenRef = useRef(isOpen);
+
+  useEffect(() => {
+    isOpenRef.current = isOpen;
+  }, [isOpen]);
+
+  useEffect(() => () => {
+    isOpenRef.current = false;
+  }, []);
 
   const loadContext = useCallback((selectedFeatureContextPath: string | null) => {
     const requestId = loadContextRequestIdRef.current + 1;
@@ -70,6 +91,7 @@ export function CreatePrModal({ isOpen, onClose, session, onPrCreated }: CreateP
         setTitle(result.context.suggestedTitle);
         setBody(result.context.body);
         setAiGenerated(result.context.aiGenerated === true);
+        setBranchPushed(result.context.branchPushed);
         setHasGeneratedContext(true);
         setIsLoadingContext(false);
       })
@@ -90,6 +112,7 @@ export function CreatePrModal({ isOpen, onClose, session, onPrCreated }: CreateP
     setAuthError(null);
     setNoCommits(false);
     setAiGenerated(false);
+    setBranchPushed(undefined);
     setHasGeneratedContext(false);
     setTitle('');
     setBody('');
@@ -130,25 +153,30 @@ export function CreatePrModal({ isOpen, onClose, session, onPrCreated }: CreateP
       return;
     }
 
-    setIsCreating(true);
-    try {
-      const result = await createPullRequest(session.id, title.trim(), body, draft);
-      if (result.success) {
-        toast.success(`PR #${result.number} created`);
-        onPrCreated();
-        onClose();
-      } else {
-        toast.error(`Failed to create PR: ${result.error || 'Unknown error'}`);
-      }
-    } catch {
-      toast.error('Failed to create PR');
-    } finally {
-      setIsCreating(false);
+    setCreateError(null);
+    // The modal can be closed, or its card unmounted, while the push runs, so the
+    // outcome is reported as a toast whenever nobody is watching the form.
+    const result = await createPullRequest(session.id, title.trim(), body, draft);
+    if (result.success) {
+      toast.success(`PR #${result.number} created`);
+      onPrCreated();
+      if (isOpenRef.current) onClose();
+      return;
+    }
+    const error = result.error || 'Unknown error';
+    if (isOpenRef.current) {
+      // Shown in the modal, which stays open, so the output can be read in full.
+      setCreateError(error);
+    } else {
+      toast.error(`Could not create the pull request: ${error.split('\n')[0]}`, {
+        label: 'Copy',
+        onClick: () => void navigator.clipboard?.writeText(error),
+      });
     }
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="lg" preventClose={isCreating} initialFocusRef={titleRef}>
+    <Modal isOpen={isOpen} onClose={onClose} size="lg" initialFocusRef={titleRef}>
       <ModalHeader
         className="pt-5 pb-3"
         subtitle={<>{session.branch_name} &rarr; {session.base_branch}</>}
@@ -157,6 +185,14 @@ export function CreatePrModal({ isOpen, onClose, session, onPrCreated }: CreateP
       </ModalHeader>
 
       <ModalBody className="py-4 space-y-4">
+        {isCreating && (
+          <p className="flex items-center gap-2 text-xs text-text-muted">
+            <SpinnerIcon className="w-3 h-3 animate-spin shrink-0" />
+            {branchPushed === false
+              ? 'Pushing the branch, then opening the pull request. Pre-push hooks can take a few minutes. You can close this window; a notification appears when it finishes.'
+              : 'Opening the pull request. You can close this window; a notification appears when it finishes.'}
+          </p>
+        )}
         {authError ? (
           <InlineAlert variant="error" title="GitHub not connected">{authError}</InlineAlert>
         ) : noCommits ? (
@@ -260,6 +296,15 @@ export function CreatePrModal({ isOpen, onClose, session, onPrCreated }: CreateP
               </p>
             </div>
 
+            {missingRefCount > 0 && (
+              <InlineAlert variant="warning" title="Missing plan items">
+                {missingRefCount === 1
+                  ? 'One plan reference points to an item that no longer exists.'
+                  : `${missingRefCount} plan references point to items that no longer exist.`}
+                {` GitHub will show "${MISSING_PLAN_ITEM_TEXT}" in their place.`}
+              </InlineAlert>
+            )}
+
             {/* Draft toggle */}
             <label className="flex items-center gap-2 cursor-pointer">
               <input
@@ -270,6 +315,7 @@ export function CreatePrModal({ isOpen, onClose, session, onPrCreated }: CreateP
               />
               <span className="text-xs text-text-secondary">Create as draft</span>
             </label>
+            {createError && <CreatePrError error={createError} />}
           </>
         )}
       </ModalBody>
@@ -277,10 +323,9 @@ export function CreatePrModal({ isOpen, onClose, session, onPrCreated }: CreateP
       <ModalFooter className="py-3">
         <MotionButton
           onClick={onClose}
-          disabled={isCreating}
           className="px-3 py-1.5 text-xs font-medium text-text-muted hover:text-text-primary bg-surface-3/50 hover:bg-surface-3 rounded-md transition-colors"
         >
-          Cancel
+          {isCreating ? 'Close' : 'Cancel'}
         </MotionButton>
         <MotionButton
           onClick={hasGeneratedContext ? handleSubmit : handleGenerate}
@@ -294,23 +339,43 @@ export function CreatePrModal({ isOpen, onClose, session, onPrCreated }: CreateP
           }
           className="px-3 py-1.5 text-xs font-medium text-white bg-accent hover:bg-accent/90 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {isLoadingContext ? (
+          {isCreating ? (
+            <span className="flex items-center gap-1.5">
+              <SpinnerIcon className="w-3 h-3 animate-spin" />
+              Creating...
+            </span>
+          ) : isLoadingContext ? (
             <span className="flex items-center gap-1.5">
               <SpinnerIcon className="w-3 h-3 animate-spin" />
               Generating...
             </span>
           ) : !hasGeneratedContext ? (
             'Generate'
-          ) : isCreating ? (
-            <span className="flex items-center gap-1.5">
-              <SpinnerIcon className="w-3 h-3 animate-spin" />
-              Creating...
-            </span>
           ) : (
             draft ? 'Create Draft PR' : 'Create PR'
           )}
         </MotionButton>
       </ModalFooter>
     </Modal>
+  );
+}
+
+/** The first line says what went wrong; any remaining lines are the raw output behind it. */
+function CreatePrError({ error }: { error: string }) {
+  const [summary, ...rest] = error.split('\n');
+  const details = rest.join('\n').trim();
+
+  return (
+    <InlineAlert variant="error" title="Could not create the pull request">
+      <span className="block break-words">{summary}</span>
+      {details && (
+        <details className="mt-2">
+          <summary className="cursor-pointer text-text-secondary hover:text-text-primary">Show output</summary>
+          <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-tiny text-text-secondary">
+            {details}
+          </pre>
+        </details>
+      )}
+    </InlineAlert>
   );
 }

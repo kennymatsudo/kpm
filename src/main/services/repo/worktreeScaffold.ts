@@ -12,6 +12,13 @@ import type { DevSession } from '../../../shared/types';
 import { gitExec, resolveUpstreamBranch, getMergeBase } from './gitUtils';
 import { resolveCurrentBranch } from './branchFacts';
 
+/** The session's worktree while it is still a checkout, otherwise `repoPath`. */
+export function sessionCheckoutPath(session: Pick<DevSession, 'worktree_path'>, repoPath: string): string {
+  return session.worktree_path && fs.existsSync(path.join(session.worktree_path, '.git'))
+    ? session.worktree_path
+    : repoPath;
+}
+
 /**
  * Get the worktrees directory for a repo
  */
@@ -118,6 +125,58 @@ export async function scaffoldWorktree(params: {
       return { ok: false, kind: 'createFailed', outerMessage, innerMessage };
     }
   }
+}
+
+/**
+ * Check that a worktree made outside KPM can back a board session: it must be
+ * a linked worktree of this repo (not the primary checkout, not another repo)
+ * with a branch checked out, since sessions track work by branch.
+ */
+export async function inspectAttachableWorktree(params: {
+  worktreePath: string;
+  repoPath: string;
+}): Promise<ServiceResult<{ worktreePath: string; branchName: string }>> {
+  if (!fs.existsSync(params.worktreePath)) {
+    return failure(`Worktree not found at ${params.worktreePath}`);
+  }
+  const [worktreePath, primaryRepoPath] = await Promise.all([
+    fs.promises.realpath(params.worktreePath),
+    fs.promises.realpath(params.repoPath),
+  ]);
+  if (worktreePath === primaryRepoPath) {
+    return failure('The main checkout cannot be attached. Pick a separate worktree.');
+  }
+
+  try {
+    const [topLevel, commonDir, primaryCommonDir] = await Promise.all([
+      gitExec(['rev-parse', '--show-toplevel'], { cwd: worktreePath }),
+      gitExec(['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: worktreePath }),
+      gitExec(['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: primaryRepoPath }),
+    ]);
+    if (await fs.promises.realpath(topLevel.stdout.trim()) !== worktreePath) {
+      return failure(`${worktreePath} is inside a worktree, not the root of one.`);
+    }
+    const [common, primaryCommon] = await Promise.all([
+      fs.promises.realpath(commonDir.stdout.trim()),
+      fs.promises.realpath(primaryCommonDir.stdout.trim()),
+    ]);
+    if (common !== primaryCommon) {
+      return failure(`${worktreePath} belongs to a different repository.`);
+    }
+    // The connected path can itself be a linked worktree, so the check above
+    // does not catch git's own main checkout, which owns the shared .git dir.
+    if (path.basename(common) === '.git' && path.dirname(common) === worktreePath) {
+      return failure('The main checkout cannot be attached. Pick a separate worktree.');
+    }
+  } catch {
+    return failure(`${worktreePath} is not a git worktree.`);
+  }
+
+  const branchName = await resolveCurrentBranch(worktreePath);
+  if (!branchName) {
+    return failure(`${worktreePath} has no branch checked out. Check out a branch first.`);
+  }
+  return success({ worktreePath, branchName });
 }
 
 export async function assertSessionWorktreeCheckout(params: {

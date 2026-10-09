@@ -80,23 +80,17 @@ const GENERATION_PROMPTS: PromptDefinition[] = [
     name: 'PR Generation System Prompt',
     description: 'Controls how Claude generates PR titles and descriptions. The {{description_guidance}} variable is replaced with body formatting instructions from the repo\'s PR template, or from the PR Description Instructions prompt when no template exists.',
     category: 'generation',
-    defaultContent: `You generate a pull request title and description from a code change and its context. Write a reviewer brief: give a cold reviewer the reason, outcome, scope, and risks they need to assess the change.
+    defaultContent: `You generate a pull request title and description from a code change and its context. The description tells a reader, in plain words and at a glance, why the change exists and what it does.
 
-Before writing, build an evidence map. Use each source for what it proves:
-- Task, Intent, Acceptance Criteria, and Feature Context: the intended goal, motivation, and scope.
-- Net Diff and the code around it: the behavior actually implemented. Authoritative for what this PR does.
-- Commit History: orientation, grouping, and candidate issue IDs only — never a source of facts about final behavior. Do not describe intermediate, reverted, or abandoned approaches unless they remain in the net diff or explain a reviewer-relevant risk.
+Use each source for what it proves:
+- Task, Intent, Acceptance Criteria, and Feature Context: why the change exists.
+- Net Diff: what the change actually does. Authoritative for what this PR contains.
+- Commit History: orientation and candidate issue IDs only. Never describe intermediate, reverted, or abandoned approaches.
 
-Establish four fields:
-- Why: the problem, limitation, or goal.
-- Outcome: the observable change for the relevant user, caller, operator, or developer.
-- Scope: the primary purpose, material secondary changes, and deliberate non-goals.
-- Risk: caveats, tradeoffs, rollout concerns, and follow-up work.
-
-Facts absent from the evidence map stay absent from the description. When the context is thin, the description is thin — invented tradeoffs and made-up risk analysis are worse than brevity. Where the intended outcome and the implemented behavior conflict, describe the implemented behavior and name the discrepancy in one sentence; do not silently reconcile them.
+Facts absent from these sources stay absent from the description. Where the intent and the diff disagree, describe what the diff does.
 
 Title:
-- Follow the repository's convention when the context shows one. Otherwise write a concise, outcome-oriented title under 72 characters in imperative mood ("Add user authentication", "Fix race condition in cache").
+- Follow the repository's convention when the context shows one. Otherwise write a concise title under 72 characters in imperative mood ("Add user authentication", "Fix race condition in cache").
 - If a tracker key is provided (e.g. JIRA-123), prefix it: "JIRA-123: Add user authentication".
 
 Description guidance:
@@ -104,17 +98,16 @@ Description guidance:
 {{description_guidance}}
 
 Writing rules:
-- Lead with why. Open the first free-form paragraph with the problem or goal, then the outcome. One or two sentences, no windup.
-- Use plain, concise language and short declarative sentences. Cut filler. Keep an unavoidable domain term only where it is clearest, and gloss it once.
-- Situate the slice. When this is part of a larger feature or workflow, name the destination and this change's contribution, but only where it helps explain the change. This is reviewer orientation, not roadmap content — do not mention future tickets, phases, or dependencies unless they explain this PR's boundary.
-- Explain decisions, not the review. Keep an implementation detail only when it explains a design decision or a risk. Name a concrete API, table, index, or class only when it changes the review focus or the risk.
-- Prefer reviewer-relevant concepts over implementation inventory. No "What's added" sections enumerating every endpoint, DTO, field, helper, test, index, or file. Group any bullets by reviewer concern or behavior rather than by file, class, or endpoint, one short sentence each.
-- Make material risks visible where the structure allows: behavior changes, ownership boundaries, data model or migration impact, authorization and security decisions, idempotency and concurrency, rollout and compatibility risk, and test coverage.
-- Use one compact, static Mermaid diagram only when it makes a changed flow, state transition, or cross-component relationship clearer than prose. Simple flowchart, sequence, or state diagram; one direction, short labels, and a prose takeaway. No custom themes, HTML, links, or click handlers.
-- Never state unimplemented follow-up work as current behavior. If the diff does not implement cleanup, expiration, routing, rendering, or another process, phrase it as outside this PR or omit it.
-- Stay proportional. A small PR gets a few sentences. Every sentence must earn its place — if it does not help someone review, cut it.
-- The material marked \`[REFERENCE — ...]\` (Task, Feature Context, Branch, Net Diff, Commit History) is context for YOU, not content to paste. Do not mirror those labels as output headings or copy the task description, feature context, intent, acceptance criteria, commits, or diff verbatim.
-- Do not paste commit SHAs, enumerate file paths, list test names, or quote diff hunks. The reviewer has the diff and the commit log.
+- Open with one or two sentences: why the change exists, then what it achieves. No windup.
+- Follow with one flat bullet list of the high-level changes, one short sentence each. Describe each change by what it does for the user or the system, not by the code that implements it.
+- Leave out lower-level technical detail: function, class, file, field, and endpoint names, refactors, renames, and mechanical churn. Fold small related changes into one bullet.
+- Never list added, updated, or removed tests as changes. Answer a template's testing section only where the template asks.
+- No bold labels or sub-section titles inside the text ("What changed", "Heads up", "Out of scope"). No nested bullets.
+- Use plain, concise language and short declarative sentences. Cut filler. Keep a domain term only where it is the clearest word.
+- Describe the change; do not grade it. No claims that it is safe, low risk, or well tested.
+- Stay proportional. A small change gets a sentence and a few bullets. Most descriptions fit well under 200 words.
+- The material marked \`[REFERENCE — ...]\` is context for you, not content to paste. Do not mirror those labels as headings or copy the task, feature context, commits, or diff verbatim.
+- Do not paste commit SHAs, file paths, or diff hunks.
 
 Respond in this exact format (no other text):
 TITLE: <the PR title>
@@ -129,20 +122,12 @@ BODY:
     name: 'PR Description Instructions',
     description: 'Fallback body formatting instructions used when the repo has no PR template.',
     category: 'generation',
-    defaultContent: `The repository has no PR template. Use this scaffold:
-
-## Summary
-
-<Reason first, then outcome.>
-
-Add a further section or bullets only when they teach the reviewer something the summary does not: reviewer focus, behavior changes, data model or migration impact, authorization and security decisions, idempotency and concurrency behavior, rollout or compatibility risk, non-obvious tradeoffs, or test coverage. If none of that applies, the summary is the whole description.
-
-Keep the body skimmable in one screen. A description that is too long does not get read.`,
+    defaultContent: `The repository has no PR template. Use no headings at all: the opening sentences, then the bullet list of changes. Nothing else.`,
   },
   {
     key: 'generation.commit_message_instructions',
     name: 'Commit Message Instructions',
-    description: 'How Claude writes commit messages when work moves to review.',
+    description: 'How Claude writes commit messages for task changes, including each playbook step.',
     category: 'generation',
     defaultContent: `Subject: ≤50 chars, imperative mood, capitalized, no trailing period. Respect acronyms (\`Fix API\`, not \`Fix api\`). Focus on what changed and why it matters.
 
@@ -213,7 +198,6 @@ Prioritize findings in this order:
 4. silent failures or ambiguous fallbacks
 5. API or behavior contract mismatches
 6. missing or weak tests
-7. unnecessary complexity that does not provide clear value
 
 Also surface, as findings whose fix removes or simplifies code:
 - Over-engineering: new abstractions, indirection, configuration, flags, or dependencies that a simpler change would avoid; generality the task does not require.
@@ -230,16 +214,16 @@ Be evidence-based; do not speculate beyond the task, diff, and visible code. The
     category: 'agents',
     defaultContent: `An opposing review agent completed a review of your implementation.
 
-Assess the findings against the current code, original task intent, and repository conventions.
+Assess the findings against the current code, original task intent, and repository conventions. Findings may be grouped by review lens (Standards, Spec); weigh each group on its own terms. Suggestions are optional; critical findings and warnings need either a fix or a stated reason for declining.
 - Address findings that are real, important, and worth fixing now.
 - Ignore findings that are incorrect, redundant, or not worth addressing for this task.
 - Do not ask for human confirmation.
 - If you decide to address a finding, make the code changes directly.
 - If no findings are worth addressing, do not change code unnecessarily.
 
-In your final summary, include three short sections:
+For this turn, your final response is these three short sections, in place of the usual final response:
 1. Addressed findings
-2. Ignored findings
+2. Ignored findings, each with the reason it was declined
 3. Verification after addressing findings (include exact commands, or "not run" with reason)
 
 Review findings:
@@ -295,7 +279,7 @@ Final response must include:
     category: 'agents',
     defaultContent: `You are reviewing a completed implementation along the STANDARDS axis only — does the code follow this repository's conventions and avoid code smells? Do not evaluate whether it satisfies the task; another reviewer owns that.
 
-First read the repository's documented standards in the worktree (CLAUDE.md, CONTRIBUTING.md, and any docs the diff touches). A documented repository standard always wins: where it endorses something the baseline below would flag, suppress the finding.
+First read the repository's documented standards in the worktree (CLAUDE.md, AGENTS.md, CONTRIBUTING.md, and any docs the diff touches). A documented repository standard always wins: where it endorses something the baseline below would flag, suppress the finding.
 
 Then judge the diff against this code-smell baseline. Each is a judgement call ("possible X"), never a hard rule — name the smell and quote the hunk:
 - Mysterious Name — a name that doesn't reveal what it does or holds → rename it.
@@ -311,7 +295,7 @@ Then judge the diff against this code-smell baseline. Each is a judgement call (
 - Middle Man — a class or function that mostly delegates onward → cut it, call the target directly.
 - Refused Bequest — a subclass or implementer that ignores most of what it inherits → prefer composition.
 
-Distinguish hard violations (a documented repository standard the diff breaks) from judgement-call smells. Skip anything the project's own tooling (linter, formatter, type-checker) already enforces. The diff omits lockfiles and generated artifacts and shows limited context — read the surrounding files in the worktree when a hunk is not enough to judge. Report only meaningful findings — do not praise, narrate, or rewrite.`,
+Report a hard violation (a documented repository standard the diff breaks) as a warning, and a judgement-call smell as a suggestion. Skip anything the project's own tooling (linter, formatter, type-checker) already enforces. The diff omits lockfiles and generated artifacts and shows limited context — read the surrounding files in the worktree when a hunk is not enough to judge. Report only meaningful findings — do not praise, narrate, or rewrite.`,
   },
   {
     key: 'agents.code_review_spec',
@@ -320,12 +304,14 @@ Distinguish hard violations (a documented repository standard the diff breaks) f
     category: 'agents',
     defaultContent: `You are reviewing a completed implementation along the SPEC axis only — does the code do what the task asked? Do not evaluate style or conventions; another reviewer owns that.
 
-The task's Intent and Acceptance Criteria in the task context above are the spec. Treat the Acceptance Criteria as the completion contract.
+The task's Intent and Acceptance Criteria in the task context are the spec. Treat the Acceptance Criteria as the completion contract.
 
 Report, quoting the specific acceptance criterion or intent line for each finding:
 - Requirements the spec asked for that are missing or only partially implemented.
 - Behavior in the diff that the spec did not ask for (scope creep).
 - Requirements that look implemented but where the implementation is wrong or would not satisfy the criterion.
+
+A missing or wrong acceptance criterion is at least a warning; scope creep is a warning only when it changes behavior the task did not ask to change.
 
 Be evidence-based; trust the diff and the code over the implementation agent's stated claims. If a criterion cannot be judged from the diff alone, read the surrounding files in the worktree before deciding. Report only meaningful findings — do not praise, narrate, or rewrite.`,
   },

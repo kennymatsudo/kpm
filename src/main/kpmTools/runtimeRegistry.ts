@@ -2,12 +2,16 @@ import type { BrowserWindow } from 'electron';
 import fs from 'fs';
 import { CONTEXT_FILE_NAMES, CONTEXT_FILE_PENDING_CACHE_KEY } from '../../shared/contextFile';
 import type { ChatSessionScope, PlanAction } from '../../shared/types';
+import type { ConfigChange } from '../../shared/configKinds';
+import type { BoardChange } from '../../shared/boardChanges';
+import { getRepoSlug } from '../services/repo/ghUtils';
 import type { IRepositoryContainer } from '../db/interfaces';
 import { projectWriteGrants, type WriteDecision } from '../chat/writeGrants';
 import { resolveScopedPath } from '../services/files/scopedFs';
 import { promptUser } from '../services/core/PermissionPromptService';
 import type { AppServices } from '../services/appServices';
-import { processKpmToolProposalSink } from './proposals';
+import { listBoardProviders } from '../services/agents/boardProviderRegistry';
+import { processKpmToolProposalSink, type KpmToolProposal } from './proposals';
 import { assertKpmToolInputSchemas } from './toolInputSchema';
 import {
   getCurrentKpmToolProposalSink,
@@ -19,6 +23,8 @@ import {
   type KpmToolExecutionResult,
   type KpmToolGroup,
 } from './runtime';
+import { createBoardTools } from './tools/board';
+import { createConfigTools } from './tools/config';
 import { createContextFileEditTools, type ContextFileUpdatePayload } from './tools/context-file-update';
 import { createConfluenceTools } from './tools/confluence';
 import { createDocumentEditTools } from './tools/document-edit';
@@ -29,19 +35,20 @@ import { createFileMoveTools } from './tools/file-move';
 import { createGitPushTools, type GitPushConsentRequest } from './tools/git-push';
 import { createGitReadTools } from './tools/git-read';
 import { createGitHubTools } from './tools/github';
+import { createGitHubWriteTools, type PullRequestWriteRequest } from './tools/github-writes';
 import { createJiraTools } from './tools/jira';
+import { TrackerClientService } from '../trackers/TrackerClientService';
 import { createListProjectFilesTools } from './tools/list-project-files';
 import { createPlanChangeTools } from './tools/plan-changes';
 import { createPlanItemTools } from './tools/plan-items';
 import { createPlanRefTools } from './tools/plan-refs';
 import { createRelationTools } from './tools/relations';
 import { createSpillReadTools } from './tools/spill-read';
-import { createStorybookTools } from './tools/storybook';
 
 export { runWithToolExecutionContext, type KpmToolDefinition, type KpmToolRuntime } from './runtime';
 export { subscribeToKpmToolProposals, type KpmToolProposal, type PlanActionsEvent } from './proposals';
 
-export const KPM_MCP_INSTRUCTIONS = `KPM tools are local project-planning tools. Direct file, shell, and git writes need the project's write grant, requested on the first attempt. Plan-mutating tools propose PlanAction[] for KPM review or auto-apply; they must not bypass KPM's approval flow or write plan rows directly. Document, context-file, move, and delete tools emit proposals for KPM to surface to the user. Use @plan/<uuid> only for plan item UUIDs returned by KPM tools. Keep responses concise and utilitarian.`;
+export const KPM_MCP_INSTRUCTIONS = `KPM tools are local project-planning tools. Direct file, shell, and git writes follow the user's own permission settings. Plan-mutating tools propose PlanAction[] for KPM review or auto-apply; they must not bypass KPM's approval flow or write plan rows directly. Document, context-file, move, and delete tools emit proposals for KPM to surface to the user. Use @plan/<uuid> only for plan item UUIDs returned by KPM tools. Keep responses concise and utilitarian.`;
 
 export interface KpmToolRuntimeDeps {
   container: Pick<
@@ -53,7 +60,10 @@ export interface KpmToolRuntimeDeps {
     | 'devSessions'
     | 'confluenceLinks'
   >;
-  services: Pick<AppServices, 'fileExplorerService'>;
+  services: Pick<
+    AppServices,
+    'fileExplorerService' | 'playbookService' | 'promptOverrideService' | 'devSessionService' | 'gitHubService'
+  >;
   getMainWindow: () => BrowserWindow | null;
 }
 
@@ -140,28 +150,42 @@ async function readProjectContextFileWithPending(projectId: string): Promise<{ c
   return readProjectContextFile(projectId);
 }
 
-function emitPlanActions(actions: PlanAction[]): void {
+/** Proposals need a chat to review them in; a run without one drops them. */
+function emitScopedProposal(
+  label: string,
+  build: (scope: { projectId: string; chatSessionId: string }) => KpmToolProposal,
+): void {
   const context = getCurrentToolExecutionContext();
   if (!context?.projectId || !context?.chatSessionId) {
-    console.warn('[KPM Tools] Skipping unscoped plan actions event');
+    console.warn(`[KPM Tools] Skipping unscoped ${label}`);
     return;
   }
 
-  context.proposalSink?.propose({
-    type: 'plan-actions',
-    projectId: context.projectId,
-    chatSessionId: context.chatSessionId,
-    actions,
-  });
+  context.proposalSink?.propose(build({ projectId: context.projectId, chatSessionId: context.chatSessionId }));
+}
+
+function emitPlanActions(actions: PlanAction[]): void {
+  emitScopedProposal('plan actions event', (scope) => ({ type: 'plan-actions', ...scope, actions }));
+}
+
+function emitConfigChange(change: ConfigChange): void {
+  emitScopedProposal('config change', (scope) => ({ type: 'config-change', ...scope, change }));
+}
+
+function emitBoardChange(change: BoardChange): void {
+  emitScopedProposal('board change', (scope) => ({ type: 'board-change', ...scope, change }));
 }
 
 /**
- * Ask for the project's write grant on a KPM tool's behalf, using the same
- * grant and prompt as the built-in write tools so one answer covers both. A run
- * with no chat session — a scheduled action — inherits an existing grant but
+ * Ask for the project's publishing grant on a KPM tool's behalf, using the
+ * grant's own prompt. A run with no chat session — a scheduled action — inherits an existing grant but
  * has nowhere to ask for one it does not have.
  */
-async function requestGitPushWriteAccess(request: GitPushConsentRequest): Promise<WriteDecision> {
+async function requestKpmToolWriteAccess(
+  toolName: string,
+  input: Record<string, unknown>,
+  title: string,
+): Promise<WriteDecision> {
   const context = getCurrentToolExecutionContext();
   const chatSessionId = context?.chatSessionId;
 
@@ -169,16 +193,26 @@ async function requestGitPushWriteAccess(request: GitPushConsentRequest): Promis
     const result = await promptUser(
       getKpmToolRuntimeDeps().getMainWindow(),
       context?.projectId ?? '',
-      'git_push',
-      { ...request },
+      toolName,
+      input,
       {
         chatSessionId,
         kind: 'write-access',
-        title: `Push ${request.branch} to ${request.remote}?`,
+        title,
       },
     );
     return result.behavior === 'allow';
   });
+}
+
+function requestGitPushWriteAccess(request: GitPushConsentRequest): Promise<WriteDecision> {
+  return requestKpmToolWriteAccess('git_push', { ...request }, `Push ${request.branch} to ${request.remote}?`);
+}
+
+function requestPullRequestWriteAccess(request: PullRequestWriteRequest): Promise<WriteDecision> {
+  return request.action === 'create'
+    ? requestKpmToolWriteAccess('create_pull_request', { ...request }, `Open a pull request for ${request.target}?`)
+    : requestKpmToolWriteAccess('update_pull_request', { ...request }, `Edit pull request ${request.target}?`);
 }
 
 function emitContextFileUpdate(update: ContextFileUpdatePayload): void {
@@ -239,8 +273,9 @@ function group(
   availability: KpmToolAvailability,
   capabilities: KpmToolCapability[],
   tools: KpmToolDefinition[],
+  isEnabled?: () => boolean,
 ): KpmToolGroup {
-  return { id, availability, capabilities, tools };
+  return { id, availability, capabilities, tools, ...(isEnabled && { isEnabled }) };
 }
 
 /**
@@ -261,6 +296,14 @@ function planItemGroups(tools: KpmToolDefinition[]): KpmToolGroup[] {
   ];
 }
 
+/** Listing worktrees is a plain repo read; only proposing needs the board grant. */
+function boardGroups(tools: KpmToolDefinition[]): KpmToolGroup[] {
+  return [
+    group('board-read', MAIN_ONLY, ['repo.read'], tools.filter((tool) => tool.name === 'list_worktrees')),
+    group('board-changes', MAIN_ONLY, ['board.propose'], tools.filter((tool) => tool.name !== 'list_worktrees')),
+  ];
+}
+
 function buildToolGroups(): KpmToolGroup[] {
   const { container, services } = getKpmToolRuntimeDeps();
   const projectRepo = container.projects;
@@ -272,8 +315,7 @@ function buildToolGroups(): KpmToolGroup[] {
     ...planItemGroups(createPlanItemTools(planItemRepo, planRelationRepo, emitPlanActions)),
     group('plan-relations', MAIN_ONLY, ['plan_relations.read'], createRelationTools(planItemRepo)),
     group('plan-changes', MAIN_ONLY, ['plan_items.propose'], createPlanChangeTools(emitPlanActions, repoRepo, planItemRepo)),
-    group('jira', MAIN_ONLY, ['integrations.read'], createJiraTools()),
-    group('storybook', MAIN_ONLY, ['integrations.read'], createStorybookTools(projectRepo)),
+    group('jira', MAIN_ONLY, ['integrations.read'], createJiraTools(), () => TrackerClientService.isJiraConfigured()),
     group('project-context', ALL_CHAT_SCOPES, ['project_context.propose'], createContextFileEditTools(readProjectContextFileWithPending, emitContextFileUpdate)),
     group('document-read', ALL_CHAT_SCOPES, ['documents.read'], createDocumentReadTools(readProjectFileWithPending)),
     group('document-create', ALL_CHAT_SCOPES, ['documents.propose'], createDocumentCreateTools(emitDocumentUpdate)),
@@ -289,6 +331,35 @@ function buildToolGroups(): KpmToolGroup[] {
     group('git-push', MAIN_ONLY, ['repo.push'], createGitPushTools({
       repos: repoRepo,
       requestWriteAccess: requestGitPushWriteAccess,
+    })),
+    group('github-writes', MAIN_ONLY, ['repo.push'], createGitHubWriteTools({
+      repos: repoRepo,
+      planItems: planItemRepo,
+      requestWriteAccess: requestPullRequestWriteAccess,
+    })),
+    // Services are read per call, not captured, so test fixtures that never
+    // run these tools can omit them.
+    ...boardGroups(createBoardTools({
+      repos: repoRepo,
+      planItems: planItemRepo,
+      listAttachableWorktrees: (repoId) => services.devSessionService.listAttachableWorktrees(repoId),
+      previewAttachWorktree: (planItemId, repoId, worktreePath) =>
+        services.devSessionService.previewAttachWorktree(planItemId, repoId, worktreePath),
+      previewLinkPr: (planItemId, repoId, prIdentifier) =>
+        services.gitHubService.previewLinkPrToItem(planItemId, repoId, prIdentifier),
+      getRepoSlug,
+      onBoardChange: emitBoardChange,
+    })),
+    group('kpm-config', MAIN_ONLY, ['config.propose'], createConfigTools({
+      playbooks: {
+        list: () => services.playbookService.list(),
+        get: (id) => services.playbookService.get(id),
+        getDefault: () => services.playbookService.getDefault(),
+      },
+      listProviders: () => listBoardProviders(),
+      listStepPrompts: () => services.promptOverrideService.listByCategory('agents'),
+      getPromptContent: (key) => services.promptOverrideService.getContent(key),
+      onConfigChange: emitConfigChange,
     })),
   ];
 }

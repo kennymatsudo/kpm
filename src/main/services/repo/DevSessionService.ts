@@ -25,6 +25,8 @@ import {
   type DevSessionAutomationPhase,
   type DevSessionStatus,
   type DevSessionWithPlanItem,
+  type PlanItem,
+  type Repo,
   type AgentEffortLevel,
   type AgentReviewPolicy,
   type RepoEnvironmentMode,
@@ -76,7 +78,11 @@ import {
   generateUniqueBranchName,
   scaffoldWorktree,
   assertSessionWorktreeCheckout,
+  inspectAttachableWorktree,
 } from './worktreeScaffold';
+import { getPrForBranch } from './ghUtils';
+import { listGitWorktrees } from './worktreeList';
+import type { WorktreeCandidate } from '../../../shared/boardChanges';
 import { resolveDefaultBranch } from './branchFacts';
 import { deleteLocalBranch, deleteRemoteBranch } from './gitWrites';
 import {
@@ -87,6 +93,7 @@ import {
   getSessionCommitLog,
   getSessionCommitFiles,
 } from './devSessionGitInspection';
+import { generateCommitMessage } from './commitMessageGeneration';
 
 export type { AgentContextInput, BoardClaudeModel } from './devSessionPrompt';
 export { buildAgentContext, buildProjectContextPrefix, buildBoardStartInstructions };
@@ -121,6 +128,29 @@ export interface DevSessionServiceDeps {
   startPlaybookReviewPass: (sessionId: string) => Promise<string | null>;
 }
 const broadcastSessionStatusChange = createStatusBroadcaster<DevSession, typeof devSessionEvents.statusChanged>(devSessionEvents.statusChanged);
+
+function resolveDirectory(dir: string): string {
+  try {
+    return fs.realpathSync(dir);
+  } catch {
+    return path.resolve(dir);
+  }
+}
+
+function sameDirectory(a: string, b: string): boolean {
+  return resolveDirectory(a) === resolveDirectory(b);
+}
+
+export interface AttachWorktreePreview {
+  item: PlanItem;
+  projectId: string;
+  repo: Repo;
+  /** The worktree's real path, symlinks resolved. */
+  worktreePath: string;
+  branchName: string;
+  /** A PR-only session whose PR GitHub reports on this branch, folded in on attach. */
+  carriedPr?: DevSession;
+}
 
 interface PreparedWorkBriefUpdate {
   currentWorkBrief: string;
@@ -298,6 +328,8 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
       }
 
       const agentSessionManager = deps.agentSessionManager;
+      const taskContext = await service.buildSubagentTaskContext(sessionId);
+      if (!taskContext.ok) return taskContext;
       const adHocStep = resolveHarnessStep(playbookForSession(session), 'ad-hoc-review');
       const launched = await requestHarnessReview(harnessTurnDeps(), {
         sessionId,
@@ -307,7 +339,7 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           implementationAgentType: session.agent_type,
           worktreePath: session.worktree_path,
           baseBranch: session.base_branch,
-          taskDescription: session.initial_instructions,
+          taskDescription: taskContext.data,
           projectId: session.project_id,
           agentSessionManager,
           getPromptContent: deps.getPromptContent,
@@ -463,6 +495,22 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
       if (!content) return '';
       const items = deps.planItems.getByProject(projectId);
       return formatPlanRefSection(content, items);
+    },
+
+    /**
+     * The task context a reviewer or other subagent reads: the stored Work
+     * Brief with the same project context file and resolved plan refs the
+     * implementer launched with, so a reviewer does not call scope creep on
+     * what a plan ref asked for. Files attached at launch are not stored, so
+     * they are the one part of the implementer's context left out.
+     */
+    async buildSubagentTaskContext(sessionId: string): AsyncResult<string> {
+      const session = deps.devSessions.get(sessionId);
+      if (!session) return failure(`Session not found: ${sessionId}`);
+      const projectContextResult = await deps.readProjectContextFile(session.project_id);
+      const base = buildProjectContextPrefix(projectContextResult.ok ? projectContextResult.data : null)
+        + session.initial_instructions;
+      return success(service.buildPlanRefSection(session.project_id, base) + base);
     },
 
     /**
@@ -686,6 +734,165 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
     },
 
     /**
+     * Every worktree of a connected repo, each marked with why it cannot be
+     * attached, if it cannot. Chat and the Attach worktree dialog both read
+     * this, so they never disagree about which worktrees are on offer.
+     */
+    async listAttachableWorktrees(repoId: string): AsyncResult<WorktreeCandidate[]> {
+      try {
+        const repo = deps.repos.getById(repoId);
+        if (!repo) return failure(`Repository not found: ${repoId}`);
+        const repoProjectId = repo.project_id;
+        const owners = deps.devSessions.getWithWorktree()
+          .map((session) => ({ session, dir: resolveDirectory(session.worktree_path) }));
+        const connectedDir = resolveDirectory(repo.path);
+
+        const entries = await listGitWorktrees(repo.path);
+        return success(entries.map((entry): WorktreeCandidate => {
+          const dir = resolveDirectory(entry.path);
+          const owner = owners.find((candidate) => candidate.dir === dir)?.session;
+          const attachedTo = owner
+            ? {
+                planItemId: owner.plan_item_id,
+                title: owner.plan_item_id ? deps.planItems.get(owner.plan_item_id)?.title ?? null : null,
+                sameProject: owner.project_id === repoProjectId,
+              }
+            : undefined;
+          const unavailableReason = entry.isMain || dir === connectedDir
+            ? 'Main checkout'
+            : entry.bare
+              ? 'Bare repository'
+              : entry.prunable || !fs.existsSync(entry.path)
+                ? 'Missing on disk'
+                : !entry.branch
+                  ? 'No branch checked out'
+                  : attachedTo
+                    ? attachedTo.sameProject ? 'Attached to another task' : 'Attached to a task in another project'
+                    : undefined;
+          return {
+            path: entry.path,
+            branch: entry.branch,
+            ...(unavailableReason ? { unavailableReason } : {}),
+            ...(attachedTo ? { attachedTo } : {}),
+          };
+        }));
+      } catch (error) {
+        return failure(error instanceof Error ? error.message : String(error));
+      }
+    },
+
+    /**
+     * Every check Attach worktree makes, without writing anything. Chat calls
+     * this before proposing, so a request that would fail is refused in the
+     * conversation instead of at approval.
+     */
+    async previewAttachWorktree(
+      planItemId: string,
+      repoId: string,
+      worktreePath: string,
+    ): AsyncResult<AttachWorktreePreview> {
+      try {
+        const item = deps.planItems.get(planItemId);
+        if (!item?.project_id) return failure(`Plan item not found: ${planItemId}`);
+        const repo = deps.repos.getById(repoId);
+        if (!repo) return failure(`Repository not found: ${repoId}`);
+
+        const inspected = await inspectAttachableWorktree({ worktreePath, repoPath: repo.path });
+        if (!inspected.ok) return inspected;
+        const { branchName } = inspected.data;
+        const resolvedPath = inspected.data.worktreePath;
+
+        // Any project: the same repo can be connected to two projects, and a
+        // worktree shared by two sessions would be deleted out from under one.
+        const owner = deps.devSessions.getWithWorktree().find((session) =>
+          sameDirectory(session.worktree_path, resolvedPath));
+        if (owner) {
+          if (owner.plan_item_id === planItemId) return failure('This worktree is already attached to this task.');
+          const ownerTitle = owner.plan_item_id ? deps.planItems.get(owner.plan_item_id)?.title : undefined;
+          const where = owner.project_id === item.project_id ? '' : ' in another project';
+          return failure(ownerTitle
+            ? `This worktree is already attached to "${ownerTitle}"${where}.`
+            : `This worktree is already attached to another task${where}.`);
+        }
+        const itemSessions = deps.devSessions.getByProject(item.project_id)
+          .filter((session) => session.plan_item_id === planItemId);
+        const withWorktree = itemSessions.find((session) => session.worktree_path);
+        if (withWorktree) {
+          return failure(`This task already has a worktree at ${withWorktree.worktree_path}. Delete it first.`);
+        }
+        // A PR linked before the worktree existed only belongs here if GitHub says it is on this branch.
+        const prOnly = itemSessions.find((session) => session.repo_id === repoId && session.pr_number);
+        const branchPr = prOnly ? await getPrForBranch(repo.path, branchName) : null;
+        const carriedPr = prOnly && branchPr?.number === prOnly.pr_number ? prOnly : undefined;
+
+        return success({ item, projectId: item.project_id, repo, worktreePath: resolvedPath, branchName, carriedPr });
+      } catch (error) {
+        return failure(error instanceof Error ? error.message : String(error));
+      }
+    },
+
+    /**
+     * Attach a worktree made outside KPM to a plan item. The result is an
+     * ordinary inactive board session, so Start, Changes, Create PR, and
+     * delete treat it exactly like a worktree KPM created. A PR-only session
+     * left by "Link PR" is folded in rather than left beside it.
+     */
+    async attachWorktree(
+      planItemId: string,
+      repoId: string,
+      worktreePath: string,
+    ): AsyncResult<DevSession> {
+      try {
+        const preview = await service.previewAttachWorktree(planItemId, repoId, worktreePath);
+        if (!preview.ok) return preview;
+        const { item, projectId, repo, branchName, carriedPr } = preview.data;
+        const resolvedPath = preview.data.worktreePath;
+
+        const instructions = service.buildBoardStartInstructions(planItemId);
+        if (!instructions.ok) return instructions;
+        const baseBranch = await resolveDefaultBranch(repo.path);
+
+        const session = deps.devSessions.create({
+          id: randomUUID(),
+          project_id: projectId,
+          plan_item_id: planItemId,
+          repo_id: repoId,
+          name: item.title,
+          worktree_path: resolvedPath,
+          branch_name: branchName,
+          base_branch: baseBranch,
+          base_sha: await resolveBaseSha(resolvedPath, baseBranch),
+          worktree_origin: 'attached',
+          status: 'inactive',
+          agent_type: 'claude',
+          review_policy: 'auto',
+          auto_address_pr_reviews: false,
+          automation_phase: null,
+          // Left empty so the first Start snapshots whichever playbook the user picks.
+          playbook_id: null,
+          playbook_snapshot: null,
+          current_step_id: null,
+          step_pass_counts: null,
+          paused_reason: null,
+          initial_instructions: instructions.data,
+          work_brief_revision: item.work_brief_revision ?? 1,
+          pr_number: carriedPr?.pr_number ?? null,
+          pr_url: carriedPr?.pr_url ?? null,
+          pr_state: carriedPr?.pr_state ?? null,
+          review_state: carriedPr?.review_state ?? null,
+          pr_is_draft: carriedPr?.pr_is_draft ?? false,
+          merge_order: null,
+        });
+        if (carriedPr) deps.devSessions.delete(carriedPr.id);
+
+        broadcastSessionStatusChange(session);
+        return success(session);
+      } catch (error) {
+        return failure(error instanceof Error ? error.message : String(error));
+      }
+    },
+
+    /**
      * Start a session using the Agent SDK (no PTY).
      * Used by the board-driven execution flow.
      * Creates worktree, builds prompt, then delegates to AgentSessionManager.
@@ -699,8 +906,10 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         model?: string;
         /** Role prompt for the step this turn runs, instead of the playbook's first main step. */
         systemPromptKey?: string;
-        /** Phase to re-enter at; omitted when the start begins a run rather than resuming one. */
+        /** Live phase the started turn runs under; without it the phase lands on `idle`. */
         resumePhase?: DevSessionAutomationPhase;
+        /** The step this turn launches. The cursor moves to it with the phase, only once the launch is accepted. */
+        startStepId?: string;
       },
     ): AsyncResult<{ session: DevSession }> {
       try {
@@ -769,10 +978,6 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         const prompt = options?.prompt || session.initial_instructions;
 
         deps.agentReviews.markLatestCompletedStale(sessionId);
-        deps.phaseMachine.transition(sessionId, {
-          type: 'sessionStarted',
-          ...(options?.resumePhase ? { phase: options.resumePhase } : {}),
-        });
 
         const sessionPlaybook = playbookSnapshotOf(session);
         const firstMainStep = sessionPlaybook?.steps.find((step) => step.session === 'main');
@@ -791,8 +996,19 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           model: options?.model,
           effort: options?.effort,
           writes: true,
+          // Earlier turns are committed onto the branch, so measuring from HEAD
+          // would count only the last turn's edits.
+          diffBase: session.base_sha,
           environmentMode: options?.environmentMode ?? repo.environment_mode ?? 'auto',
         }, deps.agentSessionManager);
+
+        // After the agent is built, so a launch that throws leaves no live
+        // phase behind with nobody running.
+        deps.phaseMachine.transition(sessionId, {
+          type: 'sessionStarted',
+          ...(options?.resumePhase ? { phase: options.resumePhase } : {}),
+          ...(options?.startStepId ? { stepId: options.startStepId } : {}),
+        });
 
         // Update DB status to active
         deps.devSessions.updateStatus(sessionId, 'active');
@@ -808,6 +1024,8 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           } finally {
             deps.agentSessionManager?.remove(agentSession.id);
           }
+          // A live phase with no agent would show busy forever.
+          deps.phaseMachine.transition(sessionId, { type: 'agentTerminatedUnexpectedly' });
           deps.devSessions.updateStatus(sessionId, 'inactive');
           const failedSession = deps.devSessions.get(sessionId);
           if (failedSession) {
@@ -1061,8 +1279,9 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
           // Destroying a session the user created is its own authorization. An
           // already-deleted ref is the expected case and stays quiet; anything
           // else is reported, because these two commands are unrecoverable.
+          // An attached worktree's branch predates KPM, so it is never KPM's to delete.
           const authorization = { kind: 'boardSession' } as const;
-          for (const removal of [
+          const branchRemovals = session.worktree_origin === 'attached' ? [] : [
             await deleteLocalBranch({ repoPath: repo.path, branch: session.branch_name, authorization }),
             await deleteRemoteBranch({
               repoPath: repo.path,
@@ -1070,7 +1289,8 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
               branch: session.branch_name,
               authorization,
             }),
-          ]) {
+          ];
+          for (const removal of branchRemovals) {
             if (!removal.ok && removal.kind !== 'missingRef') {
               console.warn(`[DevSession] Branch cleanup for "${session.branch_name}": ${removal.reason}`);
             }
@@ -1095,6 +1315,30 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
         return failure(`Session not found: ${sessionId}`);
       }
       return getSessionDiff(session);
+    },
+
+    /**
+     * Write a commit message for the session's uncommitted changes.
+     */
+    async generateCommitMessage(
+      sessionId: string,
+      options: { taskTitle: string; externalKey?: string },
+    ): AsyncResult<string> {
+      const session = deps.devSessions.get(sessionId);
+      if (!session) {
+        return failure(`Session not found: ${sessionId}`);
+      }
+      const diff = await getSessionDiff(session);
+      if (!diff.ok) {
+        return diff;
+      }
+      return generateCommitMessage({
+        diff: diff.data,
+        taskTitle: options.taskTitle,
+        externalKey: options.externalKey,
+        instructions: deps.getPromptContent('generation.commit_message_instructions'),
+        projectId: session.project_id,
+      });
     },
 
     /**
@@ -1176,8 +1420,12 @@ export function createDevSessionService(deps: DevSessionServiceDeps) {
     /**
      * Mark all active sessions as inactive (called on app startup)
      */
-    markActiveAsInactive(): void {
+    /** Settles what a previous run of the app left behind: no agent is running yet. */
+    recoverAfterRestart(): void {
       deps.devSessions.markActiveAsInactive();
+      for (const session of deps.devSessions.getWithAutomationPhase()) {
+        deps.phaseMachine.transition(session.id, { type: 'appRestarted' });
+      }
     },
   };
 

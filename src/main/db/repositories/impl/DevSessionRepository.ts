@@ -29,6 +29,8 @@ interface PreparedStatements {
   getActiveSessions: Statement;
   getByPlanItem: Statement;
   getActiveByPlanItem: Statement;
+  getWithWorktree: Statement;
+  getWithAutomationPhase: Statement;
 
   // Write operations
   insert: Statement;
@@ -79,6 +81,8 @@ export class DevSessionRepository implements IDevSessionRepository {
         ORDER BY created_at DESC
       `),
       getByPlanItem: db.prepare('SELECT * FROM dev_sessions WHERE plan_item_id = ? ORDER BY created_at DESC LIMIT 1'),
+      getWithWorktree: db.prepare("SELECT * FROM dev_sessions WHERE worktree_path IS NOT NULL AND worktree_path != ''"),
+      getWithAutomationPhase: db.prepare('SELECT * FROM dev_sessions WHERE automation_phase IS NOT NULL'),
       getActiveByPlanItem: db.prepare(`
         SELECT * FROM dev_sessions
         WHERE plan_item_id = ? AND status IN ('pending', 'active')
@@ -93,9 +97,10 @@ export class DevSessionRepository implements IDevSessionRepository {
           worktree_path, branch_name, base_branch,
           status, agent_type, review_policy, auto_address_pr_reviews, automation_phase,
           playbook_id, playbook_snapshot, current_step_id, step_pass_counts, paused_reason, attention_reason,
-          initial_instructions, work_brief_revision
+          initial_instructions, work_brief_revision, base_sha, worktree_origin,
+          pr_number, pr_url, pr_state, review_state, pr_is_draft, merge_order
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         RETURNING *
       `),
       updateStatus: db.prepare('UPDATE dev_sessions SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'),
@@ -208,6 +213,7 @@ export class DevSessionRepository implements IDevSessionRepository {
       review_state: row.review_state ?? null,
       pr_is_draft: Boolean(row.pr_is_draft),
       merge_order: row.merge_order ?? null,
+      worktree_origin: row.worktree_origin ?? 'kpm',
       created_at: row.created_at,
       updated_at: row.updated_at,
       completed_at: row.completed_at,
@@ -236,6 +242,14 @@ export class DevSessionRepository implements IDevSessionRepository {
     return this.stmts.getActiveByPlanItem.get(planItemId) as DevSession | undefined;
   }
 
+  getWithWorktree(): DevSession[] {
+    return this.stmts.getWithWorktree.all() as DevSession[];
+  }
+
+  getWithAutomationPhase(): DevSession[] {
+    return this.stmts.getWithAutomationPhase.all() as DevSession[];
+  }
+
   create(session: Omit<DevSession, 'created_at' | 'updated_at' | 'completed_at'>): DevSession {
     // Use RETURNING to get inserted row in one query
     return this.stmts.insert.get(
@@ -260,6 +274,14 @@ export class DevSessionRepository implements IDevSessionRepository {
       session.attention_reason ?? null,
       session.initial_instructions,
       session.work_brief_revision ?? null,
+      session.base_sha ?? null,
+      session.worktree_origin ?? 'kpm',
+      session.pr_number ?? null,
+      session.pr_url ?? null,
+      session.pr_state ?? null,
+      session.review_state ?? null,
+      session.pr_is_draft ? 1 : 0,
+      session.merge_order ?? null,
     ) as DevSession;
   }
 

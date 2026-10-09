@@ -30,6 +30,7 @@ interface PlanCardMenuProps {
   hasTrackerAssociation: boolean;
   trackerType: TrackerType | null;
   onLinkPr?: () => void;
+  onAttachWorktree?: () => void;
   onStartAgent?: (itemId: string) => void;
   onOpenDetail?: (sessionId: string) => void;
 }
@@ -46,6 +47,7 @@ export function PlanCardMenu({
   hasTrackerAssociation,
   trackerType,
   onLinkPr,
+  onAttachWorktree,
   onStartAgent,
   onOpenDetail,
 }: PlanCardMenuProps) {
@@ -84,6 +86,7 @@ export function PlanCardMenu({
         project_id: actionableSession.project_id,
         worktree_path: actionableSession.worktree_path,
         branch_name: actionableSession.branch_name,
+        keepsBranches: actionableSession.worktree_origin === 'attached',
       };
     }
 
@@ -284,6 +287,19 @@ export function PlanCardMenu({
             {linkedPrSession ? 'Replace linked PR' : 'Link PR'}
           </DropdownMenu.Item>
 
+          {onAttachWorktree && !itemSessions.some((session) => session.worktree_path) && (
+            <DropdownMenu.Item
+              onClick={() => onAttachWorktree()}
+              icon={
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 3v12m0 0a3 3 0 100 6 3 3 0 000-6zm12-6a3 3 0 11-6 0 3 3 0 016 0zm0 0v2a4 4 0 01-4 4H9" />
+                </svg>
+              }
+            >
+              Attach worktree
+            </DropdownMenu.Item>
+          )}
+
           {hasTrackerAssociation && (
             <DropdownMenu.Item
               onClick={() => void onAddToTrackerQueue()}
@@ -318,7 +334,9 @@ export function PlanCardMenu({
                 variant="danger"
                 closeOnClick={false}
                 disabled={isWorktreeLoading}
-                title="Permanently deletes worktree, branch, and remote branch"
+                title={targetWorktree.keepsBranches
+                  ? 'Permanently deletes the worktree folder; its branches stay'
+                  : 'Permanently deletes worktree, branch, and remote branch'}
                 onClick={() => setShowDestroyWorktreeConfirm(true)}
                 icon={
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -397,15 +415,25 @@ export function PlanCardMenu({
                 <span className="w-1 h-1 rounded-full bg-danger/60 flex-shrink-0" />
                 The worktree directory and all its files
               </li>
-              <li className="flex items-center gap-2">
-                <span className="w-1 h-1 rounded-full bg-danger/60 flex-shrink-0" />
-                The local branch <code className="text-xxs font-mono bg-surface-3 px-1 py-0.5 rounded">{targetWorktree.branch_name}</code>
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="w-1 h-1 rounded-full bg-danger/60 flex-shrink-0" />
-                The remote branch (if pushed)
-              </li>
+              {!targetWorktree.keepsBranches && (
+                <>
+                  <li className="flex items-center gap-2">
+                    <span className="w-1 h-1 rounded-full bg-danger/60 flex-shrink-0" />
+                    The local branch <code className="text-xxs font-mono bg-surface-3 px-1 py-0.5 rounded">{targetWorktree.branch_name}</code>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <span className="w-1 h-1 rounded-full bg-danger/60 flex-shrink-0" />
+                    The remote branch (if pushed)
+                  </li>
+                </>
+              )}
             </ul>
+            {targetWorktree.keepsBranches && (
+              <p className="text-xs text-text-muted mt-3 leading-relaxed">
+                The branch <code className="text-xxs font-mono bg-surface-3 px-1 py-0.5 rounded">{targetWorktree.branch_name}</code> was
+                made outside KPM, so it stays, locally and on the remote.
+              </p>
+            )}
           </ModalBody>
 
           <div className="shrink-0 flex items-center gap-2 p-5">

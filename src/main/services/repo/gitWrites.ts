@@ -11,6 +11,8 @@
  * so a new call site cannot quietly inherit someone else's consent.
  */
 
+import { access, constants } from 'node:fs/promises';
+import path from 'node:path';
 import type { WriteDecision } from '../../chat/writeGrants';
 import { classifyPushTarget, hasUpstream, protectedBranchReason } from './branchFacts';
 import { gitExecCaptured } from './gitUtils';
@@ -72,6 +74,48 @@ async function runRefUpdate(
   return { ok: false, kind: 'failed', reason: summary || `git exited ${result.exitCode}` };
 }
 
+/** git skips a hook file that is missing or not executable, so this is exactly "a hook ran". */
+async function hasPrePushHook(repoPath: string): Promise<boolean> {
+  // --git-path follows core.hooksPath and resolves a worktree to the shared hooks dir.
+  const result = await gitExecCaptured(['rev-parse', '--git-path', 'hooks/pre-push'], { cwd: repoPath });
+  if (result.exitCode !== 0) return false;
+  try {
+    await access(path.resolve(repoPath, result.stdout.trim()), constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** A per-ref result line, e.g. ` ! [rejected]  feat -> feat (non-fast-forward)`. */
+const REJECTED_REF = /^\s*!\s*\[(?:remote )?rejected\][^(\n]*\(([^)\n]+)\)/m;
+/** git prints `To <remote url>` before the per-ref results, only once the remote answered. */
+const REMOTE_ANSWERED = /^To \S+\s*$/m;
+const PUSH_ABORTED = /^error: failed to push some refs/m;
+
+/**
+ * One line saying why a push failed, read from git's own output format rather
+ * than whatever a repo's hooks print, or `null` when git's output does not say.
+ *
+ * A pre-push hook that exits non-zero makes git print only "failed to push
+ * some refs", with no `To <url>` block, because nothing reached the remote.
+ * Connection and auth failures print `fatal:` instead, so the two don't blur.
+ */
+export function describePushFailure(output: string, remote: string, prePushHookRan: boolean): string | null {
+  const rejected = REJECTED_REF.exec(output);
+  if (rejected) {
+    const reason = rejected[1].trim();
+    if (reason === 'non-fast-forward' || reason === 'fetch first') {
+      return `${remote} has commits this branch doesn't. Pull or rebase, then push again.`;
+    }
+    return `${remote} rejected the push (${reason}).`;
+  }
+  if (prePushHookRan && PUSH_ABORTED.test(output) && !REMOTE_ANSWERED.test(output)) {
+    return `The repo's pre-push hook rejected the push. Nothing was sent to ${remote}.`;
+  }
+  return null;
+}
+
 /**
  * Publish `branch` to `remote`, setting the upstream when it has none. There is
  * no force and no refspec: the branch name is the whole target.
@@ -91,7 +135,13 @@ export async function publishBranch(target: RemoteBranchTarget): Promise<GitWrit
 
   const setUpstream = !(await hasUpstream(repoPath, pushTarget.branch));
   const args = ['push', ...(setUpstream ? ['--set-upstream'] : []), remote, '--', pushTarget.branch];
-  return runRefUpdate(args, repoPath, setUpstream);
+  const outcome = await runRefUpdate(args, repoPath, setUpstream);
+  if (outcome.ok || outcome.kind !== 'failed') return outcome;
+
+  // The headline goes on the first line so a caller with room for one line
+  // shows it; git's full output follows after a blank line.
+  const headline = describePushFailure(outcome.reason, remote, await hasPrePushHook(repoPath));
+  return headline ? { ...outcome, reason: `${headline}\n\n${outcome.reason}` } : outcome;
 }
 
 /** Delete `branch` on `remote`. Refuses a protected or default branch. */

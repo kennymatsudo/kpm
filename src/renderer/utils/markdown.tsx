@@ -7,7 +7,7 @@
 
 import { sanitizer as sanitizeMarkdownUrl } from 'markdown-to-jsx';
 import type { MarkdownToJSX } from 'markdown-to-jsx';
-import { Children, Fragment, isValidElement, useState } from 'react';
+import { Children, Fragment, isValidElement, useMemo, useState } from 'react';
 import type { JSX } from 'react';
 import { openExternalUrl } from '../services/shellService';
 import { PlanRefChip } from '../components/plan-ref/PlanRefChip';
@@ -16,7 +16,9 @@ import { WorkspaceLink } from '../components/file-ref/WorkspaceLink';
 import { MermaidDiagramLazy } from '../components/ui/MermaidDiagramLazy';
 import { CheckIcon, CopyIcon } from '../components/icons';
 import { copyToClipboard } from './clipboard';
-import { findRefs, PLAN_REF_REGEX } from '../../shared/planRefs';
+import { findRefs, linkPlanItemKeys, PLAN_REF_REGEX } from '../../shared/planRefs';
+import { usePlanDomainStore } from '../stores';
+import { selectNormalizedPlanItems } from '../stores/project/selectors';
 import { isPathLike, isWorkspaceLinkHref } from '../../shared/pathRefs';
 import { extractHeadings, slugify, type DocHeading } from './headingOutline';
 
@@ -66,6 +68,21 @@ export function transformPlanRefs(content: string): string {
   }
   out += content.slice(cursor);
   return out;
+}
+
+/**
+ * `transformPlanRefs` for model-written replies, which often name a plan item
+ * by its tracker key (`ASUP-537`) instead of its ref: those keys render as the
+ * item's chip too.
+ */
+export function useLinkedPlanRefs(content: string): string {
+  const idByExternalKey = usePlanDomainStore(
+    (state) => selectNormalizedPlanItems(state.planItems).idByExternalKey
+  );
+  return useMemo(
+    () => transformPlanRefs(linkPlanItemKeys(content, idByExternalKey)),
+    [content, idByExternalKey]
+  );
 }
 
 /**

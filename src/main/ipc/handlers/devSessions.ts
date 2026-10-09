@@ -70,6 +70,22 @@ function buildDevSessionHandlers(devSessionService: DevSessionService): DevSessi
       }
     },
 
+    listAttachableWorktrees: async ({ repoId }) => {
+      const result = await devSessionService.listAttachableWorktrees(repoId);
+      if (!result.ok) {
+        throw new Error(result.error);
+      }
+      return { worktrees: result.data };
+    },
+
+    attachWorktree: async ({ planItemId, repoId, worktreePath }) => {
+      const result = await devSessionService.attachWorktree(planItemId, repoId, worktreePath);
+      if (!result.ok) {
+        throw new Error(result.error);
+      }
+      return { session: result.data };
+    },
+
     checkDirty: async ({ sessionId }) => {
       const result = await devSessionService.checkDirty(sessionId);
       if (!result.ok) {
