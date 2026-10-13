@@ -57,7 +57,7 @@ export default defineConfig({
   main: {
     build: {
       outDir: 'dist/main',
-      minify: isProduction ? 'esbuild' : false,
+      minify: isProduction,
       // electron-vite externalizeDeps is enabled by default. Both SDKs are
       // ESM-only (no CJS export condition) and are reached only via dynamic
       // import(), never a static import/require.
@@ -96,7 +96,7 @@ export default defineConfig({
   preload: {
     build: {
       outDir: 'dist/preload',
-      minify: isProduction ? 'esbuild' : false,
+      minify: isProduction,
       // electron-vite externalizeDeps is enabled by default
       // Note: bytecode for preload requires sandbox: false
       // which we don't want for security, so skip it
@@ -121,7 +121,7 @@ export default defineConfig({
     },
     build: {
       outDir: resolve(__dirname, 'dist/renderer'),
-      minify: isProduction ? 'esbuild' : false,
+      minify: isProduction,
       // Enable CSS code splitting for better caching
       cssCodeSplit: true,
       // The main renderer entry is intentionally large because the app treats
