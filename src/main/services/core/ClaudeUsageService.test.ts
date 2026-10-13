@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { createClaudeUsageService } from './ClaudeUsageService';
-import type { IClaudeUsageRepository, ClaudeUsageEventInsert } from '../../db/interfaces/usage';
+import type { IClaudeUsageRepository, ClaudeUsageEventInsert, ClaudeUsageTokenCounts } from '../../db/interfaces/usage';
 import type { IProjectRepository } from '../../db/interfaces/project';
 import type { ClaudeUsageEvent } from '../../../shared/usage-types';
 
 function createUsageRepo(): IClaudeUsageRepository & { events: ClaudeUsageEvent[] } {
   const events: ClaudeUsageEvent[] = [];
+  const tokenSnapshots: (ClaudeUsageTokenCounts | null)[] = [];
   return {
     events,
     insert(event: ClaudeUsageEventInsert): ClaudeUsageEvent {
@@ -32,6 +33,7 @@ function createUsageRepo(): IClaudeUsageRepository & { events: ClaudeUsageEvent[
         created_at: new Date(events.length).toISOString(),
       };
       events.push(row);
+      tokenSnapshots.push(event.sdk_cumulative_tokens ?? null);
       return row;
     },
     getLastSdkCumulativeCostMicroUsd(sdkSessionId: string, sdkCostScope: string): number | null {
@@ -43,11 +45,20 @@ function createUsageRepo(): IClaudeUsageRepository & { events: ClaudeUsageEvent[
       }
       return null;
     },
-    totalsByProject: () => ({ events: 0, input_tokens: 0, output_tokens: 0, cache_creation_tokens: 0, cache_read_tokens: 0, cost_micro_usd: 0 }),
+    getLastSdkCumulativeTokens(sdkSessionId: string, sdkCostScope: string): ClaudeUsageTokenCounts | null {
+      for (let i = events.length - 1; i >= 0; i -= 1) {
+        const event = events[i];
+        if (event.sdk_session_id === sdkSessionId && event.sdk_cost_scope === sdkCostScope && tokenSnapshots[i]) {
+          return tokenSnapshots[i];
+        }
+      }
+      return null;
+    },
+    totalsByProject: () => ({ events: 0, unpriced_events: 0, input_tokens: 0, output_tokens: 0, cache_creation_tokens: 0, cache_read_tokens: 0, cost_micro_usd: 0 }),
     breakdownByProject: () => [],
     breakdownAll: () => [],
     breakdownByProjectAll: () => [],
-    globalTotals: () => ({ events: 0, input_tokens: 0, output_tokens: 0, cache_creation_tokens: 0, cache_read_tokens: 0, cost_micro_usd: 0 }),
+    globalTotals: () => ({ events: 0, unpriced_events: 0, input_tokens: 0, output_tokens: 0, cache_creation_tokens: 0, cache_read_tokens: 0, cost_micro_usd: 0 }),
     listRecent: () => [],
     listBoardPlaybookCostsByDevSession: () => [],
     deleteByProject: () => {},
@@ -99,6 +110,66 @@ describe('ClaudeUsageService', () => {
     expect(usageRepo.events.every((event) => event.cost_source === 'sdk_cumulative_delta')).toBe(true);
   });
 
+  it('stores running per-model token totals as per-turn deltas', () => {
+    const usageRepo = createUsageRepo();
+    const service = createClaudeUsageService({
+      claudeUsage: usageRepo,
+      projects: createProjectRepo(),
+      getMainWindow: () => null,
+    });
+    const record = (resultUuid: string, usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens: number }) =>
+      service.recordUsage({
+        projectId: 'project-1',
+        source: 'chat',
+        model: 'opus',
+        usage,
+        totalCostUsd: 1,
+        sdkSessionId: 'session-1',
+        sdkResultUuid: resultUuid,
+        sdkCostScope: 'opus',
+        isCumulativeCostSnapshot: true,
+        isCumulativeUsageSnapshot: true,
+      });
+
+    record('result-1', { input_tokens: 100, output_tokens: 10, cache_read_input_tokens: 5_000 });
+    record('result-2', { input_tokens: 130, output_tokens: 25, cache_read_input_tokens: 12_000 });
+    // A running total that shrinks comes from a restarted SDK process.
+    record('result-3', { input_tokens: 40, output_tokens: 4, cache_read_input_tokens: 900 });
+
+    expect(usageRepo.events.map((e) => [e.input_tokens, e.output_tokens, e.cache_read_tokens])).toEqual([
+      [100, 10, 5_000],
+      [30, 15, 7_000],
+      [40, 4, 900],
+    ]);
+  });
+
+  it('skips a model whose running total did not move this turn', () => {
+    const usageRepo = createUsageRepo();
+    const service = createClaudeUsageService({
+      claudeUsage: usageRepo,
+      projects: createProjectRepo(),
+      getMainWindow: () => null,
+    });
+    const record = (resultUuid: string) =>
+      service.recordUsage({
+        projectId: 'project-1',
+        source: 'chat',
+        model: 'haiku',
+        usage: { input_tokens: 1_074, output_tokens: 12 },
+        totalCostUsd: 0.001134,
+        sdkSessionId: 'session-1',
+        sdkResultUuid: resultUuid,
+        sdkCostScope: 'haiku',
+        isCumulativeCostSnapshot: true,
+        isCumulativeUsageSnapshot: true,
+      });
+
+    record('result-1');
+    record('result-2');
+
+    expect(usageRepo.events).toHaveLength(1);
+  });
+
   it('groups persisted playbook costs by step for one dev session, including fan-out runs', () => {
     const usageRepo = createUsageRepo();
     const rows = [
@@ -138,6 +209,35 @@ describe('ClaudeUsageService', () => {
 
     expect(usageRepo.events[0].cost_micro_usd).toBe(36_750_000);
     expect(usageRepo.events[0].cost_source).toBe('local_pricing_fallback');
+  });
+
+  it('stores an unknown cost instead of pricing an unpriced provider as Claude', () => {
+    const usageRepo = createUsageRepo();
+    const service = createClaudeUsageService({
+      claudeUsage: usageRepo,
+      projects: createProjectRepo(),
+      getMainWindow: () => null,
+    });
+
+    service.recordUsage({
+      projectId: 'project-1',
+      source: 'chat',
+      model: 'gpt-5.5',
+      usage: { input_tokens: 1_000_000, output_tokens: 1_000_000 },
+      costUnknown: true,
+    });
+    service.recordUsage({
+      projectId: 'project-1',
+      source: 'board_playbook',
+      model: null,
+      usage: { input_tokens: 10, output_tokens: 10 },
+      costUnknown: true,
+    });
+
+    expect(usageRepo.events.map((event) => [event.model, event.cost_micro_usd, event.cost_source])).toEqual([
+      ['gpt-5.5', 0, 'unknown'],
+      ['unknown', 0, 'unknown'],
+    ]);
   });
 
   it('passes ttftMs/durationMs through to the inserted event, defaulting to null when omitted', () => {

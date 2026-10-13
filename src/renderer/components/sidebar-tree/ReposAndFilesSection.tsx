@@ -11,7 +11,7 @@ import {
   useWorkspaceStore,
 } from '../../stores';
 import { useResourceDomainActions } from '../../hooks/useStoreActions';
-import { isImageFile, formatFileSize } from '../../utils/image';
+import { isImageFile } from '../../utils/image';
 import { RepoListSection } from './RepoListSection';
 import { ProjectFilesTreeSection } from './ProjectFilesTreeSection';
 import type { FileNode, FocusedResource } from '../../../shared/types';
@@ -22,12 +22,15 @@ import {
   copyExternalProjectFile,
   createProjectBinaryFile,
   createProjectTextFile,
+  getDroppedFilePath,
   showProjectItemInFolder,
   unwatchProjectFiles,
   watchProjectFiles,
 } from '../../services/projectFileService';
 import { listRepoWorktrees, openRepoInEditor, showRepoInFolder } from '../../services/repoService';
 import { ReposAndFilesOverlays } from './ReposAndFilesOverlays';
+import { planExternalFileImport } from './externalFileImport';
+import { toast } from '../../stores/toastStore';
 import {
   useFileViewers,
   useFileContextMenus,
@@ -36,8 +39,8 @@ import {
   useAddMenu,
 } from './hooks';
 
-const MAX_EXTERNAL_FILE_BYTES = 50 * 1024 * 1024; // 50MB
-const MAX_TEXT_FILE_BYTES = 10 * 1024 * 1024; // 10MB (matches createFile validation)
+/** Quiet period before watcher events trigger directory reloads */
+const FILE_RELOAD_DEBOUNCE_MS = 50;
 
 interface ReposAndFilesSectionProps {
   projectId: string;
@@ -138,7 +141,29 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
     moveEntry,
     getNodeByPath,
     expandToPath,
-  } = useFileTreeStore();
+  } = useFileTreeStore(
+    useShallow((state) => ({
+      nodes: state.nodes,
+      expandedPaths: state.expandedPaths,
+      loadingPaths: state.loadingPaths,
+      selectedPaths: state.selectedPaths,
+      renamingPath: state.renamingPath,
+      creatingItem: state.creatingItem,
+      loadDirectory: state.loadDirectory,
+      toggleExpanded: state.toggleExpanded,
+      setExpanded: state.setExpanded,
+      setSelectedPath: state.setSelectedPath,
+      setSelectedPaths: state.setSelectedPaths,
+      setRenamingPath: state.setRenamingPath,
+      setCreatingItem: state.setCreatingItem,
+      createItemAndSelect: state.createItemAndSelect,
+      deleteEntry: state.deleteEntry,
+      rename: state.rename,
+      moveEntry: state.moveEntry,
+      getNodeByPath: state.getNodeByPath,
+      expandToPath: state.expandToPath,
+    }))
+  );
 
   // Which files are open in the editor, and which of them is on screen. Both
   // are read as strings rather than as the documents themselves: subscribing to
@@ -262,48 +287,67 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
     };
   }, [projectId]);
 
-  // Subscribe to bridged file system changes to refresh tree and viewer in real-time
+  // Subscribe to bridged file system changes to refresh tree and viewer in real-time.
+  // The watcher sends one event per path, so directory reloads are collected and flushed
+  // once per distinct parent after a short quiet period. A reload already in flight is not
+  // duplicated; a change that arrives meanwhile queues one more reload afterwards.
   useEffect(() => {
+    if (!projectId) return;
+    const pending = new Set<string>();
+    const inFlight = new Set<string>();
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let disposed = false;
+
+    const flush = () => {
+      timer = null;
+      for (const parent of pending) {
+        if (inFlight.has(parent)) continue;
+        pending.delete(parent);
+        inFlight.add(parent);
+        void loadProjectDirectory(projectId, parent || undefined, { background: true }).finally(() => {
+          inFlight.delete(parent);
+          if (!disposed && pending.has(parent)) scheduleFlush();
+        });
+      }
+    };
+    const scheduleFlush = () => {
+      if (timer === null) timer = setTimeout(flush, FILE_RELOAD_DEBOUNCE_MS);
+    };
+    const queueReload = (path: string) => {
+      pending.add(getParentPath(path));
+      scheduleFlush();
+    };
+
     const unsubscribe = subscribeToStoreEvent('file-explorer-changed', (event) => {
       const data = event.payload;
       if (data.projectId !== projectId) return;
 
       switch (data.type) {
-        case 'created': {
-          const parentPath = getParentPath(data.path);
-          void loadProjectDirectory(projectId, parentPath || undefined);
+        case 'created':
+          queueReload(data.path);
           break;
-        }
-        case 'updated': {
+        case 'updated':
           // If the path doesn't exist in the tree, it's a newly created file
           // that the watcher reported as 'updated' (e.g., editors with atomic saves).
-          const existingNode = getNodeByPath(data.path);
-          if (!existingNode) {
-            const parentPath = getParentPath(data.path);
-            void loadProjectDirectory(projectId, parentPath || undefined);
-          }
+          if (!getNodeByPath(data.path)) queueReload(data.path);
           fileViewers.handleFileChange(data.type, data.path);
           break;
-        }
         case 'deleted':
           fileViewers.handleFileChange(data.type, data.path);
           break;
-        case 'renamed': {
+        case 'renamed':
           fileViewers.handleFileChange(data.type, data.path, data.newPath);
-          const sourceParent = getParentPath(data.path);
-          void loadProjectDirectory(projectId, sourceParent || undefined);
-          if (data.newPath) {
-            const destParent = getParentPath(data.newPath);
-            if (destParent !== sourceParent) {
-              void loadProjectDirectory(projectId, destParent || undefined);
-            }
-          }
+          queueReload(data.path);
+          if (data.newPath) queueReload(data.newPath);
           break;
-        }
       }
     });
-    return unsubscribe;
-  }, [projectId, fileViewers.handleFileChange, loadProjectDirectory]);
+    return () => {
+      disposed = true;
+      if (timer !== null) clearTimeout(timer);
+      unsubscribe();
+    };
+  }, [projectId, fileViewers.handleFileChange, loadProjectDirectory, getNodeByPath]);
 
   // ==========================================================================
   // Repo handlers
@@ -492,48 +536,29 @@ export const ReposAndFilesSection = memo(function ReposAndFilesSection({
     async (files: FileList, targetPath: string) => {
       if (!projectId) return;
 
+      const failures: string[] = [];
       for (const file of Array.from(files)) {
         try {
           const newPath = targetPath ? `${targetPath}/${file.name}` : file.name;
-          const filePath = (file as File & { path?: string }).path;
-          const isText = isTextFile(file.name);
+          const plan = planExternalFileImport(file, getDroppedFilePath(file), isTextFile(file.name));
 
-          if (file.size > MAX_EXTERNAL_FILE_BYTES) {
-            console.error(
-              `File too large to import (${formatFileSize(file.size)}). Max ${formatFileSize(MAX_EXTERNAL_FILE_BYTES)}.`
-            );
-            continue;
+          if (plan.kind === 'skip') {
+            failures.push(`${file.name}: ${plan.reason}`);
+          } else if (plan.kind === 'copy') {
+            await copyExternalProjectFile({ projectId, sourcePath: plan.sourcePath, path: newPath });
+          } else if (plan.kind === 'text') {
+            await createProjectTextFile({ projectId, path: newPath, content: await file.text() });
+          } else {
+            const data = new Uint8Array(await file.arrayBuffer());
+            await createProjectBinaryFile({ projectId, path: newPath, data });
           }
-
-          if (isText) {
-            if (filePath && file.size > MAX_TEXT_FILE_BYTES) {
-              await copyExternalProjectFile({ projectId, sourcePath: filePath, path: newPath });
-              continue;
-            }
-
-            if (file.size > MAX_TEXT_FILE_BYTES) {
-              console.error(
-                `Text file too large to import (${formatFileSize(file.size)}). Max ${formatFileSize(MAX_TEXT_FILE_BYTES)}.`
-              );
-              continue;
-            }
-
-            const content = await file.text();
-            await createProjectTextFile({ projectId, path: newPath, content });
-            continue;
-          }
-
-          if (filePath) {
-            await copyExternalProjectFile({ projectId, sourcePath: filePath, path: newPath });
-            continue;
-          }
-
-          const arrayBuffer = await file.arrayBuffer();
-          const data = new Uint8Array(arrayBuffer);
-          await createProjectBinaryFile({ projectId, path: newPath, data });
         } catch (err) {
-          console.error(`Failed to copy file ${file.name}:`, err);
+          failures.push(`${file.name}: ${err instanceof Error ? err.message : String(err)}`);
         }
+      }
+
+      if (failures.length > 0) {
+        toast.error(`Could not add ${failures.length === 1 ? 'a file' : `${failures.length} files`}. ${failures.join(' ')}`);
       }
 
       void loadProjectDirectory(projectId, targetPath || undefined);

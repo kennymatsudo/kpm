@@ -6,16 +6,23 @@ interface CustomFieldManagementDeps {
   projectKey: string | null;
   trackerType: TrackerType | null;
   selectedItem: SyncReviewItem | null;
-  updateCustomFieldOverrides: (queueEntryId: string, overrides: CustomFieldValues | null) => Promise<void>;
 }
 
 interface CustomFieldManagementResult {
   customFields: JiraCustomField[];
   isLoadingCustomFields: boolean;
   customFieldsError: string | null;
+  selectedIssueTypeId: string | null;
+}
+
+interface CustomFieldDraftDeps {
+  item: SyncReviewItem;
+  updateCustomFieldOverrides: (queueEntryId: string, overrides: CustomFieldValues | null) => Promise<void>;
+}
+
+interface CustomFieldDraftResult {
   customFieldDraft: CustomFieldValues;
   customFieldDirty: boolean;
-  selectedIssueTypeId: string | null;
   handleCustomFieldChange: (fieldId: string, value: string) => void;
   handleSaveCustomFields: () => Promise<void>;
   handleClearCustomFields: () => Promise<void>;
@@ -25,13 +32,10 @@ export function useCustomFieldManagement({
   projectKey,
   trackerType,
   selectedItem,
-  updateCustomFieldOverrides,
 }: CustomFieldManagementDeps): CustomFieldManagementResult {
   const [customFields, setCustomFields] = useState<JiraCustomField[]>([]);
   const [isLoadingCustomFields, setIsLoadingCustomFields] = useState(false);
   const [customFieldsError, setCustomFieldsError] = useState<string | null>(null);
-  const [customFieldDraft, setCustomFieldDraft] = useState<CustomFieldValues>({});
-  const [customFieldDirty, setCustomFieldDirty] = useState(false);
   const loadAvailableCustomFields = useTrackerConfigStore((state) => state.loadCustomFields);
 
   const selectedIssueTypeId = useMemo(() => {
@@ -39,12 +43,6 @@ export function useCustomFieldManagement({
     return selectedItem.queueEntry.target_issue_type_id ?? selectedItem.resolvedType?.id ?? null;
   }, [selectedItem]);
   const selectedOverrides = selectedItem?.queueEntry.custom_field_overrides ?? null;
-
-  // Reset custom field draft when selection changes
-  useEffect(() => {
-    setCustomFieldDraft(selectedItem?.queueEntry.custom_field_overrides ?? {});
-    setCustomFieldDirty(false);
-  }, [selectedItem?.queueEntry.id, selectedItem?.queueEntry.custom_field_overrides]);
 
   // Load custom fields for the selected issue type
   useEffect(() => {
@@ -81,6 +79,30 @@ export function useCustomFieldManagement({
     void loadFields();
   }, [loadAvailableCustomFields, projectKey, selectedIssueTypeId, selectedOverrides, trackerType]);
 
+  return {
+    customFields,
+    isLoadingCustomFields,
+    customFieldsError,
+    selectedIssueTypeId,
+  };
+}
+
+/**
+ * Holds the in-progress custom field edits. Call it from the component that
+ * renders the inputs so each keystroke re-renders only that component.
+ */
+export function useCustomFieldDraft({ item, updateCustomFieldOverrides }: CustomFieldDraftDeps): CustomFieldDraftResult {
+  const [customFieldDraft, setCustomFieldDraft] = useState<CustomFieldValues>(
+    item.queueEntry.custom_field_overrides ?? {}
+  );
+  const [customFieldDirty, setCustomFieldDirty] = useState(false);
+
+  // Reset custom field draft when selection changes
+  useEffect(() => {
+    setCustomFieldDraft(item.queueEntry.custom_field_overrides ?? {});
+    setCustomFieldDirty(false);
+  }, [item.queueEntry.id, item.queueEntry.custom_field_overrides]);
+
   const handleCustomFieldChange = (fieldId: string, value: string) => {
     setCustomFieldDraft((prev) => {
       const next = { ...prev };
@@ -95,31 +117,25 @@ export function useCustomFieldManagement({
   };
 
   const handleSaveCustomFields = async () => {
-    if (!selectedItem) return;
     const cleaned = Object.fromEntries(
       Object.entries(customFieldDraft).filter(([, value]) => value)
     );
     await updateCustomFieldOverrides(
-      selectedItem.queueEntry.id,
+      item.queueEntry.id,
       Object.keys(cleaned).length > 0 ? cleaned : null
     );
     setCustomFieldDirty(false);
   };
 
   const handleClearCustomFields = async () => {
-    if (!selectedItem) return;
     setCustomFieldDraft({});
     setCustomFieldDirty(false);
-    await updateCustomFieldOverrides(selectedItem.queueEntry.id, null);
+    await updateCustomFieldOverrides(item.queueEntry.id, null);
   };
 
   return {
-    customFields,
-    isLoadingCustomFields,
-    customFieldsError,
     customFieldDraft,
     customFieldDirty,
-    selectedIssueTypeId,
     handleCustomFieldChange,
     handleSaveCustomFields,
     handleClearCustomFields,

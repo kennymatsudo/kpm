@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useSyncReviewStore, useTrackerStore } from '../../../stores';
 import { DiffRenderer, StatusTransitionView } from '../DiffRenderer';
 import { StatusMappingForm } from '../mapping/StatusMappingForm';
@@ -17,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../../ui/Select';
-import { useAssociationData, useCustomFieldManagement, useSyncItemSelection } from './hooks';
+import { useAssociationData, useCustomFieldDraft, useCustomFieldManagement, useSyncItemSelection } from './hooks';
 import { TrackerIcon, trackerDeletionWarning, trackerLabelFor } from '../shared/trackerDisplay';
 import { buildItemTree, selectCheckedItems, selectValidItems } from './syncReviewSelectors';
 
@@ -52,6 +53,7 @@ function syncErrorHint(error: string, trackerLabel: string): string | null {
 export function SyncReviewModal({ projectId, associationId, onClose, onExportComplete }: Props) {
   const {
     phase,
+    reviewData,
     items,
     deleteItems,
     exportResult,
@@ -65,7 +67,25 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
     removeDeleteFromReview,
     updateCustomFieldOverrides,
     reset,
-  } = useSyncReviewStore();
+  } = useSyncReviewStore(
+    useShallow((state) => ({
+      phase: state.phase,
+      reviewData: state.reviewData,
+      items: state.items,
+      deleteItems: state.deleteItems,
+      exportResult: state.exportResult,
+      error: state.error,
+      startReview: state.startReview,
+      toggleItemApproval: state.toggleItemApproval,
+      toggleAllValid: state.toggleAllValid,
+      setDeleteDecision: state.setDeleteDecision,
+      executeApproved: state.executeApproved,
+      removeFromReview: state.removeFromReview,
+      removeDeleteFromReview: state.removeDeleteFromReview,
+      updateCustomFieldOverrides: state.updateCustomFieldOverrides,
+      reset: state.reset,
+    }))
+  );
 
   // Extracted hooks
   const { projectKey, trackerType, customFieldDefaults, statusMapping } = useAssociationData({ projectId, associationId });
@@ -85,13 +105,8 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
     customFields,
     isLoadingCustomFields,
     customFieldsError,
-    customFieldDraft,
-    customFieldDirty,
     selectedIssueTypeId,
-    handleCustomFieldChange,
-    handleSaveCustomFields,
-    handleClearCustomFields,
-  } = useCustomFieldManagement({ projectKey, trackerType, selectedItem, updateCustomFieldOverrides });
+  } = useCustomFieldManagement({ projectKey, trackerType, selectedItem });
 
   // Start review on mount
   useEffect(() => {
@@ -328,6 +343,14 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
 
   return (
     <ModalShell onClose={handleClose} wide trackerLabel={trackerLabel} headerAction={headerAction}>
+      {reviewData && reviewData.warnings.length > 0 && (
+        <div className="flex-shrink-0 px-4 py-2 border-b border-warning/30 bg-warning/10 space-y-0.5">
+          {reviewData.warnings.map((warning) => (
+            <p key={warning} className="text-warning text-xs">{warning}</p>
+          ))}
+        </div>
+      )}
+
       {/* Split view container */}
       <div className="flex-1 flex min-h-0 overflow-hidden">
         {/* Left panel - Item list */}
@@ -425,11 +448,7 @@ export function SyncReviewModal({ projectId, associationId, onClose, onExportCom
               customFieldDefaults={customFieldDefaults}
               isLoadingCustomFields={isLoadingCustomFields}
               customFieldsError={customFieldsError}
-              customFieldDraft={customFieldDraft}
-              customFieldDirty={customFieldDirty}
-              onCustomFieldChange={handleCustomFieldChange}
-              onSaveCustomFields={handleSaveCustomFields}
-              onClearCustomFields={handleClearCustomFields}
+              updateCustomFieldOverrides={updateCustomFieldOverrides}
               trackerLabel={trackerLabel}
               onConfigureMappings={projectKey ? () => setMappingMode(true) : undefined}
             />
@@ -725,8 +744,8 @@ function ItemRow({ item, depth = 0, isSelected, onSelect, onToggle, trackerLabel
             </svg>
           </div>
         )}
-        {item.hasConflict && (
-          <div className="w-4 h-4 rounded-full bg-warning/12 flex items-center justify-center" title={`Modified in ${trackerLabel}`}>
+        {(item.hasConflict || item.contentLossWarning) && (
+          <div className="w-4 h-4 rounded-full bg-warning/12 flex items-center justify-center" title={item.contentLossWarning ?? `Modified in ${trackerLabel}`}>
             <svg className="w-2.5 h-2.5 text-warning" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01" />
             </svg>
@@ -906,11 +925,7 @@ interface DetailPanelProps {
   customFieldDefaults: CustomFieldValues | null;
   isLoadingCustomFields: boolean;
   customFieldsError: string | null;
-  customFieldDraft: CustomFieldValues;
-  customFieldDirty: boolean;
-  onCustomFieldChange: (fieldId: string, value: string) => void;
-  onSaveCustomFields: () => void;
-  onClearCustomFields: () => void;
+  updateCustomFieldOverrides: (queueEntryId: string, overrides: CustomFieldValues | null) => Promise<void>;
   trackerLabel: string;
   onConfigureMappings?: () => void;
 }
@@ -925,14 +940,17 @@ function DetailPanel({
   customFieldDefaults,
   isLoadingCustomFields,
   customFieldsError,
-  customFieldDraft,
-  customFieldDirty,
-  onCustomFieldChange,
-  onSaveCustomFields,
-  onClearCustomFields,
+  updateCustomFieldOverrides,
   trackerLabel,
   onConfigureMappings,
 }: DetailPanelProps) {
+  const {
+    customFieldDraft,
+    customFieldDirty,
+    handleCustomFieldChange: onCustomFieldChange,
+    handleSaveCustomFields: onSaveCustomFields,
+    handleClearCustomFields: onClearCustomFields,
+  } = useCustomFieldDraft({ item, updateCustomFieldOverrides });
   const isCreate = item.queueEntry.operation === 'create';
   const hasErrors = item.validationErrors.length > 0;
   const descriptionForReview = item.resolvedDescription ?? item.planItem.description;
@@ -1004,6 +1022,17 @@ function DetailPanel({
                 <p key={i} className="text-tiny text-danger leading-tight">{err}</p>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {item.contentLossWarning && (
+        <div className="mx-4 mt-3 p-2.5 rounded-lg bg-warning/8 border border-warning/15 flex-shrink-0">
+          <div className="flex items-start gap-2">
+            <svg className="w-3.5 h-3.5 text-warning flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-tiny text-warning leading-tight">{item.contentLossWarning}</p>
           </div>
         </div>
       )}

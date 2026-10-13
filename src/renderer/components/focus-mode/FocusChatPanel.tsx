@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Markdown } from 'markdown-to-jsx';
 import type { ChatChoiceView, ChatMessage } from '../../../shared/types';
 import { useProjectDomainStore } from '../../stores';
 import { cancelChatSession, changeChatChoice, getFocusDocumentChatSession, sendChatMessage, subscribeToChatEvents } from '../../services/chatService';
 import { useFocusModeStore } from '../../stores/focusModeStore';
-import { markdownOptions, transformPlanRefs } from '../../utils/markdown';
+import { markdownOptions } from '../../utils/markdown';
 import { ChevronRightIcon, CloseIcon } from '../icons';
+import { StaticMarkdown, StreamingMarkdown } from '../chat/StreamingMarkdown';
 import { ChatChoiceControls } from '../chat/ChatChoiceControls';
 import { PermissionPrompt } from '../permission/PermissionPrompt';
 
@@ -40,7 +41,7 @@ function toFocusChatMessages(messages: ChatMessage[]): FocusChatMessage[] {
   }));
 }
 
-export function FocusChatPanel({
+export const FocusChatPanel = memo(function FocusChatPanel({
   isOpen,
   sessionId,
   docPath,
@@ -59,6 +60,31 @@ export function FocusChatPanel({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const streamRef = useRef('');
+  const frameRef = useRef<number | null>(null);
+
+  const cancelPendingFlush = useCallback(() => {
+    if (frameRef.current === null) return;
+    cancelAnimationFrame(frameRef.current);
+    frameRef.current = null;
+  }, []);
+
+  // Chunks arrive faster than the screen paints; one state update per frame
+  // keeps the markdown from re-parsing on every chunk.
+  const scheduleFlush = useCallback(() => {
+    if (frameRef.current !== null) return;
+    frameRef.current = requestAnimationFrame(() => {
+      frameRef.current = null;
+      setStreamingContent(streamRef.current);
+    });
+  }, []);
+
+  const resetStream = useCallback(() => {
+    cancelPendingFlush();
+    streamRef.current = '';
+    setStreamingContent('');
+  }, [cancelPendingFlush]);
+
+  useEffect(() => cancelPendingFlush, [cancelPendingFlush]);
 
   const canSend = !!projectId && !!sessionId && !!docPath && !isStreaming && !isLoadingSession
     && choice?.send.allowed !== false && draft.trim().length > 0;
@@ -73,20 +99,18 @@ export function FocusChatPanel({
   useEffect(() => {
     setMessages([]);
     setDraft('');
-    setStreamingContent('');
-    streamRef.current = '';
+    resetStream();
     setIsStreaming(false);
     setIsLoadingSession(false);
     setError(null);
     setChoice(null);
-  }, [projectId, docPath]);
+  }, [projectId, docPath, resetStream]);
 
   useEffect(() => {
     if (sessionId) return;
-    setStreamingContent('');
-    streamRef.current = '';
+    resetStream();
     setIsStreaming(false);
-  }, [sessionId]);
+  }, [sessionId, resetStream]);
 
   useEffect(() => {
     if (!isOpen || !projectId || !docPath || choice) return;
@@ -143,11 +167,11 @@ export function FocusChatPanel({
       onChunk: (data) => {
         if (data.projectId !== projectId || data.chatSessionId !== sessionId) return;
         streamRef.current += data.text;
-        setStreamingContent(streamRef.current);
+        scheduleFlush();
         setIsStreaming(true);
       },
-      onFileUpdate: (data) => {
-        if (data.projectId !== projectId || data.chatSessionId !== sessionId) return;
+      onProposal: (data) => {
+        if (data.kind !== 'file-update' || data.projectId !== projectId || data.chatSessionId !== sessionId) return;
         setMessages((current) => [
           ...current,
           {
@@ -166,8 +190,7 @@ export function FocusChatPanel({
             { id: crypto.randomUUID(), role: 'assistant', content: text },
           ]);
         }
-        streamRef.current = '';
-        setStreamingContent('');
+        resetStream();
         setIsStreaming(false);
       },
       onError: (data) => {
@@ -189,8 +212,7 @@ export function FocusChatPanel({
             { id: crypto.randomUUID(), role: 'assistant', content: text },
           ]);
         }
-        streamRef.current = '';
-        setStreamingContent('');
+        resetStream();
         setIsStreaming(false);
       },
       onSessionConnecting: (data) => {
@@ -201,7 +223,7 @@ export function FocusChatPanel({
     });
 
     return () => unsubscribe();
-  }, [isOpen, projectId, sessionId]);
+  }, [isOpen, projectId, sessionId, scheduleFlush, resetStream]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -226,8 +248,7 @@ export function FocusChatPanel({
     setDraft('');
     setError(null);
     setIsStreaming(true);
-    streamRef.current = '';
-    setStreamingContent('');
+    resetStream();
 
     void sendChatMessage({
       projectId,
@@ -250,7 +271,7 @@ export function FocusChatPanel({
       setError(sendError instanceof Error ? sendError.message : 'Failed to send message');
       setIsStreaming(false);
     });
-  }, [docContent, docPath, docTitle, draft, isLoadingSession, isStreaming, projectId, sessionId]);
+  }, [docContent, docPath, docTitle, draft, isLoadingSession, isStreaming, projectId, resetStream, sessionId]);
 
   const updateChoice = useCallback(async (intent: Parameters<typeof changeChatChoice>[0]['intent']) => {
     if (!projectId || !sessionId || !choice) return;
@@ -328,7 +349,7 @@ export function FocusChatPanel({
               {streamingContent ? (
                 <>
                   <div className="prose-document prose-panel text-sm">
-                    <Markdown options={markdownOptions}>{transformPlanRefs(streamingContent)}</Markdown>
+                    <StreamingMarkdown content={streamingContent} />
                   </div>
                   {isStreaming && <FocusChatActivity className="mt-3 border-t border-border-subtle/60 pt-2" />}
                 </>
@@ -400,7 +421,7 @@ export function FocusChatPanel({
       </div>
     </aside>
   );
-}
+});
 
 function FocusChatActivity({ className = '' }: { className?: string }) {
   return (
@@ -411,7 +432,7 @@ function FocusChatActivity({ className = '' }: { className?: string }) {
   );
 }
 
-function FocusChatBubble({ message }: { message: FocusChatMessage }) {
+const FocusChatBubble = memo(function FocusChatBubble({ message }: { message: FocusChatMessage }) {
   if (message.role === 'status') {
     return (
       <div className="min-w-0 overflow-hidden rounded-md border border-accent/20 bg-accent-subtle px-3 py-2 text-xs text-accent break-words">
@@ -434,10 +455,10 @@ function FocusChatBubble({ message }: { message: FocusChatMessage }) {
           <div className="whitespace-pre-wrap break-words">{message.content}</div>
         ) : (
           <div className="prose-document prose-panel">
-            <Markdown options={markdownOptions}>{transformPlanRefs(message.content)}</Markdown>
+            <StaticMarkdown content={message.content} />
           </div>
         )}
       </div>
     </div>
   );
-}
+});

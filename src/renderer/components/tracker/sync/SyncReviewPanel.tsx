@@ -1,3 +1,4 @@
+import { useShallow } from 'zustand/react/shallow';
 import { useSyncStore } from '../../../stores';
 import { SyncConflictCard } from './SyncConflictCard';
 import { SyncDeletedSection } from './SyncDeletedSection';
@@ -29,7 +30,22 @@ export function SyncReviewPanel({ projectId, onClose, onSyncComplete }: Props) {
     setDeletedDecision,
     applySync,
     discardSync,
-  } = useSyncStore();
+  } = useSyncStore(
+    useShallow((state) => ({
+      syncPreview: state.syncPreview,
+      syncProgress: state.syncProgress,
+      error: state.error,
+      isSyncing: state.isSyncing,
+      resolutions: state.resolutions,
+      deletedAction: state.deletedAction,
+      deletedDecisions: state.deletedDecisions,
+      setResolution: state.setResolution,
+      setDeletedAction: state.setDeletedAction,
+      setDeletedDecision: state.setDeletedDecision,
+      applySync: state.applySync,
+      discardSync: state.discardSync,
+    }))
+  );
 
   const handleClose = () => {
     discardSync();

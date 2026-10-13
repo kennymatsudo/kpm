@@ -14,7 +14,7 @@ interface SidebarProps {
   onFileOpen?: (source: 'project', path: string) => void;
 }
 
-export function Sidebar({ onDeleteProject: _onDeleteProject, onNewProject, onFileOpen }: SidebarProps) {
+export const Sidebar = memo(function Sidebar({ onDeleteProject: _onDeleteProject, onNewProject, onFileOpen }: SidebarProps) {
   const currentProjectId = useProjectDomainStore((state) => state.currentProjectId);
 
   return (
@@ -63,7 +63,7 @@ export function Sidebar({ onDeleteProject: _onDeleteProject, onNewProject, onFil
       <SidebarSettingsButton />
     </aside>
   );
-}
+});
 
 const SidebarSettingsButton = memo(function SidebarSettingsButton() {
   const setShowSettingsModal = useSettingsUIStore((state) => state.setIsOpen);

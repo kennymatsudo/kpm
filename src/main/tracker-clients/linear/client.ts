@@ -1,4 +1,4 @@
-import { GraphQLClient, gql } from 'graphql-request';
+import type { GraphQLClient } from 'graphql-request';
 import type {
   TrackerClient,
   ExternalIssue,
@@ -18,6 +18,15 @@ import {
   parseLinearFilter,
   type LinearIssueFilterInput,
 } from './filter-types';
+
+// graphql-request loads on the first request, so it stays off the startup path.
+// Its own `gql` only joins the template parts into a string, which is all
+// `request` needs.
+const gql = String.raw;
+
+interface LinearGraphQLClient {
+  request<T>(document: string, variables?: Record<string, unknown>): Promise<T>;
+}
 
 const LINEAR_ENDPOINT = 'https://api.linear.app/graphql';
 const PAGE_SIZE = 50;
@@ -123,13 +132,22 @@ interface LinearProject { id: string; name: string }
 export class LinearClient implements TrackerClient {
   readonly type = 'linear' as const;
   readonly documentCodec = linearMarkdownCodec;
-  private client: GraphQLClient;
+  private client: LinearGraphQLClient;
   private viewerIdPromise: Promise<string | null> | null = null;
 
   constructor(credentials: LinearCredentials) {
-    this.client = new GraphQLClient(LINEAR_ENDPOINT, {
-      headers: { Authorization: credentials.apiToken },
-    });
+    let graphqlClient: GraphQLClient | undefined;
+    this.client = {
+      request: async <T>(document: string, variables?: Record<string, unknown>): Promise<T> => {
+        if (!graphqlClient) {
+          const { GraphQLClient: GraphQLClientCtor } = await import('graphql-request');
+          graphqlClient = new GraphQLClientCtor(LINEAR_ENDPOINT, {
+            headers: { Authorization: credentials.apiToken },
+          });
+        }
+        return graphqlClient.request<T>(document, variables);
+      },
+    };
   }
 
   async testConnection(): Promise<{ success: boolean; error?: string }> {
@@ -192,6 +210,14 @@ export class LinearClient implements TrackerClient {
     }
     const parsed = parseLinearFilter(filter);
     yield* this.queryIssues(buildLinearIssueFilter(parsed));
+  }
+
+  async hasIssuesUpdatedSince(filter: string, since: Date): Promise<boolean> {
+    const input = { ...buildLinearIssueFilter(parseLinearFilter(filter)), updatedAt: { gt: since.toISOString() } };
+    for await (const _issue of this.queryIssues(input, 1)) {
+      return true;
+    }
+    return false;
   }
 
   async fetchIssue(issueKey: string): Promise<ExternalIssue> {

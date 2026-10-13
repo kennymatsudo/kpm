@@ -2,19 +2,15 @@ import { CloseIcon } from '../icons';
 import { SearchInput } from '../planning/SearchInput';
 import { StatusFilter } from '../planning/StatusFilter';
 import { PeopleFilter } from '../planning/PeopleFilter';
-import { ViewSwitcher, type ViewMode } from '../planning/ViewSwitcher';
-import type { StatusCategory } from '../../../shared/types';
+import { useShallow } from 'zustand/react/shallow';
+import { usePlanViewStore } from '../../stores';
+import type { PlanItem, StatusCategory } from '../../../shared/types';
 import type { PersonFilterOption } from './hooks/useLayoutPlanViewState';
+import { usePlanSearchResultCount } from './hooks/usePlanSearchResultCount';
 
 interface TopBarPlanningControlsProps {
   isVisible: boolean;
-  viewMode: ViewMode;
-  onViewModeChange: (mode: ViewMode) => void;
-  selectedItemCount: number;
-  onClearSelection: () => void;
-  searchQuery: string;
-  onSearchChange: (query: string) => void;
-  searchResultCount: number | undefined;
+  filteredPlannedItems: PlanItem[];
   hiddenStatusCategories: Set<StatusCategory>;
   onHiddenStatusCategoriesChange: (categories: Set<StatusCategory>) => void;
   selectedPeopleFilterKeys: Set<string>;
@@ -25,13 +21,7 @@ interface TopBarPlanningControlsProps {
 
 export function TopBarPlanningControls({
   isVisible,
-  viewMode,
-  onViewModeChange,
-  selectedItemCount,
-  onClearSelection,
-  searchQuery,
-  onSearchChange,
-  searchResultCount,
+  filteredPlannedItems,
   hiddenStatusCategories,
   onHiddenStatusCategoriesChange,
   selectedPeopleFilterKeys,
@@ -39,21 +29,27 @@ export function TopBarPlanningControls({
   personFilterOptions,
   statusCounts,
 }: TopBarPlanningControlsProps) {
+  const selectedItemCount = usePlanViewStore((state) => state.selectedItemIds.size);
+  const { searchQuery, setSearchQuery, clearSelectedItemIds } = usePlanViewStore(
+    useShallow((state) => ({
+      searchQuery: state.searchQuery,
+      setSearchQuery: state.setSearchQuery,
+      clearSelectedItemIds: state.clearSelectedItemIds,
+    }))
+  );
+  const searchResultCount = usePlanSearchResultCount(filteredPlannedItems);
+
   if (!isVisible) {
     return null;
   }
 
   return (
     <div className="flex items-center gap-2 rounded-lg bg-surface-2/40 px-1.5 py-0.5">
-      <div className="flex-shrink-0">
-        <ViewSwitcher value={viewMode} onChange={onViewModeChange} />
-      </div>
-
       {selectedItemCount > 0 && (
         <div className="flex-shrink-0 flex items-center gap-1.5 px-2 py-1 bg-accent/10 rounded-md">
           <span className="text-xs font-medium text-accent whitespace-nowrap">{selectedItemCount} selected</span>
           <button
-            onClick={onClearSelection}
+            onClick={clearSelectedItemIds}
             className="p-0.5 hover:bg-accent/20 rounded transition-colors"
             title="Clear selection"
             aria-label="Clear selection"
@@ -68,7 +64,7 @@ export function TopBarPlanningControls({
       <div className="flex-shrink min-w-[120px] max-w-[200px]">
         <SearchInput
           value={searchQuery}
-          onChange={onSearchChange}
+          onChange={setSearchQuery}
           placeholder="Search items..."
           resultCount={searchResultCount}
         />

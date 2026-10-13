@@ -44,6 +44,21 @@ export interface TrackerServiceDeps {
   clientService: TrackerClientServiceLike;
   importService: Pick<ImportService, 'generateImportPreview' | 'importIssues'>;
   syncService: Pick<SyncService, 'generateSyncPreview' | 'applySyncChanges'>;
+  now?: () => number;
+}
+
+/** A background check does a full fetch at least this often, so deletions (which `updated` filters never see) still surface. */
+export const FULL_SYNC_CHECK_INTERVAL_MS = 30 * 60 * 1000;
+/** Backdates the "changed since" cutoff to absorb clock skew between this machine and the tracker. */
+export const SYNC_CHECK_SAFETY_MARGIN_MS = 60 * 1000;
+
+export type SyncCheckResult = { unchanged: true } | { unchanged: false; preview: SyncPreview };
+
+interface CleanSyncCheck {
+  /** When the most recent check began; the next cheap query asks for changes after this. */
+  checkedFromMs: number;
+  /** When the last full preview began. */
+  fullFetchMs: number;
 }
 
 function mapIssues(issues: Awaited<ReturnType<TrackerClient['searchIssues']>>): IssueSummary[] {
@@ -64,6 +79,9 @@ export type CredentialInfoRow =
   | { type: 'linear'; configured: true };
 
 export function createTrackerService(deps: TrackerServiceDeps) {
+  const now = deps.now ?? Date.now;
+  const cleanChecks = new Map<string, CleanSyncCheck>();
+
   const getClientForAssociation = async (associationId: string): Promise<TrackerClient> => {
     const association = deps.tracker.getAssociationById(associationId);
     if (!association) {
@@ -315,6 +333,45 @@ export function createTrackerService(deps: TrackerServiceDeps) {
       }, 'Failed to generate sync preview. Check your tracker connection.');
     },
 
+    /**
+     * Background "is there anything to review" check. Asks the tracker whether
+     * anything changed since the last clean full preview and only builds a new
+     * preview when it did, when there is no clean baseline, or when the baseline
+     * is older than FULL_SYNC_CHECK_INTERVAL_MS (tracker deletions leave no
+     * `updated` trace). A preview that found changes is never used as a baseline,
+     * so pending changes keep being reported until they are applied.
+     */
+    checkSyncChanges(projectId: string, associationId: string): AsyncResult<SyncCheckResult> {
+      const association = deps.tracker.getAssociationById(associationId);
+      if (!association) {
+        return Promise.resolve(failure('Association not found. It may have been deleted.'));
+      }
+
+      return wrapAsync(async () => {
+        const client = await deps.clientService.getClient(association.tracker_type);
+        const startedMs = now();
+        const baseline = cleanChecks.get(associationId);
+
+        if (baseline && startedMs - baseline.fullFetchMs < FULL_SYNC_CHECK_INTERVAL_MS) {
+          const since = new Date(baseline.checkedFromMs - SYNC_CHECK_SAFETY_MARGIN_MS);
+          const changed = await client.hasIssuesUpdatedSince(association.issue_filter, since);
+          if (!changed) {
+            cleanChecks.set(associationId, { ...baseline, checkedFromMs: startedMs });
+            return { unchanged: true } as const;
+          }
+        }
+
+        const preview = await deps.syncService.generateSyncPreview(projectId, associationId, client);
+        const { new: added, updated, conflicts, deleted } = preview.stats;
+        if (added + updated + conflicts + deleted === 0) {
+          cleanChecks.set(associationId, { checkedFromMs: startedMs, fullFetchMs: startedMs });
+        } else {
+          cleanChecks.delete(associationId);
+        }
+        return { unchanged: false, preview } as const;
+      }, 'Failed to check for tracker changes. Check your tracker connection.');
+    },
+
     applySyncChanges(
       projectId: string,
       preview: SyncPreview,
@@ -322,6 +379,7 @@ export function createTrackerService(deps: TrackerServiceDeps) {
       deletedAction: DeletedItemAction,
       deletedDecisions: Map<string, 'keep' | 'delete'>
     ): SyncResult {
+      cleanChecks.delete(preview.link_id);
       return deps.syncService.applySyncChanges(
         projectId,
         preview,

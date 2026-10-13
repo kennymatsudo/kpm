@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useCallback, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type {
   ChatChoiceIntent,
@@ -54,7 +54,7 @@ function ChevronIcon() {
   );
 }
 
-function ChoiceSelect({
+const ChoiceSelect = memo(function ChoiceSelect({
   label,
   value,
   options,
@@ -113,9 +113,9 @@ function ChoiceSelect({
       </SelectContent>
     </Select>
   );
-}
+});
 
-export function ChatChoiceControls({
+export const ChatChoiceControls = memo(function ChatChoiceControls({
   choice,
   disabled = false,
   ariaLabelPrefix = 'Chat',
@@ -137,34 +137,51 @@ export function ChatChoiceControls({
   const model = provider?.models.find((candidate) => candidate.id === choice.selected.model);
   const controlsDisabled = disabled || !choice.controlsEnabled;
 
-  const providerOptions: ChoiceOption[] = choice.providers.map((candidate) => ({
-    value: candidate.provider,
-    label: candidate.label,
-    detail: candidate.available ? undefined : candidate.detail,
-    available: candidate.available,
-  }));
-
-  const modelOptions: ChoiceOption[] = (provider?.models ?? []).map((candidate) => {
-    const piOption = choice.selected.provider === 'pi'
-      ? piProviders.find((option) => piProviderModelSelector(option) === candidate.id)
-      : undefined;
-    const piDisplay = piOption ? getPiOptionDisplay(piOption) : null;
-    return {
-      value: candidate.id,
-      label: piDisplay?.primary ?? candidate.label,
-      detail: candidate.available
-        ? piDisplay?.secondary
-        : candidate.unavailableReason,
+  const providerOptions = useMemo<ChoiceOption[]>(
+    () => choice.providers.map((candidate) => ({
+      value: candidate.provider,
+      label: candidate.label,
+      detail: candidate.available ? undefined : candidate.detail,
       available: candidate.available,
-    };
-  });
+    })),
+    [choice.providers]
+  );
 
-  const effortOptions: ChoiceOption[] = (model?.effortLevels ?? []).map((level) => ({
-    value: level.value,
-    label: level.label,
-  }));
+  const modelOptions = useMemo<ChoiceOption[]>(
+    () => (provider?.models ?? []).map((candidate) => {
+      const piOption = choice.selected.provider === 'pi'
+        ? piProviders.find((option) => piProviderModelSelector(option) === candidate.id)
+        : undefined;
+      const piDisplay = piOption ? getPiOptionDisplay(piOption) : null;
+      return {
+        value: candidate.id,
+        label: piDisplay?.primary ?? candidate.label,
+        detail: candidate.available
+          ? piDisplay?.secondary
+          : candidate.unavailableReason,
+        available: candidate.available,
+      };
+    }),
+    [provider, choice.selected.provider, piProviders]
+  );
 
-  const selectModel = (nextModel: string) => {
+  const effortOptions = useMemo<ChoiceOption[]>(
+    () => (model?.effortLevels ?? []).map((level) => ({
+      value: level.value,
+      label: level.label,
+    })),
+    [model]
+  );
+
+  const selectProvider = useCallback(
+    (nextProvider: string) => void onChange({
+      type: 'choose_provider',
+      provider: nextProvider as ChatChoiceView['selected']['provider'],
+    }),
+    [onChange]
+  );
+
+  const selectModel = useCallback((nextModel: string) => {
     if (choice.selected.provider === 'pi') {
       const option = piProviders.find((candidate) => piProviderModelSelector(candidate) === nextModel);
       if (option && !option.safe && !acknowledgedUnsafeProviders.has(option.provider)) {
@@ -173,7 +190,15 @@ export function ChatChoiceControls({
       }
     }
     void onChange({ type: 'choose_model', model: nextModel });
-  };
+  }, [choice.selected.provider, piProviders, acknowledgedUnsafeProviders, onChange]);
+
+  const selectEffort = useCallback(
+    (effort: string) => void onChange({
+      type: 'choose_effort',
+      effort: effort as NonNullable<ChatChoiceView['selected']['effort']>,
+    }),
+    [onChange]
+  );
 
   return (
     <>
@@ -184,10 +209,7 @@ export function ChatChoiceControls({
           options={providerOptions}
           disabled={controlsDisabled}
           className="max-w-24"
-          onChange={(nextProvider) => void onChange({
-            type: 'choose_provider',
-            provider: nextProvider as ChatChoiceView['selected']['provider'],
-          })}
+          onChange={selectProvider}
         />
         {/* The model name is the one label worth reading, so it absorbs the
             slack the fixed-width provider and effort selects leave — but only
@@ -208,10 +230,7 @@ export function ChatChoiceControls({
             options={effortOptions}
             disabled={controlsDisabled}
             className="max-w-28"
-            onChange={(effort) => void onChange({
-              type: 'choose_effort',
-              effort: effort as NonNullable<ChatChoiceView['selected']['effort']>,
-            })}
+            onChange={selectEffort}
           />
         ) : null}
         {!choice.send.allowed ? (
@@ -248,4 +267,4 @@ export function ChatChoiceControls({
       ) : null}
     </>
   );
-}
+});

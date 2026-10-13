@@ -13,6 +13,7 @@ import type {
 } from '../common/types';
 import { TrackerError } from '../common/errors';
 import { jiraAdfCodec } from '../../documents';
+import { findUnrepresentableContent } from './adf-to-markdown';
 import { getConfig } from '../../config';
 
 const DEFAULT_BATCH_SIZE = 50;
@@ -243,6 +244,26 @@ export class JiraClient implements TrackerClient {
     }
   }
 
+  /**
+   * Jira reads absolute `updated` dates in the signed-in user's timezone, which
+   * the client cannot see, so the cutoff is a relative offset in minutes.
+   */
+  async hasIssuesUpdatedSince(jql: string, since: Date): Promise<boolean> {
+    const minutes = Math.max(1, Math.ceil((Date.now() - since.getTime()) / 60_000));
+    const filter = jql.replace(/\s+order\s+by\s[^)]*$/i, '').trim();
+    const scoped = filter ? `(${filter}) AND updated >= -${minutes}m` : `updated >= -${minutes}m`;
+    try {
+      const result = await this.client.issueSearch.searchAndReconsileIssuesUsingJql({
+        jql: scoped,
+        maxResults: 1,
+        fields: ['key'],
+      });
+      return (result.issues ?? []).length > 0;
+    } catch (error) {
+      throw TrackerError.fromJiraError(error);
+    }
+  }
+
   async fetchIssue(issueKey: string): Promise<ExternalIssue> {
     try {
       const issue = await this.client.issues.getIssue({ issueIdOrKey: issueKey });
@@ -267,6 +288,7 @@ export class JiraClient implements TrackerClient {
       creator: this.mapUser(issue.fields.creator),
       updatedAt: issue.fields.updated,
       url: `https://${this.siteUrl}/browse/${issue.key}`,
+      unrepresentableContent: findUnrepresentableContent(issue.fields.description),
     };
   }
 
@@ -358,7 +380,7 @@ export class JiraClient implements TrackerClient {
 
       const labelSet = new Set<string>();
       for (const issue of result.issues ?? []) {
-        const labels = issue.fields?.labels as string[] | undefined;
+        const labels = issue.fields?.labels;
         labels?.forEach(label => labelSet.add(label));
       }
 

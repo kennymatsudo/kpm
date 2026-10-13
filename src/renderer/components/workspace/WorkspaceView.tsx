@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useFileTreeStore } from '../../stores';
 import { documentId, isDocumentDirty, useWorkspaceStore } from '../../stores/workspaceStore';
@@ -31,7 +31,7 @@ interface WorkspaceViewProps {
  * Note: Pending file approvals (from Claude-generated content) are now handled
  * by ApprovalOverlays via Proposed Change disposal.
  */
-export function WorkspaceView({ projectId, chatCollapsed, onShowChat }: WorkspaceViewProps) {
+export const WorkspaceView = memo(function WorkspaceView({ projectId, chatCollapsed, onShowChat }: WorkspaceViewProps) {
   // Deliberately the id and not the document: content lives in the store, so
   // subscribing to the object here would re-render the workspace and the chat
   // panel on every keystroke. The editor subscribes to its own document.
@@ -41,10 +41,8 @@ export function WorkspaceView({ projectId, chatCollapsed, onShowChat }: Workspac
 
   useDocumentAutosave();
 
-  // File tree store for highlighting recently changed files
-  const { markRecentlyChanged, expandToPath, refreshDirectory } = useFileTreeStore(
+  const { expandToPath, refreshDirectory } = useFileTreeStore(
     useShallow((state) => ({
-      markRecentlyChanged: state.markRecentlyChanged,
       expandToPath: state.expandToPath,
       refreshDirectory: state.refreshDirectory,
     }))
@@ -101,17 +99,11 @@ export function WorkspaceView({ projectId, chatCollapsed, onShowChat }: Workspac
     return unsubscribe;
   }, [projectId]);
 
-  // Subscribe to bridged Claude file updates for file tree highlighting
+  // Subscribe to bridged Claude file updates to reveal them in the file tree
   useEffect(() => {
     const unsubscribe = subscribeToStoreEvent('chat-file-updated', (event) => {
       const data = event.payload;
       if (data.projectId !== projectId) return;
-
-      // Determine if this is a create or modify
-      const changeType = data.oldContent === null ? 'created' : 'modified';
-
-      // Highlight the file in the tree
-      markRecentlyChanged(data.filePath, changeType);
 
       // Only refresh/expand for relative project paths — skip absolute paths
       // (e.g. when Claude mistakenly proposes a path inside a connected repo)
@@ -121,7 +113,7 @@ export function WorkspaceView({ projectId, chatCollapsed, onShowChat }: Workspac
       }
     });
     return unsubscribe;
-  }, [projectId, markRecentlyChanged, expandToPath, refreshDirectory]);
+  }, [projectId, expandToPath, refreshDirectory]);
 
   // Workspace chat resize — pass containerRef so the max chat width accounts for sidebar space
   const containerRef = useRef<HTMLDivElement>(null);
@@ -131,6 +123,9 @@ export function WorkspaceView({ projectId, chatCollapsed, onShowChat }: Workspac
     PANEL_SIZES.workspaceChat,
     { containerRef }
   );
+
+  // The chat panel is memoized, so its style must keep one identity between drags.
+  const chatPanelStyle = useMemo(() => ({ width: workspaceChatWidth }), [workspaceChatWidth]);
 
   // Track if the editor panel is showing, for layout transitions
   const isEditing = hasOpenDocuments;
@@ -212,7 +207,7 @@ export function WorkspaceView({ projectId, chatCollapsed, onShowChat }: Workspac
             ${editorVisible ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4'}
           `}
         >
-          <div className="flex flex-col h-full">
+          <div data-tab-scope="documents" className="flex flex-col h-full">
             <DocumentTabStrip />
             <div className="flex-1 min-h-0">
               <ErrorBoundary name="FileEditor">
@@ -253,9 +248,9 @@ export function WorkspaceView({ projectId, chatCollapsed, onShowChat }: Workspac
         <ChatPanel
           view="workspace"
           className={isEditing ? 'flex-shrink-0' : 'flex-1'}
-          style={isEditing ? { width: workspaceChatWidth } : undefined}
+          style={isEditing ? chatPanelStyle : undefined}
         />
       )}
     </div>
   );
-}
+});

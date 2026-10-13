@@ -34,6 +34,7 @@ export interface LinearIssueFilterInput {
   or?: LinearIssueFilterInput[];
   and?: LinearIssueFilterInput[];
   title?: { containsIgnoreCase: string };
+  updatedAt?: { gt: string };
   number?: { eq: number };
 }
 

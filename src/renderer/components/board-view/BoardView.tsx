@@ -17,6 +17,7 @@ import type { RangeSelectHandler } from '../../utils/rangeSelection';
 import { getBoardDropDecision } from './dropBehavior';
 import { isMergeQueueSession } from './mergeQueue';
 import { useBoardKeyboard } from './useBoardKeyboard';
+import { useStableCallback } from './useStableCallback';
 import { ConfirmActionDialog } from '../ui';
 
 /**
@@ -168,9 +169,6 @@ export const BoardView = memo(function BoardView({
     [currentProjectId]
   );
 
-  // Drag state
-  const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
-
   // Build parent map for breadcrumb lookups
   const parentMap = useMemo(() => {
     const map = new Map<string, PlanItem>();
@@ -260,9 +258,9 @@ export const BoardView = memo(function BoardView({
   }, []);
 
   // Agent start handler - delegates to parent
-  const handleStartAgent = useCallback((itemId: string) => {
+  const handleStartAgent = useStableCallback((itemId: string) => {
     onStartAgentProp?.(itemId);
-  }, [onStartAgentProp]);
+  });
 
   // Agent stop handler
   const handleStopAgent = useCallback(async (devSessionId: string) => {
@@ -289,17 +287,13 @@ export const BoardView = memo(function BoardView({
   const requestMove = useCallback(
     (itemId: string, newStatus: StatusCategory) => {
       const item = allItems.find((candidate) => candidate.id === itemId);
-      if (!item) {
-        setDraggedItemId(null);
-        return;
-      }
+      if (!item) return;
 
       const previousStatus = resolveStatusCategory(item) ?? 'not_started';
       const activeSession = useDevSessionsStore.getState().sessions.find(
         (s) => s.plan_item_id === itemId && ['pending', 'active'].includes(s.status)
       );
       const decision = getBoardDropDecision(previousStatus, newStatus, !!activeSession);
-      setDraggedItemId(null);
 
       if (decision.action === 'noop') return;
 
@@ -341,6 +335,16 @@ export const BoardView = memo(function BoardView({
     );
   }, [pendingStopMove, updateStatusCategory]);
 
+  // The parent's handlers change identity as selection and plan data change.
+  // Columns and cards get fixed-identity wrappers so only real state changes
+  // re-render them.
+  const handleSelectRange = useStableCallback<Parameters<RangeSelectHandler>, void>((id, orderedIds) =>
+    onSelectRange?.(id, orderedIds),
+  );
+  const handleEditItem = useStableCallback(onEditItem);
+  const handlePrepareEditItem = useStableCallback((id: string) => onPrepareEditItem?.(id));
+  const handleContextMenu = useStableCallback(onContextMenu);
+
   // Open detail pane from merge queue click. Opening a detail also selects its
   // card (mirroring a plain click), so the board never shows a selected card
   // and a different open card highlighted at the same time.
@@ -350,15 +354,7 @@ export const BoardView = memo(function BoardView({
     if (planItemId) onSelectItem(planItemId, false);
   }, [onDetailSessionChange, onSelectItem]);
 
-  const handleDragStart = useCallback((itemId: string) => {
-    setDraggedItemId(itemId);
-  }, []);
-
-  const handleDragEnd = useCallback(() => {
-    setDraggedItemId(null);
-  }, []);
-
-  const handleOpenDetail = useCallback((itemId: string) => {
+  const handleOpenDetail = useStableCallback((itemId: string) => {
     const session = useDevSessionsStore.getState().sessions.find(
       (s) => s.plan_item_id === itemId && OPENABLE_SESSION_STATUSES.includes(s.status)
     );
@@ -366,14 +362,14 @@ export const BoardView = memo(function BoardView({
     // Opening a detail selects its card, exactly like clicking it — keeps a
     // single highlight on the board.
     if (session) onSelectItem(itemId, false);
-  }, [onDetailSessionChange, onSelectItem]);
+  });
 
   // Board selection moves the single highlight. The detail pane is anchored to
   // that highlight, so selecting any other card (or clearing the selection)
   // closes the pane — the pane and the highlighted card never drift apart.
   // Opening a detail bypasses this by calling onSelectItem directly with the
   // matching card.
-  const handleSelectItem = useCallback(
+  const handleSelectItem = useStableCallback(
     (id: string | null, addToSelection?: boolean) => {
       onSelectItem(id, addToSelection);
       if (!detailSessionId) return;
@@ -383,7 +379,6 @@ export const BoardView = memo(function BoardView({
         onDetailSessionChange(null);
       }
     },
-    [onSelectItem, onDetailSessionChange, detailSessionId],
   );
 
   // Close the detail pane when the underlying session disappears (e.g. archived).
@@ -506,14 +501,11 @@ export const BoardView = memo(function BoardView({
             selectedIds={selectedIds}
             focusedItemId={focusedItemId}
             searchQuery={searchQuery}
-            draggedItemId={draggedItemId}
             onSelectItem={handleSelectItem}
-            onSelectRange={onSelectRange}
-            onEditItem={onEditItem}
-            onPrepareEditItem={onPrepareEditItem}
-            onContextMenu={onContextMenu}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
+            onSelectRange={onSelectRange ? handleSelectRange : undefined}
+            onEditItem={handleEditItem}
+            onPrepareEditItem={onPrepareEditItem ? handlePrepareEditItem : undefined}
+            onContextMenu={handleContextMenu}
             onDrop={requestMove}
             onCreateItem={onCreateItem}
             onStartAgent={handleStartAgent}

@@ -4,6 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { runWithToolExecutionContext } from '../runtime';
 import BetterSqlite3, { type Database } from 'better-sqlite3';
 import { resolveBulkTargetIds, createPlanItemTools } from './plan-items';
 import type { IPlanItemRepository, IPlanRelationRepository } from '../../db/interfaces';
@@ -333,7 +334,9 @@ describe('plan item tools', () => {
   }
 
   async function call(name: string, args: unknown): Promise<ToolCallResult> {
-    return getTool(name).handler(args as never, undefined) as Promise<ToolCallResult>;
+    const { projectId = 'project-1', ...input } = args as { projectId?: string };
+    return runWithToolExecutionContext({ projectId }, () =>
+      getTool(name).handler(input as never, undefined) as Promise<ToolCallResult>);
   }
 
   describe('query_plan_items', () => {
@@ -402,6 +405,18 @@ describe('plan item tools', () => {
       expect(result.notFound).toEqual(['missing-id']);
     });
 
+    it('leaves out empty and bookkeeping fields, and narrows to the requested fields', async () => {
+      insertItem(db, { id: 'a', title: 'Item A', statusCategory: 'in_progress', externalKey: 'ASUP-1', itemOrder: 4 });
+
+      const full = parseJson(await call('get_plan_items', { projectId: 'project-1', itemIds: ['a'] }));
+      const narrow = parseJson(
+        await call('get_plan_items', { projectId: 'project-1', itemIds: ['a'], fields: ['status_category', 'external_key'] })
+      );
+
+      expect(Object.keys(full.items[0]).sort()).toEqual(['external_key', 'id', 'status_category', 'title']);
+      expect(narrow.items[0]).toEqual({ id: 'a', status_category: 'in_progress', external_key: 'ASUP-1' });
+    });
+
     it('include.parentTitle adds the parent title', async () => {
       insertItem(db, { id: 'root', title: 'Root Item' });
       insertItem(db, { id: 'child', parentId: 'root' });
@@ -437,7 +452,7 @@ describe('plan item tools', () => {
 
     it('include.dependencies adds blockedBy/blocks/relatedTo summaries', async () => {
       insertItem(db, { id: 'a', title: 'A' });
-      insertItem(db, { id: 'b', title: 'B' });
+      insertItem(db, { id: 'b', title: 'B', statusCategory: 'done' });
       insertRelation(db, { id: 'rel-1', fromItemId: 'b', toItemId: 'a', relationType: 'blocks' });
 
       const result = parseJson(
@@ -448,7 +463,7 @@ describe('plan item tools', () => {
         })
       );
 
-      expect(result.items[0].dependencies.blockedBy).toEqual([{ id: 'b', title: 'B', status: 'planned', external_key: null }]);
+      expect(result.items[0].dependencies.blockedBy).toEqual([{ id: 'b', title: 'B', status_category: 'done', external_key: null }]);
     });
 
     it('with all includes on a single id, reproduces get_item_context-equivalent info', async () => {

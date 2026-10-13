@@ -1,5 +1,7 @@
 import type { PlanAction, PlanItem } from '../../../../shared/types';
-import { DiffViewer, InlineDiff, getInlineDiffHunks } from '../../ui/DiffViewer';
+import { DiffViewerLazy } from '../../ui/DiffViewerLazy';
+import { getInlineDiffHunks } from '../../ui/diffHelpers';
+import { InlineDiff } from '../../ui/InlineDiff';
 
 interface ReviseWorkBriefDetailProps {
   action: Extract<PlanAction, { type: 'revise_work_brief' }>;
@@ -42,7 +44,7 @@ export function ReviseWorkBriefDetail({ action, item }: ReviseWorkBriefDetailPro
         <div className="text-xxs font-semibold text-text-muted uppercase tracking-wider mb-1">
           Description
         </div>
-        <DiffViewer oldContent={item?.description ?? ''} newContent={nextBrief.description ?? ''} />
+        <DiffViewerLazy oldContent={item?.description ?? ''} newContent={nextBrief.description ?? ''} />
       </div>
 
       <div>

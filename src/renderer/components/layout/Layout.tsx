@@ -13,9 +13,9 @@ import { GlobalSearch } from '../global-search';
 import { ApprovalOverlays } from './ApprovalOverlays';
 import { FocusMode } from '../focus-mode/FocusMode';
 import { ToastContainer } from '../ui';
-import { RegenerateContextModal } from '../onboarding';
+import { RegenerateContextModalLazy } from '../onboarding';
 import { ToolLogPanel } from '../tool-log';
-import { SettingsModal } from '../settings';
+import { SettingsModalLazy } from '../settings';
 import { Z_INDEX } from '../../constants/zIndex';
 import {
   useCommandPaletteStore,
@@ -31,8 +31,8 @@ import {
   useFocusModeStore,
 } from '../../stores';
 import { getBaseName } from '../../utils/path';
-import { TerminalPanel } from '../terminal';
-import { cancelChatSession, disconnectChatSession } from '../../services/chatService';
+import { TerminalPanelLazy } from '../terminal';
+import { closeChatSession } from '../../services/chatService';
 import { useToolLog } from '../../hooks/useToolLog';
 import { useChatIpcBridge } from '../../hooks/useChatIpcBridge';
 import { usePermissionIpcBridge } from '../../hooks/usePermissionIpcBridge';
@@ -47,6 +47,15 @@ import {
   usePersistedViewState,
 } from './hooks';
 import { logPerfEvent, startPerfSpan } from '../../utils/perfLogger';
+import { MAIN_VIEW_ORDER } from './MainViewSwitcher';
+import { itemAtPosition, type TabScope } from './tabScope';
+
+/** Sessions in the order the chat tab strip renders them. */
+function orderedChatSessionIds(): string[] {
+  return Array.from(useChatStore.getState().sessions.entries())
+    .sort((a, b) => a[1].sessionNumber - b[1].sessionNumber)
+    .map(([id]) => id);
+}
 
 interface LayoutProps {
   onDeleteProject?: () => void;
@@ -88,10 +97,14 @@ export const Layout = memo(function Layout({
   const isSwitchingProject = useProjectUiDomainStore((state) => state.isSwitchingProject);
   const isTerminalOpen = useTerminalStore((state) => state.isPanelOpen);
   const toggleTerminal = useTerminalStore((state) => state.togglePanel);
+  // The terminal bundle loads on first open and stays mounted afterwards so
+  // its sessions and scrollback survive toggling the panel.
+  const [hasOpenedTerminal, setHasOpenedTerminal] = useState(isTerminalOpen);
+  if (isTerminalOpen && !hasOpenedTerminal) setHasOpenedTerminal(true);
 
   // Extracted hooks
   const { sidebarWidth, chatWidth, handleSidebarResizeStart, handleChatResizeStart } = usePanelResize();
-  const { mainView, viewMode, setMainView, setViewMode } = usePersistedViewState(currentProjectId);
+  const { mainView, setMainView } = usePersistedViewState(currentProjectId);
   const {
     chatCollapsed,
     workspaceChatCollapsed,
@@ -101,21 +114,14 @@ export const Layout = memo(function Layout({
     hideChatForCurrentView,
   } = usePersistedChatCollapseState(currentProjectId, mainView);
   const {
-    searchQuery,
-    debouncedSearchQuery,
-    setSearchQuery,
     hiddenStatusCategories,
     hiddenStatusCategoriesRef,
     setHiddenStatusCategories,
     selectedPeopleFilterKeys,
     setSelectedPeopleFilterKeys,
     personFilterOptions,
-    selectedItemIds,
-    setSelectedItemIds,
-    clearSelectedItemIds,
     filteredPlannedItems,
     statusCounts,
-    searchResultCount,
   } = useLayoutPlanViewState(currentProjectId, planItems);
 
   const handleMainViewChange = useCallback((view: typeof mainView) => {
@@ -126,17 +132,6 @@ export const Layout = memo(function Layout({
       requestAnimationFrame(() => end());
     });
   }, [mainView, setMainView]);
-
-  const handleViewModeChange = useCallback((mode: typeof viewMode) => {
-    if (mode === viewMode) return;
-    const end = startPerfSpan('view.mode.switch', { from: viewMode, to: mode });
-    setViewMode(mode);
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => end());
-    });
-  }, [setViewMode, viewMode]);
-
-  const showBoardView = useCallback(() => handleViewModeChange('board'), [handleViewModeChange]);
 
   // Tool log subscription - lives at Layout level so it never unmounts during view switches
   useToolLog(currentProjectId);
@@ -170,7 +165,6 @@ export const Layout = memo(function Layout({
     hiddenStatusCategoriesRef,
     setHiddenStatusCategories,
     handleMainViewChange,
-    showBoardView,
     showWorkspaceChat,
     showChatForCurrentView,
     hideChatForCurrentView,
@@ -223,17 +217,12 @@ export const Layout = memo(function Layout({
     }
 
     const chatState = useChatStore.getState();
-    const { viewedSessionId, sessions, activeSessionIds } = chatState;
+    const { viewedSessionId, sessions } = chatState;
     if (viewedSessionId) {
       const session = sessions.get(viewedSessionId);
       void (async () => {
         if (currentProjectId && session) {
-          if (activeSessionIds.has(viewedSessionId) && session.isStreaming) {
-            await cancelChatSession(currentProjectId, viewedSessionId);
-          }
-          if (activeSessionIds.has(viewedSessionId)) {
-            await disconnectChatSession(currentProjectId, viewedSessionId);
-          }
+          await closeChatSession(currentProjectId, viewedSessionId, session.isStreaming);
         }
         chatState.removeSession(viewedSessionId);
       })();
@@ -266,13 +255,10 @@ export const Layout = memo(function Layout({
     }
   }, []);
 
-  // Tabs are ordered by session number, the same order the tab strip renders,
-  // so cycling matches what the user sees. Wraps at both ends.
+  // Wraps at both ends.
   const handleCycleChatSession = useCallback((direction: -1 | 1) => {
-    const { sessions, viewedSessionId, setViewedSession } = useChatStore.getState();
-    const ordered = Array.from(sessions.entries())
-      .sort((a, b) => a[1].sessionNumber - b[1].sessionNumber)
-      .map(([id]) => id);
+    const { viewedSessionId, setViewedSession } = useChatStore.getState();
+    const ordered = orderedChatSessionIds();
     if (ordered.length < 2) return;
     const current = viewedSessionId ? ordered.indexOf(viewedSessionId) : -1;
     const next = ordered[(current + direction + ordered.length) % ordered.length];
@@ -289,11 +275,25 @@ export const Layout = memo(function Layout({
     if (next) setActiveDocument(next.id);
   }, []);
 
+  const handleSelectTab = useCallback((scope: TabScope, position: number) => {
+    if (scope === 'chat') {
+      const id = itemAtPosition(orderedChatSessionIds(), position);
+      if (id) useChatStore.getState().setViewedSession(id);
+    } else if (scope === 'documents') {
+      const { openDocuments, setActiveDocument } = useWorkspaceStore.getState();
+      const document = itemAtPosition(openDocuments, position);
+      if (document) setActiveDocument(document.id);
+    } else {
+      const view = itemAtPosition(MAIN_VIEW_ORDER, position);
+      if (view) handleMainViewChange(view);
+    }
+  }, [handleMainViewChange]);
+
   // Keyboard shortcuts
   useLayoutShortcuts({
     onToggleSidebar: handleToggleSidebar,
     onToggleChat: handleToggleChat,
-    onMainViewChange: handleMainViewChange,
+    onSelectTab: handleSelectTab,
     onOpenCommandPalette: openCommandPalette,
     onCreateItem: handleOpenCreateItem,
     onToggleToolLog: handleToggleToolLog,
@@ -321,19 +321,13 @@ export const Layout = memo(function Layout({
           onResumeOnboardingTask={onResumeOnboardingTask}
           mainView={mainView}
           onMainViewChange={handleMainViewChange}
-          viewMode={viewMode}
-          onViewModeChange={handleViewModeChange}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
           hiddenStatusCategories={hiddenStatusCategories}
           onHiddenStatusCategoriesChange={setHiddenStatusCategories}
           selectedPeopleFilterKeys={selectedPeopleFilterKeys}
           onSelectedPeopleFilterKeysChange={setSelectedPeopleFilterKeys}
           personFilterOptions={personFilterOptions}
-          selectedItemCount={selectedItemIds.size}
-          onClearSelection={clearSelectedItemIds}
+          filteredPlannedItems={filteredPlannedItems}
           statusCounts={statusCounts}
-          searchResultCount={searchResultCount}
         />
 
         {/* Main content area - flex row with sidebar pushing content */}
@@ -387,14 +381,7 @@ export const Layout = memo(function Layout({
               <div className="flex-1 flex flex-col min-h-0">
                 <ErrorBoundary name="PlanView">
                   <PlanView
-                    viewMode={viewMode}
                     filteredPlannedItems={filteredPlannedItems}
-                    searchQuery={debouncedSearchQuery}
-                    onSearchChange={setSearchQuery}
-                    hiddenStatusCategories={hiddenStatusCategories}
-                    onHiddenStatusCategoriesChange={setHiddenStatusCategories}
-                    selectedItemIds={selectedItemIds}
-                    setSelectedItemIds={setSelectedItemIds}
                     registerCreateItemHandler={registerCreateItemHandler}
                   />
                 </ErrorBoundary>
@@ -441,8 +428,8 @@ export const Layout = memo(function Layout({
           )}
         </div>
 
-        {currentProjectId && (
-          <TerminalPanel projectId={currentProjectId} defaultCwd={terminalCwd} isOpen={isTerminalOpen} />
+        {currentProjectId && hasOpenedTerminal && (
+          <TerminalPanelLazy projectId={currentProjectId} defaultCwd={terminalCwd} isOpen={isTerminalOpen} />
         )}
 
       </div>
@@ -475,10 +462,10 @@ const LayoutOverlays = memo(function LayoutOverlays({
       <GlobalSearch />
       <FocusMode />
       <ApprovalOverlays />
-      <RegenerateContextModal />
+      <RegenerateContextModalLazy />
       <ToastContainer />
       {isSettingsOpen && (
-        <SettingsModal
+        <SettingsModalLazy
           onClose={() => setSettingsOpen(false)}
           currentProjectId={currentProjectId}
         />

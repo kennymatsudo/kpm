@@ -1,2 +1,2 @@
 export { CreateProjectModal } from './CreateProjectModal';
-export { RegenerateContextModal } from './RegenerateContextModal';
+export { RegenerateContextModalLazy } from './RegenerateContextModalLazy';

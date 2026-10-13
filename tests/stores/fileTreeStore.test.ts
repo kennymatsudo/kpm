@@ -192,6 +192,62 @@ describe('fileTreeStore', () => {
     });
   });
 
+  describe('reloading a loaded directory', () => {
+    const file = (path: string) => createNode({ name: path.split('/').pop()!, path });
+    const dir = (path: string, children?: FileNode[]) =>
+      createNode({ name: path.split('/').pop()!, path, isDirectory: true, children });
+
+    it('keeps loaded subfolder children on a root reload and drops deleted entries', async () => {
+      useFileTreeStore.setState({
+        projectId: 'p',
+        nodes: [dir('a', [file('a/x.md')]), file('gone.md')],
+      });
+      mockFileExplorer.listDirectory.mockResolvedValue([dir('a'), file('new.md')]);
+
+      await useFileTreeStore.getState().loadDirectory('p', '', { background: true });
+
+      const { nodes } = useFileTreeStore.getState();
+      expect(nodes.map((n) => n.path)).toEqual(['a', 'new.md']);
+      expect(nodes[0].children?.map((n) => n.path)).toEqual(['a/x.md']);
+    });
+
+    it('keeps nested loaded children on a subfolder reload', async () => {
+      useFileTreeStore.setState({
+        projectId: 'p',
+        nodes: [dir('a', [dir('a/b', [file('a/b/y.md')]), file('a/old.md')])],
+      });
+      mockFileExplorer.listDirectory.mockResolvedValue([dir('a/b'), file('a/fresh.md')]);
+
+      await useFileTreeStore.getState().loadDirectory('p', 'a');
+
+      const a = useFileTreeStore.getState().nodes[0];
+      expect(a.children?.map((n) => n.path)).toEqual(['a/b', 'a/fresh.md']);
+      expect(a.children?.[0].children?.map((n) => n.path)).toEqual(['a/b/y.md']);
+    });
+
+    it('does not set the global loading flag for a background root reload', async () => {
+      useFileTreeStore.setState({ projectId: 'p', nodes: [file('a.md')] });
+      let seenLoading = false;
+      mockFileExplorer.listDirectory.mockImplementation(async () => {
+        seenLoading = useFileTreeStore.getState().isLoading;
+        return [file('a.md')];
+      });
+
+      await useFileTreeStore.getState().loadDirectory('p', '', { background: true });
+
+      expect(seenLoading).toBe(false);
+    });
+
+    it('refreshDirectory merges the same way', async () => {
+      useFileTreeStore.setState({ projectId: 'p', nodes: [dir('a', [file('a/x.md')])] });
+      mockFileExplorer.listDirectory.mockResolvedValue([dir('a')]);
+
+      await useFileTreeStore.getState().refreshDirectory('');
+
+      expect(useFileTreeStore.getState().nodes[0].children?.map((n) => n.path)).toEqual(['a/x.md']);
+    });
+  });
+
   describe('loadDirectory', () => {
     it('sets isLoading while loading root', async () => {
       mockFileExplorer.listDirectory.mockImplementation(

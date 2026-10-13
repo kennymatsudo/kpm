@@ -26,13 +26,26 @@ export function useReadingProgress(
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const onScroll = () => {
+    const measure = () => {
       const max = el.scrollHeight - el.clientHeight;
+      // Same value returns the same state, so React skips the re-render.
       setProgress(max > 0 ? Math.min(1, Math.max(0, el.scrollTop / max)) : 0);
     };
-    onScroll();
+    // At most one state update per frame, however many scroll events fire.
+    let frame = 0;
+    const onScroll = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        measure();
+      });
+    };
+    measure();
     el.addEventListener('scroll', onScroll, { passive: true });
-    return () => el.removeEventListener('scroll', onScroll);
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      if (frame) cancelAnimationFrame(frame);
+    };
   }, [scrollRef, contentKey]);
 
   // Scroll-spy: highlight the topmost heading in the upper viewport band.

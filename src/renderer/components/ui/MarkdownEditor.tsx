@@ -769,6 +769,13 @@ export function MarkdownEditor({
     return createSearchHighlightOptions(searchQuery, currentMatchIndex);
   }, [showSearch, searchQuery, currentMatchIndex]);
 
+  // Only the read view renders it; skipping the work in edit mode keeps
+  // keystrokes from re-running the plan-ref and soft-break passes.
+  const renderedBody = useMemo(
+    () => (view === 'preview' ? <Markdown options={searchOptions}>{addSoftBreaks(transformPlanRefs(body))}</Markdown> : null),
+    [view, body, searchOptions]
+  );
+
   useEffect(() => {
     if (currentMatchIndex >= totalMatches) {
       setCurrentMatchIndex(Math.max(0, totalMatches - 1));
@@ -1095,7 +1102,7 @@ export function MarkdownEditor({
                   </div>
                 )}
                 <article className="prose-document prose-measured">
-                  <Markdown options={searchOptions}>{addSoftBreaks(transformPlanRefs(body))}</Markdown>
+                  {renderedBody}
                 </article>
               </div>
             ) : (

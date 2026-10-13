@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import {
   toast,
   useSyncStore,
@@ -28,11 +29,19 @@ export function TrackerSyncPanel({ associationId, onClose }: TrackerSyncPanelPro
     startSync,
     clearError: clearSyncError,
     setupProgressListener: setupSyncProgressListener,
-  } = useSyncStore();
+  } = useSyncStore(
+    useShallow((state) => ({
+      isSyncing: state.isSyncing,
+      syncProgress: state.syncProgress,
+      error: state.error,
+      startSync: state.startSync,
+      clearError: state.clearError,
+      setupProgressListener: state.setupProgressListener,
+    }))
+  );
 
   const {
     loadAssociations,
-    getAssociationById,
     updateAssociationEpicKey,
     hasAssociationItems,
     importAll,
@@ -41,21 +50,33 @@ export function TrackerSyncPanel({ associationId, onClose }: TrackerSyncPanelPro
     importError,
     clearError,
     setupImportProgressListener,
-  } = useTrackerStore();
+  } = useTrackerStore(
+    useShallow((state) => ({
+      loadAssociations: state.loadAssociations,
+      updateAssociationEpicKey: state.updateAssociationEpicKey,
+      hasAssociationItems: state.hasAssociationItems,
+      importAll: state.importAll,
+      isImporting: state.isImporting,
+      importProgress: state.importProgress,
+      importError: state.importError,
+      clearError: state.clearError,
+      setupImportProgressListener: state.setupImportProgressListener,
+    }))
+  );
+  const association = useTrackerStore((state) => state.getAssociationById(associationId));
 
-  const {
-    getQueueCountForAssociation,
-    setShowQueuePanel,
-    setShowMappingDialog,
-    refreshQueueCount,
-  } = useExportStore();
-
-  const queueCount = getQueueCountForAssociation(associationId);
+  const { setShowQueuePanel, setShowMappingDialog, refreshQueueCount } = useExportStore(
+    useShallow((state) => ({
+      setShowQueuePanel: state.setShowQueuePanel,
+      setShowMappingDialog: state.setShowMappingDialog,
+      refreshQueueCount: state.refreshQueueCount,
+    }))
+  );
+  const queueCount = useExportStore((state) => state.queueCountsByAssociation[associationId] ?? 0);
 
   const [isImported, setIsImported] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  const association = getAssociationById(associationId);
 
   // Epic key state
   const [epicKey, setEpicKey] = useState(association?.epic_key ?? '');

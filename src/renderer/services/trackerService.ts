@@ -126,6 +126,10 @@ export function getTrackerSyncPreview(payload: TrackerEndpointPayload<'sync.prev
   return window.api.tracker.sync.getPreview(payload);
 }
 
+export function checkTrackerSyncChanges(payload: TrackerEndpointPayload<'sync.check'>) {
+  return window.api.tracker.sync.check(payload);
+}
+
 export function applyTrackerSyncChanges(payload: Parameters<typeof window.api.tracker.sync.applyChanges>[0]) {
   return window.api.tracker.sync.applyChanges(payload);
 }

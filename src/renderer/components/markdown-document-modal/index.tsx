@@ -18,7 +18,8 @@ import { MotionButton } from '../ui/MotionButton';
 import { Tooltip } from '../ui/Tooltip';
 import { ConfirmActionDialog } from '../ui/ConfirmActionDialog';
 import { MarkdownEditorLazy, type MarkdownView } from '../ui';
-import { DiffViewer, computeDiff, getDiffStatsFromDiff } from '../ui/DiffViewer';
+import { DiffViewerLazy } from '../ui/DiffViewerLazy';
+import { computeDiff, getDiffStatsFromDiff } from '../ui/diffHelpers';
 import { Z_INDEX } from '../../constants/zIndex';
 
 /** Flat ease-out, matching the app's 150ms interaction transitions. */
@@ -85,7 +86,7 @@ export function MarkdownDocumentModal({
       removed: diffStats.removedCount,
       render: () => (
         <div className="max-w-4xl mx-auto">
-          <DiffViewer oldContent={oldContent} newContent={content} diffLines={diffLines ?? undefined} />
+          <DiffViewerLazy oldContent={oldContent} newContent={content} diffLines={diffLines ?? undefined} />
         </div>
       ),
     };

@@ -77,6 +77,8 @@ export function FocusMode() {
     [docContent, showSearch, searchQuery, currentMatchIndex]
   );
 
+  const closeChat = useCallback(() => setIsChatOpen(false), []);
+
   const scrollToId = useCallback((id: string) => {
     const target = scrollRef.current?.querySelector(`#${CSS.escape(id)}`);
     target?.scrollIntoView({ behavior: scrollBehavior(), block: 'start' });
@@ -373,7 +375,7 @@ export function FocusMode() {
               docPath={docPath}
               docTitle={docTitle}
               docContent={docContent}
-              onClose={() => setIsChatOpen(false)}
+              onClose={closeChat}
             />
           </div>
         </m.div>

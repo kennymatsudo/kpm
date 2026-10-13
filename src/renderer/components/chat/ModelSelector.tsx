@@ -1,9 +1,11 @@
+import { memo, useCallback } from 'react';
 import { useShallow } from 'zustand/react/shallow';
+import type { ChatChoiceIntent } from '../../../shared/types';
 import { useChatStore } from '../../stores/chat';
 import { ChatChoiceControls } from './ChatChoiceControls';
 import { useModelChoiceRetry } from './useModelChoiceRetry';
 
-export function ModelSelector() {
+export const ModelSelector = memo(function ModelSelector() {
   useModelChoiceRetry();
 
   const {
@@ -26,6 +28,11 @@ export function ModelSelector() {
       openChatChoice: state.openChatChoice,
     };
   }));
+
+  const handleChange = useCallback(
+    (intent: ChatChoiceIntent) => changeChatChoice(viewedSessionId ?? '', intent),
+    [changeChatChoice, viewedSessionId]
+  );
 
   if (!viewedSessionId || !choice) {
     if (error && viewedSessionId && projectId) {
@@ -53,7 +60,7 @@ export function ModelSelector() {
     <ChatChoiceControls
       choice={choice}
       disabled={isStreaming}
-      onChange={(intent) => changeChatChoice(viewedSessionId, intent)}
+      onChange={handleChange}
     />
   );
-}
+});

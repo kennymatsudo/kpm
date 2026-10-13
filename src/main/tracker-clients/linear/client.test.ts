@@ -195,4 +195,42 @@ describe('LinearClient.deleteIssue', () => {
 
     await expect(client.deleteIssue('ENG-1')).rejects.toThrow(/success=false/);
   });
+
+  describe('hasIssuesUpdatedSince', () => {
+    function clientWith(nodes: unknown[]) {
+      const request = vi.fn().mockResolvedValue({
+        issues: { nodes, pageInfo: { hasNextPage: false, endCursor: null } },
+      });
+      const client = new LinearClient({ type: 'linear', apiToken: 'token' });
+      (client as unknown as { client: { request: typeof request } }).client = { request };
+      return { client, request };
+    }
+
+    it('filters the association scope by updatedAt and reports a match', async () => {
+      const { client, request } = clientWith([
+        { id: 'i1', identifier: 'ENG-1', title: 'T', url: 'u', updatedAt: '2026-10-07T00:00:00.000Z', createdAt: '2026-10-01T00:00:00.000Z' },
+      ]);
+      const since = new Date('2026-10-06T12:00:00.000Z');
+
+      const changed = await client.hasIssuesUpdatedSince(JSON.stringify({ teamKey: 'ENG', projectId: 'p1' }), since);
+
+      expect(changed).toBe(true);
+      expect(request).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          filter: {
+            team: { key: { eq: 'ENG' } },
+            project: { id: { eq: 'p1' } },
+            updatedAt: { gt: '2026-10-06T12:00:00.000Z' },
+          },
+        })
+      );
+    });
+
+    it('reports false when no issue matches', async () => {
+      const { client } = clientWith([]);
+
+      expect(await client.hasIssuesUpdatedSince(JSON.stringify({ teamKey: 'ENG' }), new Date())).toBe(false);
+    });
+  });
 });

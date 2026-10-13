@@ -5,6 +5,7 @@ import { createStreamingSessionService } from '../streaming/StreamingSessionServ
 import { createContextBuilder } from '../../claude/contextBuilders';
 import type { OnElicitation } from '@anthropic-ai/claude-agent-sdk';
 import { buildSdkOptions, type ModelType } from '../../claude/sdkOptionsBuilder';
+import { userClaudeInChromeEnabled } from '../../claude/userClaudeInChrome';
 import { subscribeToKpmToolProposals } from '../../kpmTools/runtimeRegistry';
 import { createToolCallLogger } from '../toollog';
 import type { PlanContext } from '../../chat/prompts';
@@ -20,6 +21,7 @@ import { listPiProviders } from '../../pi/providers';
 import { isPiAvailable } from '../../pi/detect';
 import { getConfig } from '../../config';
 import { withTimeout } from '../../utils/withTimeout';
+import { getModelCatalog } from '../../providers/modelCatalog';
 
 export interface ChatRuntimeServiceDeps {
   getMainWindow: () => BrowserWindow | null;
@@ -27,6 +29,7 @@ export interface ChatRuntimeServiceDeps {
   container: IRepositoryContainer;
 }
 
+/** Connect chat services to repositories, provider settings, and renderer events. */
 export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
   const { getMainWindow, services, container } = deps;
 
@@ -58,46 +61,33 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
         codex: getSetting(container.appSettings, 'chatCodexModel'),
         pi: getSetting(container.appSettings, 'chatPiProviderModel'),
       },
-      effort: getSetting(container.appSettings, 'chatEffort'),
     }),
     getReadiness: getProviderReadiness,
     listPiProviders: async () => await isPiAvailable()
       ? withTimeout(listPiProviders(), getConfig().session.piCatalogTimeoutMs, [])
       : [],
+    getModelCatalog,
   });
 
   const streamingSessionService = createStreamingSessionService({
-    modelChoice,
     projectRepository: {
       get: container.projects.get.bind(container.projects),
       updateTokens: container.projects.updateTokens.bind(container.projects),
     },
-    recordUsage: ({ projectId, model, usage, totalCostUsd, sdkSessionId, sdkResultUuid, sdkCostScope, isCumulativeCostSnapshot, ttftMs, durationMs }) => {
-      services.claudeUsageService.recordUsage({
-        projectId,
-        source: 'chat',
-        model,
-        usage,
-        totalCostUsd,
-        sdkSessionId,
-        sdkResultUuid,
-        sdkCostScope,
-        isCumulativeCostSnapshot,
-        ttftMs,
-        durationMs,
-      });
+    recordUsage: (event) => {
+      services.claudeUsageService.recordUsage({ ...event, source: 'chat' });
     },
     chatMessageRepository: {
       addMessage: container.chatMessages.addMessage.bind(container.chatMessages),
       getMessagesByChatSession: container.chatMessages.getMessagesByChatSession.bind(container.chatMessages),
+      countAssistantMessages: container.chatMessages.countAssistantMessages.bind(container.chatMessages),
+      deleteUserMessageByClientMessageId: container.chatMessages.deleteUserMessageByClientMessageId.bind(container.chatMessages),
     },
     chatSessionRepository: {
       get: container.chatSessions.get.bind(container.chatSessions),
       create: container.chatSessions.create.bind(container.chatSessions),
-      updateClaudeSessionId: container.chatSessions.updateClaudeSessionId.bind(container.chatSessions),
       updateProviderSessionId: container.chatSessions.updateProviderSessionId.bind(container.chatSessions),
       updateTitle: container.chatSessions.updateTitle.bind(container.chatSessions),
-      clearClaudeSessionIdsByProject: container.chatSessions.clearClaudeSessionIdsByProject.bind(container.chatSessions),
       clearProviderSessionIdsByProject: container.chatSessions.clearProviderSessionIdsByProject.bind(container.chatSessions),
     },
     getMainWindow,
@@ -116,9 +106,6 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
     }) => {
       const pluginPathsResult = services.mcpDiscoveryService.getEnabledPluginPaths();
       const enabledPluginPaths = pluginPathsResult.ok ? pluginPathsResult.data : [];
-
-      const userConfigsResult = services.mcpDiscoveryService.getEnabledUserMcpConfigs();
-      const enabledUserMcpConfigs = userConfigsResult.ok ? userConfigsResult.data : {};
 
       const managedServersResult = services.mcpDiscoveryService.getCachedManagedServers();
       const disabledToolsResult = managedServersResult.ok
@@ -142,9 +129,9 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
         peekPendingFile: options.peekPendingFile,
         onElicitation: options.onElicitation,
         enabledPluginPaths,
-        enabledUserMcpConfigs,
         disabledMcpTools,
         disabledMcpServerNames,
+        claudeInChrome: userClaudeInChromeEnabled(),
       });
     },
     subscribeToKpmToolProposals,

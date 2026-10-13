@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createProjectStore, type ProjectState } from './projectStore';
 import { createMockApi } from '../../../tests/mocks/electron-api';
 import type { API } from '../../preload/api';
+import type { PlanItem } from '../../shared/types';
 
 function createStore() {
   const api = createMockApi();
@@ -30,28 +31,6 @@ describe('projectStore slices', () => {
 
     expect(store.getState().repos).toEqual([]);
     expect(store.getState().repoBranches).toEqual({});
-  });
-
-  it('refreshes projects after updating the Storybook URL', async () => {
-    const refreshedProjects = [{
-      id: 'project-1',
-      name: 'Project One',
-      folder_path: '/tmp/project-one',
-      phase: 'discovery',
-      session_tokens: 0,
-      session_input_tokens: 0,
-      session_output_tokens: 0,
-      storybook_url: 'http://localhost:6006',
-    }];
-    api.storybook.updateUrl.mockResolvedValue({ success: true });
-    api.projects.list.mockResolvedValue(refreshedProjects);
-
-    const result = await store.getState().updateProjectStorybookUrl('project-1', 'http://localhost:6006');
-
-    expect(api.storybook.updateUrl).toHaveBeenCalledWith({ projectId: 'project-1', storybookUrl: 'http://localhost:6006' });
-    expect(api.projects.list).toHaveBeenCalled();
-    expect(result).toEqual(refreshedProjects);
-    expect(store.getState().projects).toEqual(refreshedProjects);
   });
 
   it('adds repos through the resource domain and tracks their branches', async () => {
@@ -249,5 +228,60 @@ describe('projectStore slices', () => {
     expect(store.getState().error).toBe('save failed');
     expect(store.getState().planItems[0].status_category).toBe('not_started');
     expect(emit).not.toHaveBeenCalled();
+  });
+
+  describe('refreshPlanItems', () => {
+    const rawItem = (id: string, title: string) =>
+      ({
+        id,
+        title,
+        status: 'planned',
+        release_tag: null,
+        updated_at: 't1',
+        acceptance_criteria: ['works'],
+        code_refs: null,
+        affected_repo_ids: ['repo-1'],
+      }) as unknown as PlanItem;
+
+    it('keeps the same array and item references when nothing changed', async () => {
+      store.setState({ currentProjectId: 'p1' } as Partial<ProjectState>);
+      api.plan.listItems.mockResolvedValue([rawItem('a', 'A'), rawItem('b', 'B')]);
+      await store.getState().refreshPlanItems();
+      const before = store.getState().planItems;
+
+      api.plan.listItems.mockResolvedValue([rawItem('a', 'A'), rawItem('b', 'B')]);
+      await store.getState().refreshPlanItems();
+
+      const after = store.getState().planItems;
+      expect(after).toBe(before);
+      expect(after[0]).toBe(before[0]);
+      expect(store.getState().isLoading).toBe(false);
+    });
+
+    it('replaces only the changed item', async () => {
+      store.setState({ currentProjectId: 'p1' } as Partial<ProjectState>);
+      api.plan.listItems.mockResolvedValue([rawItem('a', 'A'), rawItem('b', 'B')]);
+      await store.getState().refreshPlanItems();
+      const before = store.getState().planItems;
+
+      api.plan.listItems.mockResolvedValue([rawItem('a', 'A'), rawItem('b', 'B renamed')]);
+      await store.getState().refreshPlanItems();
+
+      const after = store.getState().planItems;
+      expect(after).not.toBe(before);
+      expect(after[0]).toBe(before[0]);
+      expect(after[1]).not.toBe(before[1]);
+      expect(after[1].title).toBe('B renamed');
+    });
+
+    it('drops a response that arrives after the project changed', async () => {
+      store.setState({ currentProjectId: 'p1' } as Partial<ProjectState>);
+      api.plan.listItems.mockImplementation(async () => {
+        store.setState({ currentProjectId: 'p2' } as Partial<ProjectState>);
+        return [rawItem('a', 'A')];
+      });
+      await store.getState().refreshPlanItems();
+      expect(store.getState().planItems).toEqual([]);
+    });
   });
 });

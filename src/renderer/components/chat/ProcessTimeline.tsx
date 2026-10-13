@@ -394,6 +394,19 @@ const ToolGlyph = memo(function ToolGlyph() {
 /** Caps how tall an expanded strip can grow, so collapsing it never moves the answer far. */
 const EXPANDED_BODY_MAX_HEIGHT = 'max-h-80';
 
+/** The streaming plan rebuilds the `segments` array on every flush while the
+ * segment objects inside keep their identity, so compare element by element. */
+function sameTimelineProps(prev: ProcessTimelineProps, next: ProcessTimelineProps): boolean {
+  const { segments: prevSegments, ...prevRest } = prev;
+  const { segments: nextSegments, ...nextRest } = next;
+  if (prevSegments !== nextSegments) {
+    if (prevSegments?.length !== nextSegments?.length) return false;
+    if (prevSegments?.some((segment, i) => segment !== nextSegments?.[i])) return false;
+  }
+  const keys = Object.keys({ ...prevRest, ...nextRest }) as (keyof typeof prevRest)[];
+  return keys.every((key) => Object.is(prevRest[key], nextRest[key]));
+}
+
 export const ProcessTimeline = memo(function ProcessTimeline({
   segments,
   streamingThinking,
@@ -500,4 +513,4 @@ export const ProcessTimeline = memo(function ProcessTimeline({
       )}
     </div>
   );
-});
+}, sameTimelineProps);

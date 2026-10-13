@@ -75,7 +75,7 @@ export function buildFocusedSection(
 
   const planItemHint = hasPlanItem
     ? truncatedPlanItemIds.length > 0
-      ? `\nSome focused plan items were truncated above. Use \`get_plan_items({ projectId, itemIds: [...] })\` to fetch full details (description, code_refs, dependencies) for: ${truncatedPlanItemIds.map((id) => `\`${id}\``).join(', ')}.\n`
+      ? `\nSome focused plan items were truncated above. Use \`get_plan_items({ itemIds: [...] })\` to fetch full details (description, code_refs, dependencies) for: ${truncatedPlanItemIds.map((id) => `\`${id}\``).join(', ')}.\n`
       : `\nThe focused plan item details above are sufficient — do not call \`get_plan_items\` again unless you need code_refs or dependencies.\n`
     : '';
 
@@ -86,6 +86,25 @@ ${focusDescription}
 
 ${blocks.join('\n\n')}
 ${readHint}${repoHint}${planItemHint}
+Treat these as the implicit subject of the conversation unless the user explicitly names something else.
+`;
+}
+
+/**
+ * The short form of the focused section, for a turn whose selection matches
+ * the full block already sent earlier in the same live session. It still names
+ * every resource, so the subject survives even if compaction summarized the
+ * earlier block away.
+ */
+export function buildFocusedReminder(focusedResources: FocusedResource[]): string {
+  if (focusedResources.length === 0) return '';
+  const lines = focusedResources.map((r) => `- ${formatFocusedResource(r)}`).join('\n');
+  return `
+# Focused Selection
+
+Unchanged since it was shared earlier in this conversation:
+${lines}
+
 Treat these as the implicit subject of the conversation unless the user explicitly names something else.
 `;
 }

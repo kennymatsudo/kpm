@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createTrackerService } from '../../src/main/services/core/TrackerService';
+import {
+  createTrackerService,
+  FULL_SYNC_CHECK_INTERVAL_MS,
+  SYNC_CHECK_SAFETY_MARGIN_MS,
+} from '../../src/main/services/core/TrackerService';
 
 describe('TrackerService', () => {
   it('hydrates associations through connection and scope orchestration', () => {
@@ -158,5 +162,95 @@ describe('TrackerService', () => {
       expect(result.error).toContain('Association not found');
     }
     expect(getJiraClient).not.toHaveBeenCalled();
+  });
+
+  describe('checkSyncChanges', () => {
+    const CLEAN_STATS = { total: 3, new: 0, updated: 0, conflicts: 0, deleted: 0, unchanged: 3 };
+
+    function setup(stats = CLEAN_STATS) {
+      let nowMs = 1_000_000;
+      const hasIssuesUpdatedSince = vi.fn(async () => false);
+      const generateSyncPreview = vi.fn(async () => ({ link_id: 'assoc-1', stats }));
+      const service = createTrackerService({
+        tracker: {
+          getAssociationById: vi.fn(() => ({ id: 'assoc-1', tracker_type: 'linear', issue_filter: '{"teamKey":"ENG"}' })),
+        } as never,
+        clientService: { getClient: vi.fn(async () => ({ hasIssuesUpdatedSince })) } as never,
+        importService: { generateImportPreview: vi.fn(), importIssues: vi.fn() },
+        syncService: { generateSyncPreview, applySyncChanges: vi.fn() } as never,
+        now: () => nowMs,
+      });
+      return {
+        service,
+        hasIssuesUpdatedSince,
+        generateSyncPreview,
+        advance: (ms: number) => { nowMs += ms; },
+        nowMs: () => nowMs,
+      };
+    }
+
+    it('does a full preview when there is no earlier clean check', async () => {
+      const { service, hasIssuesUpdatedSince, generateSyncPreview } = setup();
+
+      const result = await service.checkSyncChanges('project-1', 'assoc-1');
+
+      expect(result).toMatchObject({ ok: true, data: { unchanged: false } });
+      expect(hasIssuesUpdatedSince).not.toHaveBeenCalled();
+      expect(generateSyncPreview).toHaveBeenCalledTimes(1);
+      expect(generateSyncPreview.mock.calls[0]).toHaveLength(3);
+    });
+
+    it('skips the full fetch when nothing was updated since the last clean check', async () => {
+      const { service, hasIssuesUpdatedSince, generateSyncPreview, advance, nowMs } = setup();
+      await service.checkSyncChanges('project-1', 'assoc-1');
+      const firstCheckStart = nowMs();
+      advance(120_000);
+
+      const result = await service.checkSyncChanges('project-1', 'assoc-1');
+
+      expect(result).toMatchObject({ ok: true, data: { unchanged: true } });
+      expect(generateSyncPreview).toHaveBeenCalledTimes(1);
+      expect(hasIssuesUpdatedSince).toHaveBeenCalledWith(
+        '{"teamKey":"ENG"}',
+        new Date(firstCheckStart - SYNC_CHECK_SAFETY_MARGIN_MS)
+      );
+    });
+
+    it('builds the full preview when the tracker reports an updated issue', async () => {
+      const { service, hasIssuesUpdatedSince, generateSyncPreview, advance } = setup();
+      await service.checkSyncChanges('project-1', 'assoc-1');
+      advance(120_000);
+      hasIssuesUpdatedSince.mockResolvedValueOnce(true);
+
+      const result = await service.checkSyncChanges('project-1', 'assoc-1');
+
+      expect(result).toMatchObject({ ok: true, data: { unchanged: false } });
+      expect(generateSyncPreview).toHaveBeenCalledTimes(2);
+    });
+
+    it('does a full preview again once the last full fetch is older than the interval', async () => {
+      const { service, hasIssuesUpdatedSince, generateSyncPreview, advance } = setup();
+      await service.checkSyncChanges('project-1', 'assoc-1');
+      advance(FULL_SYNC_CHECK_INTERVAL_MS - 1000);
+      await service.checkSyncChanges('project-1', 'assoc-1');
+      expect(generateSyncPreview).toHaveBeenCalledTimes(1);
+      advance(2000);
+
+      await service.checkSyncChanges('project-1', 'assoc-1');
+
+      expect(generateSyncPreview).toHaveBeenCalledTimes(2);
+      expect(hasIssuesUpdatedSince).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps fetching in full while the previous preview still has changes to review', async () => {
+      const { service, hasIssuesUpdatedSince, generateSyncPreview, advance } = setup({ ...CLEAN_STATS, deleted: 1 });
+      await service.checkSyncChanges('project-1', 'assoc-1');
+      advance(120_000);
+
+      await service.checkSyncChanges('project-1', 'assoc-1');
+
+      expect(hasIssuesUpdatedSince).not.toHaveBeenCalled();
+      expect(generateSyncPreview).toHaveBeenCalledTimes(2);
+    });
   });
 });

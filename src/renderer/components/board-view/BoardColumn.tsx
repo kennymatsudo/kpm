@@ -1,10 +1,11 @@
-import { memo, useCallback, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BoardCard, type Breadcrumb } from './BoardCard';
+import { buildColumnBreadcrumbs, EMPTY_BREADCRUMB } from './breadcrumbs';
 import { STATUS_CATEGORY_CONFIG } from '../../constants/statusConfig';
 import { useLatestRef } from '../../hooks/useLatestRef';
 import type { BoardTreeNode } from './BoardView';
 import type { PlanItem, StatusCategory } from '../../../shared/types';
-import type { OrderedIdsGetter, RangeSelectHandler } from '../../utils/rangeSelection';
+import type { RangeSelectHandler } from '../../utils/rangeSelection';
 
 function getVisibleBoardSelectionOrder(
   nodes: readonly BoardTreeNode[],
@@ -32,14 +33,11 @@ interface BoardColumnProps {
   selectedIds: Set<string>;
   focusedItemId: string | null;
   searchQuery: string;
-  draggedItemId: string | null;
   onSelectItem: (id: string | null, addToSelection?: boolean) => void;
   onSelectRange?: RangeSelectHandler;
   onEditItem: (id: string) => void;
   onPrepareEditItem?: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, ids: Set<string>) => void;
-  onDragStart: (itemId: string) => void;
-  onDragEnd: () => void;
   onDrop: (itemId: string, newStatus: StatusCategory) => void;
   onCreateItem?: (status: StatusCategory) => void;
   onStartAgent?: (itemId: string) => void;
@@ -60,14 +58,11 @@ export const BoardColumn = memo(function BoardColumn({
   selectedIds,
   focusedItemId,
   searchQuery,
-  draggedItemId,
   onSelectItem,
   onSelectRange,
   onEditItem,
   onPrepareEditItem,
   onContextMenu,
-  onDragStart,
-  onDragEnd,
   onDrop,
   onCreateItem,
   onStartAgent,
@@ -82,17 +77,39 @@ export const BoardColumn = memo(function BoardColumn({
 
   const treeNodesRef = useLatestRef(treeNodes);
   const expandedIdsRef = useLatestRef(expandedIds);
-  const getOrderedColumnIds = useCallback(
-    () => getVisibleBoardSelectionOrder(treeNodesRef.current, expandedIdsRef.current),
-    [expandedIdsRef, treeNodesRef],
+  const selectedIdsRef = useLatestRef(selectedIds);
+  const handleSelectRange = useCallback(
+    (id: string) =>
+      onSelectRange?.(id, getVisibleBoardSelectionOrder(treeNodesRef.current, expandedIdsRef.current)),
+    [onSelectRange, expandedIdsRef, treeNodesRef],
   );
+
+  // The selected ids that belong to this column, reusing the previous Set while
+  // they are unchanged. A selection elsewhere then leaves this column's cards
+  // untouched.
+  const columnSelectedRef = useRef<ReadonlySet<string>>(new Set());
+  const columnSelectedIds = useMemo(() => {
+    const next = new Set<string>();
+    const walk = (nodes: readonly BoardTreeNode[]) => {
+      for (const node of nodes) {
+        if (selectedIds.has(node.item.id)) next.add(node.item.id);
+        walk(node.children);
+      }
+    };
+    walk(treeNodes);
+    const prev = columnSelectedRef.current;
+    const unchanged = prev.size === next.size && [...next].every((id) => prev.has(id));
+    if (unchanged) return prev;
+    columnSelectedRef.current = next;
+    return next;
+  }, [treeNodes, selectedIds]);
 
   // Exactly one card per column is reachable by Tab — the selected one if this
   // column holds it, otherwise the first. Arrow keys reach the rest.
   const tabStopId = useMemo(() => {
     const ordered = getVisibleBoardSelectionOrder(treeNodes, expandedIds);
-    return ordered.find((id) => selectedIds.has(id)) ?? ordered[0] ?? null;
-  }, [treeNodes, expandedIds, selectedIds]);
+    return ordered.find((id) => columnSelectedIds.has(id)) ?? ordered[0] ?? null;
+  }, [treeNodes, expandedIds, columnSelectedIds]);
 
   const toggleExpanded = useCallback((id: string) => {
     setExpandedIds((prev) => {
@@ -110,28 +127,18 @@ export const BoardColumn = memo(function BoardColumn({
     return count(treeNodes);
   }, [treeNodes]);
 
-  // Build breadcrumb for an item (walks up parent chain outside this column)
-  const buildBreadcrumb = useCallback(
-    (item: PlanItem): Breadcrumb[] => {
-      const chain: Breadcrumb[] = [];
-      let currentId = item.parent_id;
-
-      while (currentId && chain.length < 3) {
-        const parent = parentMap.get(currentId);
-        if (!parent) break;
-        chain.unshift({
-          title: parent.title,
-          externalKey: parent.external_key ?? undefined,
-        });
-        currentId = parent.parent_id;
-      }
-
-      return chain;
-    },
-    [parentMap]
-  );
+  // Breadcrumbs for top-level cards (walks up the parent chain outside this
+  // column); nested cards don't need them.
+  const breadcrumbsRef = useRef<ReadonlyMap<string, Breadcrumb[]>>(new Map());
+  const breadcrumbs = useMemo(() => {
+    const next = buildColumnBreadcrumbs(treeNodes, parentMap, breadcrumbsRef.current);
+    breadcrumbsRef.current = next;
+    return next;
+  }, [treeNodes, parentMap]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
+    // Only a card drag highlights the column; files or text dragged in do not.
+    if (!e.dataTransfer.types.includes('board-item-id')) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     setIsDragOver(true);
@@ -144,6 +151,15 @@ export const BoardColumn = memo(function BoardColumn({
       setIsDragOver(false);
     }
   }, []);
+
+  // A cancelled drag (Escape, dropped outside any window) may never fire
+  // dragleave, so the card's dragend clears the highlight.
+  useEffect(() => {
+    if (!isDragOver) return;
+    const clear = () => setIsDragOver(false);
+    document.addEventListener('dragend', clear);
+    return () => document.removeEventListener('dragend', clear);
+  }, [isDragOver]);
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
@@ -160,13 +176,14 @@ export const BoardColumn = memo(function BoardColumn({
   const handleCardContextMenu = useCallback(
     (e: React.MouseEvent, itemId: string) => {
       // If item not selected, select it first
-      if (!selectedIds.has(itemId)) {
+      const currentSelection = selectedIdsRef.current;
+      if (!currentSelection.has(itemId)) {
         onSelectItem(itemId, false);
       }
-      const newSelection = selectedIds.has(itemId) ? selectedIds : new Set([itemId]);
+      const newSelection = currentSelection.has(itemId) ? currentSelection : new Set([itemId]);
       onContextMenu(e, newSelection);
     },
-    [selectedIds, onSelectItem, onContextMenu]
+    [selectedIdsRef, onSelectItem, onContextMenu]
   );
 
   // Click on empty area clears selection
@@ -188,7 +205,7 @@ export const BoardColumn = memo(function BoardColumn({
       className={`
         flex flex-col flex-1 min-w-64 overflow-hidden bg-surface-1 border border-border-subtle rounded-[10px]
         transition-[background-color,box-shadow] duration-150
-        ${isDragOver && draggedItemId ? 'ring-2 ring-accent ring-inset bg-accent/5' : ''}
+        ${isDragOver ? 'ring-2 ring-accent ring-inset bg-accent/5' : ''}
       `}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -211,21 +228,18 @@ export const BoardColumn = memo(function BoardColumn({
             key={node.item.id}
             node={node}
             depth={0}
-            breadcrumb={buildBreadcrumb(node.item)}
+            breadcrumb={breadcrumbs.get(node.item.id) ?? EMPTY_BREADCRUMB}
             expandedIds={expandedIds}
             toggleExpanded={toggleExpanded}
-            selectedIds={selectedIds}
+            selectedIds={columnSelectedIds}
             focusedItemId={focusedItemId}
             tabStopId={tabStopId}
             searchQuery={searchQuery}
             onSelectItem={onSelectItem}
-            onSelectRange={onSelectRange}
-            getOrderedIds={getOrderedColumnIds}
+            onSelectRange={onSelectRange ? handleSelectRange : undefined}
             onEditItem={onEditItem}
             onPrepareEditItem={onPrepareEditItem}
             onContextMenu={handleCardContextMenu}
-            onDragStart={onDragStart}
-            onDragEnd={onDragEnd}
             onStartAgent={onStartAgent}
             onStopAgent={onStopAgent}
             onOpenDetail={onOpenDetail}
@@ -256,25 +270,24 @@ interface BoardTreeNodeRendererProps {
   node: BoardTreeNode;
   depth: number;
   breadcrumb: Breadcrumb[];
-  expandedIds: Set<string>;
+  expandedIds: ReadonlySet<string>;
   toggleExpanded: (id: string) => void;
-  selectedIds: Set<string>;
+  selectedIds: ReadonlySet<string>;
   focusedItemId: string | null;
   tabStopId: string | null;
   searchQuery: string;
   onSelectItem: (id: string | null, addToSelection?: boolean) => void;
-  onSelectRange?: RangeSelectHandler;
-  getOrderedIds?: OrderedIdsGetter;
+  onSelectRange?: (id: string) => void;
   onEditItem: (id: string) => void;
   onPrepareEditItem?: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, itemId: string) => void;
-  onDragStart: (itemId: string) => void;
-  onDragEnd: () => void;
   onStartAgent?: (itemId: string) => void;
   onStopAgent?: (devSessionId: string) => void;
   onOpenDetail?: (itemId: string) => void;
 }
 
+// The card receives booleans and stable handlers, so a selection or expand
+// change re-renders only the cards whose own state changed.
 const BoardTreeNodeRenderer = memo(function BoardTreeNodeRenderer({
   node,
   depth,
@@ -287,12 +300,9 @@ const BoardTreeNodeRenderer = memo(function BoardTreeNodeRenderer({
   searchQuery,
   onSelectItem,
   onSelectRange,
-  getOrderedIds,
   onEditItem,
   onPrepareEditItem,
   onContextMenu,
-  onDragStart,
-  onDragEnd,
   onStartAgent,
   onStopAgent,
   onOpenDetail,
@@ -311,18 +321,12 @@ const BoardTreeNodeRenderer = memo(function BoardTreeNodeRenderer({
         searchQuery={searchQuery}
         childCount={children.length}
         isExpanded={isExpanded}
-        onToggleExpand={hasChildren ? () => toggleExpanded(item.id) : undefined}
-        onSelect={(addToSelection) => onSelectItem(item.id, addToSelection)}
-        onSelectRange={
-          onSelectRange && getOrderedIds
-            ? () => onSelectRange(item.id, getOrderedIds())
-            : undefined
-        }
-        onEdit={() => onEditItem(item.id)}
-        onPrepareEdit={() => onPrepareEditItem?.(item.id)}
-        onContextMenu={(e) => onContextMenu(e, item.id)}
-        onDragStart={() => onDragStart(item.id)}
-        onDragEnd={onDragEnd}
+        onToggleExpand={hasChildren ? toggleExpanded : undefined}
+        onSelect={onSelectItem}
+        onSelectRange={onSelectRange}
+        onEdit={onEditItem}
+        onPrepareEdit={onPrepareEditItem}
+        onContextMenu={onContextMenu}
         onStartAgent={onStartAgent}
         onStopAgent={onStopAgent}
         onOpenDetail={onOpenDetail}
@@ -335,7 +339,7 @@ const BoardTreeNodeRenderer = memo(function BoardTreeNodeRenderer({
               key={child.item.id}
               node={child}
               depth={depth + 1}
-              breadcrumb={[]} // Children nested in-column don't need breadcrumbs
+              breadcrumb={EMPTY_BREADCRUMB} // Children nested in-column don't need breadcrumbs
               expandedIds={expandedIds}
               toggleExpanded={toggleExpanded}
               selectedIds={selectedIds}
@@ -344,12 +348,9 @@ const BoardTreeNodeRenderer = memo(function BoardTreeNodeRenderer({
               searchQuery={searchQuery}
               onSelectItem={onSelectItem}
               onSelectRange={onSelectRange}
-              getOrderedIds={getOrderedIds}
               onEditItem={onEditItem}
               onPrepareEditItem={onPrepareEditItem}
               onContextMenu={onContextMenu}
-              onDragStart={onDragStart}
-              onDragEnd={onDragEnd}
               onStartAgent={onStartAgent}
               onStopAgent={onStopAgent}
               onOpenDetail={onOpenDetail}

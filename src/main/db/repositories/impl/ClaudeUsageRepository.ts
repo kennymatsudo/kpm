@@ -12,11 +12,17 @@ import type {
   IClaudeUsageRepository,
   ClaudeUsageEvent,
   ClaudeUsageEventInsert,
+  ClaudeUsageTokenCounts,
   ClaudeUsageTotals,
   ClaudeUsageBreakdownRow,
   ClaudeUsageProjectBreakdownRow,
   BoardPlaybookCostRow,
 } from '../../interfaces/usage';
+import { UNKNOWN_COST_SOURCE } from '../../../../shared/usage-types';
+
+function unpricedEvents(costSourceColumn: string): string {
+  return `COALESCE(SUM(CASE WHEN ${costSourceColumn} = '${UNKNOWN_COST_SOURCE}' THEN 1 ELSE 0 END), 0) AS unpriced_events`;
+}
 
 interface PreparedStatements {
   insert: Statement;
@@ -31,12 +37,14 @@ interface PreparedStatements {
   listRecentAllProjects: Statement;
   deleteByProject: Statement;
   lastSdkCumulativeCost: Statement;
+  lastSdkCumulativeTokens: Statement;
   findBySdkResultScope: Statement;
   boardPlaybookCostsByDevSession: Statement;
 }
 
 const EMPTY_TOTALS: ClaudeUsageTotals = {
   events: 0,
+  unpriced_events: 0,
   input_tokens: 0,
   output_tokens: 0,
   cache_creation_tokens: 0,
@@ -51,6 +59,7 @@ export class ClaudeUsageRepository implements IClaudeUsageRepository {
     const totalsSelect = `
       SELECT
         COUNT(*) AS events,
+        ${unpricedEvents('cost_source')},
         COALESCE(SUM(input_tokens), 0) AS input_tokens,
         COALESCE(SUM(output_tokens), 0) AS output_tokens,
         COALESCE(SUM(cache_creation_tokens), 0) AS cache_creation_tokens,
@@ -64,6 +73,7 @@ export class ClaudeUsageRepository implements IClaudeUsageRepository {
         source,
         model,
         COUNT(*) AS events,
+        ${unpricedEvents('cost_source')},
         COALESCE(SUM(input_tokens), 0) AS input_tokens,
         COALESCE(SUM(output_tokens), 0) AS output_tokens,
         COALESCE(SUM(cache_creation_tokens), 0) AS cache_creation_tokens,
@@ -79,8 +89,9 @@ export class ClaudeUsageRepository implements IClaudeUsageRepository {
           input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
           cost_micro_usd, sdk_session_id, sdk_result_uuid, sdk_cost_scope,
           sdk_cumulative_cost_micro_usd, cost_source, ttft_ms, duration_ms, step_id, run_index,
-          dev_session_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          dev_session_id, sdk_cumulative_input_tokens, sdk_cumulative_output_tokens,
+          sdk_cumulative_cache_creation_tokens, sdk_cumulative_cache_read_tokens
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         RETURNING *
       `),
       totalsByProject: db.prepare(`${totalsSelect} WHERE project_id = ?`),
@@ -108,6 +119,7 @@ export class ClaudeUsageRepository implements IClaudeUsageRepository {
           u.project_id AS project_id,
           COALESCE(p.name, u.project_name_snapshot) AS project_name,
           COUNT(*) AS events,
+          ${unpricedEvents('u.cost_source')},
           COALESCE(SUM(u.input_tokens), 0) AS input_tokens,
           COALESCE(SUM(u.output_tokens), 0) AS output_tokens,
           COALESCE(SUM(u.cache_creation_tokens), 0) AS cache_creation_tokens,
@@ -139,6 +151,19 @@ export class ClaudeUsageRepository implements IClaudeUsageRepository {
         ORDER BY created_at DESC, rowid DESC
         LIMIT 1
       `),
+      lastSdkCumulativeTokens: db.prepare(`
+        SELECT
+          sdk_cumulative_input_tokens AS input,
+          sdk_cumulative_output_tokens AS output,
+          sdk_cumulative_cache_creation_tokens AS cacheCreation,
+          sdk_cumulative_cache_read_tokens AS cacheRead
+        FROM claude_usage_events
+        WHERE sdk_session_id = ?
+          AND sdk_cost_scope = ?
+          AND sdk_cumulative_input_tokens IS NOT NULL
+        ORDER BY created_at DESC, rowid DESC
+        LIMIT 1
+      `),
       findBySdkResultScope: db.prepare(`
         SELECT * FROM claude_usage_events
         WHERE sdk_session_id = ?
@@ -153,6 +178,7 @@ export class ClaudeUsageRepository implements IClaudeUsageRepository {
         WHERE dev_session_id = ?
           AND source = 'board_playbook'
           AND step_id IS NOT NULL
+          AND cost_source != '${UNKNOWN_COST_SOURCE}'
         ORDER BY created_at, rowid
       `),
     };
@@ -181,6 +207,10 @@ export class ClaudeUsageRepository implements IClaudeUsageRepository {
       event.step_id ?? null,
       event.run_index ?? null,
       event.dev_session_id ?? null,
+      event.sdk_cumulative_tokens?.input ?? null,
+      event.sdk_cumulative_tokens?.output ?? null,
+      event.sdk_cumulative_tokens?.cacheCreation ?? null,
+      event.sdk_cumulative_tokens?.cacheRead ?? null,
     ) as ClaudeUsageEvent | undefined;
 
     if (inserted) return inserted;
@@ -203,6 +233,13 @@ export class ClaudeUsageRepository implements IClaudeUsageRepository {
       | { sdk_cumulative_cost_micro_usd: number | null }
       | undefined;
     return row?.sdk_cumulative_cost_micro_usd ?? null;
+  }
+
+  getLastSdkCumulativeTokens(sdkSessionId: string, sdkCostScope: string): ClaudeUsageTokenCounts | null {
+    const row = this.stmts.lastSdkCumulativeTokens.get(sdkSessionId, sdkCostScope) as
+      | ClaudeUsageTokenCounts
+      | undefined;
+    return row ?? null;
   }
 
   totalsByProject(projectId: string | null): ClaudeUsageTotals {

@@ -7,6 +7,7 @@ import type {
 } from '../../../shared/types';
 import {
   applyTrackerSyncChanges,
+  checkTrackerSyncChanges,
   getTrackerSyncPreview,
   subscribeToTrackerSyncProgress,
 } from '../../services/trackerService';
@@ -69,6 +70,27 @@ async function getPreviewWithCache(projectId: string, associationId: string): Pr
     });
   inFlightPreviewByKey.set(key, promise);
   return promise;
+}
+
+const EMPTY_SYNC_STATS: SyncPreview['stats'] = { total: 0, new: 0, updated: 0, conflicts: 0, deleted: 0, unchanged: 0 };
+
+/**
+ * Background check. Main answers "unchanged" from a cheap tracker query when it
+ * can, so only a real preview lands in the cache that explicit sync reads.
+ */
+async function checkForChanges(
+  projectId: string,
+  associationId: string
+): Promise<SyncPreview | null> {
+  const key = previewCacheKey(projectId, associationId);
+  const cached = getCachedPreview(key);
+  if (cached) return cached;
+
+  const result = await checkTrackerSyncChanges({ projectId, associationId });
+  if (!result.success) throw new Error(result.error || 'Failed to check tracker updates');
+  if (result.unchanged || !result.preview) return null;
+  previewCacheByKey.set(key, { preview: result.preview, fetchedAt: Date.now() });
+  return result.preview;
 }
 
 function invalidateCachedPreview(projectId: string, associationId: string): void {
@@ -210,15 +232,16 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     setAvailability(availabilityFromPrevious(previous, { isChecking: true }));
 
     try {
-      const preview = await getPreviewWithCache(projectId, associationId);
+      const preview = await checkForChanges(projectId, associationId);
 
-      const changeCount = getChangeCount(preview.stats);
+      const stats = preview?.stats ?? EMPTY_SYNC_STATS;
+      const changeCount = getChangeCount(stats);
       const availability: SyncAvailability = {
         isChecking: false,
         hasIncomingChanges: changeCount > 0,
         changeCount,
         lastCheckedAt: new Date().toISOString(),
-        stats: preview.stats,
+        stats,
         error: null,
       };
 

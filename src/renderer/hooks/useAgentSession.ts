@@ -96,3 +96,14 @@ export function useAgentSession(devSessionId: string | null): AgentSessionInfo {
     };
   }, [agentState, activityFeed, latestActivity, question, completionStats]);
 }
+
+/**
+ * Whether the agent for a dev session is running, without subscribing to its
+ * activity feed. Use this where only the flag matters so streaming events do not
+ * re-render the caller.
+ */
+export function useAgentSessionActive(devSessionId: string | null): boolean {
+  return useDevSessionsStore((s) =>
+    devSessionId ? isAgentActive(s.agentStateBySessionId.get(devSessionId)) : false
+  );
+}

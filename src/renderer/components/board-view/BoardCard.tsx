@@ -5,7 +5,7 @@ import { connectedRepoName } from '../planning/RepositoryScopeEditor';
 import { useDevSessionsStore } from '../../stores/devSessions';
 import { useResourceDomainStore } from '../../stores';
 import { CardActivityLine } from './CardActivityLine';
-import { derivePanelStatus, type PanelPhase, type NextAction } from './panelStatus';
+import { derivePanelStatus, toDiffStats, type PanelPhase, type NextAction } from './panelStatus';
 import {
   buildReviewActionableLabel,
   resolveCardIndicator,
@@ -49,14 +49,14 @@ interface BoardCardProps {
   searchQuery: string;
   childCount?: number;
   isExpanded?: boolean;
-  onToggleExpand?: () => void;
-  onSelect: (addToSelection: boolean) => void;
-  onSelectRange?: () => void;
-  onEdit: () => void;
-  onPrepareEdit?: () => void;
-  onContextMenu: (e: React.MouseEvent) => void;
-  onDragStart: () => void;
-  onDragEnd: () => void;
+  // Handlers take the card's own item id so one stable function serves every
+  // card and the memo is not defeated by per-card closures.
+  onToggleExpand?: (itemId: string) => void;
+  onSelect: (itemId: string, addToSelection: boolean) => void;
+  onSelectRange?: (itemId: string) => void;
+  onEdit: (itemId: string) => void;
+  onPrepareEdit?: (itemId: string) => void;
+  onContextMenu: (e: React.MouseEvent, itemId: string) => void;
   onStartAgent?: (itemId: string) => void;
   onStopAgent?: (devSessionId: string) => void;
   onOpenDetail?: (itemId: string) => void;
@@ -127,8 +127,6 @@ export const BoardCard = memo(function BoardCard({
   onEdit,
   onPrepareEdit,
   onContextMenu,
-  onDragStart,
-  onDragEnd,
   onStartAgent,
   onStopAgent,
   onOpenDetail,
@@ -283,9 +281,7 @@ export const BoardCard = memo(function BoardCard({
     latestActivitySummary: (reviewIsActive ? latestReviewActivity : latestActivity)?.summary ?? null,
     terminalReason: completionStats?.terminalReason ?? null,
     elapsedMs: null,
-    diffStats: completionStats
-      ? { files: completionStats.filesChanged, additions: completionStats.additions, deletions: completionStats.deletions }
-      : null,
+    diffStats: toDiffStats(completionStats),
     mergeBlockedBy: mergeBlockedByNames,
   });
 
@@ -378,7 +374,7 @@ export const BoardCard = memo(function BoardCard({
 
     if (e.key === ' ' && onToggleExpand) {
       e.preventDefault();
-      onToggleExpand();
+      onToggleExpand(item.id);
     }
   }, [hasOpenableSession, item.id, onOpenDetail, onStartAgent, onToggleExpand]);
 
@@ -444,20 +440,20 @@ export const BoardCard = memo(function BoardCard({
       onClick={(e) => {
         e.stopPropagation();
         if (e.shiftKey && onSelectRange) {
-          onSelectRange();
+          onSelectRange(item.id);
           return;
         }
-        onSelect(e.metaKey || e.ctrlKey);
+        onSelect(item.id, e.metaKey || e.ctrlKey);
       }}
       onDoubleClick={(e) => {
         e.stopPropagation();
-        onPrepareEdit?.();
-        onEdit();
+        onPrepareEdit?.(item.id);
+        onEdit(item.id);
       }}
       onContextMenu={(e) => {
         e.preventDefault();
         e.stopPropagation();
-        onContextMenu(e);
+        onContextMenu(e, item.id);
       }}
       onDragStart={(e) => {
         // Chromium/Electron can ignore drags that only carry custom MIME types.
@@ -480,10 +476,7 @@ export const BoardCard = memo(function BoardCard({
         document.body.appendChild(dragImage);
         e.dataTransfer.setDragImage(dragImage, 10, 10);
         requestAnimationFrame(() => document.body.removeChild(dragImage));
-
-        onDragStart();
       }}
-      onDragEnd={onDragEnd}
       onKeyDown={handleCardKeyDown}
     >
       {/* Breadcrumb (parent hierarchy) */}
@@ -539,7 +532,7 @@ export const BoardCard = memo(function BoardCard({
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                onToggleExpand();
+                onToggleExpand(item.id);
               }}
               className="
                 flex-shrink-0 text-tiny px-1.5 py-0.5 rounded
@@ -725,11 +718,11 @@ export const BoardCard = memo(function BoardCard({
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                onPrepareEdit?.();
-                onEdit();
+                onPrepareEdit?.(item.id);
+                onEdit(item.id);
               }}
-              onMouseEnter={onPrepareEdit}
-              onFocus={onPrepareEdit}
+              onMouseEnter={() => onPrepareEdit?.(item.id)}
+              onFocus={() => onPrepareEdit?.(item.id)}
               className="
                 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100
                 p-1 hover:bg-surface-3 rounded

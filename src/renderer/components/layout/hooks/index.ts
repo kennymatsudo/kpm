@@ -18,6 +18,7 @@ export {
   type UsePersistedChatCollapseStateReturn,
 } from './usePersistedChatCollapseState';
 export { usePersistedViewState, type UsePersistedViewStateReturn } from './usePersistedViewState';
+export { usePlanSearchResultCount } from './usePlanSearchResultCount';
 export { useProjectEdit } from './useProjectEdit';
 export { useProjectMenu } from './useProjectMenu';
 export { useTrackerTopBarIntegration } from './useTrackerTopBarIntegration';

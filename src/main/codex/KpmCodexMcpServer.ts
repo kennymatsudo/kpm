@@ -3,12 +3,9 @@ import type { AddressInfo } from 'net';
 import type { Server as HttpServer } from 'http';
 // The MCP SDK package exports require the `.js` suffix at runtime under
 // Electron's CJS loader, even though eslint-import's resolver does not see it.
-// eslint-disable-next-line import-x/no-unresolved
-import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js';
-// eslint-disable-next-line import-x/no-unresolved
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-// eslint-disable-next-line import-x/no-unresolved
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+// The SDK and express load on first use so they stay off the startup path.
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import {
   executeKpmTool,
@@ -74,8 +71,11 @@ export function getCodexKpmToolDefinitions(options: { focus?: boolean }): KpmToo
   return getKpmToolDefinitions({ scope: options.focus ? 'focus_document' : 'main' });
 }
 
-function createMcpServerForSession(session: RegisteredCodexMcpSession): McpServer {
-  const mcpServer = new McpServer(
+function createMcpServerForSession(
+  McpServerCtor: typeof McpServer,
+  session: RegisteredCodexMcpSession,
+): McpServer {
+  const mcpServer = new McpServerCtor(
     { name: 'kpm', version: '1.0.0' },
     {
       capabilities: { tools: {} },
@@ -124,7 +124,24 @@ async function ensureServerStarted(): Promise<number> {
   if (port !== null) return port;
   if (startupPromise) return startupPromise;
 
-  startupPromise = new Promise<number>((resolve, reject) => {
+  startupPromise = startServer().catch((error: unknown) => {
+    startupPromise = null;
+    throw error;
+  });
+  return startupPromise;
+}
+
+async function startServer(): Promise<number> {
+  const [{ createMcpExpressApp }, { McpServer }, { StreamableHTTPServerTransport }] = await Promise.all([
+    // eslint-disable-next-line import-x/no-unresolved
+    import('@modelcontextprotocol/sdk/server/express.js'),
+    // eslint-disable-next-line import-x/no-unresolved
+    import('@modelcontextprotocol/sdk/server/mcp.js'),
+    // eslint-disable-next-line import-x/no-unresolved
+    import('@modelcontextprotocol/sdk/server/streamableHttp.js'),
+  ]);
+
+  return new Promise<number>((resolve, reject) => {
     const app = createMcpExpressApp({ host: '127.0.0.1' });
 
     const handlePost = async (req: McpRequest, res: McpResponse) => {
@@ -139,7 +156,7 @@ async function ensureServerStarted(): Promise<number> {
         return;
       }
 
-      const mcpServer = createMcpServerForSession(session);
+      const mcpServer = createMcpServerForSession(McpServer, session);
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
       });
@@ -199,8 +216,6 @@ async function ensureServerStarted(): Promise<number> {
       resolve(port);
     });
   });
-
-  return startupPromise;
 }
 
 export async function registerCodexMcpSession(options: {

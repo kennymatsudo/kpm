@@ -2,7 +2,8 @@ import { useState, useCallback, useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { Modal, ModalBody, ModalFooter } from '../ui/Modal';
 import { LoadingSpinner } from '../ui/LoadingButton';
-import { DiffViewer, getDiffStats } from '../ui/DiffViewer';
+import { DiffViewerLazy } from '../ui/DiffViewerLazy';
+import { getDiffStats } from '../ui/diffHelpers';
 import { StepScopeFeature } from './StepScopeFeature';
 import { StepContextGeneration } from './StepContextGeneration';
 import { useOnboardingEvents } from '../../hooks/useOnboardingEvents';
@@ -270,7 +271,7 @@ export function RegenerateContextModal() {
               />
             ) : (
               <div className="max-h-[400px] overflow-y-auto">
-                <DiffViewer
+                <DiffViewerLazy
                   oldContent={existingContent}
                   newContent={editableContent}
                   autoScrollToFirstChange

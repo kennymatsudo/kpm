@@ -7,7 +7,7 @@
  * unchanged — only the presentation is.
  */
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { memo, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Markdown } from 'markdown-to-jsx';
 import type {
   DevSessionWithPlanItem,
@@ -19,7 +19,7 @@ import type {
   ReviewTask,
 } from '../../../shared/types';
 import { useDevSessionsStore } from '../../stores/devSessions';
-import { useAgentSession } from '../../hooks/useAgentSession';
+import { useAgentSessionActive } from '../../hooks/useAgentSession';
 import { useProposedChangeDisposal } from '../../stores/proposedChangeDisposal';
 import { toast } from '../../stores/toastStore';
 import { openExternalUrl } from '../../services/shellService';
@@ -282,7 +282,7 @@ function ViewTabs({
 // Thread content
 // ---------------------------------------------------------------------------
 
-function CommentExcerpt({
+const CommentExcerpt = memo(function CommentExcerpt({
   label,
   body,
   meta,
@@ -347,7 +347,7 @@ function CommentExcerpt({
       )}
     </div>
   );
-}
+});
 
 function ThreadRow({
   thread,
@@ -660,7 +660,7 @@ function ReviewerVerdictStrip({ reviewers }: { reviewers: ReviewerVerdict[] }) {
   );
 }
 
-function ConversationCommentCard({ comment }: { comment: PrConversationComment }) {
+const ConversationCommentCard = memo(function ConversationCommentCard({ comment }: { comment: PrConversationComment }) {
   return (
     <article className="rounded-md border border-border-subtle bg-surface-1 px-3 py-3">
       <div className="flex items-start justify-between gap-3">
@@ -679,7 +679,7 @@ function ConversationCommentCard({ comment }: { comment: PrConversationComment }
       </div>
     </article>
   );
-}
+});
 
 /** Quiet, collapsed-by-default disclosure for PR-level reference content. */
 function ReferenceSection({
@@ -765,7 +765,7 @@ function buildNextAction(decision: NextActionDecision | null, handlers: NextActi
 // ReviewTab
 // ---------------------------------------------------------------------------
 
-export function ReviewTab({ session }: ReviewTabProps) {
+export const ReviewTab = memo(function ReviewTab({ session }: ReviewTabProps) {
   const hasPr = session.pr_number != null;
 
   const inbox = useDevSessionsStore((state) => state.reviewInboxBySessionId.get(session.id) ?? null);
@@ -826,7 +826,7 @@ export function ReviewTab({ session }: ReviewTabProps) {
   // session's status flips to 'inactive' as soon as its implement turn
   // completes — before review even runs — and the automated follow-up that
   // starts the address turn does not restore it. See `isAddressingReview`.
-  const implSessionActive = useAgentSession(session.id).isActive;
+  const implSessionActive = useAgentSessionActive(session.id);
   const addressingReview = isAddressingReview(stats, session.automation_phase, implSessionActive);
   const isOwner = inbox?.ownership?.session_id === session.id;
   const ownerTitle = isOwner ? undefined : 'Only the agent session that owns this review can act on it';
@@ -1280,4 +1280,4 @@ export function ReviewTab({ session }: ReviewTabProps) {
       )}
     </div>
   );
-}
+});

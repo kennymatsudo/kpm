@@ -6,9 +6,7 @@ import {
   buildSessionPrContext,
   checkSessionGithubAuth,
   createSessionPullRequest,
-  detectAndLinkSessionPr,
   generateSessionPrContent,
-  getSessionPrStatus,
   linkSessionPullRequest,
 } from '../../services/devSessionGithubService';
 
@@ -37,55 +35,11 @@ export function createDevSessionsPrSlice(
   set: DevSessionsSet,
   get: DevSessionsGet
 ): Pick<DevSessionsState,
-  | 'pollPrStatuses'
   | 'loadPrContext'
   | 'createPullRequest'
   | 'linkPullRequest'
 > {
   return {
-    pollPrStatuses: async () => {
-      const { sessions, projectId } = get();
-
-      const sessionsWithOpenPr = sessions.filter(
-        (session) => session.pr_number != null && session.pr_state !== 'MERGED' && session.pr_state !== 'CLOSED'
-      );
-
-      let anyStatusChanged = false;
-      for (const session of sessionsWithOpenPr) {
-        try {
-          const result = await getSessionPrStatus({ sessionId: session.id });
-          if (result.success && result.status) {
-            if (
-              result.status.state !== session.pr_state ||
-              result.status.reviewDecision !== session.review_state ||
-              result.status.isDraft !== session.pr_is_draft
-            ) {
-              anyStatusChanged = true;
-            }
-          }
-        } catch {
-          // Silently skip failures during polling
-        }
-      }
-
-      const sessionsWithoutPr = sessions.filter((session) => session.pr_number == null);
-      let anyLinked = false;
-      for (const session of sessionsWithoutPr) {
-        try {
-          const result = await detectAndLinkSessionPr({ sessionId: session.id });
-          if (result.success && result.status) {
-            anyLinked = true;
-          }
-        } catch {
-          // Silently skip failures during auto-detection
-        }
-      }
-
-      if ((anyStatusChanged || anyLinked) && projectId) {
-        await get().loadSessions(projectId);
-      }
-    },
-
     loadPrContext: async (sessionId, options) => {
       const force = options?.force ?? false;
       const featureContextPath = options?.featureContextPath ?? null;
@@ -132,6 +86,7 @@ export function createDevSessionsPrSlice(
           baseBranch: contextResult.baseBranch ?? undefined,
           hasCommits,
           prTemplate,
+          branchPushed: contextResult.branchPushed,
           aiGenerated: false,
           featureContextPath,
         };
@@ -177,6 +132,7 @@ export function createDevSessionsPrSlice(
     },
 
     createPullRequest: async (sessionId, title, body, draft) => {
+      set((state) => ({ prCreatingIds: addToSet(state.prCreatingIds, sessionId) }));
       try {
         const result = await createSessionPullRequest({ sessionId, title, body, draft });
         if (!result.success) {
@@ -204,6 +160,8 @@ export function createDevSessionsPrSlice(
           success: false,
           error: error instanceof Error ? error.message : 'Failed to create pull request',
         };
+      } finally {
+        set((state) => ({ prCreatingIds: removeFromSet(state.prCreatingIds, sessionId) }));
       }
     },
 

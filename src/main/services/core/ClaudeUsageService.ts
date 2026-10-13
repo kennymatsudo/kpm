@@ -3,9 +3,8 @@
  *
  * Centralized recording of Claude API usage across every place KPM invokes
  * the Claude Agent SDK (main chat, board agents, PR description, commit message,
- * review assessment, custom prompt generation, and onboarding).
- * Codex/Gemini sessions are tracked separately and do NOT
- * flow through this service.
+ * review assessment, custom prompt generation, and onboarding). Codex and pi
+ * usage lands here too; Codex rows carry an unknown cost (`costUnknown`).
  *
  * Each call to recordUsage:
  *   1. Persists an event row in `claude_usage_events` (append-only).
@@ -22,6 +21,7 @@ import type { BrowserWindow } from 'electron';
 import type {
   IClaudeUsageRepository,
   ClaudeUsageEvent,
+  ClaudeUsageTokenCounts,
   ClaudeUsageTotals,
   ClaudeUsageBreakdownRow,
   ClaudeUsageProjectBreakdownRow,
@@ -30,6 +30,7 @@ import type { IProjectRepository } from '../../db/interfaces/project';
 import { computeCostMicroUsd, resolveModelPricing } from '../../config/claudePricing';
 import { emitAppEvent } from '../../../shared/ipc/appEvents';
 import { usageEvents } from '../../../shared/ipc/usageEvents';
+import { UNKNOWN_COST_SOURCE } from '../../../shared/usage-types';
 
 // =============================================================================
 // Types
@@ -48,7 +49,7 @@ export type UsageSource =
   | 'review_assessment'
   | 'review_assessment_post_impl'
   | 'custom_prompt'
-  | 'file-summary';
+  | 'chat-title';
 
 /** Shape of the SDK's `result.usage` block (with the fields we care about). */
 export interface RawUsage {
@@ -70,6 +71,11 @@ export interface RecordUsageInput {
    * and must be converted to a delta before storing in the summable ledger.
    */
   totalCostUsd?: number | null;
+  /**
+   * The provider reports no cost and the local price table covers only Claude
+   * (Codex). Stored as an unknown cost so dashboards do not show invented dollars.
+   */
+  costUnknown?: boolean;
   /** SDK session/result identifiers used for delta calculation and deduping. */
   sdkSessionId?: string | null;
   sdkResultUuid?: string | null;
@@ -77,6 +83,11 @@ export interface RecordUsageInput {
   sdkCostScope?: string | null;
   /** True when totalCostUsd is cumulative for sdkSessionId/sdkCostScope. */
   isCumulativeCostSnapshot?: boolean;
+  /**
+   * True when `usage` is a running total for sdkSessionId/sdkCostScope (the
+   * Claude SDK's per-model `modelUsage`), so it is stored as a delta.
+   */
+  isCumulativeUsageSnapshot?: boolean;
   ttftMs?: number | null;
   durationMs?: number | null;
   stepId?: string | null;
@@ -105,7 +116,7 @@ export function createClaudeUsageService(deps: ClaudeUsageServiceDeps) {
   const log = (msg: string) => console.log(`[ClaudeUsageService] ${msg}`);
   const logError = (msg: string) => console.error(`[ClaudeUsageService] ${msg}`);
 
-  function normalizeUsage(usage: RawUsage | null | undefined) {
+  function normalizeUsage(usage: RawUsage | null | undefined): ClaudeUsageTokenCounts {
     return {
       input: Math.max(0, Math.round(usage?.input_tokens ?? 0)),
       output: Math.max(0, Math.round(usage?.output_tokens ?? 0)),
@@ -114,7 +125,34 @@ export function createClaudeUsageService(deps: ClaudeUsageServiceDeps) {
     };
   }
 
-  function computeStoredCost(input: RecordUsageInput, tokens: ReturnType<typeof normalizeUsage>) {
+  // A running total that shrinks means the SDK started counting again (a new
+  // CLI process), so the whole snapshot is new usage, as with cost below.
+  function resolveStoredTokens(input: RecordUsageInput, reported: ClaudeUsageTokenCounts) {
+    if (!input.isCumulativeUsageSnapshot || !input.sdkSessionId) {
+      return { tokens: reported, cumulativeTokens: null };
+    }
+    const previous = deps.claudeUsage.getLastSdkCumulativeTokens(input.sdkSessionId, input.sdkCostScope ?? '__total__');
+    const restarted = !previous
+      || reported.input < previous.input
+      || reported.output < previous.output
+      || reported.cacheCreation < previous.cacheCreation
+      || reported.cacheRead < previous.cacheRead;
+    const tokens = restarted
+      ? reported
+      : {
+        input: reported.input - previous.input,
+        output: reported.output - previous.output,
+        cacheCreation: reported.cacheCreation - previous.cacheCreation,
+        cacheRead: reported.cacheRead - previous.cacheRead,
+      };
+    return { tokens, cumulativeTokens: reported };
+  }
+
+  function computeStoredCost(input: RecordUsageInput, tokens: ClaudeUsageTokenCounts) {
+    if (input.costUnknown && typeof input.totalCostUsd !== 'number') {
+      return { costMicroUsd: 0, sdkCumulativeCostMicroUsd: null, costSource: UNKNOWN_COST_SOURCE };
+    }
+
     if (typeof input.totalCostUsd === 'number' && Number.isFinite(input.totalCostUsd)) {
       const cumulativeCostMicroUsd = Math.max(0, Math.round(input.totalCostUsd * 1_000_000));
 
@@ -153,12 +191,13 @@ export function createClaudeUsageService(deps: ClaudeUsageServiceDeps) {
 
   function recordUsage(input: RecordUsageInput): ClaudeUsageEvent | null {
     try {
-      const tokens = normalizeUsage(input.usage);
+      const { tokens, cumulativeTokens } = resolveStoredTokens(input, normalizeUsage(input.usage));
       const total = tokens.input + tokens.output + tokens.cacheCreation + tokens.cacheRead;
 
       // Skip empty rows. Some SDK messages emit a result with no usage fields
-      // (e.g. early aborts); recording zero-token events would just clutter
-      // the dashboard.
+      // (e.g. early aborts), and a model that did no work this turn repeats
+      // an unchanged running total; recording zero-token events would just
+      // clutter the dashboard.
       if (total === 0) {
         return null;
       }
@@ -184,7 +223,7 @@ export function createClaudeUsageService(deps: ClaudeUsageServiceDeps) {
         // Persist the resolved tier (opus/sonnet/haiku) when the caller passed
         // an alias; otherwise persist the raw model string. Either way the
         // dashboard can group by it.
-        model: input.model && input.model.length > 0 ? input.model : tier,
+        model: input.model && input.model.length > 0 ? input.model : input.costUnknown ? 'unknown' : tier,
         input_tokens: tokens.input,
         output_tokens: tokens.output,
         cache_creation_tokens: tokens.cacheCreation,
@@ -194,6 +233,7 @@ export function createClaudeUsageService(deps: ClaudeUsageServiceDeps) {
         sdk_result_uuid: input.sdkResultUuid ?? null,
         sdk_cost_scope: input.sdkCostScope ?? (input.isCumulativeCostSnapshot ? '__total__' : null),
         sdk_cumulative_cost_micro_usd: sdkCumulativeCostMicroUsd,
+        sdk_cumulative_tokens: cumulativeTokens,
         cost_source: costSource,
         ttft_ms: input.ttftMs ?? null,
         duration_ms: input.durationMs ?? null,
@@ -229,6 +269,7 @@ export function createClaudeUsageService(deps: ClaudeUsageServiceDeps) {
           cacheCreationTokens: tokens.cacheCreation,
           cacheReadTokens: tokens.cacheRead,
           costMicroUsd: costMicroUsd,
+          costUnknown: costSource === UNKNOWN_COST_SOURCE,
         });
       }
 

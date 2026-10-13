@@ -21,6 +21,8 @@ import { subscribeToRefreshRequested } from './services/planService';
 import { initOnboardingTaskBridge } from './services/onboardingTaskBridge';
 import { getBaseName } from './utils/path';
 
+const PLAN_REFRESH_DEBOUNCE_MS = 150;
+
 export default function App() {
   // Initialize cross-store event subscriptions
   useStoreSubscriptions();
@@ -57,11 +59,38 @@ export default function App() {
   const isAppReady = currentProjectId !== null || projects.length === 0;
 
   useEffect(() => {
-    return subscribeToRefreshRequested((event) => {
-      if (event.projectId === currentProjectId) {
-        void refreshPlanItems();
+    // Trailing debounce, one refresh in flight; a request during a flight schedules exactly one more.
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let inFlight = false;
+    let rerun = false;
+    let disposed = false;
+    const run = () => {
+      timer = null;
+      if (inFlight) {
+        rerun = true;
+        return;
       }
+      inFlight = true;
+      void refreshPlanItems().finally(() => {
+        inFlight = false;
+        if (rerun && !disposed) {
+          rerun = false;
+          schedule();
+        }
+      });
+    };
+    const schedule = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(run, PLAN_REFRESH_DEBOUNCE_MS);
+    };
+    const unsubscribe = subscribeToRefreshRequested((event) => {
+      if (event.projectId === currentProjectId) schedule();
     });
+    return () => {
+      disposed = true;
+      if (timer) clearTimeout(timer);
+      unsubscribe();
+    };
   }, [currentProjectId, refreshPlanItems]);
 
   const [showNewProjectDialog, setShowNewProjectDialog] = useState(false);

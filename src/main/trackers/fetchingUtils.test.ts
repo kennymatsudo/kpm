@@ -44,6 +44,7 @@ function createMockClient(responses: Map<string, ExternalIssue[]>): TrackerClien
       return arrayToAsyncGenerator(issues);
     }),
     fetchIssue: vi.fn(),
+    hasIssuesUpdatedSince: vi.fn(),
     searchIssues: vi.fn(),
     searchIssuesByText: vi.fn(async () => []),
     getRecentIssues: vi.fn(async () => []),

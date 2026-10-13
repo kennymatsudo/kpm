@@ -1,5 +1,5 @@
-import { memo, useCallback, useMemo } from 'react';
-import { useProjectUiDomainStore, useProjectDomainStore, useFocusModeStore } from '../../stores';
+import { memo, useCallback, useMemo, type ReactNode } from 'react';
+import { useProjectUiDomainStore, useProjectDomainStore, useFocusModeStore, toast } from '../../stores';
 import {
   useWorkspaceStore,
   useSaveStatus,
@@ -8,10 +8,12 @@ import {
 import { useShallow } from 'zustand/react/shallow';
 import { CodeEditorLazy, MarkdownEditorLazy } from '../ui';
 import { Tooltip } from '../ui/Tooltip';
-import { BookOpenIcon, CheckIcon, CloseIcon, PlusIcon, WarningTriangleIcon } from '../icons';
+import { BookOpenIcon, CheckIcon, CloseIcon, EyeIcon, PlusIcon, WarningTriangleIcon } from '../icons';
 import type { FocusedResource } from '../../../shared/types';
 import { getBaseName } from '../../utils/path';
 import { LinearPublishChip } from '../linearDocuments';
+import { openWorkspaceHtmlPreview } from '../../services/workspaceFileService';
+import { isPreviewableHtmlPath } from '../../../shared/htmlPreview';
 
 interface FileEditorProps {
   documentId: string;
@@ -45,6 +47,43 @@ function reportableSaveState(status: SaveStatus, hasSaveError: boolean): Reporta
   return status === 'saved' ? null : status;
 }
 
+/** Reads the live content so only the editor, not the header, re-renders per keystroke. */
+function useDocumentContent(documentId: string): string {
+  return useWorkspaceStore(
+    (state) => state.openDocuments.find((candidate) => candidate.id === documentId)?.content ?? ''
+  );
+}
+
+function MarkdownBody({
+  documentId,
+  onChange,
+  scrollKey,
+  leading,
+  actions,
+}: {
+  documentId: string;
+  onChange: (content: string) => void;
+  scrollKey: string;
+  leading: ReactNode;
+  actions: ReactNode;
+}) {
+  const content = useDocumentContent(documentId);
+  return (
+    <MarkdownEditorLazy
+      content={content}
+      onChange={onChange}
+      scrollKey={scrollKey}
+      leading={leading}
+      actions={actions}
+    />
+  );
+}
+
+function CodeBody({ documentId, path, onChange }: { documentId: string; path: string; onChange: (content: string) => void }) {
+  const content = useDocumentContent(documentId);
+  return <CodeEditorLazy path={path} content={content} onChange={onChange} />;
+}
+
 /**
  * File editor for the workspace panel.
  *
@@ -54,15 +93,22 @@ function reportableSaveState(status: SaveStatus, hasSaveError: boolean): Reporta
  * header into its own toolbar row), everything else opens Monaco.
  */
 export const FileEditor = memo(function FileEditor({ documentId, onClose }: FileEditorProps) {
-  const document = useWorkspaceStore(
-    (state) => state.openDocuments.find((candidate) => candidate.id === documentId) ?? null
+  // Scalars only: the document object changes on every keystroke, and only the
+  // editor body below needs the content.
+  const path = useWorkspaceStore(
+    (state) => state.openDocuments.find((candidate) => candidate.id === documentId)?.path ?? null
+  );
+  const source = useWorkspaceStore(
+    (state) => state.openDocuments.find((candidate) => candidate.id === documentId)?.source
+  );
+  const saveError = useWorkspaceStore(
+    (state) => state.openDocuments.find((candidate) => candidate.id === documentId)?.saveError
   );
   const projectId = useProjectDomainStore((state) => state.currentProjectId);
   const updateContent = useWorkspaceStore((state) => state.updateContent);
   const saveDocument = useWorkspaceStore((state) => state.saveDocument);
   const saveStatus = useSaveStatus(documentId);
   const openFocusMode = useFocusModeStore((s) => s.open);
-  const path = document?.path ?? '';
 
   // Context management for chat
   const { focusedResources, addFocusedResource, removeFocusedResource } = useProjectUiDomainStore(
@@ -82,7 +128,7 @@ export const FileEditor = memo(function FileEditor({ documentId, onClose }: File
   const handleToggleContext = useCallback(() => {
     const resource: FocusedResource = {
       type: 'project_file',
-      path,
+      path: path ?? '',
       isDirectory: false,
     };
 
@@ -99,40 +145,41 @@ export const FileEditor = memo(function FileEditor({ documentId, onClose }: File
     updateContent(documentId, newContent);
   }, [documentId, updateContent]);
 
-  const isMarkdown = path.toLowerCase().endsWith('.md');
-  const filename = getBaseName(path, 'Untitled');
+  const isMarkdown = (path ?? '').toLowerCase().endsWith('.md');
+  const isPreviewableHtml = isPreviewableHtmlPath(path ?? '');
+  const filename = getBaseName(path ?? '', 'Untitled');
 
   const handleRetrySave = useCallback(() => {
     void saveDocument(documentId);
   }, [documentId, saveDocument]);
 
   const handleEnterFocus = useCallback(() => {
+    const document = useWorkspaceStore.getState().openDocuments.find((candidate) => candidate.id === documentId);
     if (!document) return;
     openFocusMode({
       path: document.path,
       title: filename,
       content: document.content,
     });
-  }, [document, filename, openFocusMode]);
+  }, [documentId, filename, openFocusMode]);
 
-  if (!document) {
-    return null;
-  }
+  const handleOpenPreview = useCallback(() => {
+    if (path === null || source === undefined) return;
+    openWorkspaceHtmlPreview(source, path, projectId).catch((error: unknown) => {
+      toast.error(`Could not preview ${filename}: ${error instanceof Error ? error.message : String(error)}`);
+    });
+  }, [path, source, filename, projectId]);
 
-  // Neither the filename nor the file kind belongs here: the tab strip directly
-  // above already carries both. All that is left is autosave state, and only
-  // when it has something to report. The slot sits between the left-anchored
-  // tabs and the right-anchored actions, so its collapsing moves nothing.
-  const saveState = reportableSaveState(saveStatus, Boolean(document.saveError));
-  const identity = saveState ? <SaveIndicator state={saveState} /> : undefined;
+  const saveState = reportableSaveState(saveStatus, Boolean(saveError));
+  const identity = useMemo(() => (saveState ? <SaveIndicator state={saveState} /> : undefined), [saveState]);
 
-  const fileActions = (
+  const fileActions = useMemo(() => (
     <>
       {projectId && isMarkdown && (
         <LinearPublishChip
           projectId={projectId}
           documentId={documentId}
-          documentPath={document.path}
+          documentPath={path ?? ''}
         />
       )}
       <Tooltip content={isInContext ? 'Remove from context' : 'Add to context'} side="bottom">
@@ -163,6 +210,19 @@ export const FileEditor = memo(function FileEditor({ documentId, onClose }: File
           </button>
         </Tooltip>
       )}
+      {isPreviewableHtml && (
+        <Tooltip content="Preview page" side="bottom">
+          <button
+            type="button"
+            onClick={handleOpenPreview}
+            aria-label="Preview page"
+            className="w-7 h-7 flex items-center justify-center rounded-sm text-text-muted
+                       hover:text-text-primary hover:bg-surface-3 transition-colors"
+          >
+            <EyeIcon className="w-4 h-4" />
+          </button>
+        </Tooltip>
+      )}
       <Tooltip content="Close file" side="bottom">
         <button
           type="button"
@@ -175,20 +235,27 @@ export const FileEditor = memo(function FileEditor({ documentId, onClose }: File
         </button>
       </Tooltip>
     </>
-  );
+  ), [
+    projectId, isMarkdown, documentId, path, isInContext, handleToggleContext,
+    handleEnterFocus, isPreviewableHtml, handleOpenPreview, onClose,
+  ]);
+
+  if (path === null) {
+    return null;
+  }
 
   // The raw failure is usually a system string ("Error: EACCES..."), which names
   // no recovery. Lead with what happened to the user's work, keep the raw text
   // one hover away for whoever needs it, and offer the write again.
-  const saveErrorBanner = document.saveError ? (
+  const saveErrorBanner = saveError ? (
     <div className="px-3 py-2 bg-danger-muted border-b border-border-subtle flex items-start gap-2" role="alert">
       <WarningTriangleIcon className="w-4 h-4 text-danger flex-shrink-0 mt-0.5" />
       <div className="min-w-0 flex-1">
         <p className="text-xs text-danger">
           Could not write {filename} to disk. Your edits are still open here.
         </p>
-        <Tooltip content={document.saveError} side="bottom">
-          <p className="text-tiny text-text-secondary truncate cursor-default">{document.saveError}</p>
+        <Tooltip content={saveError} side="bottom">
+          <p className="text-tiny text-text-secondary truncate cursor-default">{saveError}</p>
         </Tooltip>
       </div>
       <button
@@ -207,10 +274,10 @@ export const FileEditor = memo(function FileEditor({ documentId, onClose }: File
       <div className="flex flex-col h-full bg-surface-1">
         {saveErrorBanner}
         <div className="flex-1 overflow-hidden">
-          <MarkdownEditorLazy
-            content={document.content}
+          <MarkdownBody
+            documentId={documentId}
             onChange={handleContentChange}
-            scrollKey={document.path}
+            scrollKey={path}
             leading={identity}
             actions={fileActions}
           />
@@ -229,11 +296,7 @@ export const FileEditor = memo(function FileEditor({ documentId, onClose }: File
       {saveErrorBanner}
 
       <div className="flex-1 overflow-hidden">
-        <CodeEditorLazy
-          path={document.path}
-          content={document.content}
-          onChange={handleContentChange}
-        />
+        <CodeBody documentId={documentId} path={path} onChange={handleContentChange} />
       </div>
     </div>
   );

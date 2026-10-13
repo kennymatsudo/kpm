@@ -1,2 +1,2 @@
 export { ApiKeyDialog } from './ApiKeyDialog';
-export { SettingsModal } from './SettingsModal';
+export { SettingsModalLazy } from './SettingsModalLazy';

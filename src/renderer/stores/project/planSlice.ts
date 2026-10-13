@@ -249,28 +249,66 @@ export const createPlanSlice: SliceCreator<PlanSlice> = (deps) => (set, get) => 
     const { currentProjectId } = get();
     if (!currentProjectId) return;
 
-    set({ isLoading: true, error: null });
     const endRefresh = startPerfSpan('plan.refresh', { projectId: currentProjectId });
     try {
       const [items, relations] = await Promise.all([
         deps.api.plan.listItems({ projectId: currentProjectId }),
         deps.api.plan.getRelations({ projectId: currentProjectId }),
       ]);
+      // A response for a project the user already left must not land.
+      if (get().currentProjectId !== currentProjectId) {
+        endRefresh({ stale: true });
+        return;
+      }
 
-      set({
-        planItems: items.map((item) => ({
+      const previous = get();
+      const previousById = new Map(previous.planItems.map((item) => [item.id, item]));
+      const nextItems = items.map((item) => {
+        const normalized = {
           ...item,
           status: item.status || 'planned',
           release_tag: item.release_tag || null,
-        })),
-        relations,
+        };
+        const prior = previousById.get(item.id);
+        return prior && shallowEqualRecord(prior, normalized) ? prior : normalized;
       });
+      const itemsUnchanged =
+        nextItems.length === previous.planItems.length &&
+        nextItems.every((item, index) => item === previous.planItems[index]);
+      const relationsUnchanged =
+        relations.length === previous.relations.length &&
+        relations.every((relation, index) =>
+          shallowEqualRecord(relation, previous.relations[index])
+        );
+
+      const patch: Partial<{ planItems: typeof nextItems; relations: typeof relations; error: null }> = {};
+      if (!itemsUnchanged) patch.planItems = nextItems;
+      if (!relationsUnchanged) patch.relations = relations;
+      if (previous.error !== null) patch.error = null;
+      if (Object.keys(patch).length > 0) set(patch);
       endRefresh({ itemCount: items.length, relationCount: relations.length });
     } catch (error) {
       endRefresh({ error: true });
       set({ error: `Failed to refresh plan items: ${String(error)}` });
-    } finally {
-      set({ isLoading: false });
     }
   },
 });
+
+/**
+ * One-level comparison. Array fields (acceptance_criteria, code_refs, affected_repo_ids) arrive as
+ * new references on every IPC read, so they compare element by element.
+ */
+function shallowEqualRecord(a: object, b: object): boolean {
+  const left = a as Record<string, unknown>;
+  const right = b as Record<string, unknown>;
+  const keys = Object.keys(left);
+  if (keys.length !== Object.keys(right).length) return false;
+  return keys.every((key) => {
+    const l = left[key];
+    const r = right[key];
+    if (Array.isArray(l) && Array.isArray(r)) {
+      return l.length === r.length && l.every((value, index) => Object.is(value, r[index]));
+    }
+    return Object.is(l, r);
+  });
+}

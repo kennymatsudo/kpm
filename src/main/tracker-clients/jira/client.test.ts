@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { JiraClient } from './client';
 
-const { doTransition, deleteIssue, createIssue, getCurrentUser } = vi.hoisted(() => ({
+const { doTransition, deleteIssue, createIssue, getCurrentUser, searchJql } = vi.hoisted(() => ({
+  searchJql: vi.fn(),
   doTransition: vi.fn(),
   deleteIssue: vi.fn(),
   createIssue: vi.fn(),
@@ -17,6 +18,9 @@ vi.mock('jira.js', () => ({
     },
     myself: {
       getCurrentUser,
+    },
+    issueSearch: {
+      searchAndReconsileIssuesUsingJql: searchJql,
     },
   }),
 }));
@@ -189,5 +193,34 @@ describe('JiraClient.deleteIssue', () => {
 
     await expect(client.deleteIssue('PROJ-7843')).resolves.toBeUndefined();
     expect(deleteIssue).toHaveBeenCalledWith({ issueIdOrKey: 'PROJ-7843' });
+  });
+});
+
+describe('JiraClient.hasIssuesUpdatedSince', () => {
+  beforeEach(() => {
+    searchJql.mockReset();
+    vi.useFakeTimers({ now: new Date('2026-10-07T12:00:00Z') });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('scopes the filter to a relative updated window and asks for one issue', async () => {
+    searchJql.mockResolvedValue({ issues: [{ key: 'PROJ-1' }] });
+    const since = new Date(Date.now() - 5 * 60_000);
+
+    const changed = await testClient().hasIssuesUpdatedSince('project = PROJ ORDER BY created DESC', since);
+
+    expect(changed).toBe(true);
+    expect(searchJql).toHaveBeenCalledWith(
+      expect.objectContaining({ jql: '(project = PROJ) AND updated >= -5m', maxResults: 1 })
+    );
+  });
+
+  it('reports false when nothing matches', async () => {
+    searchJql.mockResolvedValue({ issues: [] });
+
+    expect(await testClient().hasIssuesUpdatedSince('project = PROJ', new Date())).toBe(false);
   });
 });

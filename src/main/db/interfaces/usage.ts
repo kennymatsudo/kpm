@@ -45,6 +45,7 @@ export interface ClaudeUsageEventInsert {
   sdk_result_uuid?: string | null;
   sdk_cost_scope?: string | null;
   sdk_cumulative_cost_micro_usd?: number | null;
+  sdk_cumulative_tokens?: ClaudeUsageTokenCounts | null;
   cost_source?: string;
   ttft_ms?: number | null;
   duration_ms?: number | null;
@@ -53,10 +54,20 @@ export interface ClaudeUsageEventInsert {
   dev_session_id?: string | null;
 }
 
+/** Token counts in the shape the SDK's per-model `modelUsage` reports them. */
+export interface ClaudeUsageTokenCounts {
+  input: number;
+  output: number;
+  cacheCreation: number;
+  cacheRead: number;
+}
+
 export interface IClaudeUsageRepository {
   insert(event: ClaudeUsageEventInsert): ClaudeUsageEvent;
   /** Last SDK cumulative cost snapshot for a session/scope pair. */
   getLastSdkCumulativeCostMicroUsd(sdkSessionId: string, sdkCostScope: string): number | null;
+  /** Last SDK cumulative token snapshot for a session/scope pair. */
+  getLastSdkCumulativeTokens(sdkSessionId: string, sdkCostScope: string): ClaudeUsageTokenCounts | null;
   /** Aggregate totals for a project (or all projects when projectId is null). */
   totalsByProject(projectId: string | null): ClaudeUsageTotals;
   /** Per-(source, model) breakdown for a project. */

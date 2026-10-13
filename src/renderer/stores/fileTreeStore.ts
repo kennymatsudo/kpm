@@ -11,12 +11,6 @@ import {
 import { toast } from './toastStore';
 import { getBaseName, getParentPath } from '../utils/path';
 
-/** Information about a recently changed file */
-interface RecentlyChangedInfo {
-  type: 'created' | 'modified';
-  timestamp: number;
-}
-
 /** Phantom input state for creating a new file or folder */
 interface CreatingItem {
   type: 'file' | 'folder';
@@ -34,7 +28,6 @@ interface FileTreeState {
   /** Phantom input state for inline file/folder creation */
   creatingItem: CreatingItem | null;
   /** Tracks recently changed files for visual highlighting */
-  recentlyChangedPaths: Map<string, RecentlyChangedInfo>;
 
   // Loading state
   isLoading: boolean;
@@ -56,15 +49,12 @@ interface FileTreeState {
   setCreatingItem: (item: CreatingItem | null) => void;
   /** Create the item on disk and select it in the tree */
   createItemAndSelect: (name: string) => Promise<void>;
-  /** Mark a path as recently changed (will auto-clear after 3 seconds) */
-  markRecentlyChanged: (path: string, type: 'created' | 'modified') => void;
-  /** Clear recently changed status for a path */
-  clearRecentlyChanged: (path: string) => void;
   /** Expand tree to reveal a file path, loading intermediate directories as needed */
   expandToPath: (projectId: string, path: string) => Promise<void>;
 
   // File operations
-  loadDirectory: (projectId: string, path?: string) => Promise<void>;
+  /** `background` skips the global loading flag for root reloads (watcher-driven refreshes) */
+  loadDirectory: (projectId: string, path?: string, options?: { background?: boolean }) => Promise<void>;
   refreshDirectory: (path: string) => Promise<void>;
   createFolder: (path: string) => Promise<FileNode | null>;
   createFile: (path: string, content?: string) => Promise<FileNode | null>;
@@ -90,7 +80,6 @@ const initialState = {
   focusedPaths: new Set<string>(),
   renamingPath: null as string | null,
   creatingItem: null as CreatingItem | null,
-  recentlyChangedPaths: new Map<string, RecentlyChangedInfo>(),
   isLoading: false,
   loadingPaths: new Set<string>(),
   error: null as string | null,
@@ -111,12 +100,26 @@ function findNodeByPath(nodes: FileNode[], path: string): FileNode | null {
 }
 
 /**
- * Update nodes in tree at a specific path with new children
+ * Combine a fresh (non-recursive) directory listing with the nodes already loaded there.
+ * Directories that were already loaded keep their children, so a reload of a parent does
+ * not leave expanded folders empty. Entries missing from the listing are dropped.
+ */
+function mergeListing(existing: FileNode[] | undefined, fresh: FileNode[]): FileNode[] {
+  if (!existing?.length) return fresh;
+  const existingByPath = new Map(existing.map(node => [node.path, node]));
+  return fresh.map(node => {
+    const loaded = node.isDirectory ? existingByPath.get(node.path)?.children : undefined;
+    return loaded && !node.children ? { ...node, children: loaded } : node;
+  });
+}
+
+/**
+ * Update nodes in tree at a specific path with a fresh listing, merged with what is loaded
  */
 function updateNodesAtPath(nodes: FileNode[], parentPath: string, children: FileNode[]): FileNode[] {
   return nodes.map(node => {
     if (node.path === parentPath) {
-      return { ...node, children };
+      return { ...node, children: mergeListing(node.children, children) };
     }
     if (node.children) {
       return { ...node, children: updateNodesAtPath(node.children, parentPath, children) };
@@ -267,30 +270,8 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
 
     if (node) {
       set({ selectedPaths: new Set([node.path]), creatingItem: null });
-      get().markRecentlyChanged(node.path, 'created');
     } else {
       set({ creatingItem: null });
-    }
-  },
-
-  markRecentlyChanged: (path, type) => {
-    const { recentlyChangedPaths } = get();
-    const newMap = new Map(recentlyChangedPaths);
-    newMap.set(path, { type, timestamp: Date.now() });
-    set({ recentlyChangedPaths: newMap });
-
-    // Auto-clear after 3 seconds
-    setTimeout(() => {
-      get().clearRecentlyChanged(path);
-    }, 3000);
-  },
-
-  clearRecentlyChanged: (path) => {
-    const { recentlyChangedPaths } = get();
-    if (recentlyChangedPaths.has(path)) {
-      const newMap = new Map(recentlyChangedPaths);
-      newMap.delete(path);
-      set({ recentlyChangedPaths: newMap });
     }
   },
 
@@ -321,7 +302,7 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
     set({ expandedPaths: newExpanded });
   },
 
-  loadDirectory: async (projectId, path = '') => {
+  loadDirectory: async (projectId, path = '', options) => {
     const isRootLoad = path === '' || path === '.';
 
     // If project changed, reset state
@@ -337,7 +318,7 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
 
     // Track loading state - use global isLoading for root, loadingPaths for subdirs
     if (isRootLoad) {
-      set({ isLoading: true, error: null });
+      set(options?.background ? { error: null } : { isLoading: true, error: null });
     } else {
       const newLoadingPaths = new Set(get().loadingPaths);
       newLoadingPaths.add(path);
@@ -349,8 +330,8 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
 
       if (get().projectId === projectId) {
         if (isRootLoad) {
-          // Root level - replace all nodes
-          set({ nodes, isLoading: false });
+          // Root level - replace the listing, keeping loaded subfolders
+          set({ nodes: mergeListing(get().nodes, nodes), isLoading: false });
         } else {
           // Subdirectory - update children of that path
           const updatedNodes = updateNodesAtPath(get().nodes, path, nodes);
@@ -385,7 +366,7 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
 
       if (get().projectId === projectId) {
         if (path === '' || path === '.') {
-          set({ nodes: children });
+          set({ nodes: mergeListing(get().nodes, children) });
         } else {
           const updatedNodes = updateNodesAtPath(get().nodes, path, children);
           set({ nodes: updatedNodes });
@@ -600,13 +581,11 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
     expandedPaths: new Set<string>(),
     focusedPaths: new Set<string>(),
     loadingPaths: new Set<string>(),
-    recentlyChangedPaths: new Map<string, RecentlyChangedInfo>(),
-  }),
+    }),
   resetProjectState: () => set({
     ...initialState,
     expandedPaths: new Set<string>(),
     focusedPaths: new Set<string>(),
     loadingPaths: new Set<string>(),
-    recentlyChangedPaths: new Map<string, RecentlyChangedInfo>(),
-  }),
+    }),
 }));

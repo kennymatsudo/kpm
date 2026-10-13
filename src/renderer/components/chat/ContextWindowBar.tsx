@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { resolveModelContextWindow } from '../../../shared/usage-types';
 import type { ChatProvider } from '../../../shared/types';
 import type { PerSessionState } from '../../stores/chat/types';
@@ -17,7 +18,7 @@ function reportedPromptTokens(usage: PerSessionState['lastTurnUsage']): number {
   return (usage?.inputTokens ?? 0) + (usage?.cacheReadTokens ?? 0) + (usage?.cacheCreationTokens ?? 0);
 }
 
-export function ContextWindowBar({ usage, model, provider, contextWindow: selectedContextWindow }: ContextWindowBarProps) {
+export const ContextWindowBar = memo(function ContextWindowBar({ usage, model, provider, contextWindow: selectedContextWindow }: ContextWindowBarProps) {
   const contextWindow = usage?.contextWindow ?? selectedContextWindow ?? resolveModelContextWindow(model);
   const total = reportedPromptTokens(usage);
   const cacheRead = usage?.cacheReadTokens ?? 0;
@@ -73,4 +74,4 @@ export function ContextWindowBar({ usage, model, provider, contextWindow: select
       </span>
     </div>
   );
-}
+});

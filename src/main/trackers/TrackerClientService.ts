@@ -9,6 +9,10 @@ import {
 
 const provider = new KeytarCredentialProvider();
 
+// Whether Jira credentials are stored, remembered so the chat tool list can be
+// built synchronously. Null until the first keychain read finishes.
+let jiraConfigured: boolean | null = null;
+
 function createClientForCredentials(creds: TrackerCredentials): TrackerClient {
   if (creds.type === 'jira') return new JiraClient(creds);
   return new LinearClient(creds);
@@ -53,6 +57,7 @@ export const TrackerClientService = {
     }
     try {
       await provider.saveCredentials(creds);
+      if (creds.type === 'jira') jiraConfigured = true;
       return { success: true };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : 'Failed to save credentials' };
@@ -61,6 +66,7 @@ export const TrackerClientService = {
 
   async clearCredentials(type: TrackerType): Promise<void> {
     await provider.clearCredentials(type);
+    if (type === 'jira') jiraConfigured = false;
   },
 
   // ---- Jira ---------------------------------------------------------------
@@ -88,7 +94,17 @@ export const TrackerClientService = {
   },
 
   async hasJiraCredentials(): Promise<boolean> {
-    return provider.hasCredentials('jira');
+    jiraConfigured = await provider.hasCredentials('jira');
+    return jiraConfigured;
+  },
+
+  /**
+   * The last known answer to hasJiraCredentials, for callers that cannot wait
+   * on the keychain. Reads as configured until the first check finishes, so a
+   * slow keychain hides nothing that used to be shown.
+   */
+  isJiraConfigured(): boolean {
+    return jiraConfigured ?? true;
   },
 
   async getJiraCredentialsInfo(): Promise<JiraCredentialsInfo | null> {
