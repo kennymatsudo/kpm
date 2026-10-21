@@ -11,17 +11,31 @@ import type { DevSessionService } from '../repo/DevSessionService';
 import type { ReviewService } from '../repo/ReviewService';
 import type { AgentSessionManager, AgentSessionManagerDeps } from './AgentSessionManager';
 import { launchPlaybookSubagent, toPlaybookSubagentSessionId } from './autoReview';
-import { createPlaybookRoundStore, type RunGroup } from './playbookRoundStore';
+import { isBlockingFinding } from './reviewOutputContract';
+import { createPlaybookRoundStore, withRunAxis, type FindingRef, type RoundFinding, type RunGroup } from './playbookRoundStore';
 import { listBoardProviders as detectBoardProviders } from './boardProviderRegistry';
 import { failure, type ServiceResult } from '../result';
 import type { AutomationPhaseMachine } from './automationPhaseMachine';
 import { playbookForSession, phaseForPlaybookStep, readSessionRun, resolveHarnessStep, resolveRunStep, stepById } from './sessionPlaybook';
 import { createPlaybookStepRunner } from './playbookStepRunner';
 import { runMainStep, type TurnReentry } from './mainStepTurn';
+import {
+  CRITERIA_STATUS_OUTPUT_KEY,
+  HARNESS_OUTPUT_PREFIX,
+  parseCriteriaStatus,
+  parseFindingReplies,
+} from '../../../shared/agentReportBlocks';
 
 const LOG_PREFIX = '[BoardAgentOrchestrator]';
 const WORKTREE_MODIFIED_NOTICE_KEY = '__harness_worktree_modified';
 const WORKTREE_MODIFIED_NOTE = 'Harness note: Another agent modified the worktree in the previous playbook step. Inspect and preserve those changes before continuing.';
+// Persisted rather than held in memory: the address turn it closes can outlive
+// a main-process restart.
+const SUGGESTIONS_ONLY_ROUND_KEY = '__harness_suggestions_only_round';
+// The findings a main turn was given, in the order it was told to number them,
+// so its `finding-replies` block can be written back to the saved findings.
+const ADDRESSED_FINDINGS_KEY = `${HARNESS_OUTPUT_PREFIX}addressed_findings`;
+const PRIOR_ASSESSMENT_NOTE = 'Harness note: This is a re-review. The implementer assessed the previous round\'s findings and replied below. Do not re-raise a finding the implementer declined unless you dispute the stated reason; if you do, say why in the finding.';
 
 /**
  * Everything the interpreter drives on a dev session. Nothing here is
@@ -35,12 +49,14 @@ export type DevSessionAutomationService = Pick<
   | 'get'
   | 'sendAgentFollowUp'
   | 'updateStatus'
+  | 'generateCommitMessage'
   | 'commitSessionChanges'
   | 'requestCommitHookRepair'
   | 'savePlaybookOutputs'
   | 'reconcileWorkBrief'
   | 'syncWorkBriefSnapshot'
   | 'startAgentSession'
+  | 'buildSubagentTaskContext'
 >;
 type ReviewQueueService = Pick<ReviewService, 'flushQueuedReviewTasks'>;
 
@@ -48,7 +64,7 @@ interface BoardAgentOrchestratorDeps {
   agentReviews: Pick<
     IAgentReviewRepository,
     'persistStartedReview' | 'persistCompletedReview' | 'persistFailedReview'
-  > & Pick<IAgentReviewRepository, 'getByReviewSessionIds'>;
+  > & Pick<IAgentReviewRepository, 'getByReviewSessionIds' | 'recordFindingDispositions'>;
   planService: Pick<PlanService, 'updateItem'>;
   phaseMachine: Pick<AutomationPhaseMachine, 'transition'>;
   getDevSessionService: () => DevSessionAutomationService | null;
@@ -72,10 +88,10 @@ type AgentManagerCallbacks = Pick<
   | 'onSessionUsage'
 >;
 
-function formatFindingLines(findings: ReviewFinding[]): string {
+function formatFindingLines(findings: ReviewFinding[], firstNumber: number): string {
   return findings.map((finding, index) => {
     const location = finding.file ? `${finding.file}${finding.line ? `:${finding.line}` : ''}` : '—';
-    return `${index + 1}. [${finding.severity}] ${location}\n   ${finding.description}`;
+    return `${firstNumber + index}. [${finding.severity}] ${location}\n   ${finding.description}`;
   }).join('\n');
 }
 
@@ -86,22 +102,41 @@ const AXIS_SECTIONS: { axis: ReviewAxis | null; title: string }[] = [
 ];
 
 /**
- * Render findings for the address turn. When a two-axis review tagged them,
- * group by axis under headings and keep each axis's findings in their own order
- * — never merged or reranked across axes, so one lens can't mask another.
+ * The address turn's sections. When a two-axis review tagged the findings,
+ * they are grouped by axis and keep each axis's own order — never merged or
+ * reranked across axes, so one lens can't mask another.
+ */
+function addressSections<T extends ReviewFinding>(findings: T[]): { title: string | null; findings: T[] }[] {
+  const tagged = findings.some((finding) => finding.axis === 'standards' || finding.axis === 'spec');
+  if (!tagged) return findings.length ? [{ title: null, findings }] : [];
+  return AXIS_SECTIONS
+    .map(({ axis, title }) => ({
+      title,
+      findings: findings.filter((finding) => (
+        axis === null ? finding.axis == null || finding.axis === 'general' : finding.axis === axis
+      )),
+    }))
+    .filter((section) => section.findings.length > 0);
+}
+
+/**
+ * Render findings for the address turn, numbered once across every section:
+ * the agent's `finding-replies` block refers back to these numbers.
  */
 export function formatFindings(findings: ReviewFinding[]): string {
-  const tagged = findings.some((finding) => finding.axis === 'standards' || finding.axis === 'spec');
-  if (!tagged) return formatFindingLines(findings);
-  return AXIS_SECTIONS
-    .map(({ axis, title }) => {
-      const group = findings.filter((finding) => (
-        axis === null ? finding.axis == null || finding.axis === 'general' : finding.axis === axis
-      ));
-      return group.length ? `${title}\n${formatFindingLines(group)}` : null;
+  let next = 1;
+  return addressSections(findings)
+    .map((section) => {
+      const lines = formatFindingLines(section.findings, next);
+      next += section.findings.length;
+      return section.title ? `${section.title}\n${lines}` : lines;
     })
-    .filter((section): section is string => section !== null)
     .join('\n\n');
+}
+
+/** Findings in the order `formatFindings` numbers them. */
+function inAddressOrder(findings: RoundFinding[]): RoundFinding[] {
+  return addressSections(findings).flatMap((section) => section.findings);
 }
 
 
@@ -142,14 +177,18 @@ async function captureWorkOnBranch(
   phaseMachine: Pick<AutomationPhaseMachine, 'transition'>,
   session: DevSession,
 ): Promise<CaptureWorkOutcome> {
-  // Ask the step what it was doing, not the phase: `addressing_review` is the
-  // live phase of every main step, so reading it here titles a plain resumed
-  // implementation turn as review work.
-  const subject = readSessionRun(session).cursor?.addressesFindings
+  const taskTitle = session.name?.trim() || 'KPM task changes';
+  const generated = await devSessionService.generateCommitMessage(session.id, { taskTitle });
+  // Ask the step what it was doing, not the phase: under hook repair the phase
+  // is `fixing_commit_hooks`, which no longer says which step it came from.
+  const fallbackSubject = readSessionRun(session).cursor?.addressesFindings
     ? 'Address review findings'
-    : session.name?.trim() || 'KPM task changes';
+    : taskTitle;
 
-  const result = await devSessionService.commitSessionChanges(session.id, subject);
+  const result = await devSessionService.commitSessionChanges(
+    session.id,
+    generated.ok ? generated.data : fallbackSubject,
+  );
   if (result.ok) {
     return 'committed';
   }
@@ -167,6 +206,16 @@ async function captureWorkOnBranch(
   console.warn(`${LOG_PREFIX} Could not capture work onto branch for ${session.id}: ${result.error}`);
   phaseMachine.transition(session.id, { type: 'automationFailed', reason: 'commit-capture-failed' });
   return 'failed';
+}
+
+function parseFindingRef(raw: string | undefined): FindingRef | null {
+  if (!raw) return null;
+  try {
+    const ref = JSON.parse(raw) as FindingRef | null;
+    return ref && typeof ref.reviewSessionId === 'string' && Number.isInteger(ref.order) ? ref : null;
+  } catch {
+    return null;
+  }
 }
 
 export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): AgentManagerCallbacks & {
@@ -199,7 +248,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
     session: DevSession,
     playbook: Playbook,
     step: PlaybookStep,
-    findings: ReviewFinding[] = [],
+    findings: RoundFinding[] = [],
     resumeNote?: string,
   ): Promise<void> {
     if (step.pauseBefore && session.automation_phase !== 'paused') {
@@ -211,7 +260,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
     deps.phaseMachine.transition(session.id, {
       type: 'stepStarted',
       stepId: step.id,
-      phase: phaseForPlaybookStep(step),
+      phase: phaseForPlaybookStep(playbook, step),
     });
     const providers = await (deps.listBoardProviders ?? detectBoardProviders)();
     const plan = resolvePlaybookPlan(playbook, providers, deps.getDefaultModel?.());
@@ -233,6 +282,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
         return;
       }
       const hasWorktreeNotice = Boolean(sessionOutputs[WORKTREE_MODIFIED_NOTICE_KEY]?.length);
+      rememberAddressedFindings(session, sessionOutputs, findings);
       const result = await runMainStep(mainStepTurnDeps, {
         session,
         step,
@@ -269,6 +319,11 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
     if (syncResult?.ok) {
       subagentSession = syncResult.data.session;
     }
+    const taskContext = await deps.getDevSessionService()?.buildSubagentTaskContext(session.id);
+    if (taskContext && !taskContext.ok) {
+      deps.phaseMachine.transition(session.id, { type: 'automationFailed', reason: 'follow-up-send-failed' });
+      return;
+    }
 
     const group = rounds.reconstructRunGroup(session, step, resolved.runs.length);
     rounds.setGroup(session.id, step.id, group);
@@ -276,6 +331,15 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
       await finalizeSubagentGroup(session, playbook, step, group);
       return;
     }
+    // A stateless reviewer re-raises every finding the implementer declined, so
+    // the loop never converges unless it sees the previous round's assessment.
+    const priorAssessment = step.onFindings && group.attempt > 0
+      ? sessionOutputs[step.onFindings.goto]?.join('\n\n').trim()
+      : undefined;
+    const harnessNote = [
+      step.writes ? BOARD_AGENT_WRITE_POLICY : null,
+      priorAssessment ? `${PRIOR_ASSESSMENT_NOTE}\n\nImplementer's assessment of the previous round:\n${priorAssessment}` : null,
+    ].filter(Boolean).join('\n\n');
     const starts = resolved.runs.map(async (agent, runIndex) => {
       if (group.succeeded.has(runIndex)) return null;
       group.failed.delete(runIndex);
@@ -290,7 +354,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
         promptContent: deps.getPromptContent,
         skillBody: skill?.ok ? skill.data : null,
         resumeNote,
-        harnessNote: step.writes ? BOARD_AGENT_WRITE_POLICY : null,
+        harnessNote,
       });
       return launchPlaybookSubagent({
         implementationSessionId: subagentSession.id,
@@ -300,7 +364,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
         agent: agent!,
         worktreePath: subagentSession.worktree_path,
         baseBranch: subagentSession.base_branch,
-        taskContext: subagentSession.initial_instructions,
+        taskContext: taskContext?.data ?? subagentSession.initial_instructions,
         directive,
         systemPrompt: deps.getPromptContent(step.runOverrides?.[runIndex]?.systemPromptKey ?? step.systemPromptKey!),
         verdict: step.verdict === 'findings',
@@ -314,6 +378,45 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
     if (group.succeeded.size + group.failed.size === group.expected) {
       await finalizeSubagentGroup(session, playbook, step, group);
     }
+  }
+
+  /** Persisted before the turn starts, so a reply that arrives after a restart still finds its findings. */
+  function rememberAddressedFindings(session: DevSession, sessionOutputs: Record<string, string[]>, findings: RoundFinding[]): void {
+    const hadFindings = ADDRESSED_FINDINGS_KEY in sessionOutputs;
+    if (findings.length === 0 && !hadFindings) return;
+    if (findings.length === 0) delete sessionOutputs[ADDRESSED_FINDINGS_KEY];
+    else sessionOutputs[ADDRESSED_FINDINGS_KEY] = inAddressOrder(findings).map((finding) => JSON.stringify(finding.ref ?? null));
+    rounds.persistOutputs(session, sessionOutputs);
+  }
+
+  /**
+   * Save what a main turn's report says about the work: its reply to each
+   * finding it was given, and its acceptance-criteria status. Both are the
+   * agent's claims, kept as data so the board can show them per finding and
+   * per criterion.
+   */
+  function recordReportedOutcome(session: DevSession, finalText: string | null | undefined): void {
+    const sessionOutputs = rounds.outputsFor(session);
+    let changed = false;
+    const addressed = sessionOutputs[ADDRESSED_FINDINGS_KEY];
+    if (addressed) {
+      const replies = parseFindingReplies(finalText) ?? [];
+      const updates = replies.flatMap((reply) => {
+        const ref = parseFindingRef(addressed[reply.finding - 1]);
+        return ref
+          ? [{ review_session_id: ref.reviewSessionId, order: ref.order, disposition: reply.disposition, reason: reply.reason }]
+          : [];
+      });
+      deps.agentReviews.recordFindingDispositions(updates);
+      delete sessionOutputs[ADDRESSED_FINDINGS_KEY];
+      changed = true;
+    }
+    const criteria = parseCriteriaStatus(finalText);
+    if (criteria) {
+      sessionOutputs[CRITERIA_STATUS_OUTPUT_KEY] = [JSON.stringify(criteria)];
+      changed = true;
+    }
+    if (changed) rounds.persistOutputs(session, sessionOutputs);
   }
 
   const stepRunner = createPlaybookStepRunner({
@@ -336,6 +439,12 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
       deps.phaseMachine.transition(session.id, { type: 'automationFailed', reason: `all-runs-failed:${step.id}` });
       return;
     }
+    // Settling on the surviving runs would pass a round that one lens (say,
+    // Spec) never actually reviewed.
+    if (group.failed.size > 0) {
+      deps.phaseMachine.transition(session.id, { type: 'automationFailed', reason: `some-runs-failed:${step.id}` });
+      return;
+    }
     const sessionOutputs = rounds.outputsFor(session);
     sessionOutputs[step.id] = [...group.output.entries()].sort(([a], [b]) => a - b).map(([, value]) => value);
     rounds.persistOutputs(session, sessionOutputs);
@@ -348,6 +457,12 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
       // Persist before advancing the cursor so a restart between the writing
       // subagent and the next main turn cannot lose this harness-owned notice.
       sessionOutputs[WORKTREE_MODIFIED_NOTICE_KEY] = [step.id];
+      rounds.persistOutputs(session, sessionOutputs);
+    }
+    if (step.onFindings) {
+      const suggestionsOnly = group.findings.length > 0 && !group.findings.some(isBlockingFinding);
+      if (suggestionsOnly) sessionOutputs[SUGGESTIONS_ONLY_ROUND_KEY] = [step.id];
+      else delete sessionOutputs[SUGGESTIONS_ONLY_ROUND_KEY];
       rounds.persistOutputs(session, sessionOutputs);
     }
     await stepRunner.settle({ session, playbook, step, findings: group.findings });
@@ -369,10 +484,11 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
     else {
       if (!group.succeeded.has(params.runIndex)) {
         group.succeeded.add(params.runIndex);
-        const axis = params.step.runOverrides?.[params.runIndex]?.axis;
-        group.findings.push(...(params.findings ?? []).map((finding) => (
-          axis ? { ...finding, axis: finding.axis ?? axis } : finding
-        )));
+        const reviewSessionId = toPlaybookSubagentSessionId(params.session.id, params.step.id, group.attempt, params.runIndex);
+        group.findings.push(...withRunAxis(params.findings ?? [], params.step, params.runIndex).map((finding, order) => ({
+          ...finding,
+          ref: { reviewSessionId, order },
+        })));
       }
       if (params.finalText) group.output.set(params.runIndex, params.finalText);
     }
@@ -406,7 +522,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
         counts[step.id] = (counts[step.id] ?? 0) + 1;
         deps.phaseMachine.transition(sessionId, {
           type: 'stepCompleted', stepId: step.id, nextStepId: target.id,
-          nextPhase: phaseForPlaybookStep(target), stepPassCounts: counts,
+          nextPhase: phaseForPlaybookStep(playbook, target), stepPassCounts: counts,
         });
         const surviving = rounds.outputsFor(session)[step.id]?.join('\n\n');
         const note = [options.note, surviving ? `Surviving reviewer output:\n${surviving}` : ''].filter(Boolean).join('\n\n');
@@ -441,7 +557,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
         type: 'stepCompleted',
         stepId: step.id,
         nextStepId: step.id,
-        nextPhase: phaseForPlaybookStep(step),
+        nextPhase: phaseForPlaybookStep(playbook, step),
         stepPassCounts: passCounts,
       });
 
@@ -461,6 +577,8 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
     },
 
     persistReviewResult: ({ implementationSessionId, reviewSessionId, reviewerAgent, findings, rawOutput, stepId, runIndex }) => {
+      const session = stepId ? deps.getDevSessionService()?.get(implementationSessionId) : undefined;
+      const step = session && stepId ? stepById(playbookForSession(session), stepId) : undefined;
       deps.agentReviews.persistCompletedReview({
         implementation_session_id: implementationSessionId,
         review_session_id: reviewSessionId,
@@ -468,7 +586,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
         raw_output: rawOutput,
         step_id: stepId ?? null,
         run_index: runIndex ?? null,
-        findings,
+        findings: withRunAxis(findings, step, runIndex),
       });
     },
 
@@ -497,6 +615,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
 
       const playbook = playbookForSession(session);
       if (role === 'implement') {
+        recordReportedOutcome(session, finalText);
         const capture = await captureWorkOnBranch(devSessionService, deps.phaseMachine, session);
         if (!isCaptured(capture)) return;
         const madeProgress = capture === 'committed';
@@ -510,13 +629,17 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
           await stepRunner.finish(session);
           return;
         }
-        const completed = resolveRunStep(playbook, session.current_step_id) ?? playbook.steps[0];
-        if (finalText) {
-          const sessionOutputs = rounds.outputsFor(session);
-          sessionOutputs[completed.id] = [finalText];
-          rounds.persistOutputs(session, sessionOutputs);
+        const completed = resolveRunStep(playbook, session.current_step_id);
+        if (!completed) {
+          deps.phaseMachine.transition(session.id, { type: 'automationFailed', reason: 'unknown-completed-step' });
+          return;
         }
-        await stepRunner.settle({ session, playbook, step: completed, findings: [], madeProgress });
+        const sessionOutputs = rounds.outputsFor(session);
+        const closesLoop = Boolean(sessionOutputs[SUGGESTIONS_ONLY_ROUND_KEY]?.length);
+        delete sessionOutputs[SUGGESTIONS_ONLY_ROUND_KEY];
+        if (finalText) sessionOutputs[completed.id] = [finalText];
+        if (finalText || closesLoop) rounds.persistOutputs(session, sessionOutputs);
+        await stepRunner.settle({ session, playbook, step: completed, findings: [], madeProgress, closesLoop });
         return;
       }
       const completed = resolveRunStep(playbook, stepId ?? session.current_step_id ?? 'review');
@@ -567,9 +690,12 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
       }
 
       if (state === 'stopped') {
+        // A null cursor is an ad-hoc turn after the run ended; pausing it on a
+        // made-up step would let Play rerun the whole playbook.
+        if (!session.current_step_id) return;
         deps.phaseMachine.transition(implementationSessionId, {
           type: 'paused',
-          stepId: session.current_step_id ?? 'implement',
+          stepId: session.current_step_id,
           reason: 'stopped',
         });
         return;
@@ -594,6 +720,7 @@ export function createBoardAgentOrchestrator(deps: BoardAgentOrchestratorDeps): 
           cache_read_input_tokens: usage.cacheReadTokens,
         },
         totalCostUsd: usage.totalCostUsd,
+        costUnknown: usage.costUnknown,
         sdkSessionId: usage.sdkSessionId,
         sdkResultUuid: usage.sdkResultUuid,
         sdkCostScope: usage.sdkCostScope,

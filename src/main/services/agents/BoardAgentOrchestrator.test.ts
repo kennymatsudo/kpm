@@ -6,7 +6,7 @@ import type * as AutoReviewModule from './autoReview';
 import type { DevSession } from '../../../shared/types';
 import type { DevSessionAutomationService } from './BoardAgentOrchestrator';
 import { BUILT_IN_PLAYBOOKS } from '../../../shared/playbooks';
-import { toReviewSessionId } from '../../../shared/agent-types';
+import { toReviewSessionId, type ReviewFinding } from '../../../shared/agent-types';
 
 vi.mock('electron', () => ({
   BrowserWindow: { getAllWindows: () => [] },
@@ -43,6 +43,12 @@ function createTestPhaseMachine(session: DevSession) {
   return createAutomationPhaseMachine({ devSessions });
 }
 
+// Generation declines on a clean or untracked-only diff, so the default double
+// exercises the fallback subject; tests about the generated message override it.
+function noGeneratedCommitMessage() {
+  return vi.fn().mockResolvedValue({ ok: false, error: 'No tracked changes to describe' });
+}
+
 /**
  * The interpreter's view of a dev session, whole. Every member is required, so
  * a test cannot silently exercise a "service is unavailable" branch that
@@ -53,6 +59,7 @@ function devSessionDouble(overrides: Partial<DevSessionAutomationService> = {}):
   return {
     sendAgentFollowUp: vi.fn().mockResolvedValue({ ok: true, data: { restarted: false } }),
     updateStatus: vi.fn(),
+    generateCommitMessage: noGeneratedCommitMessage(),
     commitSessionChanges: vi.fn().mockResolvedValue({ ok: true, data: { sha: 'sha' } }),
     requestCommitHookRepair: vi.fn().mockResolvedValue({ ok: true, data: { started: false } }),
     savePlaybookOutputs: vi.fn(),
@@ -60,6 +67,7 @@ function devSessionDouble(overrides: Partial<DevSessionAutomationService> = {}):
     // Mirrors the real snapshot sync: it hands back the session it refreshed.
     syncWorkBriefSnapshot: vi.fn((sessionId: string) => ({ ok: true as const, data: { session: get(sessionId)! } })),
     startAgentSession: vi.fn().mockResolvedValue({ ok: true, data: {} }),
+    buildSubagentTaskContext: vi.fn(async (sessionId: string) => ({ ok: true as const, data: get(sessionId)?.initial_instructions ?? '' })),
     ...overrides,
     get,
   } as DevSessionAutomationService;
@@ -119,6 +127,7 @@ describe('BoardAgentOrchestrator', () => {
         persistCompletedReview: vi.fn(),
         persistFailedReview: vi.fn(),
         getByReviewSessionIds: vi.fn(() => []),
+        recordFindingDispositions: vi.fn(),
       },
       planService: { updateItem },
       phaseMachine: createTestPhaseMachine(session),
@@ -180,6 +189,7 @@ describe('BoardAgentOrchestrator', () => {
         persistCompletedReview: vi.fn(),
         persistFailedReview: vi.fn(),
         getByReviewSessionIds: vi.fn(() => []),
+        recordFindingDispositions: vi.fn(),
       },
       planService: { updateItem },
       phaseMachine: createTestPhaseMachine(session),
@@ -230,6 +240,7 @@ describe('BoardAgentOrchestrator', () => {
         persistCompletedReview: vi.fn(),
         persistFailedReview: vi.fn(),
         getByReviewSessionIds: vi.fn(() => []),
+        recordFindingDispositions: vi.fn(),
       },
       planService: { updateItem },
       phaseMachine: createTestPhaseMachine(session),
@@ -265,6 +276,46 @@ describe('BoardAgentOrchestrator', () => {
     expect(requestPlanRefresh).toHaveBeenCalledWith(session.project_id);
   });
 
+  it('commits a step under the message generated from its diff', async () => {
+    const session = createSession({ review_policy: 'skip' });
+    const generateCommitMessage = vi.fn().mockResolvedValue({ ok: true, data: 'Cap Zendesk pool checkouts' });
+    const commitSessionChanges = vi.fn().mockResolvedValue({ ok: true, data: undefined });
+
+    const callbacks = createBoardAgentOrchestrator({
+      agentReviews: {
+        persistStartedReview: vi.fn(),
+        persistCompletedReview: vi.fn(),
+        persistFailedReview: vi.fn(),
+        getByReviewSessionIds: vi.fn(() => []),
+        recordFindingDispositions: vi.fn(),
+      },
+      planService: { updateItem: vi.fn().mockReturnValue({ ok: true, data: undefined }) },
+      phaseMachine: createTestPhaseMachine(session),
+      getDevSessionService: () => devSessionDouble({
+        get: vi.fn(() => session),
+        generateCommitMessage,
+        commitSessionChanges,
+      }),
+      getReviewService: () => ({ flushQueuedReviewTasks: vi.fn() }),
+      getAgentSessionManager: () => ({
+        getByDevSession: vi.fn(),
+      } as never),
+      getPromptContent: vi.fn(),
+      claudeUsageService: { recordUsage: vi.fn() },
+      requestPlanRefresh: vi.fn(),
+    });
+
+    await callbacks.onSessionComplete?.({
+      devSessionId: session.id,
+      implementationSessionId: session.id,
+      role: 'implement',
+      summary: { filesChanged: 1, additions: 2, deletions: 0 },
+    });
+
+    expect(generateCommitMessage).toHaveBeenCalledWith(session.id, { taskTitle: session.name });
+    expect(commitSessionChanges).toHaveBeenCalledWith(session.id, 'Cap Zendesk pool checkouts');
+  });
+
   it('reconciles a changed Work Brief before advancing implementation', async () => {
     const session = createSession({ review_policy: 'skip' });
     const commitSessionChanges = vi.fn().mockResolvedValue({ ok: true, data: undefined });
@@ -281,6 +332,7 @@ describe('BoardAgentOrchestrator', () => {
         persistCompletedReview: vi.fn(),
         persistFailedReview: vi.fn(),
         getByReviewSessionIds: vi.fn(() => []),
+        recordFindingDispositions: vi.fn(),
       },
       planService: { updateItem },
       phaseMachine: createTestPhaseMachine(session),
@@ -335,6 +387,7 @@ describe('BoardAgentOrchestrator', () => {
         persistCompletedReview: vi.fn(),
         persistFailedReview: vi.fn(),
         getByReviewSessionIds: vi.fn(() => []),
+        recordFindingDispositions: vi.fn(),
       },
       planService: { updateItem },
       phaseMachine: createTestPhaseMachine(session),
@@ -379,6 +432,7 @@ describe('BoardAgentOrchestrator', () => {
         persistCompletedReview: vi.fn(),
         persistFailedReview: vi.fn(),
         getByReviewSessionIds: vi.fn(() => []),
+        recordFindingDispositions: vi.fn(),
       },
       planService: { updateItem },
       phaseMachine: createTestPhaseMachine(session),
@@ -427,6 +481,7 @@ describe('BoardAgentOrchestrator', () => {
         persistCompletedReview: vi.fn(),
         persistFailedReview: vi.fn(),
         getByReviewSessionIds: vi.fn(() => []),
+        recordFindingDispositions: vi.fn(),
       },
       planService: { updateItem },
       phaseMachine: createTestPhaseMachine(session),
@@ -477,6 +532,7 @@ describe('BoardAgentOrchestrator', () => {
         persistCompletedReview: vi.fn(),
         persistFailedReview: vi.fn(),
         getByReviewSessionIds: vi.fn(() => []),
+        recordFindingDispositions: vi.fn(),
       },
       planService: { updateItem },
       phaseMachine: createTestPhaseMachine(session),
@@ -524,6 +580,7 @@ describe('BoardAgentOrchestrator', () => {
         persistCompletedReview: vi.fn(),
         persistFailedReview: vi.fn(),
         getByReviewSessionIds: vi.fn(() => []),
+        recordFindingDispositions: vi.fn(),
       },
       planService: { updateItem: vi.fn() },
       phaseMachine: createTestPhaseMachine(session),
@@ -590,6 +647,7 @@ describe('BoardAgentOrchestrator', () => {
       agentReviews: {
         persistStartedReview: vi.fn(), persistCompletedReview: vi.fn(), persistFailedReview: vi.fn(),
         getByReviewSessionIds: vi.fn(() => []),
+        recordFindingDispositions: vi.fn(),
       },
       planService: { updateItem }, phaseMachine: createTestPhaseMachine(session),
       getDevSessionService: () => devSessionDouble({
@@ -609,6 +667,32 @@ describe('BoardAgentOrchestrator', () => {
     expect(updateItem).toHaveBeenCalledWith('plan-1', { status_category: 'in_review' });
     expect(launchPlaybookSubagent).not.toHaveBeenCalled();
     expect(session.current_step_id).toBeNull();
+  });
+
+  it.each([
+    ['keeps an ad-hoc turn after the run ended off the playbook', null, 'idle', null],
+    ['pauses a playbook turn on the step it was running', 'implement', 'paused', 'implement'],
+  ] as const)('Stop %s', async (_name, cursor, expectedPhase, expectedCursor) => {
+    const session = createSession({ current_step_id: cursor, automation_phase: 'idle' });
+    const callbacks = createBoardAgentOrchestrator({
+      agentReviews: {
+        persistStartedReview: vi.fn(), persistCompletedReview: vi.fn(), persistFailedReview: vi.fn(),
+        getByReviewSessionIds: vi.fn(() => []),
+        recordFindingDispositions: vi.fn(),
+      },
+      planService: { updateItem: vi.fn() }, phaseMachine: createTestPhaseMachine(session),
+      getDevSessionService: () => devSessionDouble({ get: vi.fn(() => session) }),
+      getReviewService: () => null,
+      getAgentSessionManager: () => ({ isSessionBusy: vi.fn(() => false) } as never),
+      getPromptContent: vi.fn(), claudeUsageService: { recordUsage: vi.fn() }, requestPlanRefresh: vi.fn(),
+    });
+
+    await callbacks.onSessionStateChange?.({
+      devSessionId: session.id, implementationSessionId: session.id, role: 'implement', state: 'stopped',
+    } as never);
+
+    expect(session.automation_phase).toBe(expectedPhase);
+    expect(session.current_step_id).toBe(expectedCursor);
   });
 
   it('finishes a terminal playbook without flushing PR review tasks when no PR exists', async () => {
@@ -633,6 +717,7 @@ describe('BoardAgentOrchestrator', () => {
       agentReviews: {
         persistStartedReview: vi.fn(), persistCompletedReview: vi.fn(), persistFailedReview: vi.fn(),
         getByReviewSessionIds: vi.fn(() => []),
+        recordFindingDispositions: vi.fn(),
       },
       planService: { updateItem }, phaseMachine: createTestPhaseMachine(session),
       getDevSessionService: () => devSessionDouble({
@@ -678,6 +763,7 @@ describe('BoardAgentOrchestrator', () => {
       agentReviews: {
         persistStartedReview: vi.fn(), persistCompletedReview: vi.fn(), persistFailedReview: vi.fn(),
         getByReviewSessionIds: vi.fn(() => []),
+        recordFindingDispositions: vi.fn(),
       },
       planService: { updateItem: vi.fn() },
       phaseMachine: createTestPhaseMachine(session),
@@ -739,7 +825,7 @@ describe('BoardAgentOrchestrator', () => {
     ] as never);
     const callbacks = createBoardAgentOrchestrator({
       agentReviews: {
-        persistStartedReview: vi.fn(), persistCompletedReview: vi.fn(), persistFailedReview: vi.fn(), getByReviewSessionIds,
+        persistStartedReview: vi.fn(), persistCompletedReview: vi.fn(), persistFailedReview: vi.fn(), getByReviewSessionIds, recordFindingDispositions: vi.fn(),
       },
       planService: { updateItem: vi.fn() }, phaseMachine: createTestPhaseMachine(session),
       getDevSessionService: () => devSessionDouble({
@@ -786,6 +872,7 @@ describe('BoardAgentOrchestrator', () => {
       agentReviews: {
         persistStartedReview: vi.fn(), persistCompletedReview: vi.fn(), persistFailedReview: vi.fn(),
         getByReviewSessionIds: vi.fn(() => [] as never),
+        recordFindingDispositions: vi.fn(),
       },
       planService: { updateItem: vi.fn() }, phaseMachine: createTestPhaseMachine(session),
       getDevSessionService: () => devSessionDouble({
@@ -830,6 +917,7 @@ describe('BoardAgentOrchestrator', () => {
       agentReviews: {
         persistStartedReview: vi.fn(), persistCompletedReview: vi.fn(), persistFailedReview: vi.fn(),
         getByReviewSessionIds,
+        recordFindingDispositions: vi.fn(),
       },
       planService: { updateItem: vi.fn() }, phaseMachine: createTestPhaseMachine(session),
       getDevSessionService: () => devSessionDouble({
@@ -895,6 +983,7 @@ describe('BoardAgentOrchestrator', () => {
       agentReviews: {
         persistStartedReview: vi.fn(), persistCompletedReview: vi.fn(), persistFailedReview: vi.fn(),
         getByReviewSessionIds: vi.fn(() => []),
+        recordFindingDispositions: vi.fn(),
       },
       planService: { updateItem }, phaseMachine: createTestPhaseMachine(session),
       getDevSessionService: () => devSessionDouble({
@@ -948,6 +1037,7 @@ describe('BoardAgentOrchestrator', () => {
       agentReviews: {
         persistStartedReview: vi.fn(), persistCompletedReview: vi.fn(), persistFailedReview: vi.fn(),
         getByReviewSessionIds: vi.fn(() => []),
+        recordFindingDispositions: vi.fn(),
       },
       planService: { updateItem },
       phaseMachine,
@@ -992,6 +1082,7 @@ describe('BoardAgentOrchestrator', () => {
       agentReviews: {
         persistStartedReview: vi.fn(), persistCompletedReview: vi.fn(), persistFailedReview: vi.fn(),
         getByReviewSessionIds: vi.fn(() => []),
+        recordFindingDispositions: vi.fn(),
       },
       planService: { updateItem },
       phaseMachine: createTestPhaseMachine(session),
@@ -1018,6 +1109,167 @@ describe('BoardAgentOrchestrator', () => {
   });
 });
 
+describe('BoardAgentOrchestrator two-axis review loop', () => {
+  const deepPlaybook = BUILT_IN_PLAYBOOKS.implementCodeReview;
+  const suggestion = { severity: 'suggestion' as const, description: 'Possible Mysterious Name', agent: 'codex' as const, source: 'agent' as const };
+  const warning = { severity: 'warning' as const, description: 'Error is swallowed', agent: 'codex' as const, source: 'agent' as const };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(launchPlaybookSubagent).mockResolvedValue('review-runtime');
+  });
+
+  function createDeepReviewHarness(
+    session: DevSession,
+    overrides: Partial<DevSessionAutomationService> = {},
+  ) {
+    const sendAgentFollowUp = vi.fn().mockResolvedValue({ ok: true, data: { restarted: false } });
+    const updateItem = vi.fn().mockReturnValue({ ok: true, data: undefined });
+    const recordFindingDispositions = vi.fn();
+    const callbacks = createBoardAgentOrchestrator({
+      agentReviews: {
+        persistStartedReview: vi.fn(), persistCompletedReview: vi.fn(), persistFailedReview: vi.fn(),
+        getByReviewSessionIds: vi.fn(() => []),
+        recordFindingDispositions,
+      },
+      planService: { updateItem },
+      phaseMachine: createTestPhaseMachine(session),
+      getDevSessionService: () => devSessionDouble({ get: vi.fn(() => session), sendAgentFollowUp, ...overrides }),
+      getReviewService: () => null,
+      getAgentSessionManager: () => ({ isSessionBusy: vi.fn(() => false) } as never),
+      getPromptContent: vi.fn((key: string) => (key === 'agents.review_assessment' ? 'Assess:\n{{findings}}' : key)),
+      claudeUsageService: { recordUsage: vi.fn() },
+      requestPlanRefresh: vi.fn(),
+      listBoardProviders: async () => [
+        { id: 'claude', name: 'Claude', available: true, models: [{ id: 'sonnet', name: 'Sonnet', isDefault: true }], capabilities: { nativeSkills: true, reviewSandbox: false } },
+        { id: 'codex', name: 'Codex', available: true, models: [{ id: 'codex', name: 'Codex', isDefault: true }], capabilities: { nativeSkills: false, reviewSandbox: true } },
+      ],
+    });
+    const completeReviewRun = (runIndex: number, findings: ReviewFinding[] | undefined) => callbacks.onSessionComplete?.({
+      devSessionId: `review-${runIndex}`, implementationSessionId: session.id, stepId: 'review', runIndex,
+      role: 'review', summary: { filesChanged: 0, additions: 0, deletions: 0 }, findings,
+    });
+    const completeMainTurn = (finalText?: string) => callbacks.onSessionComplete?.({
+      devSessionId: session.id, implementationSessionId: session.id, role: 'implement',
+      summary: { filesChanged: 0, additions: 0, deletions: 0 }, finalText,
+    });
+    return { sendAgentFollowUp, updateItem, recordFindingDispositions, completeReviewRun, completeMainTurn };
+  }
+
+  function createDeepReviewSession(overrides: Partial<DevSession> = {}): DevSession {
+    return createSession({
+      playbook_id: deepPlaybook.id,
+      playbook_snapshot: JSON.stringify(deepPlaybook),
+      current_step_id: 'review',
+      automation_phase: 'reviewing',
+      ...overrides,
+    });
+  }
+
+  it('addresses a suggestion-only round once, then moves to review without re-reviewing', async () => {
+    const session = createDeepReviewSession();
+    const harness = createDeepReviewHarness(session, {
+      commitSessionChanges: vi.fn().mockResolvedValue({ ok: false, error: 'nothing to commit, working tree clean' }),
+    });
+
+    await harness.completeReviewRun(0, [suggestion]);
+    await harness.completeReviewRun(1, []);
+    expect(harness.sendAgentFollowUp).toHaveBeenCalledWith(session.id, expect.stringContaining('Possible Mysterious Name'), expect.anything());
+
+    // The implementer declined the suggestion and committed nothing: not a stalemate.
+    await harness.completeMainTurn('Ignored: the name matches the module convention.');
+
+    expect(launchPlaybookSubagent).not.toHaveBeenCalled();
+    expect(harness.updateItem).toHaveBeenCalledWith('plan-1', { status_category: 'in_review' });
+    expect(session.automation_phase).toBe('ready_for_review');
+  });
+
+  it('gives a re-review the implementer\'s assessment of the previous round', async () => {
+    const session = createDeepReviewSession({
+      current_step_id: 'address',
+      automation_phase: 'addressing_review',
+      step_pass_counts: '{"review":1}',
+    });
+    const harness = createDeepReviewHarness(session);
+
+    await harness.completeMainTurn('Ignored findings: 2, out of scope for this task.');
+
+    expect(launchPlaybookSubagent).toHaveBeenCalledTimes(2);
+    expect(launchPlaybookSubagent).toHaveBeenCalledWith(expect.objectContaining({
+      attempt: 1,
+      directive: expect.stringContaining('Ignored findings: 2, out of scope for this task.'),
+    }));
+  });
+
+  it('gives reviewers the implementer\'s report and the full subagent task context', async () => {
+    const session = createDeepReviewSession({
+      current_step_id: 'implement',
+      automation_phase: 'idle',
+    });
+    const harness = createDeepReviewHarness(session, {
+      buildSubagentTaskContext: vi.fn(async () => ({ ok: true as const, data: '<context-file path="AGENTS.md">Ship behind a flag.</context-file>' })),
+    });
+
+    await harness.completeMainTurn('Acceptance criteria: all met. Verification: npm test passed.');
+
+    expect(launchPlaybookSubagent).toHaveBeenCalledTimes(2);
+    expect(launchPlaybookSubagent).toHaveBeenCalledWith(expect.objectContaining({
+      directive: expect.stringContaining('Verification: npm test passed.'),
+      taskContext: expect.stringContaining('Ship behind a flag.'),
+    }));
+  });
+
+  it('writes the implementer\'s reply to each finding back to the review run that raised it', async () => {
+    const session = createDeepReviewSession();
+    const harness = createDeepReviewHarness(session);
+    const standards = (description: string) => ({ ...warning, description });
+
+    await harness.completeReviewRun(0, [standards('Standards one'), { ...suggestion, description: 'Standards two' }]);
+    await harness.completeReviewRun(1, [standards('Spec one')]);
+    const addressPrompt = harness.sendAgentFollowUp.mock.calls[0][1] as string;
+    expect(addressPrompt).toContain('## Spec\n3. [warning]');
+    expect(addressPrompt).toContain('finding-replies');
+
+    await harness.completeMainTurn([
+      'Fixed the swallowed errors.',
+      '```finding-replies',
+      '{"replies":[{"finding":1,"status":"fixed"},{"finding":2,"status":"declined","reason":"Matches the module convention."},{"finding":3,"status":"fixed"}]}',
+      '```',
+    ].join('\n'));
+
+    expect(harness.recordFindingDispositions).toHaveBeenCalledWith([
+      { review_session_id: 'session-1-playbook-review-0-0', order: 0, disposition: 'fixed', reason: null },
+      { review_session_id: 'session-1-playbook-review-0-0', order: 1, disposition: 'declined', reason: 'Matches the module convention.' },
+      { review_session_id: 'session-1-playbook-review-0-1', order: 0, disposition: 'fixed', reason: null },
+    ]);
+  });
+
+  it('keeps the latest criteria status a main turn reports', async () => {
+    const savePlaybookOutputs = vi.fn();
+    const session = createDeepReviewSession({ current_step_id: 'implement', automation_phase: 'addressing_review' });
+    const harness = createDeepReviewHarness(session, { savePlaybookOutputs });
+
+    await harness.completeMainTurn('Done.\n```criteria-status\n{"criteria":[{"criterion":1,"status":"unverified","note":"Needs the Support branch."}]}\n```');
+
+    expect(savePlaybookOutputs).toHaveBeenCalledWith(session.id, expect.objectContaining({
+      __harness_criteria_status: [JSON.stringify([{ criterion: 1, state: 'unverified', note: 'Needs the Support branch.' }])],
+    }));
+  });
+
+  it('needs attention instead of settling when one review lens fails', async () => {
+    const session = createDeepReviewSession();
+    const harness = createDeepReviewHarness(session);
+
+    await harness.completeReviewRun(0, [warning]);
+    await harness.completeReviewRun(1, undefined);
+
+    expect(session.automation_phase).toBe('needs_attention');
+    expect(session.attention_reason).toBe('some-runs-failed:review');
+    expect(harness.sendAgentFollowUp).not.toHaveBeenCalled();
+    expect(harness.updateItem).not.toHaveBeenCalled();
+  });
+});
+
 describe('formatFindings', () => {
   const finding = (description: string, axis?: 'standards' | 'spec' | 'general') => ({
     severity: 'warning' as const,
@@ -1032,14 +1284,14 @@ describe('formatFindings', () => {
       .toBe('1. [warning] —\n   a\n2. [warning] —\n   b');
   });
 
-  it('groups two-axis findings under headings, preserving within-axis order and never reranking', () => {
+  it('groups two-axis findings under headings, numbered once across groups and never reranked', () => {
     expect(formatFindings([
       finding('spec one', 'spec'),
       finding('standards one', 'standards'),
       finding('spec two', 'spec'),
     ])).toBe(
       '## Standards\n1. [warning] —\n   standards one\n\n'
-      + '## Spec\n1. [warning] —\n   spec one\n2. [warning] —\n   spec two',
+      + '## Spec\n2. [warning] —\n   spec one\n3. [warning] —\n   spec two',
     );
   });
 });

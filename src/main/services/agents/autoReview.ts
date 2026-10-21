@@ -40,7 +40,7 @@ Each finding should have:
 - line: the line number, or null when not applicable
 - description: the concrete issue, why it matters, and the smallest reasonable fix direction
 
-Severity guide: critical = correctness bug or security issue that must be fixed before merging; warning = likely problem worth addressing but not a blocker; suggestion = style, naming, or optimization that can safely be ignored.
+Severity guide: critical = a correctness, security, or data-loss problem that must be fixed before merging; warning = a real problem worth fixing in this change, including a broken documented repository standard or a missing or wrong requirement; suggestion = a judgement call (naming, a possible code smell, an optional simplification) the implementer may reasonably decline.
 
 Return ONLY the JSON object, no other text. If there are no issues, return \`{"findings":[]}\`.
 
@@ -106,6 +106,22 @@ const REVIEW_DIFF_EXCLUDES: readonly string[] = [
   ':(exclude,glob)**/coverage/**',
 ];
 
+const REVIEW_DIFF_MAX_CHARS = 100_000;
+
+/**
+ * Cut an oversized diff and name every file the cut hid, including the one it
+ * lands in, so the reviewer knows which files to open in the worktree instead
+ * of reviewing a silently partial change.
+ */
+export function capReviewDiff(diff: string): string {
+  if (diff.length <= REVIEW_DIFF_MAX_CHARS) return diff;
+  const shown = diff.slice(0, REVIEW_DIFF_MAX_CHARS);
+  const cutFileStart = shown.lastIndexOf('\ndiff --git ');
+  const hidden = diff.slice(cutFileStart + 1);
+  const files = [...hidden.matchAll(/^diff --git a\/(.+?) b\//gm)].map((match) => match[1]);
+  return `${shown}\n\n... (diff truncated) These files are not shown in full; read them in the worktree:\n${files.map((file) => `- ${file}`).join('\n')}`;
+}
+
 /**
  * Get the diff for a worktree against the base branch.
  * Uses the base branch merge-base so committed and uncommitted task changes
@@ -119,15 +135,18 @@ export async function getWorktreeDiff(worktreePath: string, baseBranch?: string 
   const excludes = [...REVIEW_DIFF_EXCLUDES];
   try {
     if (baseBranch) {
-      const diff = await getDiff(worktreePath, baseBranch, { excludePathspecs: excludes });
-      if (diff.trim()) return diff;
+      const diff = await getDiff(worktreePath, baseBranch, {
+        excludePathspecs: excludes,
+        maxChars: Number.POSITIVE_INFINITY,
+      });
+      if (diff.trim()) return capReviewDiff(diff);
     }
     // Fall back to uncommitted-only diff when no base branch or branch diff is empty
     const { stdout } = await gitExec(
       ['diff', 'HEAD', '--', '.', ...excludes],
       { cwd: worktreePath, maxBuffer },
     );
-    return stdout;
+    return capReviewDiff(stdout);
   } catch {
     return '';
   }

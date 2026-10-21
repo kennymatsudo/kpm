@@ -13,7 +13,7 @@ const editable = z.object({ name: z.string().trim().min(1).max(120), steps: z.ar
 export const playbookEndpoints = {
   list: { channel: 'playbook:list', params: null, result: resultOf<Response<{ playbooks: Playbook[]; defaultId: string }>>() },
   create: { channel: 'playbook:create', params: editable, result: resultOf<Response<{ playbook: Playbook }>>() },
-  update: { channel: 'playbook:update', params: editable.extend({ id }), result: resultOf<Response<{ playbook: Playbook }>>() },
+  update: { channel: 'playbook:update', params: editable.extend({ id, baseVersion: z.string().min(1).max(64).optional() }), result: resultOf<Response<{ playbook: Playbook }>>() },
   delete: { channel: 'playbook:delete', params: z.object({ id }), result: resultOf<Response>() },
   duplicate: { channel: 'playbook:duplicate', params: z.object({ id }), result: resultOf<Response<{ playbook: Playbook }>>() },
   setDefault: { channel: 'playbook:set-default', params: z.object({ id }), result: resultOf<Response>() },

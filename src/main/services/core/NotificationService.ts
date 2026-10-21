@@ -105,6 +105,7 @@ const boardAgentPresenterByPhase: Record<
       ? 'Commit checks failed. Open the task to review the changes.'
       : event.attentionReason === 'opposing-review-errored'
         || event.attentionReason?.startsWith('all-runs-failed:')
+        || event.attentionReason?.startsWith('some-runs-failed:')
         ? 'Automated review failed. Open the task to run it again.'
         : 'Automation stopped before finishing. Open the task to retry the step.',
   }),

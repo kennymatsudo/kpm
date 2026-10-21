@@ -21,7 +21,24 @@ import type {
   RepoEnvironmentMode,
 } from '../../../shared/types';
 import { success, type AsyncResult, type ServiceResult } from '../result';
-import { phaseForPlaybookStep } from './sessionPlaybook';
+import { phaseForPlaybookStep, playbookForSession } from './sessionPlaybook';
+import { CRITERIA_STATUS_FENCE, FINDING_REPLIES_FENCE } from '../../../shared/agentReportBlocks';
+
+// Appended by the harness rather than left to a playbook's prompts, so every
+// step that receives findings or works against criteria reports the same
+// parseable shape (see agentReportBlocks.ts). Not user-editable for the same
+// reason REVIEW_OUTPUT_FORMAT is not.
+export const FINDING_REPLIES_FORMAT = `KPM harness: End your final response with a fenced \`${FINDING_REPLIES_FENCE}\` block that replies to every numbered review finding above. Use "fixed" when you changed code for it and "declined" when you did not; a declined finding needs a one-sentence reason. KPM reads this block and removes it from the displayed report.
+\`\`\`${FINDING_REPLIES_FENCE}
+{"replies":[{"finding":1,"status":"fixed"},{"finding":2,"status":"declined","reason":"Why it is not worth changing."}]}
+\`\`\``;
+
+export const CRITERIA_STATUS_FORMAT = `KPM harness: End your final response with a fenced \`${CRITERIA_STATUS_FENCE}\` block giving the current status of each item in the task's Acceptance Criteria list, numbered in the order listed. Status is "met", "partial", "unmet", or "unverified" (done but not checked); add a short note for anything other than "met". KPM reads this block and removes it from the displayed report.
+\`\`\`${CRITERIA_STATUS_FENCE}
+{"criteria":[{"criterion":1,"status":"met"},{"criterion":2,"status":"unverified","note":"What is left to check."}]}
+\`\`\``;
+
+const ACCEPTANCE_CRITERIA_HEADING = '## Acceptance Criteria';
 
 export type MainStepOutcome =
   | { status: 'started' }
@@ -50,6 +67,8 @@ export interface MainStepTurnDeps {
       effort?: AgentEffortLevel;
       environmentMode?: RepoEnvironmentMode;
       systemPromptKey?: string;
+      resumePhase?: DevSessionAutomationPhase;
+      startStepId?: string;
     },
   ) => AsyncResult<{ session: DevSession }>;
 }
@@ -89,7 +108,13 @@ export async function runMainStep(
 
   // A continuing turn already carries the policy on every follow-up; only the
   // turn that opens the run has to state it.
-  const harnessNote = [request.harnessNote, launch ? BOARD_AGENT_WRITE_POLICY : null]
+  const hasCriteria = (launch?.taskContext ?? session.initial_instructions ?? '').includes(ACCEPTANCE_CRITERIA_HEADING);
+  const harnessNote = [
+    request.harnessNote,
+    launch ? BOARD_AGENT_WRITE_POLICY : null,
+    request.findings?.trim() ? FINDING_REPLIES_FORMAT : null,
+    hasCriteria ? CRITERIA_STATUS_FORMAT : null,
+  ]
     .filter(Boolean)
     .join('\n\n');
 
@@ -103,6 +128,7 @@ export async function runMainStep(
     harnessNote,
   });
 
+  const phase = phaseForPlaybookStep(playbookForSession(session), step);
   if (launch) {
     const started = await deps.startAgentSession(session.id, {
       prompt,
@@ -110,6 +136,10 @@ export async function runMainStep(
       effort: launch.effort,
       environmentMode: launch.environmentMode,
       systemPromptKey: step.systemPromptKey,
+      resumePhase: phase,
+      // The cursor names the step actually launched, which is not steps[0]
+      // when a playbook opens with a subagent step.
+      startStepId: step.id,
     });
     return started.ok ? success({ status: 'started' }) : started;
   }
@@ -117,7 +147,7 @@ export async function runMainStep(
   const sent = await deps.sendAgentFollowUp(
     session.id,
     prompt || `Continue with playbook step: ${step.id}`,
-    { restartAs: { systemPromptKey: step.systemPromptKey, phase: phaseForPlaybookStep(step) } },
+    { restartAs: { systemPromptKey: step.systemPromptKey, phase } },
   );
   return sent.ok ? success({ status: 'started' }) : sent;
 }

@@ -58,6 +58,8 @@ export interface BoardLaunchRequest {
   /** False puts the provider in its read-only mode. */
   writes: boolean;
   expectsFindings?: boolean;
+  /** Commit the completion stats measure from; the session's fork point for an implement run. */
+  diffBase?: string | null;
   environmentMode?: RepoEnvironmentMode;
   /** Set for a subagent so its completion resolves back to the run that launched it. */
   relationship?: { implementationSessionId: string; stepId: string; runIndex: number };
@@ -123,7 +125,10 @@ export async function createBoardAgentSession(
           : getConfig().agentSession.subagentMaxTurns,
         permissionMode: getConfig().claude.defaultPermissionMode,
         disallowedTools: BOARD_DISALLOWED_TOOLS,
-        settingSources: ['user'],
+        // 'project' is what loads the repo's CLAUDE.md files from the worktree;
+        // with a custom system prompt nothing else does. It also brings the
+        // repo's committed .claude/settings.json hooks and permissions.
+        settingSources: ['user', 'project'],
         settings: buildBoardSdkSettings(),
         env: { ...getAgentEnv(), ...environment.vars, CLAUDE_AGENT_SDK_CLIENT_APP: 'kpm' },
         thinking: { type: 'adaptive' as const, display: 'summarized' as const },
@@ -144,6 +149,7 @@ export async function createBoardAgentSession(
     effort: provider === 'codex' || provider === 'pi' ? effort : undefined,
     readOnly: !request.writes,
     expectsFindings: request.expectsFindings,
+    diffBase: request.diffBase,
     implementationSessionId: request.relationship?.implementationSessionId,
     stepId: request.relationship?.stepId,
     runIndex: request.relationship?.runIndex,

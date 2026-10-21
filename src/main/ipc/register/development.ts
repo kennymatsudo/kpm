@@ -20,6 +20,6 @@ export function registerDevelopmentHandlers({
   registerAgentSessionHandlers(
     services.agentSessionManager,
     services.devSessionService,
-    services.promptOverrideService,
+    services.container.agentReviews,
   );
 }

@@ -11,7 +11,7 @@
 import { z } from 'zod';
 import { resultOf, type EndpointDefinition } from './endpoints';
 import { uuid } from './sharedSchemas';
-import type { AgentActivity, AgentSessionState, AgentType } from '../agent-types';
+import type { AgentActivity, AgentSessionState, AgentType, PersistedAgentReview } from '../agent-types';
 import type { DevSession } from '../types';
 
 /**
@@ -83,6 +83,11 @@ export const agentSessionEndpoints = {
     channel: 'agent-session:get-activities',
     params: z.object({ devSessionId: uuid }),
     result: resultOf<RegistryResponse<{ activities: AgentActivity[] }>>(),
+  },
+  listReviewHistory: {
+    channel: 'agent-session:list-review-history',
+    params: z.object({ devSessionId: uuid }),
+    result: resultOf<RegistryResponse<{ reviews: PersistedAgentReview[] }>>(),
   },
   getState: {
     channel: 'agent-session:get-state',

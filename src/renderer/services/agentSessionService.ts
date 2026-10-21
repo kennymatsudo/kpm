@@ -14,7 +14,7 @@ import type {
   DevSession,
   RepoEnvironmentMode,
 } from '../../shared/types';
-import type { AgentActivity, AgentQuestion, AgentCompletionSummary, ReviewFinding } from '../../shared/agent-types';
+import type { AgentActivity, AgentQuestion, AgentCompletionSummary, PersistedAgentReview, ReviewFinding } from '../../shared/agent-types';
 
 // =============================================================================
 // IPC Invoke Wrappers
@@ -129,6 +129,12 @@ export function getAgentActivities(
   payload: { devSessionId: string },
 ): Promise<{ success: boolean; activities?: AgentActivity[]; error?: string }> {
   return window.api.agentSessions.getActivities(payload);
+}
+
+export function listAgentReviewHistory(
+  payload: { devSessionId: string },
+): Promise<{ success: boolean; reviews?: PersistedAgentReview[]; error?: string }> {
+  return window.api.agentSessions.listReviewHistory(payload);
 }
 
 export function getAgentState(

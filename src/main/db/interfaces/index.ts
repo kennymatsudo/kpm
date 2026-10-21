@@ -50,6 +50,7 @@ export type {
 
 // Review workflow domain
 export type {
+  FindingDispositionUpdate,
   IAgentReviewRepository,
   IReviewTaskRepository,
   IReviewOwnershipRepository,
@@ -63,7 +64,6 @@ export type {
 } from './review';
 
 // File metadata
-export type { IProjectFileMetadataRepository, FileMetadataRow } from './files';
 
 // Execution playbooks
 export type { IPlaybookRepository } from './playbook';

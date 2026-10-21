@@ -123,9 +123,11 @@ const fakeState = {
   commitStateBySessionId: new Map(),
   diffBySessionId: new Map(),
   stepCostsBySessionId: new Map(),
+  reviewHistoryBySessionId: new Map(),
   setCommitState: vi.fn(),
   loadDiff: vi.fn(),
   loadStepCosts: vi.fn(),
+  loadReviewHistory: vi.fn(),
   hydrateAgentSnapshot: vi.fn(),
 };
 
@@ -166,8 +168,6 @@ function renderBoardCard(): string {
         onSelect={() => undefined}
         onEdit={() => undefined}
         onContextMenu={() => undefined}
-        onDragStart={() => undefined}
-        onDragEnd={() => undefined}
         onStopAgent={vi.fn()}
       />
     </TooltipProvider>

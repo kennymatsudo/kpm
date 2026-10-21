@@ -4,14 +4,12 @@
  * Handles renderer <-> main process communication for board-driven agent execution.
  */
 
-import { runGeneration } from '../../generation';
 import type { AgentSessionManager } from '../../services/agents/AgentSessionManager';
 import type { DevSessionService } from '../../services/repo/DevSessionService';
-import type { PromptOverrideService } from '../../services/core/PromptOverrideService';
+import type { IAgentReviewRepository } from '../../db/interfaces';
 import { getAvailableAgents } from '../../services/agents/agentCatalog';
 import { readSessionRun } from '../../services/agents/sessionPlaybook';
 import { unwrapOrThrow } from '../../services/result';
-import { getConfig } from '../../config';
 import { agentSessionEndpoints, type AgentSessionEndpointName } from '../../../shared/ipc/agentSessionEndpoints';
 import type { UnwrappedHandlerFor } from '../../../shared/ipc/endpoints';
 import { createRegistryIpcHandlers } from '../validation/utils';
@@ -53,7 +51,7 @@ function assertInterpreterAllowsInteraction(devSessionService: DevSessionService
 function buildAgentSessionHandlers(
   agentSessionManager: AgentSessionManager,
   devSessionService: DevSessionService,
-  promptOverrideService: PromptOverrideService,
+  agentReviews: Pick<IAgentReviewRepository, 'listByImplementationSessionId'>,
 ): AgentSessionHandlers {
   return {
     // Create pending session + start agent in one atomic call.
@@ -124,6 +122,10 @@ function buildAgentSessionHandlers(
       return { activities: session.activities };
     },
 
+    listReviewHistory: ({ devSessionId }) => ({
+      reviews: agentReviews.listByImplementationSessionId(devSessionId),
+    }),
+
     getState: ({ devSessionId }) => {
       const session = agentSessionManager.getByDevSession(devSessionId);
       return { state: session?.state ?? null };
@@ -142,48 +144,8 @@ function buildAgentSessionHandlers(
 
     // Generate a commit message for the agent session's changes using configured instructions
     generateCommitMessage: async ({ devSessionId, taskTitle, externalKey }) => {
-      const session = devSessionService.get(devSessionId);
-      if (!session) {
-        throw new Error(`Session not found: ${devSessionId}`);
-      }
-
-      const instructionsResult = promptOverrideService.getContent('generation.commit_message_instructions');
-      const instructions = instructionsResult.ok ? instructionsResult.data : '';
-
-      // Ground the message in the actual worktree diff (the same diff the
-      // Changes tab shows). Passing only summary stats left the model with
-      // nothing concrete to describe — it would refuse with "I don't see any
-      // changes, run git diff" when the stat was momentarily absent.
-      const diffResult = await devSessionService.getSessionDiff(devSessionId);
-      const rawDiff = diffResult.ok ? diffResult.data.trim() : '';
-      const MAX_DIFF_CHARS = 16000;
-      const diff = rawDiff.length > MAX_DIFF_CHARS
-        ? `${rawDiff.slice(0, MAX_DIFF_CHARS)}\n\n…(diff truncated)`
-        : rawDiff;
-
-      const contextLines: string[] = [`Task: ${taskTitle}`];
-      if (externalKey) {
-        contextLines.push(`Ticket key: ${externalKey}`);
-      }
-
-      const diffSection = diff
-        ? `\n\nDiff (staged + unstaged vs HEAD):\n\`\`\`diff\n${diff}\n\`\`\``
-        : '';
-
-      const prompt = `Generate a git commit message for these changes:\n\n${contextLines.join('\n')}${diffSection}\n\n${instructions}`;
-
-      const result = await runGeneration({
-        purpose: 'commit_message',
-        tier: 'cheap',
-        systemPrompt:
-          'You generate descriptive git commit messages. Return only the commit message — no explanation, no code fences.',
-        prompt,
-        timeoutMs: getConfig().generation.prGenerationTimeoutMs,
-        timeoutMessage: 'Commit message generation timed out',
-        projectId: session.project_id,
-      });
-
-      return { message: result.text.trim() };
+      const result = await devSessionService.generateCommitMessage(devSessionId, { taskTitle, externalKey });
+      return { message: unwrapOrThrow(result) };
     },
 
     // Commit uncommitted changes in the session's worktree
@@ -250,11 +212,11 @@ function buildAgentSessionHandlers(
 export function registerAgentSessionHandlers(
   agentSessionManager: AgentSessionManager,
   devSessionService: DevSessionService,
-  promptOverrideService: PromptOverrideService,
+  agentReviews: Pick<IAgentReviewRepository, 'listByImplementationSessionId'>,
 ): void {
   createRegistryIpcHandlers(
     agentSessionEndpoints,
-    buildAgentSessionHandlers(agentSessionManager, devSessionService, promptOverrideService),
+    buildAgentSessionHandlers(agentSessionManager, devSessionService, agentReviews),
     'Agent session operation failed'
   );
 }

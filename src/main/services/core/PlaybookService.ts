@@ -9,6 +9,7 @@ import {
   type Playbook,
   type PlaybookStep,
 } from '../../../shared/playbooks';
+import { CONFIG_KIND_REGISTRY } from '../../../shared/configKinds';
 import type { SlashCommandInfo } from '../../../shared/types';
 import { failure, success, type ServiceResult } from '../result';
 
@@ -52,8 +53,21 @@ export function createPlaybookService(deps: PlaybookServiceDeps) {
       }
     },
 
-    update(id: string, input: { name: string; steps: PlaybookStep[] }): ServiceResult<Playbook> {
+    /**
+     * `baseVersion` is the version token of the definition a chat proposal was
+     * drafted against. When given, the update is refused if the stored
+     * playbook has changed since, so approving a proposal never overwrites an
+     * edit the user made in between.
+     */
+    update(id: string, input: { name: string; steps: PlaybookStep[] }, options: { baseVersion?: string } = {}): ServiceResult<Playbook> {
       try {
+        if (options.baseVersion) {
+          const current = find(id);
+          if (!current) return failure(`Playbook not found: ${id}`);
+          if (CONFIG_KIND_REGISTRY.playbook.version(current) !== options.baseVersion) {
+            return failure('Playbook changed since proposed. Ask chat to propose the change again.');
+          }
+        }
         const playbook = parsePlaybook({ id, name: input.name.trim(), builtIn: false, steps: input.steps });
         const existing = deps.playbooks.get(id);
         if (existing) {

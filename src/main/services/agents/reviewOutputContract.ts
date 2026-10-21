@@ -112,6 +112,11 @@ export function parseReviewFindings(output: string, reviewerAgent: AgentType): R
   }
 }
 
+/** Critical and warning findings keep a review loop going; suggestions are optional by contract. */
+export function isBlockingFinding(finding: Pick<ReviewFinding, 'severity'>): boolean {
+  return finding.severity !== 'suggestion';
+}
+
 export interface ReviewOutcome {
   findings?: ReviewFinding[];
   rawOutput: string | null;

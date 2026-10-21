@@ -11,9 +11,18 @@ import type { Database as BetterSqliteDatabase } from 'better-sqlite3';
  * Create a new migration instead.
  */
 
-interface Migration {
+export interface Migration {
   id: number;
   name: string;
+  /**
+   * Run with foreign keys off. A migration that rebuilds a parent table
+   * (create, copy, drop, rename) needs this: SQLite ignores
+   * `PRAGMA foreign_keys` inside a transaction, so with foreign keys on,
+   * dropping the old table cascade-deletes every ON DELETE CASCADE child row.
+   * The runner switches them off outside the transaction and refuses to
+   * commit if the migration left a dangling reference.
+   */
+  foreignKeysOff?: true;
   up: (db: BetterSqliteDatabase) => void;
 }
 
@@ -4549,6 +4558,402 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    id: 1126,
+    name: '126_widen_dev_session_paused_reason',
+    foreignKeysOff: true,
+    up: (db: BetterSqliteDatabase) => {
+      // Migration 103 allowed only 'gate' and 'max_passes', but the phase
+      // machine also parks a session as 'stopped' (the user pressed Stop) and
+      // 'stalled' (a review pass changed nothing). Both writes failed the
+      // CHECK, so Stop never persisted and a stalled review loop never parked.
+      //
+      // Widening a CHECK needs a rebuild. dev_sessions is the parent of
+      // review_tasks, review_ownership, and agent_review_runs (all ON DELETE
+      // CASCADE), hence foreignKeysOff: dropping the old table with foreign
+      // keys on would delete every one of those rows.
+      db.exec(`
+        CREATE TABLE dev_sessions_new (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          plan_item_id TEXT REFERENCES plan_items(id) ON DELETE CASCADE,
+          repo_id TEXT NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+          worktree_path TEXT NOT NULL,
+          branch_name TEXT NOT NULL,
+          base_branch TEXT NOT NULL DEFAULT 'main',
+          base_sha TEXT,
+          status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'active', 'inactive')),
+          initial_instructions TEXT NOT NULL DEFAULT '',
+          pr_number INTEGER,
+          pr_url TEXT,
+          pr_state TEXT,
+          review_state TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          completed_at DATETIME,
+          name TEXT,
+          agent_type TEXT NOT NULL DEFAULT 'claude',
+          agent_state TEXT NOT NULL DEFAULT 'inactive',
+          automation_phase TEXT CHECK(automation_phase IN (
+            'idle',
+            'reviewing',
+            'addressing_review',
+            'fixing_commit_hooks',
+            'paused',
+            'ready_for_review',
+            'needs_attention'
+          )),
+          merge_order INTEGER,
+          execution_mode TEXT NOT NULL DEFAULT 'standard'
+            CHECK(execution_mode IN ('standard', 'workflow')),
+          review_policy TEXT NOT NULL DEFAULT 'auto'
+            CHECK(review_policy IN ('auto', 'skip')),
+          playbook_id TEXT,
+          playbook_snapshot TEXT,
+          current_step_id TEXT,
+          step_pass_counts TEXT,
+          paused_reason TEXT CHECK(paused_reason IN ('gate', 'max_passes', 'stalled', 'stopped')),
+          step_outputs TEXT,
+          work_brief_revision INTEGER
+            CHECK(work_brief_revision IS NULL OR work_brief_revision >= 1),
+          attention_reason TEXT,
+          auto_address_pr_reviews INTEGER NOT NULL DEFAULT 0,
+          pr_is_draft INTEGER NOT NULL DEFAULT 0
+        );
+
+        INSERT INTO dev_sessions_new (
+          id, project_id, plan_item_id, repo_id, worktree_path, branch_name, base_branch, base_sha,
+          status, initial_instructions, pr_number, pr_url, pr_state, review_state, created_at,
+          updated_at, completed_at, name, agent_type, agent_state, automation_phase, merge_order,
+          execution_mode, review_policy, playbook_id, playbook_snapshot, current_step_id,
+          step_pass_counts, paused_reason, step_outputs, work_brief_revision, attention_reason,
+          auto_address_pr_reviews, pr_is_draft
+        )
+        SELECT
+          id, project_id, plan_item_id, repo_id, worktree_path, branch_name, base_branch, base_sha,
+          status, initial_instructions, pr_number, pr_url, pr_state, review_state, created_at,
+          updated_at, completed_at, name, agent_type, agent_state, automation_phase, merge_order,
+          execution_mode, review_policy, playbook_id, playbook_snapshot, current_step_id,
+          step_pass_counts, paused_reason, step_outputs, work_brief_revision, attention_reason,
+          auto_address_pr_reviews, pr_is_draft
+        FROM dev_sessions;
+
+        DROP TABLE dev_sessions;
+        ALTER TABLE dev_sessions_new RENAME TO dev_sessions;
+
+        CREATE INDEX idx_dev_sessions_project ON dev_sessions(project_id);
+        CREATE INDEX idx_dev_sessions_plan_item ON dev_sessions(plan_item_id);
+        CREATE INDEX idx_dev_sessions_status ON dev_sessions(status);
+      `);
+    },
+  },
+  {
+    id: 1127,
+    name: '127_allow_pi_review_runs',
+    foreignKeysOff: true,
+    up: (db: BetterSqliteDatabase) => {
+      // pi became a board provider, so a playbook review step can run on it,
+      // but both tables still allowed only claude, codex, and gemini as the
+      // reviewing agent. A pi review's run and findings failed to save.
+      //
+      // Both tables are rebuilt to widen the CHECK. Findings cascade from runs,
+      // hence foreignKeysOff: dropping the old runs table with foreign keys on
+      // would delete every finding.
+      db.exec(`
+        CREATE TABLE agent_review_runs_new (
+          id TEXT PRIMARY KEY,
+          implementation_session_id TEXT NOT NULL REFERENCES dev_sessions(id) ON DELETE CASCADE,
+          review_session_id TEXT NOT NULL,
+          reviewer_agent TEXT NOT NULL CHECK(reviewer_agent IN ('claude', 'codex', 'gemini', 'pi')),
+          status TEXT NOT NULL CHECK(status IN ('running', 'complete', 'failed', 'stale')),
+          diff_fingerprint TEXT,
+          raw_output TEXT,
+          error TEXT,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          completed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          step_id TEXT,
+          run_index INTEGER
+        );
+
+        INSERT INTO agent_review_runs_new (
+          id, implementation_session_id, review_session_id, reviewer_agent, status, diff_fingerprint,
+          raw_output, error, created_at, updated_at, completed_at, step_id, run_index
+        )
+        SELECT
+          id, implementation_session_id, review_session_id, reviewer_agent, status, diff_fingerprint,
+          raw_output, error, created_at, updated_at, completed_at, step_id, run_index
+        FROM agent_review_runs;
+
+        CREATE TABLE agent_review_findings_new (
+          id TEXT PRIMARY KEY,
+          review_run_id TEXT NOT NULL REFERENCES agent_review_runs(id) ON DELETE CASCADE,
+          finding_order INTEGER NOT NULL,
+          severity TEXT NOT NULL CHECK(severity IN ('critical', 'warning', 'suggestion')),
+          file TEXT,
+          line INTEGER,
+          description TEXT NOT NULL,
+          agent TEXT NOT NULL CHECK(agent IN ('claude', 'codex', 'gemini', 'pi')),
+          source TEXT NOT NULL CHECK(source IN ('agent', 'pr')),
+          UNIQUE(review_run_id, finding_order)
+        );
+
+        INSERT INTO agent_review_findings_new (id, review_run_id, finding_order, severity, file, line, description, agent, source)
+        SELECT id, review_run_id, finding_order, severity, file, line, description, agent, source
+        FROM agent_review_findings;
+
+        DROP TABLE agent_review_findings;
+        DROP TABLE agent_review_runs;
+        ALTER TABLE agent_review_runs_new RENAME TO agent_review_runs;
+        ALTER TABLE agent_review_findings_new RENAME TO agent_review_findings;
+
+        CREATE INDEX idx_agent_review_runs_implementation
+          ON agent_review_runs(implementation_session_id, completed_at DESC, created_at DESC);
+        CREATE INDEX idx_agent_review_runs_status
+          ON agent_review_runs(implementation_session_id, status);
+        CREATE INDEX idx_agent_review_runs_review_session
+          ON agent_review_runs(review_session_id, completed_at DESC, created_at DESC);
+        CREATE INDEX idx_agent_review_findings_run_order
+          ON agent_review_findings(review_run_id, finding_order);
+      `);
+    },
+  },
+  {
+    id: 1128,
+    name: '128_agent_review_finding_dispositions',
+    up: (db: BetterSqliteDatabase) => {
+      // The implementer's reply to each finding (fixed, or declined with a
+      // reason), parsed from the address turn's report so the board can show
+      // what became of every finding.
+      db.exec(`
+        ALTER TABLE agent_review_findings
+          ADD COLUMN disposition TEXT CHECK(disposition IN ('fixed', 'declined'));
+        ALTER TABLE agent_review_findings ADD COLUMN disposition_reason TEXT;
+      `);
+    },
+  },
+  {
+    id: 1129,
+    name: '129_chat_session_title_source',
+    up: (db: BetterSqliteDatabase) => {
+      // Existing titles keep a NULL source: most are the Claude SDK's first
+      // prompt of a restarted session rather than a summary, so the next
+      // finished turn is allowed to replace them once.
+      db.exec(`
+        ALTER TABLE chat_sessions
+          ADD COLUMN title_source TEXT CHECK(title_source IN ('provider', 'generated', 'user'));
+        ALTER TABLE chat_sessions ADD COLUMN title_turn INTEGER;
+      `);
+    },
+  },
+  {
+    id: 1130,
+    name: '130_dev_session_worktree_origin',
+    up: (db: BetterSqliteDatabase) => {
+      // Worktrees attached before this column existed read as KPM-made; that
+      // matches how they were already treated.
+      db.exec(`
+        ALTER TABLE dev_sessions ADD COLUMN worktree_origin TEXT NOT NULL DEFAULT 'kpm'
+          CHECK(worktree_origin IN ('kpm', 'attached'));
+      `);
+    },
+  },
+  {
+    id: 1131,
+    name: '131_agent_review_finding_axis',
+    up: (db: BetterSqliteDatabase) => {
+      // The review lens (standards, spec) a finding came from. The implementer
+      // prompt groups findings by it, so it has to survive a restart. Rows from
+      // before this column read as NULL and fall back to the step's run lens.
+      db.exec(`
+        ALTER TABLE agent_review_findings
+          ADD COLUMN axis TEXT CHECK(axis IN ('standards', 'spec', 'general'));
+      `);
+    },
+  },
+  {
+    id: 1132,
+    name: '132_drop_project_storybook_url',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec('ALTER TABLE projects DROP COLUMN storybook_url;');
+    },
+  },
+  {
+    id: 1133,
+    name: '133_dev_session_running_step_phase',
+    foreignKeysOff: true,
+    up: (db: BetterSqliteDatabase) => {
+      // Every main step ran as 'addressing_review', so a plain implementation
+      // turn read on the card as review work. Its first turn ran at 'idle'
+      // instead to dodge that label, which a crash leaves stranded: restart
+      // recovery only parks phases that need a live agent. 'running_step' is
+      // a main step that is not addressing findings.
+      //
+      // Widening the CHECK needs a rebuild; foreignKeysOff for the same reason
+      // as 126 (review_tasks, review_ownership, agent_review_runs cascade).
+      db.exec(`
+        CREATE TABLE dev_sessions_new (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          plan_item_id TEXT REFERENCES plan_items(id) ON DELETE CASCADE,
+          repo_id TEXT NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+          worktree_path TEXT NOT NULL,
+          branch_name TEXT NOT NULL,
+          base_branch TEXT NOT NULL DEFAULT 'main',
+          base_sha TEXT,
+          status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'active', 'inactive')),
+          initial_instructions TEXT NOT NULL DEFAULT '',
+          pr_number INTEGER,
+          pr_url TEXT,
+          pr_state TEXT,
+          review_state TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          completed_at DATETIME,
+          name TEXT,
+          agent_type TEXT NOT NULL DEFAULT 'claude',
+          agent_state TEXT NOT NULL DEFAULT 'inactive',
+          automation_phase TEXT CHECK(automation_phase IN (
+            'idle',
+            'reviewing',
+            'addressing_review',
+            'running_step',
+            'fixing_commit_hooks',
+            'paused',
+            'ready_for_review',
+            'needs_attention'
+          )),
+          merge_order INTEGER,
+          execution_mode TEXT NOT NULL DEFAULT 'standard'
+            CHECK(execution_mode IN ('standard', 'workflow')),
+          review_policy TEXT NOT NULL DEFAULT 'auto'
+            CHECK(review_policy IN ('auto', 'skip')),
+          playbook_id TEXT,
+          playbook_snapshot TEXT,
+          current_step_id TEXT,
+          step_pass_counts TEXT,
+          paused_reason TEXT CHECK(paused_reason IN ('gate', 'max_passes', 'stalled', 'stopped')),
+          step_outputs TEXT,
+          work_brief_revision INTEGER
+            CHECK(work_brief_revision IS NULL OR work_brief_revision >= 1),
+          attention_reason TEXT,
+          auto_address_pr_reviews INTEGER NOT NULL DEFAULT 0,
+          pr_is_draft INTEGER NOT NULL DEFAULT 0,
+          worktree_origin TEXT NOT NULL DEFAULT 'kpm'
+            CHECK(worktree_origin IN ('kpm', 'attached'))
+        );
+
+        INSERT INTO dev_sessions_new (
+          id, project_id, plan_item_id, repo_id, worktree_path, branch_name, base_branch, base_sha,
+          status, initial_instructions, pr_number, pr_url, pr_state, review_state, created_at,
+          updated_at, completed_at, name, agent_type, agent_state, automation_phase, merge_order,
+          execution_mode, review_policy, playbook_id, playbook_snapshot, current_step_id,
+          step_pass_counts, paused_reason, step_outputs, work_brief_revision, attention_reason,
+          auto_address_pr_reviews, pr_is_draft, worktree_origin
+        )
+        SELECT
+          id, project_id, plan_item_id, repo_id, worktree_path, branch_name, base_branch, base_sha,
+          status, initial_instructions, pr_number, pr_url, pr_state, review_state, created_at,
+          updated_at, completed_at, name, agent_type, agent_state, automation_phase, merge_order,
+          execution_mode, review_policy, playbook_id, playbook_snapshot, current_step_id,
+          step_pass_counts, paused_reason, step_outputs, work_brief_revision, attention_reason,
+          auto_address_pr_reviews, pr_is_draft, worktree_origin
+        FROM dev_sessions;
+
+        DROP TABLE dev_sessions;
+        ALTER TABLE dev_sessions_new RENAME TO dev_sessions;
+
+        CREATE INDEX idx_dev_sessions_project ON dev_sessions(project_id);
+        CREATE INDEX idx_dev_sessions_plan_item ON dev_sessions(plan_item_id);
+        CREATE INDEX idx_dev_sessions_status ON dev_sessions(status);
+      `);
+    },
+  },
+  {
+    id: 1134,
+    name: '134_drop_chat_sessions_claude_session_id',
+    up: (db: BetterSqliteDatabase) => {
+      // Since 094 every write sets provider_session_id beside the Claude-only
+      // column, so this copy should find nothing. It covers a row cleared on
+      // one column but not the other before the column goes.
+      db.exec(`
+        UPDATE chat_sessions
+        SET provider_session_id = claude_session_id
+        WHERE provider = 'claude' AND provider_session_id IS NULL AND claude_session_id IS NOT NULL;
+        ALTER TABLE chat_sessions DROP COLUMN claude_session_id;
+      `);
+    },
+  },
+  {
+    id: 1135,
+    name: '135_drop_project_file_metadata',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec('DROP TABLE IF EXISTS project_file_metadata;');
+    },
+  },
+  {
+    id: 1136,
+    name: '136_usage_cumulative_token_snapshots',
+    up: (db: BetterSqliteDatabase) => {
+      // Claude chat rows recorded per model (any sdk_cost_scope but '__total__')
+      // stored the SDK's session running totals as if each turn's usage. Keep
+      // the totals as the snapshot and rewrite the token columns to the
+      // difference from the previous row of the same session and model. A total
+      // that shrinks marks a restarted SDK process, whose row stands whole.
+      db.exec(`
+        ALTER TABLE claude_usage_events ADD COLUMN sdk_cumulative_input_tokens INTEGER;
+        ALTER TABLE claude_usage_events ADD COLUMN sdk_cumulative_output_tokens INTEGER;
+        ALTER TABLE claude_usage_events ADD COLUMN sdk_cumulative_cache_creation_tokens INTEGER;
+        ALTER TABLE claude_usage_events ADD COLUMN sdk_cumulative_cache_read_tokens INTEGER;
+
+        UPDATE claude_usage_events
+        SET sdk_cumulative_input_tokens = input_tokens,
+            sdk_cumulative_output_tokens = output_tokens,
+            sdk_cumulative_cache_creation_tokens = cache_creation_tokens,
+            sdk_cumulative_cache_read_tokens = cache_read_tokens
+        WHERE source = 'chat'
+          AND cost_source = 'sdk_cumulative_delta'
+          AND sdk_session_id IS NOT NULL
+          AND sdk_cost_scope IS NOT NULL
+          AND sdk_cost_scope <> '__total__';
+
+        WITH ordered AS (
+          SELECT
+            id,
+            sdk_cumulative_input_tokens AS cur_input,
+            sdk_cumulative_output_tokens AS cur_output,
+            sdk_cumulative_cache_creation_tokens AS cur_cache_creation,
+            sdk_cumulative_cache_read_tokens AS cur_cache_read,
+            LAG(sdk_cumulative_input_tokens) OVER w AS prev_input,
+            LAG(sdk_cumulative_output_tokens) OVER w AS prev_output,
+            LAG(sdk_cumulative_cache_creation_tokens) OVER w AS prev_cache_creation,
+            LAG(sdk_cumulative_cache_read_tokens) OVER w AS prev_cache_read
+          FROM claude_usage_events
+          WHERE sdk_cumulative_input_tokens IS NOT NULL
+          WINDOW w AS (PARTITION BY sdk_session_id, sdk_cost_scope ORDER BY created_at, rowid)
+        ),
+        deltas AS (
+          SELECT
+            id,
+            cur_input, cur_output, cur_cache_creation, cur_cache_read,
+            prev_input, prev_output, prev_cache_creation, prev_cache_read,
+            (prev_input IS NULL
+              OR cur_input < prev_input
+              OR cur_output < prev_output
+              OR cur_cache_creation < prev_cache_creation
+              OR cur_cache_read < prev_cache_read) AS restarted
+          FROM ordered
+        )
+        UPDATE claude_usage_events
+        SET input_tokens = CASE WHEN d.restarted THEN d.cur_input ELSE d.cur_input - d.prev_input END,
+            output_tokens = CASE WHEN d.restarted THEN d.cur_output ELSE d.cur_output - d.prev_output END,
+            cache_creation_tokens = CASE WHEN d.restarted THEN d.cur_cache_creation ELSE d.cur_cache_creation - d.prev_cache_creation END,
+            cache_read_tokens = CASE WHEN d.restarted THEN d.cur_cache_read ELSE d.cur_cache_read - d.prev_cache_read END
+        FROM deltas d
+        WHERE claude_usage_events.id = d.id;
+      `);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {
@@ -4572,6 +4977,31 @@ function isMigrationApplied(db: BetterSqliteDatabase, name: string): boolean {
 /**
  * Record a migration as applied.
  */
+/** Applies one migration and records it, atomically. */
+export function applyMigration(db: BetterSqliteDatabase, migration: Migration): void {
+  const foreignKeysWereOn = migration.foreignKeysOff === true
+    && (db.prepare('PRAGMA foreign_keys').get() as { foreign_keys: number } | undefined)?.foreign_keys === 1;
+  // Must happen before BEGIN; inside the transaction SQLite ignores it.
+  if (migration.foreignKeysOff) db.pragma('foreign_keys = OFF');
+
+  try {
+    db.transaction(() => {
+      migration.up(db);
+      if (migration.foreignKeysOff) {
+        const violations = db.prepare('PRAGMA foreign_key_check').all();
+        if (violations.length > 0) {
+          throw new Error(
+            `[Migrations] ${migration.name} left ${violations.length} foreign key violation(s); rolled back`
+          );
+        }
+      }
+      recordMigration(db, migration.id, migration.name);
+    })();
+  } finally {
+    if (foreignKeysWereOn) db.pragma('foreign_keys = ON');
+  }
+}
+
 function recordMigration(db: BetterSqliteDatabase, id: number, name: string): void {
   db.prepare('INSERT INTO schema_migrations (id, name) VALUES (?, ?)').run(id, name);
 }
@@ -4676,14 +5106,7 @@ export function runMigrations(db: BetterSqliteDatabase): void {
 
   for (const migration of pending) {
     console.log(`[Migrations] Applying migration: ${migration.name}`);
-
-    // Run migration in a transaction for safety
-    const transaction = db.transaction(() => {
-      migration.up(db);
-      recordMigration(db, migration.id, migration.name);
-    });
-
-    transaction();
+    applyMigration(db, migration);
   }
 
   console.log(`[Migrations] Applied ${pending.length} migration(s).`);

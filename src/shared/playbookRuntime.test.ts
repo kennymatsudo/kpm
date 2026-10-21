@@ -109,8 +109,8 @@ describe('playbook runtime', () => {
 
   it('routes findings through the bounded back edge and pauses at the budget', () => {
     const playbook = BUILT_IN_PLAYBOOKS.implementCodeReview;
-    const found = { hasFindings: true, madeProgress: true };
-    const clean = { hasFindings: false, madeProgress: true };
+    const found = { hasFindings: true, hasBlockingFindings: true, madeProgress: true };
+    const clean = { hasFindings: false, hasBlockingFindings: false, madeProgress: true };
     expect(advancePlaybook(playbook, 'review', found, {})).toEqual({ kind: 'step', stepId: 'address', passCounts: { review: 1 } });
     expect(advancePlaybook(playbook, 'review', found, { review: 2 })).toEqual({ kind: 'step', stepId: 'address', passCounts: { review: 3 } });
     expect(advancePlaybook(playbook, 'review', found, { review: 3 })).toEqual({ kind: 'pause', stepId: 'review', reason: 'max_passes', passCounts: { review: 3 } });
@@ -121,10 +121,10 @@ describe('playbook runtime', () => {
     const playbook = BUILT_IN_PLAYBOOKS.implementCodeReview;
     // The implementer declined every finding and committed nothing: re-reviewing
     // the identical diff would only re-raise the same findings.
-    expect(advancePlaybook(playbook, 'address', { hasFindings: false, madeProgress: false }, { review: 1 }))
+    expect(advancePlaybook(playbook, 'address', { hasFindings: false, hasBlockingFindings: false, madeProgress: false }, { review: 1 }))
       .toEqual({ kind: 'pause', stepId: 'review', reason: 'stalled', passCounts: { review: 1 } });
     // Progress this round keeps the loop running — the diff changed.
-    expect(advancePlaybook(playbook, 'address', { hasFindings: false, madeProgress: true }, { review: 1 }))
+    expect(advancePlaybook(playbook, 'address', { hasFindings: false, hasBlockingFindings: false, madeProgress: true }, { review: 1 }))
       .toEqual({ kind: 'step', stepId: 'review', passCounts: { review: 1 } });
   });
 
@@ -138,8 +138,25 @@ describe('playbook runtime', () => {
       ],
     };
     // review has no `next`, so proceeding out of the stalled loop completes.
-    expect(advancePlaybook(playbook, 'address', { hasFindings: false, madeProgress: false }, { review: 1 }))
+    expect(advancePlaybook(playbook, 'address', { hasFindings: false, hasBlockingFindings: false, madeProgress: false }, { review: 1 }))
       .toEqual({ kind: 'complete', passCounts: { review: 1 } });
+  });
+
+  it('proceeds instead of pausing when a round past the budget raises only suggestions', () => {
+    const playbook = BUILT_IN_PLAYBOOKS.implementCodeReview;
+    const suggestionsOnly = { hasFindings: true, hasBlockingFindings: false, madeProgress: true };
+    expect(advancePlaybook(playbook, 'review', suggestionsOnly, { review: 3 }))
+      .toEqual({ kind: 'complete', passCounts: { review: 3 } });
+  });
+
+  it('exits the loop after addressing a suggestion-only round, even with nothing committed', () => {
+    const playbook = BUILT_IN_PLAYBOOKS.implementCodeReview;
+    expect(advancePlaybook(
+      playbook,
+      'address',
+      { hasFindings: false, hasBlockingFindings: false, madeProgress: false, closesLoop: true },
+      { review: 1 },
+    )).toEqual({ kind: 'complete', passCounts: { review: 1 } });
   });
 
   it('preserves canonical integer pass counts including zero', () => {

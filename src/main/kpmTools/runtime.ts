@@ -64,7 +64,9 @@ export type KpmToolCapability =
   | 'repo.push'
   | 'integrations.read'
   | 'file_changes.propose'
-  | 'spill.read';
+  | 'spill.read'
+  | 'board.propose'
+  | 'config.propose';
 
 export type KpmToolAvailability = Record<ChatSessionScope, boolean>;
 
@@ -85,6 +87,8 @@ export interface KpmToolGroup {
   capabilities: KpmToolCapability[];
   availability: KpmToolAvailability;
   tools: KpmToolDefinition[];
+  /** Checked on every listing, for groups that only work once something outside KPM is set up. */
+  isEnabled?: () => boolean;
 }
 
 export interface ToolExecutionContext {
@@ -217,6 +221,7 @@ export class KpmToolRuntime {
     return this.toolGroups()
       .filter((group) => isAvailableInScope(group, request.scope))
       .filter((group) => isWithinGrant(group, request.grantedCapabilities))
+      .filter((group) => group.isEnabled?.() ?? true)
       .flatMap((group) => group.tools.map((tool) => ({
         ...tool,
         capabilities: group.capabilities,

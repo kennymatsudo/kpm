@@ -15,10 +15,17 @@ export function assertKpmToolInputSchemas(
     if (checkedToolNames.has(tool.name)) continue;
     checkedToolNames.add(tool.name);
 
+    let jsonSchema: unknown;
     try {
-      toKpmToolInputJsonSchema(tool.inputSchema);
+      jsonSchema = toKpmToolInputJsonSchema(tool.inputSchema);
     } catch (error) {
       throw new Error(`KPM tool "${tool.name}" input schema is not JSON Schema compatible.`, { cause: error });
+    }
+    // Claude Code silently drops every tool on the server when one schema uses
+    // `propertyNames` (what z.record emits), so one tool would hide all of KPM.
+    // Use z.looseObject({}) for free-form objects instead.
+    if (JSON.stringify(jsonSchema).includes('"propertyNames"')) {
+      throw new Error(`KPM tool "${tool.name}" input schema uses propertyNames (z.record), which hides every KPM tool from Claude.`);
     }
   }
 }

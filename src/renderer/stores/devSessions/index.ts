@@ -6,7 +6,7 @@ import type {
   ReviewInboxSnapshot,
   AgentSessionState,
 } from '../../../shared/types';
-import type { AgentActivity, AgentQuestion, AgentCompletionSummary, ReviewFinding } from '../../../shared/agent-types';
+import type { AgentActivity, AgentQuestion, AgentCompletionSummary, PersistedAgentReview, ReviewFinding } from '../../../shared/agent-types';
 import { appendActivity, createActivityFeed, type ActivityFeed } from '../../components/board-view/activityPresentation';
 import {
   buildSessionIndexes,
@@ -19,7 +19,7 @@ import { createDevSessionsLifecycleSlice } from './lifecycleSlice';
 import { createDevSessionsPrSlice } from './prSlice';
 import { invalidateLoadSessionsRequests } from './requestState';
 import { createDevSessionsReviewSlice } from './reviewSlice';
-import { getAgentState } from '../../services/agentSessionService';
+import { getAgentState, listAgentReviewHistory } from '../../services/agentSessionService';
 import { getDevSessionStepCosts } from '../../services/usageService';
 
 export interface BackgroundCommitState {
@@ -60,6 +60,7 @@ export interface DevSessionsState {
   reviewAssessmentPendingBySessionId: Map<string, ReviewAssessmentPending>;
   prContextBySessionId: Map<string, PrCreationContext>;
   prContextLoadingIds: Set<string>;
+  prCreatingIds: Set<string>;
 
   // Computed merge order (refreshed alongside sessions)
   mergeOrderBySessionId: Map<string, { layer: number | null; blockedBy: string[] }>;
@@ -72,6 +73,8 @@ export interface DevSessionsState {
   completionBySessionId: Map<string, AgentCompletionSummary>;
   reviewFindingsBySessionId: Map<string, ReviewFinding[]>;
   stepCostsBySessionId: Map<string, Record<string, number>>;
+  /** Every saved review run of an implementation session, oldest first, with findings and the implementer's replies. */
+  reviewHistoryBySessionId: Map<string, PersistedAgentReview[]>;
   /** Review-role runtimes seen for each implementation session, keyed by that session's id. */
   reviewRunsByImplementationId: Map<string, ReviewRunRecord[]>;
 
@@ -80,9 +83,6 @@ export interface DevSessionsState {
   setSelectedSessionId: (sessionId: string | null) => void;
   setIsLoading: (isLoading: boolean) => void;
   setCommitState: (sessionId: string, state: BackgroundCommitState | null) => void;
-
-  // PR polling
-  pollPrStatuses: () => Promise<void>;
 
   // Delete tracking
   markDeleting: (sessionId: string) => void;
@@ -140,6 +140,7 @@ export interface DevSessionsState {
   ) => void;
   reconcileAgentStates: (devSessionIds: string[]) => Promise<void>;
   loadStepCosts: (devSessionId: string) => Promise<void>;
+  loadReviewHistory: (devSessionId: string) => Promise<void>;
   getAgentState: (devSessionId: string) => AgentSessionState | undefined;
 
   // Reset
@@ -174,6 +175,7 @@ function createInitialState() {
     reviewAssessmentPendingBySessionId: new Map<string, ReviewAssessmentPending>(),
     prContextBySessionId: new Map<string, PrCreationContext>(),
     prContextLoadingIds: new Set<string>(),
+    prCreatingIds: new Set<string>(),
     mergeOrderBySessionId: new Map<string, { layer: number | null; blockedBy: string[] }>(),
     agentStateBySessionId: new Map<string, AgentSessionState>(),
     activityFeedBySessionId: new Map<string, ActivityFeed>(),
@@ -182,6 +184,7 @@ function createInitialState() {
     completionBySessionId: new Map<string, AgentCompletionSummary>(),
     reviewFindingsBySessionId: new Map<string, ReviewFinding[]>(),
     stepCostsBySessionId: new Map<string, Record<string, number>>(),
+    reviewHistoryBySessionId: new Map<string, PersistedAgentReview[]>(),
     reviewRunsByImplementationId: new Map<string, ReviewRunRecord[]>(),
   };
 }
@@ -343,6 +346,16 @@ export const useDevSessionsStore = create<DevSessionsState>((set, get) => ({
       const next = new Map(state.stepCostsBySessionId);
       next.set(devSessionId, response.costs);
       return { stepCostsBySessionId: next };
+    });
+  },
+
+  loadReviewHistory: async (devSessionId) => {
+    const response = await listAgentReviewHistory({ devSessionId });
+    if (!response.success) return;
+    set((state) => {
+      const next = new Map(state.reviewHistoryBySessionId);
+      next.set(devSessionId, response.reviews ?? []);
+      return { reviewHistoryBySessionId: next };
     });
   },
 

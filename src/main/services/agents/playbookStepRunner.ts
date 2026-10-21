@@ -1,10 +1,11 @@
-import type { ReviewFinding } from '../../../shared/agent-types';
 import type { Playbook, PlaybookStep } from '../../../shared/playbooks';
 import { advancePlaybook, parsePassCounts } from '../../../shared/playbookRuntime';
 import type { DevSession } from '../../../shared/types';
 import type { PlanService } from '../core/PlanService';
 import type { ReviewService } from '../repo/ReviewService';
 import type { AutomationPhaseMachine } from './automationPhaseMachine';
+import { isBlockingFinding } from './reviewOutputContract';
+import type { RoundFinding } from './playbookRoundStore';
 import { phaseForPlaybookStep, stepById } from './sessionPlaybook';
 
 interface DevSessionLookup {
@@ -23,7 +24,7 @@ interface PlaybookStepRunnerDeps {
     session: DevSession,
     playbook: Playbook,
     step: PlaybookStep,
-    findings: ReviewFinding[],
+    findings: RoundFinding[],
     resumeNote?: string,
   ) => Promise<void>;
 }
@@ -68,14 +69,20 @@ export function createPlaybookStepRunner(deps: PlaybookStepRunnerDeps) {
     session: DevSession;
     playbook: Playbook;
     step: PlaybookStep;
-    findings: ReviewFinding[];
+    findings: RoundFinding[];
     madeProgress?: boolean;
+    closesLoop?: boolean;
   }): Promise<void> {
-    const { session, playbook, step, findings, madeProgress = true } = params;
+    const { session, playbook, step, findings, madeProgress = true, closesLoop = false } = params;
     const advance = advancePlaybook(
       playbook,
       step.id,
-      { hasFindings: findings.length > 0, madeProgress },
+      {
+        hasFindings: findings.length > 0,
+        hasBlockingFindings: findings.some(isBlockingFinding),
+        madeProgress,
+        closesLoop,
+      },
       parsePassCounts(session.step_pass_counts),
     );
     if (advance.kind === 'complete') {
@@ -97,7 +104,7 @@ export function createPlaybookStepRunner(deps: PlaybookStepRunnerDeps) {
       type: 'stepCompleted',
       stepId: step.id,
       nextStepId: advance.stepId,
-      nextPhase: next ? phaseForPlaybookStep(next) : undefined,
+      nextPhase: next ? phaseForPlaybookStep(playbook, next) : undefined,
       stepPassCounts: advance.passCounts,
     });
     if (!next) {

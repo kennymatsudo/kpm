@@ -2,12 +2,17 @@ import { memo, useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { isAgentActive, type AgentActivity } from '../../../shared/agent-types';
 import type { AgentSessionState } from '../../../shared/types';
 import type { ActivityIconKind, ActivityPresentationEntry, ActivityPresentationGroup } from './activityPresentation';
+import { RunOutlineView } from './RunOutlineView';
+import type { RunOutline } from './runOutline';
 
 interface ActivityTabProps {
   groups: readonly ActivityPresentationGroup[];
   agentState?: AgentSessionState;
   sessionLabel?: string;
   emptyActiveLabel?: string;
+  /** What each finished step concluded, shown above the log. */
+  outline?: RunOutline;
+  scrollToStep?: StepScrollRequest | null;
 }
 
 function formatTime(timestamp: number): string {
@@ -78,9 +83,24 @@ const ActivityGroupView = memo(function ActivityGroupView({ group }: { group: Ac
   return <div className="border-b border-border-subtle/40 last:border-0 py-0.5">{group.narration && <NarrationHeader activity={group.narration} />}{group.entries.length > 0 && <div className={group.narration ? 'ml-3 border-l border-border-subtle/50' : ''}>{group.entries.map((entry, index) => <ActivityEntry key={`${entry.kind}-${entry.kind === 'collapsed' ? entry.activities[0].timestamp : entry.activity.timestamp}-${index}`} entry={entry} />)}</div>}</div>;
 });
 
-export const ActivityTab = memo(function ActivityTab({ groups, agentState, sessionLabel, emptyActiveLabel }: ActivityTabProps) {
+/** A request from the stepper to bring one step's card into view; `nonce` makes a repeat click re-scroll. */
+export interface StepScrollRequest {
+  stepId: string;
+  nonce: number;
+}
+
+function EmptyLog({ isActive, emptyActiveLabel }: { isActive: boolean; emptyActiveLabel?: string }) {
+  return <div className="flex flex-col items-center justify-center h-32 gap-2 text-text-muted">{isActive ? <><svg className="w-4 h-4 animate-spin text-accent" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" opacity="0.3" /><path d="M14 8a6 6 0 0 0-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg><span className="text-xs">{emptyActiveLabel ?? 'Working'}</span></> : <span className="text-xs">No activity recorded</span>}</div>;
+}
+
+export const ActivityTab = memo(function ActivityTab({ groups, agentState, sessionLabel, emptyActiveLabel, outline, scrollToStep }: ActivityTabProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const shouldFollowRef = useRef(true);
+  const isActive = isAgentActive(agentState);
+  const hasOutline = Boolean(outline && (outline.steps.length > 0 || outline.criteria));
+  // A finished run opens on its outcome, at the top; a live one follows the log.
+  const shouldFollowRef = useRef(isActive);
+  const [logOpen, setLogOpen] = useState<boolean | null>(null);
+  const showLog = logOpen ?? (isActive || !hasOutline);
   const totalItems = useMemo(() => groups.reduce((total, group) => total + (group.narration ? 1 : 0) + group.entries.length, 0), [groups]);
 
   const handleScroll = useCallback(() => {
@@ -92,13 +112,39 @@ export const ActivityTab = memo(function ActivityTab({ groups, agentState, sessi
   useEffect(() => {
     const element = scrollRef.current;
     if (element && shouldFollowRef.current) element.scrollTop = element.scrollHeight;
-  }, [totalItems]);
+  }, [totalItems, showLog]);
 
-  if (groups.length === 0) {
-    const isActive = isAgentActive(agentState);
-    return <div className="flex flex-col items-center justify-center h-32 gap-2 text-text-muted">{isActive ? <><svg className="w-4 h-4 animate-spin text-accent" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" opacity="0.3" /><path d="M14 8a6 6 0 0 0-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg><span className="text-xs">{emptyActiveLabel ?? 'Working'}</span></> : <span className="text-xs">No activity recorded</span>}</div>;
+  useEffect(() => {
+    if (!scrollToStep) return;
+    const card = scrollRef.current?.querySelector(`[data-step-id="${CSS.escape(scrollToStep.stepId)}"]`);
+    if (!card) return;
+    shouldFollowRef.current = false;
+    card.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }, [scrollToStep]);
+
+  if (!hasOutline && groups.length === 0) {
+    return <EmptyLog isActive={isActive} emptyActiveLabel={emptyActiveLabel} />;
   }
 
   const latestEntry = groups.at(-1)?.entries.at(-1);
-  return <div ref={scrollRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto">{sessionLabel && <div className="flex items-center gap-2 px-4 py-1.5 bg-surface-0/90 border-b border-border-subtle/40"><div className="flex-1 h-px bg-border-subtle/60" /><span className="text-tiny text-warning/80 font-medium uppercase tracking-wide">{sessionLabel}</span><div className="flex-1 h-px bg-border-subtle/60" /></div>}<div className="sticky top-0 z-10 px-4 py-2 bg-surface-0/90 backdrop-blur-sm border-b border-border-subtle/40 text-xs text-text-secondary"><span className="text-text-primary font-medium">{agentState === 'working' ? 'Working' : agentState === 'complete' ? 'Completed' : 'Activity'}</span>{latestEntry && <span className="ml-2 text-text-muted truncate">{latestEntry.label}</span>}</div><div className="py-1">{groups.map((group, index) => <ActivityGroupView key={`${group.narration?.timestamp ?? 'orphan'}-${index}`} group={group} />)}</div></div>;
+  const logTitle = agentState === 'working' ? 'Working' : agentState === 'complete' ? 'Completed' : 'Agent log';
+  return (
+    <div ref={scrollRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto">
+      {outline && <RunOutlineView outline={outline} />}
+      {sessionLabel && <div className="flex items-center gap-2 px-4 py-1.5 bg-surface-0/90 border-b border-border-subtle/40"><div className="flex-1 h-px bg-border-subtle/60" /><span className="text-tiny text-warning/80 font-medium uppercase tracking-wide">{sessionLabel}</span><div className="flex-1 h-px bg-border-subtle/60" /></div>}
+      <button
+        type="button"
+        onClick={() => hasOutline && setLogOpen(!showLog)}
+        className={`sticky top-0 z-10 flex w-full items-center gap-2 px-4 py-2 bg-surface-0/90 backdrop-blur-sm border-b border-border-subtle/40 text-left text-xs text-text-secondary ${hasOutline ? 'hover:bg-surface-2' : 'cursor-default'}`}
+        aria-expanded={hasOutline ? showLog : undefined}
+      >
+        <span className="text-text-primary font-medium shrink-0">{logTitle}</span>
+        {latestEntry && <span className="min-w-0 truncate text-text-muted">{latestEntry.label}</span>}
+        {hasOutline && <span className="ml-auto shrink-0 text-tiny text-text-muted">{showLog ? 'Hide' : `Show ${totalItems} ${totalItems === 1 ? 'entry' : 'entries'}`}</span>}
+      </button>
+      {showLog && (groups.length === 0
+        ? <EmptyLog isActive={isActive} emptyActiveLabel={emptyActiveLabel} />
+        : <div className="py-1">{groups.map((group, index) => <ActivityGroupView key={`${group.narration?.timestamp ?? 'orphan'}-${index}`} group={group} />)}</div>)}
+    </div>
+  );
 });

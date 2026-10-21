@@ -5,6 +5,8 @@
  * Used across main process (agent sessions) and renderer (activity feed, board cards).
  */
 
+import type { FindingDisposition } from './agentReportBlocks';
+
 // =============================================================================
 // Agent Types
 // =============================================================================
@@ -104,6 +106,8 @@ export interface AgentCompletionSummary {
   filesChanged: number;
   additions: number;
   deletions: number;
+  /** Git could not measure the change; the counts above are zero and mean nothing. */
+  diffUnknown?: boolean;
   /**
    * Why the SDK query loop terminated. Surfaces cases like `max_turns`,
    * `aborted_tools`, `prompt_too_long`, `hook_stopped`, etc. so the UI can
@@ -129,6 +133,17 @@ export interface ReviewFinding {
   source: 'agent' | 'pr';
   /** Which review axis produced this finding, when the playbook step declares one. */
   axis?: ReviewAxis;
+}
+
+/**
+ * A saved finding from one review run, with the implementer's reply once a
+ * later turn addressed it. `order` is the finding's position in its run.
+ */
+export interface PersistedReviewFinding extends ReviewFinding {
+  id: string;
+  order: number;
+  disposition: FindingDisposition | null;
+  disposition_reason: string | null;
 }
 
 /**
@@ -167,7 +182,7 @@ export interface PersistedAgentReview {
   error: string | null;
   step_id: string | null;
   run_index: number | null;
-  findings: ReviewFinding[];
+  findings: PersistedReviewFinding[];
   created_at: string;
   updated_at: string;
   completed_at: string | null;
@@ -192,6 +207,8 @@ export interface AgentSessionUsage {
    * The centralized usage tracker prefers this over its local pricing table.
    */
   totalCostUsd: number | null;
+  /** No reported cost and no local price for this provider (Codex); stored as unknown. */
+  costUnknown?: boolean;
   sdkSessionId?: string | null;
   sdkResultUuid?: string | null;
   sdkCostScope?: string | null;
