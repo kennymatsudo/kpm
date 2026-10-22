@@ -70,6 +70,8 @@ export interface ClaudeConfig {
 export interface SessionConfig {
   /** Main chat idle timeout (ms) - disconnect after inactivity */
   mainIdleTimeoutMs: number;
+  /** How long a chat's intercepted file edits must go quiet before they reach the approval queue mid-turn (ms) */
+  fileUpdateQuietMs: number;
   /** Max time for single response processing (ms) - hard cap */
   processingTimeoutMs: number;
   /** Max time with no SDK activity while processing (ms) - detects hung sessions */
@@ -86,6 +88,10 @@ export interface SessionConfig {
   mcpRecoveryMaxAttempts: number;
   /** Timeout for enumerating pi providers and models (ms) */
   piCatalogTimeoutMs: number;
+  /** Timeout for asking Claude or Codex for its model list (ms) */
+  modelCatalogTimeoutMs: number;
+  /** Filename (under userData) of the last model list fetched from Claude and Codex. */
+  modelCatalogFilename: string;
 }
 
 export interface GenerationConfig {
@@ -112,11 +118,13 @@ export interface AgentSessionConfig {
   maxConcurrentSessionsPerProject: number;
   /** Max turns for a bounded playbook subagent run */
   subagentMaxTurns: number;
+  /** How long `gh pr create` may run before it is killed (ms). The branch push before it has no limit. */
+  prCreateTimeoutMs: number;
   /** How long to keep terminal sessions around for follow-up interactions (ms) */
   terminalSessionTtlMs: number;
   /** Timeout for the initial SDK agent session startup (ms) */
   sessionStartTimeoutMs: number;
-  /** Model for Codex agent sessions (e.g. 'gpt-5.6-terra', 'gpt-5.6-sol'). If omitted, Codex uses its own default. */
+  /** Model for Codex agent sessions (a Codex model id). If omitted, Codex uses its own default. */
   codexModel?: string;
   /** Reasoning effort for Codex agent sessions KPM launches on its own (auto-review). */
   codexEffort?: AgentEffortLevel;
@@ -160,8 +168,6 @@ export interface WatcherConfig {
   searchDocSyncDebounceMs: number;
   /** How often the search indexer reconciles project watchers (ms) */
   searchReconcileIntervalMs: number;
-  /** Delay before summarizing a file after an external edit — prevents Haiku from firing on every save during active editing (ms) */
-  summarizationDebounceMs: number;
 }
 
 export interface PollSchedulerConfig {
@@ -242,6 +248,7 @@ function createDefaultConfig(): AppConfig {
 
     session: {
       mainIdleTimeoutMs: 30 * 60 * 1000, // 30 minutes
+      fileUpdateQuietMs: 1000,
       processingTimeoutMs: 60 * 60 * 1000, // 60 minutes (hard cap for very long turns)
       processingIdleTimeoutMs: 30 * 60 * 1000, // 30 minutes with no SDK activity = likely hung
       permissionRequestTimeoutMs: 60 * 60 * 1000, // 60 minutes for permission prompts
@@ -250,6 +257,8 @@ function createDefaultConfig(): AppConfig {
       sessionReadyPollIntervalMs: 100,
       mcpRecoveryMaxAttempts: 3,
       piCatalogTimeoutMs: 10 * 1000, // 10 seconds
+      modelCatalogTimeoutMs: 20 * 1000, // 20 seconds; Claude init can wait on MCP connectors
+      modelCatalogFilename: 'model-catalog.json',
     },
 
     generation: {
@@ -272,6 +281,7 @@ function createDefaultConfig(): AppConfig {
     agentSession: {
       maxConcurrentSessionsPerProject: 3,
       subagentMaxTurns: 200,
+      prCreateTimeoutMs: 2 * 60 * 1000, // 2 minutes
       terminalSessionTtlMs: 30 * 60 * 1000, // 30 minutes
       sessionStartTimeoutMs: 60 * 1000, // 1 minute
       codexModel: 'gpt-5.6-terra',
@@ -297,7 +307,6 @@ function createDefaultConfig(): AppConfig {
       repoDebounceMs: 100,
       searchDocSyncDebounceMs: 400,
       searchReconcileIntervalMs: 30 * 1000,
-      summarizationDebounceMs: 30 * 1000,
     },
 
     pollScheduler: {

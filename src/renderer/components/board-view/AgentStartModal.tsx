@@ -23,6 +23,7 @@ import { getDefaultModel } from '../../services/settingsService';
 import { resolvePlaybookPlan } from '../../../shared/playbookRuntime';
 import { formatPlaybookStepTitle, type BoardProvider, type Playbook } from '../../../shared/playbooks';
 import type { DefaultModel } from '../../../shared/modelDefault';
+import { useModelName } from '../../stores/modelCatalogStore';
 import type {
   PlanItem,
   RepoEnvironmentMode,
@@ -69,6 +70,7 @@ export const AgentStartModal = memo(function AgentStartModal({
   const defaultRepoId = item.primary_repo_id && repos.some((repo) => repo.id === item.primary_repo_id)
     ? item.primary_repo_id
     : repos.length === 1 ? repos[0].id : '';
+  const modelName = useModelName();
   const [selectedRepoId, setSelectedRepoId] = useState<string>(defaultRepoId);
   const [prompt, setPrompt] = useState('');
   const [isStarting, setIsStarting] = useState(false);
@@ -384,7 +386,7 @@ export const AgentStartModal = memo(function AgentStartModal({
                   </SelectContent>
                 </Select>
                 {resolvedPlan && <div className="mt-3 space-y-1 text-tiny text-text-secondary">
-                  {resolvedPlan.steps.map((step) => <div key={step.stepId} className="flex items-center justify-between gap-3"><span>{formatPlaybookStepTitle(step.stepId)}</span><span className={step.runs.some((run) => !run) ? 'text-danger' : ''}>{step.runs.map((run, index) => run ? `${run.provider}/${run.model}` : `run ${index + 1}: unavailable`).join(' · ')}</span></div>)}
+                  {resolvedPlan.steps.map((step) => <div key={step.stepId} className="flex items-center justify-between gap-3"><span>{formatPlaybookStepTitle(step.stepId)}</span><span className={step.runs.some((run) => !run) ? 'text-danger' : ''}>{step.runs.map((run, index) => run ? modelName(run.model) : `run ${index + 1}: unavailable`).join(' · ')}</span></div>)}
                 </div>}
               </div>
 

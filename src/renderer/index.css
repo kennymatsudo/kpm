@@ -655,6 +655,19 @@ button:focus-visible {
   margin-bottom: 1.25em;
 }
 
+/* `word-break: break-word` on the message lets a table cell break between any
+   two letters, so auto layout sizes every column down to one character and
+   short columns ("Now", "In review") stack a few letters per line. Cells wrap
+   at spaces instead; only a URL, which has none, may still break anywhere. */
+.chat-message-content .prose :where(th, td):not(:where([class~="not-prose"] *)) {
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+
+.chat-message-content .prose :where(th, td) :where(a):not(:where([class~="not-prose"] *)) {
+  overflow-wrap: anywhere;
+}
+
 /* The base rule marks a quote with a 2px line at 8% white, which against this
    panel is invisible — leaving an indented paragraph with nothing to explain
    why it is indented. */

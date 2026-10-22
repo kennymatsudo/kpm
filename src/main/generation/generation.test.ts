@@ -42,7 +42,8 @@ function codexTurn(overrides: Record<string, unknown> = {}) {
   return {
     finalResponse: 'result',
     usage: {
-      input_tokens: 10,
+      // Codex counts cached tokens inside input, so this is Claude's 10 uncached + 2 cached.
+      input_tokens: 12,
       cached_input_tokens: 2,
       output_tokens: 5,
       reasoning_output_tokens: 0,
@@ -60,7 +61,7 @@ describe('resolveGenerationRoute', () => {
 
   it('defaults every purpose to Claude with the tier model', () => {
     expect(resolveGenerationRoute('pr_description', 'fast')).toEqual({ provider: 'claude', model: 'sonnet' });
-    expect(resolveGenerationRoute('file_summary', 'cheap')).toEqual({ provider: 'claude', model: 'haiku' });
+    expect(resolveGenerationRoute('chat_title', 'cheap')).toEqual({ provider: 'claude', model: 'haiku' });
   });
 
   it('honors a per-purpose Codex override', () => {
@@ -92,6 +93,13 @@ describe('runGeneration', () => {
     expect(result.text).toBe('result');
   });
 
+  it('keeps every MCP server out of a Claude one-shot call', async () => {
+    // With tools off, Claude Code cannot defer connector tools and would send all of them.
+    await runGeneration({ purpose: 'chat_title', tier: 'cheap', prompt: 'hi' });
+    const [{ sdkOptions }] = runClaudeQueryMock.mock.calls[0] as [{ sdkOptions: unknown }];
+    expect(sdkOptions).toMatchObject({ tools: [], strictMcpConfig: true, mcpServers: {} });
+  });
+
   it('routes to Codex when the purpose is overridden', async () => {
     configFor({ pr_description: 'codex' });
     const result = await runGeneration({ purpose: 'pr_description', tier: 'fast', prompt: 'hi' });
@@ -105,6 +113,19 @@ describe('runGeneration', () => {
     configFor({ pr_description: 'codex' });
     await runGeneration({ purpose: 'pr_description', tier: 'fast', prompt: 'body', systemPrompt: 'SYS' });
     expect(codexRunMock).toHaveBeenCalledWith('SYS\n\nbody', expect.anything());
+  });
+
+  it('records Codex usage with an unknown cost instead of a Claude-priced guess', async () => {
+    configFor({ pr_description: 'codex' });
+    const recordUsage = vi.fn();
+    configureGeneration({ recordUsage });
+    await runGeneration({ purpose: 'pr_description', tier: 'fast', prompt: 'hi' });
+    expect(recordUsage).toHaveBeenCalledWith(expect.objectContaining({
+      provider: 'codex',
+      usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 2, cacheWriteTokens: 0 },
+      totalCostUsd: null,
+      costUnknown: true,
+    }));
   });
 
   it('records usage keyed by purpose + provider', async () => {

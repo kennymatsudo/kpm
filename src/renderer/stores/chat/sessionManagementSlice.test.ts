@@ -5,6 +5,7 @@ import { createInitialPerSessionState } from './baseState';
 import { createSessionManagementSlice } from './sessionManagementSlice';
 import { subscribe } from '../storeEvents';
 import { createStreamingSlice } from './streamingSlice';
+import { createMessageSlice } from './messageSlice';
 import { streamingBuffer } from './utils';
 
 type SessionState = ReturnType<typeof createInitialPerSessionState>;
@@ -170,5 +171,45 @@ describe('sessionManagementSlice.removeSession', () => {
 
     expect(store.getState().viewedSessionId).toBe('session-b');
     expect(startNewChatSession).not.toHaveBeenCalled();
+  });
+});
+
+describe('chat titles on screen', () => {
+  function createTitledStore() {
+    const titled = { ...createInitialPerSessionState(1), title: 'Codex write toggle' };
+    return createStore<TestState & ReturnType<typeof createMessageSlice>>()((set, get) => ({
+      sessions: new Map([
+        ['session-a', titled],
+        ['session-b', createInitialPerSessionState(2)],
+      ]),
+      activeSessionIds: new Set(),
+      viewedSessionId: 'session-a',
+      nextSessionNumber: 3,
+      startNewChatSession: vi.fn(() => 'session-new'),
+      ...createSessionManagementSlice(set as never, get as never),
+      ...createStreamingSlice(set as never, get as never),
+      ...createMessageSlice(set as never, get as never),
+    }));
+  }
+
+  it('holds a retitle of the viewed chat until the user switches away', () => {
+    const store = createTitledStore();
+
+    store.getState().setSessionTitle('session-a', 'Codex write consent decision');
+    expect(store.getState().sessions.get('session-a')?.title).toBe('Codex write toggle');
+
+    store.getState().setViewedSession('session-b');
+    expect(store.getState().sessions.get('session-a')).toMatchObject({
+      title: 'Codex write consent decision',
+      pendingTitle: null,
+    });
+  });
+
+  it('shows the first title of the viewed chat right away', () => {
+    const store = createTitledStore();
+    store.getState().setViewedSession('session-b');
+
+    store.getState().setSessionTitle('session-b', 'Qualtrics survey lookup');
+    expect(store.getState().sessions.get('session-b')?.title).toBe('Qualtrics survey lookup');
   });
 });

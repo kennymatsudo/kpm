@@ -9,6 +9,9 @@
  * - push(): Called when user sends a message (from IPC handler)
  * - pull(): Called from async generator, awaits next message
  * - close(): Signals end of conversation, causes pull() to return null
+ * - pause()/resume(): While paused, pushed messages wait in the queue instead
+ *   of reaching a waiting pull(), so they can still be cancelled
+ * - releasePending(): Lets the messages waiting right now through a pause
  *
  * Thread safety: Single-threaded (Node.js event loop), no explicit locking needed.
  */
@@ -31,15 +34,19 @@ export interface StreamingUserMessage {
   parent_tool_use_id: string | null;
 }
 
+/** Keep user input cancellable until the SDK pulls it. */
 export class AsyncMessageQueue {
   private queue: StreamingUserMessage[] = [];
   private waitingResolver: ((msg: StreamingUserMessage | null) => void) | null = null;
   private closed = false;
+  private paused = false;
+  /** How many queued messages may leave while paused (set by releasePending). */
+  private releasedCount = 0;
 
   /**
    * Push a message to the queue.
-   * If a pull() is waiting, immediately resolves it.
-   * Otherwise, queues the message for the next pull().
+   * If a pull() is waiting and the queue is not paused, immediately resolves it.
+   * Otherwise, queues the message for a later pull().
    *
    * @throws If the queue has been closed
    */
@@ -48,40 +55,65 @@ export class AsyncMessageQueue {
       throw new Error('Cannot push to closed queue');
     }
 
-    if (this.waitingResolver) {
-      // A pull() is waiting, resolve it immediately
-      const resolver = this.waitingResolver;
-      this.waitingResolver = null;
-      resolver(msg);
-    } else {
-      // No pull() waiting, queue the message
-      this.queue.push(msg);
-    }
+    this.queue.push(msg);
+    this.deliverToWaiter();
   }
 
   /**
    * Pull the next message from the queue.
-   * If a message is available, returns it immediately.
-   * If the queue is empty, waits for the next push().
+   * If a message may leave, returns it immediately.
    * If the queue is closed, returns null.
+   * Otherwise, waits until a message may leave.
    *
    * @returns The next message, or null if the queue is closed
    */
   async pull(): Promise<StreamingUserMessage | null> {
-    // If there are queued messages, return the first one
-    if (this.queue.length > 0) {
-      return this.queue.shift()!;
+    if (this.canDeliver()) {
+      return this.takeNext();
     }
 
-    // If closed and no messages, return null
     if (this.closed) {
       return null;
     }
 
-    // Wait for the next push()
     return new Promise(resolve => {
       this.waitingResolver = resolve;
     });
+  }
+
+  /** Hold pushed messages in the queue until resume() or releasePending(). */
+  pause(): void {
+    this.paused = true;
+  }
+
+  /** Stop holding messages; a waiting pull() gets the next one at once. */
+  resume(): void {
+    this.paused = false;
+    this.releasedCount = 0;
+    this.deliverToWaiter();
+  }
+
+  /** Let every message queued right now through, while staying paused for later pushes. */
+  releasePending(): void {
+    this.releasedCount = this.queue.length;
+    this.deliverToWaiter();
+  }
+
+  private canDeliver(): boolean {
+    return this.queue.length > 0 && (!this.paused || this.releasedCount > 0);
+  }
+
+  private takeNext(): StreamingUserMessage {
+    if (this.paused) this.releasedCount--;
+    return this.queue.shift()!;
+  }
+
+  /** Resolve a waiting pull only when the queue permits delivery. */
+  private deliverToWaiter(): void {
+    if (!this.waitingResolver || !this.canDeliver()) return;
+    const resolver = this.waitingResolver;
+    this.waitingResolver = null;
+    resolver(this.takeNext());
   }
 
   /**
@@ -103,15 +135,15 @@ export class AsyncMessageQueue {
   /**
    * Remove and return the most recently pushed message that has not yet been
    * pulled by the generator. Used to cancel a queued follow-up before the
-   * SDK consumes it. Returns null if the queue is empty or only the
-   * currently-streaming turn's seed message remains pulled.
+   * SDK consumes it. Returns null if the queue is empty.
    *
    * Note: messages already pulled by `pull()` cannot be cancelled — the SDK
    * has them in-flight.
    */
   cancelLast(): StreamingUserMessage | null {
-    if (this.queue.length === 0) return null;
-    return this.queue.pop() ?? null;
+    const cancelled = this.queue.pop() ?? null;
+    this.releasedCount = Math.min(this.releasedCount, this.queue.length);
+    return cancelled;
   }
 
   /**
@@ -122,6 +154,8 @@ export class AsyncMessageQueue {
     this.queue = [];
     this.waitingResolver = null;
     this.closed = false;
+    this.paused = false;
+    this.releasedCount = 0;
   }
 
   /**

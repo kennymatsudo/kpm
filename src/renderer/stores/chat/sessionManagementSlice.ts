@@ -41,6 +41,16 @@ export function createSessionManagementSlice(set: ChatSet, get: ChatGet): Pick<C
         get().flushStreamingContent(previousViewedSessionId);
       }
 
+      const previous = previousViewedSessionId && previousViewedSessionId !== chatSessionId
+        ? get().sessions.get(previousViewedSessionId)
+        : undefined;
+      if (previousViewedSessionId && previous?.pendingTitle) {
+        const sessions = new Map(get().sessions);
+        sessions.set(previousViewedSessionId, { ...previous, title: previous.pendingTitle, pendingTitle: null });
+        set({ sessions, viewedSessionId: chatSessionId });
+        return;
+      }
+
       set({ viewedSessionId: chatSessionId });
     },
 

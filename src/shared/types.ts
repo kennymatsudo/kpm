@@ -57,28 +57,34 @@ export type ClaudeModel = 'opus' | 'sonnet';
 /** Chat session scope controls where a persisted conversation is surfaced. */
 export type ChatSessionScope = 'main' | 'focus_document';
 
+/**
+ * Codex models KPM knew about at build time. Only the fallback: the live list
+ * comes from Codex itself (see `shared/modelCatalog.ts`), so a new Codex model
+ * shows up without an entry here.
+ */
 export const CODEX_CHAT_MODELS = [
   {
     value: 'gpt-5.6-sol',
-    label: 'Sol',
-    description: 'GPT-5.6 Sol — Detail and polish for complex work',
+    label: 'GPT-5.6-Sol',
+    description: 'Detail and polish for complex work',
     contextWindow: 372_000,
   },
   {
     value: 'gpt-5.6-terra',
-    label: 'Terra',
-    description: 'GPT-5.6 Terra — Pragmatic all-rounder',
+    label: 'GPT-5.6-Terra',
+    description: 'Pragmatic all-rounder',
     contextWindow: 372_000,
   },
   {
     value: 'gpt-5.6-luna',
-    label: 'Luna',
-    description: 'GPT-5.6 Luna — Clear, repeatable work at scale',
+    label: 'GPT-5.6-Luna',
+    description: 'Clear, repeatable work at scale',
     contextWindow: 372_000,
   },
 ] as const;
 
-export type CodexChatModel = typeof CODEX_CHAT_MODELS[number]['value'];
+/** Any Codex model id; the set changes as Codex ships models. */
+export type CodexChatModel = string;
 /** Terra, not the first list entry: the list is ordered by depth, this is the everyday pick. */
 export const DEFAULT_CODEX_CHAT_MODEL: CodexChatModel = 'gpt-5.6-terra';
 
@@ -126,7 +132,8 @@ export interface PiProviderOption {
   contextWindow?: number;
   /**
    * True only for providers confirmed to route tool calls through pi's own
-   * native tool loop, where KPM's read-only tool gate (P7) applies. See
+   * native tool loop, where the user's pi extensions and KPM's active tool
+   * list see every call. See
    * `main/pi/providers.ts` for the classification mechanism.
    */
   safe: boolean;
@@ -136,6 +143,13 @@ export interface PiProviderOption {
    * whichever model the registry happened to list first.
    */
   isDefault?: boolean;
+  /**
+   * Thinking levels pi accepts for this model (`["off"]` for a model without
+   * reasoning). Absent when the catalog did not report them.
+   */
+  thinkingLevels?: ChatChoiceEffort[];
+  /** The level pi would start this model on, from the user's pi settings. */
+  defaultThinkingLevel?: ChatChoiceEffort;
 }
 
 // =============================================================================
@@ -180,13 +194,10 @@ export interface TaskPromptTemplate {
 
 /**
  * Effort level controlling how much thinking/reasoning Claude applies.
- * 'xhigh' requires Opus 4.7+ or Sonnet 5 (falls back to 'high' on older models).
- * 'max' is supported on Opus and Sonnet 5 (not Haiku).
+ * Which levels a model accepts varies by model; the SDK, not KPM, handles the fallback.
  */
 export type AgentEffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
-/** Legacy Claude-chat effort vocabulary retained for app-setting compatibility. */
-export type ChatEffortLevel = Exclude<AgentEffortLevel, 'xhigh'>;
 
 /** Provider-neutral effort vocabulary persisted with a Chat model choice. */
 export type ChatChoiceEffort = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
@@ -494,11 +505,15 @@ export interface SyncConflict {
   title: string;
   tracker_state: TrackerAgreementState;
   fields: {
-    field: 'title' | 'description' | 'label' | 'release_tag';
+    field: 'title' | 'description' | 'label' | 'release_tag' | 'status';
     your_value: string | null;
     tracker_value: string | null;
     // snapshot_value intentionally NOT included - internal only for detection
   }[];
+  /** Tracker changes that don't conflict (status name, people). Applied whichever side wins. */
+  changes?: SyncUpdatedItem['changes'];
+  /** The status the tracker's value maps to, applied when the tracker wins a status conflict. */
+  tracker_status_category?: StatusCategory;
 }
 
 export type ConflictResolution = 'keep_mine' | 'use_theirs';
@@ -912,6 +927,9 @@ export interface SyncReviewItem extends ExportPreviewItem {
 
   /** Warning: Jira was updated after last_synced_at */
   hasConflict: boolean;
+
+  /** Set when the pushed description would erase tracker content KPM can't represent. */
+  contentLossWarning?: string;
 }
 
 /** A staged tracker deletion under review. Always opt-in — never pre-approved. */
@@ -985,11 +1003,20 @@ export interface ChatSessionSummary {
   last_activity: string;   // Most recent message; matches the list's sort order
 }
 
-/** Chat session entity - stores Claude SDK session ID for resume functionality */
+export interface ChatSessionLabel {
+  chat_session_id: string;
+  title: string | null;
+  /** Earliest user message, truncated for display. */
+  first_message: string | null;
+}
+
+/** `provider`: the chat provider's own summary. `generated`: KPM's cheap-model title. `user`: renamed by hand, never replaced. */
+export type ChatTitleSource = 'provider' | 'generated' | 'user';
+
+/** Chat session entity - stores the native provider session ID for resume */
 export interface ChatSession {
   id: string;  // Same as chat_session_id in chat_messages
   project_id: string;
-  claude_session_id: string | null;  // Claude SDK session ID for resume
   provider: ChatProvider;
   provider_session_id: string | null; // Native provider thread/session ID for resume
   scope: ChatSessionScope;
@@ -998,6 +1025,10 @@ export interface ChatSession {
   focus_document_hash: string | null;
   last_opened_at: string | null;
   title: string | null;
+  /** Who wrote `title`; null for untitled chats and titles saved before sources were tracked. */
+  title_source?: ChatTitleSource | null;
+  /** Completed turns when `title` was written. */
+  title_turn?: number | null;
   /** Raw versioned Chat model-choice JSON; parsed only by the main model-choice module. */
   chat_model_choice?: string | null;
   chat_model_choice_revision?: number;
@@ -1123,6 +1154,7 @@ export type DevSessionAutomationPhase =
   | 'idle'
   | 'reviewing'
   | 'addressing_review'
+  | 'running_step'
   | 'fixing_commit_hooks'
   | 'paused'
   | 'ready_for_review'
@@ -1144,7 +1176,8 @@ export type DevSessionAttentionReason =
   | 'opposing-review-errored'
   | `provider-unavailable:${string}`
   | `skill-unavailable:${string}`
-  | `all-runs-failed:${string}`;
+  | `all-runs-failed:${string}`
+  | `some-runs-failed:${string}`;
 
 export function isCommitHookRepairPhase(
   phase: DevSessionAutomationPhase | null | undefined,
@@ -1165,11 +1198,14 @@ export function isLiveAutomationPhase(
   return (
     phase === 'reviewing'
     || phase === 'addressing_review'
+    || phase === 'running_step'
     || phase === 'paused'
     || phase === 'needs_attention'
     || isCommitHookRepairPhase(phase)
   );
 }
+
+export type DevSessionWorktreeOrigin = 'kpm' | 'attached';
 
 /**
  * A development session represents an implementation attempt.
@@ -1192,6 +1228,8 @@ export interface DevSession {
   // ranges use this so a task's "Changes" reflect only its own work, never
   // commits that landed on a moving base ref. Null for legacy/pre-capture rows.
   base_sha: string | null;
+  /** 'attached' when the user made the worktree outside KPM; KPM then never deletes its branch. */
+  worktree_origin?: DevSessionWorktreeOrigin;
 
   // Status
   status: DevSessionStatus;
@@ -1532,8 +1570,6 @@ export interface FileNode {
   modifiedAt: string;
   /** File size in bytes (0 for directories) */
   size: number;
-  /** AI-generated summary of the file's content */
-  summary?: string;
   /** Whether this path is ignored by .gitignore */
   isIgnored?: boolean;
 }
@@ -1597,6 +1633,8 @@ export interface DocumentSyncPreview {
   remoteVersion: number;
   pushReceipt: string;
   pullReceipt: string;
+  /** Refs in the local document that name no plan item; a push sends a placeholder for each. */
+  missingRefCount: number;
 }
 
 export type ConfluenceSyncPreview = DocumentSyncPreview;

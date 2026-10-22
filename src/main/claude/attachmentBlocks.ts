@@ -25,7 +25,8 @@ export const MAX_ATTACHMENT_BYTES = 30 * 1024 * 1024;
  *
  * - With no attachments: returns a single text block.
  * - With attachments: emits attachment blocks first, then a single trailing
- *   text block carrying the user's typed message.
+ *   text block carrying the user's typed message. That block is left out when
+ *   the message is empty, because the API rejects empty text blocks.
  *
  * @throws if any attachment exceeds {@link MAX_ATTACHMENT_BYTES} or fails to read.
  */
@@ -43,7 +44,7 @@ export async function buildUserContentBlocks(
     blocks.push(await buildAttachmentBlock(attachment));
   }
 
-  blocks.push({ type: 'text', text });
+  if (text.trim()) blocks.push({ type: 'text', text });
   return blocks;
 }
 
@@ -94,7 +95,7 @@ async function buildAttachmentBlock(attachment: ChatAttachment): Promise<Content
       const content = await readUtf8(attachment.path, attachment.filename);
       return {
         type: 'text',
-        text: `<file path="${attachment.path}">\n${content}\n</file>`,
+        text: `<file name="${attachment.filename}">\n${content}\n</file>`,
       };
     }
   }

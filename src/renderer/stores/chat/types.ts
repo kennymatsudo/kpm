@@ -1,4 +1,4 @@
-import type { Activity, AgentBackgroundTask, ChatAttachment, ChatChoiceIntent, ChatChoiceView, SessionState, ClaudeModel, ChatProvider, ChatSessionSummary, MessageSegment, ChatEffortLevel, PiProviderOption, SlashCommandInfo, CodexChatModel } from '../../../shared/types';
+import type { Activity, AgentBackgroundTask, ChatAttachment, ChatChoiceIntent, ChatChoiceView, SessionState, ClaudeModel, ChatProvider, ChatSessionSummary, MessageSegment, PiProviderOption, SlashCommandInfo, CodexChatModel } from '../../../shared/types';
 import type { StoreApi } from 'zustand';
 
 export interface Message {
@@ -15,7 +15,7 @@ export interface Message {
   interrupted?: boolean;
   /** Wall-clock duration of the assistant turn that produced this message, in ms. */
   durationMs?: number;
-  /** Model that produced this assistant message (e.g. "claude-sonnet-4-6"). */
+  /** Model that produced this assistant message (a full SDK model id, not the short alias). */
   model?: string;
   /**
    * In-memory attachments rendered alongside this user message. Phase 2 only —
@@ -25,7 +25,7 @@ export interface Message {
   attachments?: ChatAttachment[];
   /**
    * Renderer-supplied id used to correlate user messages with backend
-   * `chat:queued` / `chat:queue-cleared` events. Only set on user messages.
+   * `chat:done` / `chat:queue-cleared` events. Only set on user messages.
    */
   clientMessageId?: string;
   /**
@@ -38,7 +38,7 @@ export interface Message {
 }
 
 // Re-export types for consumers
-export type { Activity, AgentBackgroundTask, ClaudeModel, ChatProvider, MessageSegment, AgentEffortLevel, ChatEffortLevel, PiProviderOption, CodexChatModel } from '../../../shared/types';
+export type { Activity, AgentBackgroundTask, ClaudeModel, ChatProvider, MessageSegment, AgentEffortLevel, PiProviderOption, CodexChatModel } from '../../../shared/types';
 
 /** Per-session state (each concurrent session has its own state) */
 export interface PerSessionState {
@@ -71,14 +71,20 @@ export interface PerSessionState {
   draftMessage: string;
   /** Attachments staged for the next send, scoped to this session */
   pendingAttachments: ChatAttachment[];
+  /** Withdrawn input waiting for the composer to merge it into the draft. */
+  restoredDraft?: { text: string; attachments: ChatAttachment[] };
   /** Suggested next prompts from the SDK (populated after each turn) */
   suggestions: string[];
-  /** Sequential session number for display (e.g., "Session 1") */
+  /** Order the tab was opened in; sorts the tab strip. */
   sessionNumber: number;
-  /** SDK-derived display title (auto-summary or user-renamed). Falls back to sessionNumber when null. */
+  /** The chat's title, written by the provider, KPM, or the user. */
   title: string | null;
-  /** Claude SDK session ID (for debugging) */
-  claudeSessionId: string | null;
+  /** Opening user message, known before `messages` loads so a restored tab still has a label. */
+  firstMessage: string | null;
+  /** A retitle that arrived while this chat was on screen; applied once the user looks away. */
+  pendingTitle: string | null;
+  /** The provider's native session ID, for the copy button */
+  providerSessionId: string | null;
   /** Whether the KPM MCP server is degraded (tools unavailable) */
   mcpDegraded: boolean;
   /** Error message when MCP is degraded */
@@ -117,7 +123,6 @@ export interface ChatState {
 
   // Shared state
   model: ClaudeModel;
-  effort: ChatEffortLevel;
   provider: ChatProvider;
   /** Codex model default, inherited by new sessions. */
   codexModel: CodexChatModel;
@@ -205,13 +210,15 @@ export interface ChatState {
   ) => void;
   setError: (chatSessionId: string, error: string) => void;
   addActivity: (chatSessionId: string, activity: Activity) => void;
-  updateActivity: (chatSessionId: string, activity: Activity) => void;
   clearError: (chatSessionId: string) => void;
   setSessionState: (chatSessionId: string, state: SessionState) => void;
   setDraftMessage: (chatSessionId: string, message: string) => void;
   setPendingAttachments: (chatSessionId: string, attachments: ChatAttachment[]) => void;
+  /** Clear withdrawn input after the composer merges it into the draft. */
+  clearRestoredDraft: (chatSessionId: string) => void;
   setSuggestions: (chatSessionId: string, suggestions: string[]) => void;
-  setClaudeSessionId: (chatSessionId: string, claudeSessionId: string) => void;
+  setProviderSessionId: (chatSessionId: string, providerSessionId: string) => void;
+  /** A retitle of the chat on screen waits in `pendingTitle` so its tab doesn't change under the user. */
   setSessionTitle: (chatSessionId: string, title: string) => void;
   setMcpStatus: (chatSessionId: string, degraded: boolean, error?: string | null) => void;
   /** Replaces the session's live background-task set; pass `[]` when none remain. */
@@ -228,7 +235,6 @@ export interface ChatState {
   /** Replace the list with the SDK's authoritative one (init fetch or commands_changed push) */
   setSlashCommands: (commands: SlashCommandInfo[]) => void;
   setDefaultModel: (model: ClaudeModel) => void;
-  setDefaultEffort: (effort: ChatEffortLevel) => void;
   /** Refresh the pi.dev provider/model list (cheap; called at boot and when the provider picker opens) */
   loadPiProviders: () => Promise<void>;
   setDefaultProvider: (provider: ChatProvider) => void;
@@ -244,6 +250,10 @@ export interface ChatState {
   getChatSessionId: () => string;
   loadSessionHistory: (projectId: string) => Promise<void>;
   loadFromHistory: (projectId: string, chatSessionId: string, shouldContinue?: () => boolean) => Promise<void>;
+  /** Fetch title and opening message for tabs whose messages haven't loaded. */
+  loadTabLabels: (projectId: string) => Promise<void>;
+  /** An empty title hands naming back to KPM. */
+  renameSession: (projectId: string, chatSessionId: string, title: string) => Promise<void>;
   restoreLastSession: (projectId: string, shouldContinue?: () => boolean) => Promise<void>;
   hydrateOpenSessions: (projectId: string, shouldContinue?: () => boolean) => Promise<void>;
 

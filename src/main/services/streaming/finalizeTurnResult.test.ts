@@ -33,8 +33,7 @@ function makeManaged(overrides: Partial<ManagedSessionArg> = {}): ManagedSession
     projectId: 'project-1',
     session: { pendingQueuedCount: () => 0 } as unknown as ManagedSessionArg['session'],
     state: 'processing',
-    provider: 'claude',
-    model: 'sonnet',
+    selection: { provider: 'claude', model: 'sonnet' },
     lastActivity: Date.now(),
     mcpHealthStatus: 'healthy',
     mcpRecoveryAttempts: 0,
@@ -65,13 +64,14 @@ function makeDeps(overrides: Partial<Parameters<typeof finalizeTurnResult>[6]> =
     chatSessionRepository: {
       get: vi.fn(),
       create: vi.fn(),
-      updateClaudeSessionId: vi.fn(),
+      updateProviderSessionId: vi.fn(),
       updateTitle: vi.fn(),
-      clearClaudeSessionIdsByProject: vi.fn(),
+      clearProviderSessionIdsByProject: vi.fn(),
     },
     toolCallLogger: { logToolCall: vi.fn(), finalizeTurn: vi.fn(), getCurrentTurnIndex: vi.fn(() => 0) },
     recordUsage: vi.fn(),
     projectRepository: { get: vi.fn(), updateTokens: vi.fn() },
+    titler: { onTurnCompleted: vi.fn().mockResolvedValue(undefined) },
     disconnectSession: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   } as Parameters<typeof finalizeTurnResult>[6];
@@ -121,6 +121,57 @@ describe('finalizeTurnResult', () => {
     const errorEvent = sent.find((e) => e.channel === 'chat:error');
     expect(errorEvent).toBeTruthy();
     expect((errorEvent!.payload as { error: string }).error).toMatch(/not signed in.*\/login/i);
+  });
+
+  describe('banners for how the turn ended', () => {
+    const errors = (sent: { channel: string; payload: unknown }[]) =>
+      sent.filter((e) => e.channel === 'chat:error').map((e) => (e.payload as { error: string }).error);
+
+    it('tells the user when an adapter reports the output limit', () => {
+      const { sent, window } = fakeWindow();
+
+      finalizeTurnResult('key', 'project-1', 'session-1', makeManaged({ selection: { provider: 'pi', model: 'cursor/auto' } }), { type: 'result', usage: undefined, outputLimitReached: true }, window, makeDeps());
+
+      expect(errors(sent)).toEqual(['Response reached the output limit. Send another message to continue.']);
+    });
+
+    it.each(['api_error', 'turn_setup_failed', 'malformed_tool_use_exhausted', 'image_error', 'tool_deferred_unavailable', 'budget_exhausted'])(
+      'explains a turn Claude ended with %s',
+      (terminal_reason) => {
+        const { sent, window } = fakeWindow();
+
+        finalizeTurnResult('key', 'project-1', 'session-1', makeManaged(), { type: 'result', usage: undefined, terminal_reason }, window, makeDeps());
+
+        expect(errors(sent)).toHaveLength(1);
+        expect(errors(sent)[0]).toMatch(/^Response stopped/);
+      },
+    );
+
+    it('sends the banner after the turn is finalized, so the answer keeps its model and token details', () => {
+      const { sent, window } = fakeWindow();
+
+      finalizeTurnResult('key', 'project-1', 'session-1', makeManaged(), { type: 'result', usage: undefined, terminal_reason: 'api_error' }, window, makeDeps());
+
+      const channels = sent.map((e) => e.channel);
+      expect(channels.indexOf('chat:done')).toBeGreaterThanOrEqual(0);
+      expect(channels.indexOf('chat:error')).toBeGreaterThan(channels.indexOf('chat:done'));
+    });
+
+    it.each(['completed', 'aborted_streaming', 'background_requested'])('stays quiet when Claude ended with %s', (terminal_reason) => {
+      const { sent, window } = fakeWindow();
+
+      finalizeTurnResult('key', 'project-1', 'session-1', makeManaged(), { type: 'result', usage: undefined, terminal_reason }, window, makeDeps());
+
+      expect(errors(sent)).toEqual([]);
+    });
+
+    it('adds no second banner when the turn already surfaced an error', () => {
+      const { sent, window } = fakeWindow();
+
+      finalizeTurnResult('key', 'project-1', 'session-1', makeManaged({ turnErrorSurfaced: true }), { type: 'result', usage: undefined, terminal_reason: 'api_error' }, window, makeDeps());
+
+      expect(errors(sent)).toEqual([]);
+    });
   });
 
   it('stays processing and skips chat:session-ready when a follow-up is already queued', () => {
@@ -196,7 +247,7 @@ describe('finalizeTurnResult', () => {
     });
 
     it('reports a context window from an adapter-built provider result', () => {
-      const contextWindow = doneContextWindow(makeManaged({ provider: 'codex', resolvedModel: undefined }), {
+      const contextWindow = doneContextWindow(makeManaged({ selection: { provider: 'codex', model: 'gpt-5.5' }, resolvedModel: undefined }), {
         type: 'result',
         usage: { input_tokens: 10, output_tokens: 20 },
         contextWindow: 1_050_000,
@@ -252,6 +303,31 @@ describe('finalizeTurnResult', () => {
     });
   });
 
+  describe('adapter-built usage', () => {
+    it('records an unpriced turn under the model that answered, and fills the context bar from the last request', () => {
+      const deps = makeDeps();
+      const { sent, window } = fakeWindow();
+      const managed = makeManaged({ selection: { provider: 'codex', model: 'gpt-5.5' } });
+
+      finalizeTurnResult('key', 'project-1', 'session-1', managed, {
+        type: 'result',
+        usage: { input_tokens: 50, output_tokens: 25, cache_read_input_tokens: 200, cache_creation_input_tokens: 0 },
+        contextUsage: { input_tokens: 30, output_tokens: 15, cache_read_input_tokens: 120, cache_creation_input_tokens: 0 },
+        model: 'gpt-5.5-2026-09-01',
+        costUnknown: true,
+      }, window, deps);
+
+      expect(deps.recordUsage).toHaveBeenCalledWith(expect.objectContaining({
+        model: 'gpt-5.5-2026-09-01',
+        usage: expect.objectContaining({ input_tokens: 50, cache_read_input_tokens: 200 }),
+        totalCostUsd: null,
+        costUnknown: true,
+      }));
+      const done = sent.find((event) => event.channel === 'chat:done')!.payload as { inputTokens?: number; cacheReadTokens?: number };
+      expect(done).toMatchObject({ inputTokens: 30, cacheReadTokens: 120 });
+    });
+  });
+
   describe('turn latency', () => {
     afterEach(() => {
       vi.restoreAllMocks();
@@ -268,6 +344,34 @@ describe('finalizeTurnResult', () => {
       expect(deps.recordUsage).toHaveBeenCalledWith(expect.objectContaining({
         ttftMs: 800,
         durationMs: 14_200,
+      }));
+    });
+
+    it('records turn timings on the main model row of a per-model Claude result, not on subagent models', () => {
+      vi.spyOn(Date, 'now').mockReturnValue(15_200);
+      const managed = makeManaged({ turnStartedAt: 1_000, firstContentAt: 1_800, resolvedModel: 'claude-opus-5-5' });
+      const deps = makeDeps();
+      const { window } = fakeWindow();
+
+      finalizeTurnResult('key', 'project-1', 'session-1', managed, {
+        type: 'result',
+        usage: { input_tokens: 10, output_tokens: 20 },
+        modelUsage: {
+          'claude-opus-5-5': { inputTokens: 10, outputTokens: 20, costUSD: 0.5 },
+          'claude-haiku-4-5-20251001': { inputTokens: 3, outputTokens: 1, costUSD: 0.001 },
+        },
+      } as Parameters<typeof finalizeTurnResult>[4], window, deps);
+
+      expect(deps.recordUsage).toHaveBeenCalledWith(expect.objectContaining({
+        model: 'claude-opus-5-5',
+        ttftMs: 800,
+        durationMs: 14_200,
+        isCumulativeUsageSnapshot: true,
+      }));
+      expect(deps.recordUsage).toHaveBeenCalledWith(expect.objectContaining({ model: 'claude-haiku-4-5-20251001' }));
+      expect(deps.recordUsage).not.toHaveBeenCalledWith(expect.objectContaining({
+        model: 'claude-haiku-4-5-20251001',
+        ttftMs: expect.anything(),
       }));
     });
 

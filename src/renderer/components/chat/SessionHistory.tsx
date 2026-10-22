@@ -3,7 +3,6 @@ import { useChatStore, useProjectDomainStore } from '../../stores';
 import { useShallow } from 'zustand/react/shallow';
 import { Z_INDEX } from '../../constants/zIndex';
 import { formatRelativeTime } from '../../utils/relativeTime';
-import { getProviderCapabilities } from '../../../shared/providerCapabilities';
 import { ClockIcon } from '../icons';
 import { Tooltip } from '../ui/Tooltip';
 import { HEADER_ICON_BUTTON } from './headerControls';
@@ -124,7 +123,7 @@ export function SessionHistory() {
           ) : (
             <div className="max-h-80 overflow-y-auto py-1">
               {sessionHistory.map((session, index) => {
-                const title = getProviderCapabilities(session.provider).sessionSummaries ? session.title : null;
+                const title = session.title;
                 const primary = title ?? truncateMessage(session.first_message);
                 const secondary = title ? truncateMessage(session.first_message, 50) : null;
                 return (

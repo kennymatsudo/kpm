@@ -1,7 +1,7 @@
 import type { ChatService } from '../../services/core/ChatService';
 import type { SlashCommandService } from '../../services/core/SlashCommandService';
 import type { StreamingSessionService } from '../../services/streaming/StreamingSessionService';
-import type { IChatMessageRepository, IProjectRepository } from '../../db/interfaces';
+import type { IChatMessageRepository, IChatSessionRepository, IProjectRepository } from '../../db/interfaces';
 import type { ChatModelChoiceService } from '../../chat/modelChoice';
 import { chatEndpoints, type ChatEndpointName } from '../../../shared/ipc/chatEndpoints';
 import type { UnwrappedHandlerFor } from '../../../shared/ipc/endpoints';
@@ -9,6 +9,7 @@ import { ChatSendSchema } from '../validation/chat';
 import { createRegistryIpcHandlers } from '../validation/utils';
 import { isPiAvailable } from '../../pi/detect';
 import { listPiProviders } from '../../pi/providers';
+import { getModelCatalog } from '../../providers/modelCatalog';
 import { getConfig } from '../../config';
 import { withTimeout } from '../../utils/withTimeout';
 
@@ -22,6 +23,7 @@ export interface ChatHandlerDeps {
   >;
   projects: IProjectRepository;
   chatMessages: IChatMessageRepository;
+  chatSessions: Pick<IChatSessionRepository, 'get' | 'updateTitle'>;
   modelChoice: ChatModelChoiceService;
 }
 
@@ -50,7 +52,7 @@ function modelChoiceControlsBusy(
 }
 
 function buildChatHandlers(deps: ChatHandlerDeps): ChatHandlers {
-  const { chatService, slashCommandService, streamingSessionService, projects, chatMessages, modelChoice } = deps;
+  const { chatService, slashCommandService, streamingSessionService, projects, chatMessages, chatSessions, modelChoice } = deps;
 
   return {
     getSlashCommands: async () => {
@@ -106,11 +108,6 @@ function buildChatHandlers(deps: ChatHandlerDeps): ChatHandlers {
       if (!result.ok) throw new Error(result.error);
     },
 
-    connectSession: async () => {
-      // Nothing to load: the project's write grant is hydrated once at
-      // startup and outlives every session, so connecting is a no-op.
-    },
-
     disconnectSession: async ({ projectId }) => {
       const result = await chatService.disconnectSession(projectId);
       if (!result.ok) throw new Error(result.error);
@@ -143,11 +140,6 @@ function buildChatHandlers(deps: ChatHandlerDeps): ChatHandlers {
       };
     },
 
-    getMessages: async ({ projectId }) => {
-      requireProject(projects, projectId);
-      return { messages: chatMessages.getMessages(projectId) };
-    },
-
     getSessionHistory: async ({ projectId, limit }) => {
       requireProject(projects, projectId);
       return { sessions: chatMessages.getRecentSessions(projectId, limit) };
@@ -161,7 +153,24 @@ function buildChatHandlers(deps: ChatHandlerDeps): ChatHandlers {
         messages: chatMessages.getMessagesByChatSession(projectId, chatSessionId),
         chatSessionId,
         choice: opened.data,
+        title: chatSessions.get(chatSessionId)?.title ?? null,
       };
+    },
+
+    getSessionLabels: async ({ projectId, chatSessionIds }) => {
+      requireProject(projects, projectId);
+      return { labels: chatMessages.getSessionLabels(projectId, chatSessionIds) };
+    },
+
+    renameSession: async ({ projectId, chatSessionId, title }) => {
+      requireProject(projects, projectId);
+      if (!chatSessions.get(chatSessionId)) throw new Error('Chat not found');
+      const trimmed = title.replace(/\s+/g, ' ').trim();
+      if (trimmed) {
+        chatSessions.updateTitle(chatSessionId, trimmed, 'user', null);
+      } else {
+        chatSessions.updateTitle(chatSessionId, null, null, null);
+      }
     },
 
     getFocusDocumentSession: async (params) => {
@@ -170,6 +179,8 @@ function buildChatHandlers(deps: ChatHandlerDeps): ChatHandlers {
       if (!result.data.choice) throw new Error('Chat model choice was not hydrated');
       return { ...result.data, choice: result.data.choice };
     },
+
+    modelCatalog: () => ({ catalog: getModelCatalog() }),
 
     piProviders: async () => {
       const available = await isPiAvailable();

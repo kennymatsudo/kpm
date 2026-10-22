@@ -23,7 +23,7 @@ export type GenerationTier = 'fast' | 'deep' | 'cheap';
 export type GenerationPurpose =
   | 'pr_description'
   | 'commit_message'
-  | 'file_summary';
+  | 'chat_title';
 
 /** Coarse neutral terminal outcome. Providers map their native reasons in. */
 export type GenerationOutcomeStatus = 'completed' | 'max_turns' | 'error';
@@ -82,7 +82,7 @@ export interface ResolvedGenerationRequest extends GenerationRequest {
 
 export interface GenerationRunHooks {
   /** Fired per billable turn so the seam records usage. */
-  onUsage?: (usage: GenerationUsage, totalCostUsd?: number | null) => void;
+  onUsage?: (usage: GenerationUsage, totalCostUsd?: number | null, costUnknown?: boolean) => void;
 }
 
 /** One per provider. The seam picks an adapter via routing, then calls `run`. */

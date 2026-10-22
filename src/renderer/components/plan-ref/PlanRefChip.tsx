@@ -116,11 +116,11 @@ export function PlanRefChip({ id }: PlanRefChipProps) {
         >
           <span className="truncate max-w-[16rem]">{item.title}</span>
           {item.external_key ? (
-            <span className="text-text-muted font-normal">{item.external_key}</span>
+            <span className="text-text-muted font-normal whitespace-nowrap">{item.external_key}</span>
           ) : null}
           {statusConfig ? (
             <span
-              className={`px-1 rounded text-[10px] font-medium ${statusConfig.bgClass} ${statusConfig.textClass}`}
+              className={`px-1 rounded text-[10px] font-medium whitespace-nowrap ${statusConfig.bgClass} ${statusConfig.textClass}`}
             >
               {statusConfig.label}
             </span>

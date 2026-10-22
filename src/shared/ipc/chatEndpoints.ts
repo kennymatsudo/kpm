@@ -7,18 +7,20 @@
  * `StreamingSessionService`/`ChatRuntimeService`, not invoke endpoints, so
  * they stay hand-declared in `src/preload/api.ts` and out of this registry.
  *
- * `send.tempImages` is scoped to KPM's OS-temp images directory
+ * `send.attachments` paths are scoped to KPM's OS-temp images directory
  * (`os.tmpdir()`-derived, main-process-only, not derivable in shared/renderer
  * code) — this registry only validates each path is absolute;
  * `validation/chat.ts` layers the temp-dir scoping refine back on, the same
- * escape hatch used by `tempImageEndpoints.ts`/`attachmentEndpoints.ts`.
+ * escape hatch used by `tempImageEndpoints.ts`/`attachmentEndpoints.ts`. It also
+ * adds the rule that a send carries text, attachments, or both.
  */
 
 import { z } from 'zod';
 import { resultOf, type EndpointDefinition } from './endpoints';
 import { absolutePath, uuid } from './sharedSchemas';
 import { CHAT_PROVIDERS } from '../types';
-import type { Activity, ChatChoiceView, ChatMessage, ChatSessionScope, ChatSessionSummary, PiProviderOption, SessionState, SlashCommandInfo } from '../types';
+import type { ModelCatalog } from '../modelCatalog';
+import type { Activity, ChatChoiceView, ChatMessage, ChatSessionLabel, ChatSessionScope, ChatSessionSummary, PiProviderOption, SessionState, SlashCommandInfo } from '../types';
 
 /**
  * Response shape for endpoints registered through `createRegistryIpcHandlers`
@@ -31,7 +33,7 @@ type RegistryResponse<T = void> =
   | { success: false; error: string };
 
 /** Mirrors `ActiveSessionInfo` from `main/services/streaming/StreamingSessionService.ts`. */
-interface ActiveSessionInfo {
+export interface ActiveSessionInfo {
   chatSessionId: string;
   scope: ChatSessionScope;
   state: SessionState;
@@ -54,6 +56,18 @@ import type { SessionMcpServer } from '../../main/services/streaming/sessionMcp'
 
 const chatProvider = z.enum(CHAT_PROVIDERS, { message: 'Provider must be "claude", "codex", or "pi"' });
 
+export const chatAttachmentSchema = <P extends z.ZodType<string>>(pathSchema: P) =>
+  z.discriminatedUnion('kind', [
+    z.object({
+      kind: z.literal('image'),
+      path: pathSchema,
+      filename: z.string().min(1),
+      mediaType: z.enum(['image/png', 'image/jpeg', 'image/gif', 'image/webp']),
+    }),
+    z.object({ kind: z.literal('pdf'), path: pathSchema, filename: z.string().min(1) }),
+    z.object({ kind: z.literal('text'), path: pathSchema, filename: z.string().min(1), mediaType: z.string() }),
+  ]);
+
 const focusedResourceSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('plan_item'), id: z.string(), title: z.string() }),
   z.object({ type: z.literal('project_file'), path: z.string(), isDirectory: z.boolean() }),
@@ -75,9 +89,9 @@ export const chatEndpoints = {
     channel: 'chat:send',
     params: z.object({
       projectId: uuid,
-      message: z.string().min(1, 'Message cannot be empty').max(100000, 'Message too long'),
+      message: z.string().max(100000, 'Message too long'),
       focusedResources: z.array(focusedResourceSchema).default([]),
-      tempImages: z.array(absolutePath).optional(),
+      attachments: z.array(chatAttachmentSchema(absolutePath)).optional(),
       chatSessionId: uuid.optional(),
       clientMessageId: uuid.optional(),
       currentView: chatViewModeSchema,
@@ -134,11 +148,6 @@ export const chatEndpoints = {
     params: z.object({ projectId: uuid }),
     result: resultOf<RegistryResponse>(),
   },
-  connectSession: {
-    channel: 'chat:connect-session',
-    params: z.object({ projectId: uuid }),
-    result: resultOf<RegistryResponse>(),
-  },
   disconnectSession: {
     channel: 'chat:disconnect-session',
     params: z.object({ projectId: uuid }),
@@ -164,11 +173,6 @@ export const chatEndpoints = {
     params: z.object({ projectId: uuid }),
     result: resultOf<RegistryResponse<{ usage: { totalTokens: number; inputTokens: number; outputTokens: number } }>>(),
   },
-  getMessages: {
-    channel: 'chat:get-messages',
-    params: z.object({ projectId: uuid }),
-    result: resultOf<RegistryResponse<{ messages: ChatMessage[] }>>(),
-  },
   getSessionHistory: {
     channel: 'chat:get-session-history',
     params: z.object({ projectId: uuid, limit: z.number().int().min(1).max(20).optional().default(5) }),
@@ -177,7 +181,19 @@ export const chatEndpoints = {
   loadSession: {
     channel: 'chat:load-session',
     params: z.object({ projectId: uuid, chatSessionId: uuid }),
-    result: resultOf<RegistryResponse<{ messages: ChatMessage[]; chatSessionId: string; choice: ChatChoiceView }>>(),
+    result: resultOf<RegistryResponse<{ messages: ChatMessage[]; chatSessionId: string; choice: ChatChoiceView; title: string | null }>>(),
+  },
+  /** What restored tabs show before their messages load. */
+  getSessionLabels: {
+    channel: 'chat:get-session-labels',
+    params: z.object({ projectId: uuid, chatSessionIds: z.array(uuid).max(100) }),
+    result: resultOf<RegistryResponse<{ labels: ChatSessionLabel[] }>>(),
+  },
+  /** An empty title hands naming back to KPM. */
+  renameSession: {
+    channel: 'chat:rename-session',
+    params: z.object({ projectId: uuid, chatSessionId: uuid, title: z.string().max(200) }),
+    result: resultOf<RegistryResponse>(),
   },
   getFocusDocumentSession: {
     channel: 'chat:get-focus-document-session',
@@ -193,6 +209,11 @@ export const chatEndpoints = {
     channel: 'chat:get-slash-commands',
     params: null,
     result: resultOf<RegistryResponse<{ commands: SlashCommandInfo[] }>>(),
+  },
+  modelCatalog: {
+    channel: 'chat:get-model-catalog',
+    params: null,
+    result: resultOf<RegistryResponse<{ catalog: ModelCatalog }>>(),
   },
   piProviders: {
     channel: 'chat:pi-providers',

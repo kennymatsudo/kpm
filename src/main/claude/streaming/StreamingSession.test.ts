@@ -7,13 +7,14 @@
  */
 
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
-import { query } from '@anthropic-ai/claude-agent-sdk';
+import { query, resolveSettings } from '@anthropic-ai/claude-agent-sdk';
 import type { McpServerStatus, SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import {
   createControlledSdkStream,
   type SdkStreamHandle,
 } from '../../../../tests/mocks/claudeSdk';
 import { StreamingSession, type StreamingSessionConfig } from './StreamingSession';
+import type { StreamingUserMessage } from './AsyncMessageQueue';
 
 interface QueryMockState {
   build: () => {
@@ -48,6 +49,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async () => {
       const built = queryMockState.build();
       return Object.assign(built.iterable, createQueryControls());
     }),
+    resolveSettings: vi.fn(async () => ({ effective: {}, provenance: {}, sources: [] })),
   };
 });
 
@@ -163,6 +165,18 @@ describe('StreamingSession', () => {
     expect(session.isReady()).toBe(false);
   });
 
+  it('starts in the permission mode from the user\'s Claude Code settings', async () => {
+    vi.mocked(resolveSettings).mockResolvedValueOnce({ effective: { permissions: { defaultMode: 'bypassPermissions' } }, provenance: {}, sources: [] });
+    makeFakeQuery();
+    const session = new StreamingSession(createConfig());
+    const startPromise = session.start('hello');
+    await vi.waitFor(() => expect(query).toHaveBeenCalled());
+    lastHandle!.emit(initMessage());
+    await startPromise;
+
+    expect(vi.mocked(query).mock.calls[0][0].options).toMatchObject({ permissionMode: 'bypassPermissions', allowDangerouslySkipPermissions: true });
+  });
+
   it('allows external MCP servers to be pending at init', async () => {
     makeFakeQuery();
     const config = createConfig();
@@ -232,6 +246,41 @@ describe('StreamingSession', () => {
     await startPromise;
 
     expect(() => session.send('ok')).not.toThrow();
+  });
+
+  it('holds sends during a turn until a tool call or the turn result, so Stop can still withdraw them', async () => {
+    makeFakeQuery();
+    const session = new StreamingSession(createConfig());
+    const startPromise = session.start('hello');
+    lastHandle!.emit(initMessage());
+    await startPromise;
+    const flush = () => new Promise((r) => setImmediate(r));
+    const { prompt } = (query as Mock).mock.calls.at(-1)![0] as { prompt: AsyncIterable<StreamingUserMessage> };
+    const input = prompt[Symbol.asyncIterator]();
+    const textOf = (msg: StreamingUserMessage | undefined) => {
+      const content = msg?.message.content;
+      return Array.isArray(content) && content[0]?.type === 'text' ? content[0].text : undefined;
+    };
+
+    await input.next(); // the seed message starts the turn
+    session.send('steer');
+    const steer = input.next();
+    lastHandle!.emit({ type: 'assistant', message: { content: [{ type: 'text', text: 'thinking' }] } } as unknown as SDKMessage);
+    await flush();
+    expect(session.pendingQueuedCount()).toBe(1);
+
+    lastHandle!.emit({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 't1', name: 'Read', input: {} }] } } as unknown as SDKMessage);
+    expect(textOf((await steer).value)).toBe('steer');
+
+    session.send('next turn');
+    session.send('cancel me');
+    const nextTurn = input.next();
+    await flush();
+    expect(session.cancelLastQueued()).not.toBeNull();
+
+    lastHandle!.emit({ type: 'result', subtype: 'success' } as unknown as SDKMessage);
+    expect(textOf((await nextTurn).value)).toBe('next turn');
+    expect(session.pendingQueuedCount()).toBe(0);
   });
 
   it('emits onSessionEnd("completed") when the SDK generator exhausts normally', async () => {

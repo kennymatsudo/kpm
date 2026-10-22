@@ -1,10 +1,20 @@
-import type { ContentBlockParam } from '@anthropic-ai/sdk/resources';
+import type { ChatAttachment } from '../../../shared/types';
 import type { SessionMcpInspection } from './sessionMcp';
 
+/** A follow-up was withdrawn before delivery, so it is neither saved nor reported as a failure. */
+export class FollowUpDroppedError extends Error {
+  constructor() {
+    super('Follow-up was dropped before it reached the model');
+    this.name = 'FollowUpDroppedError';
+  }
+}
+
 export interface IChatSession {
-  start(initialMessage: string | ContentBlockParam[]): Promise<void>;
-  send(text: string): void;
-  sendUserContent(content: ContentBlockParam[]): void | Promise<void>;
+  /** `initialMessage` may be empty when attachments carry the turn. */
+  start(initialMessage: string, attachments?: ChatAttachment[]): Promise<void>;
+  send(text: string): void | Promise<void>;
+  /** Each provider turns the attachments into its own input; `text` may be empty. */
+  sendWithAttachments(text: string, attachments: ChatAttachment[]): Promise<void>;
   interrupt(): Promise<void>;
   close(): Promise<void>;
   isReady(): boolean;

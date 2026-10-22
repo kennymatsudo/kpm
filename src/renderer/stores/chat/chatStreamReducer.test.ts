@@ -24,6 +24,20 @@ describe('applyStreamEvent chunk', () => {
     expect(next.streamingContent).toBe('hello');
   });
 
+  it('replaces the last text segment on append instead of mutating the previous state', () => {
+    const first = applyStreamEvent(
+      { ...createInitialPerSessionState(1), isStreaming: true },
+      { type: 'chunk', text: 'hello' }
+    );
+    const lastBefore = first.streamingSegments[0];
+
+    const second = applyStreamEvent(first, { type: 'chunk', text: ' world' });
+
+    expect(lastBefore).toEqual({ type: 'text', content: 'hello' });
+    expect(second.streamingSegments[0]).not.toBe(lastBefore);
+    expect(second.streamingSegments[0]).toEqual({ type: 'text', content: 'hello world' });
+  });
+
   it('folds queued activities into an inline segment before the next chunk and drops them from the live list', () => {
     const t1 = makeActivity('t1', 'bash: rg ssrf');
     const t2 = makeActivity('t2', 'read_file: views.py');
@@ -105,7 +119,7 @@ describe('applyStreamEvent thinking/activity', () => {
     expect(next.activities).toEqual([makeActivity('a1', 'Running: npm test')]);
   });
 
-  it('activity-update patches the activity in place across activities, pendingActivities, streamingSegments, and messages', () => {
+  it('activity-start re-sent under a known id patches it in place across activities, pendingActivities, streamingSegments, and messages', () => {
     const activity = makeActivity('a1', 'Running: npm test');
     const updated: Activity = { ...activity, detail: 'done', diffStats: { additions: 1, deletions: 0 } };
     const session = {
@@ -123,7 +137,7 @@ describe('applyStreamEvent thinking/activity', () => {
       ],
     };
 
-    const next = applyStreamEvent(session, { type: 'activity-update', activity: updated });
+    const next = applyStreamEvent(session, { type: 'activity-start', activity: updated });
 
     expect(next.activities).toEqual([updated]);
     expect(next.pendingActivities).toEqual([updated]);
@@ -489,6 +503,30 @@ describe('applyStreamEvent error', () => {
     expect(next.streamStartedAt).toBeNull();
     expect(next.lastStreamUpdateAt).toBeNull();
   });
+
+  it('keeps what the turn already streamed as an interrupted answer', () => {
+    const session = {
+      ...createInitialPerSessionState(1),
+      isStreaming: true,
+      streamingSegments: [{ type: 'text' as const, content: 'Half of the ' }],
+      streamStartedAt: Date.now(),
+    };
+
+    const next = applyStreamEvent(session, { type: 'error', error: 'boom', buffered: 'answer' });
+
+    const last = next.messages[next.messages.length - 1];
+    expect(last).toMatchObject({ role: 'assistant', interrupted: true, segments: [{ type: 'text', content: 'Half of the answer' }] });
+    expect(next.error).toBe('boom');
+  });
+
+  it('adds no bubble when nothing had streamed yet, as when a send fails', () => {
+    const session = { ...createInitialPerSessionState(1), isStreaming: true, streamStartedAt: Date.now() };
+
+    const next = applyStreamEvent(session, { type: 'error', error: 'Failed to send' });
+
+    expect(next.messages).toEqual(session.messages);
+    expect(next.isStreaming).toBe(false);
+  });
 });
 
 describe('applyFollowUpTransition', () => {
@@ -600,10 +638,34 @@ describe('applyStreamEvent queue-cleared', () => {
     expect(next.messages).toHaveLength(0);
   });
 
+  it('dropped: hands the text and attachments back to the composer, oldest first', () => {
+    const attachment = { kind: 'text' as const, path: '/tmp/notes.md', filename: 'notes.md', mediaType: 'text/markdown' };
+    const secondAttachment = { ...attachment, path: '/tmp/later.md', filename: 'later.md' };
+    const followUp = (clientMessageId: string, content: string, extra: Partial<Message> = {}): Message => ({
+      id: clientMessageId,
+      role: 'user',
+      segments: [{ type: 'text', content }],
+      timestamp: new Date(),
+      followUp: 'awaiting',
+      clientMessageId,
+      ...extra,
+    });
+    const session = {
+      ...createInitialPerSessionState(1),
+      messages: [followUp('first', 'First thought', { attachments: [attachment] }), followUp('second', 'Second thought', { attachments: [secondAttachment] })],
+    };
+
+    // Backend withdrawals arrive newest first for both Stop and disconnect.
+    const afterSecond = applyStreamEvent(session, { type: 'queue-cleared-dropped', clientMessageId: 'second' });
+    const afterBoth = applyStreamEvent(afterSecond, { type: 'queue-cleared-dropped', clientMessageId: 'first' });
+
+    expect(afterBoth.messages).toHaveLength(0);
+    expect(afterBoth.restoredDraft).toEqual({ text: 'First thought\n\nSecond thought', attachments: [attachment, secondAttachment] });
+  });
+
   it('dropped: removes the bubble even after Stop already finalized the interrupted turn', () => {
-    // Stop finalizes locally before the backend's cancellation arrives, and
-    // that finalize clears the follow-up state — the removal must not
-    // depend on it.
+    // Stop finalizes locally before the backend's cancellation arrives. The
+    // follow-up's fate is unknown then, so it must still read as pending.
     const clientMessageId = 'stopped-follow-up';
     const session = {
       ...createInitialPerSessionState(1),
@@ -624,7 +686,7 @@ describe('applyStreamEvent queue-cleared', () => {
     };
 
     const finalized = applyStreamEvent(session, { type: 'done', options: { interrupted: true }, buffered: '' });
-    expect(finalized.messages[0].followUp).toBeUndefined();
+    expect(finalized.messages.find((message) => message.clientMessageId === clientMessageId)?.followUp).toBe('awaiting');
 
     const next = applyStreamEvent(finalized, { type: 'queue-cleared-dropped', clientMessageId });
 

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createChatService, type ChatServiceDeps } from './ChatService';
 import { failure, success } from '../result';
 import type { ChatAttachment, Project } from '../../../shared/types';
+import type { ChatSendDisposition } from '../streaming/StreamingSessionService';
 
 function makeProject(): Project {
   return {
@@ -9,7 +10,6 @@ function makeProject(): Project {
     name: 'Test Project',
     phase: 'planning',
     folder_path: '/tmp/test-project',
-    storybook_url: null,
     sort_order: 0,
     icon: null,
     created_at: '2026-01-01T00:00:00.000Z',
@@ -18,6 +18,8 @@ function makeProject(): Project {
     session_output_tokens: 0,
   } as unknown as Project;
 }
+
+const SHOT: ChatAttachment = { kind: 'image', path: '/tmp/kpm-images/kpm-paste-1.png', filename: 'shot.png', mediaType: 'image/png' };
 
 function makeDeps(overrides: Partial<ChatServiceDeps> = {}): {
   deps: ChatServiceDeps;
@@ -54,13 +56,12 @@ function makeDeps(overrides: Partial<ChatServiceDeps> = {}): {
     };
   });
 
-  const sendChatMessage = vi.fn(async () => success(undefined));
+  const sendChatMessage = vi.fn(async () => success<ChatSendDisposition>('sent'));
   const disconnectChatSession = vi.fn(async () => success(undefined));
   const emitChatError = vi.fn();
   const createFocusDocument = vi.fn((id: string, projectId: string, documentPath: string, title: string, contentHash: string) => ({
     id,
     project_id: projectId,
-    claude_session_id: null,
     provider: 'claude' as const,
     provider_session_id: null,
     scope: 'focus_document' as const,
@@ -74,7 +75,6 @@ function makeDeps(overrides: Partial<ChatServiceDeps> = {}): {
   const updateFocusDocument = vi.fn((id: string, title: string, contentHash: string) => ({
     id,
     project_id: project.id,
-    claude_session_id: null,
     provider: 'claude' as const,
     provider_session_id: null,
     scope: 'focus_document' as const,
@@ -115,11 +115,9 @@ function makeDeps(overrides: Partial<ChatServiceDeps> = {}): {
       get: vi.fn(),
       getFocusDocument: vi.fn(),
       updateFocusDocument,
-      updateClaudeSessionId: vi.fn(),
       updateProviderSessionId: vi.fn(),
       updateModelChoice: vi.fn(),
       updateTitle: vi.fn(),
-      clearClaudeSessionIdsByProject: vi.fn(),
       clearProviderSessionIdsByProject: vi.fn(),
       delete: vi.fn(),
     },
@@ -128,6 +126,10 @@ function makeDeps(overrides: Partial<ChatServiceDeps> = {}): {
       disconnectChatSession,
     },
     emitChatError,
+    modelChoice: {
+      resolveForTurn: vi.fn(async () => success({ provider: 'claude', model: 'sonnet', effort: null, revision: 0 })),
+      open: vi.fn(async () => success({ revision: 0 })),
+    } as unknown as ChatServiceDeps['modelChoice'],
     ...overrides,
   };
 
@@ -142,37 +144,25 @@ describe('ChatService.sendMessage', () => {
     vi.clearAllMocks();
   });
 
-  it('forwards tempImages converted to ChatAttachment[] to the streaming service', async () => {
+  it('forwards attachments to the streaming service unchanged', async () => {
     const { deps, spies } = makeDeps();
     const service = createChatService(deps);
+    const attachments: ChatAttachment[] = [
+      { kind: 'image', path: '/tmp/kpm-images/kpm-paste-1.png', filename: 'shot.png', mediaType: 'image/png' },
+      { kind: 'pdf', path: '/tmp/kpm-images/kpm-attach-2.pdf', filename: 'spec.pdf' },
+      { kind: 'text', path: '/tmp/kpm-images/kpm-attach-3.md', filename: 'notes.md', mediaType: 'text/markdown' },
+    ];
 
     const result = await service.sendMessage({
       projectId: 'project-1',
       message: 'describe this',
       chatSessionId: 'session-1',
-      tempImages: [
-        '/tmp/kpm-images/kpm-paste-1.png',
-        '/tmp/kpm-images/kpm-paste-2.jpeg',
-      ],
+      attachments,
     });
 
     expect(result.ok).toBe(true);
-    expect(spies.sendChatMessage).toHaveBeenCalledTimes(1);
     const [, , options] = spies.sendChatMessage.mock.calls[0];
-    expect(options.attachments).toEqual<ChatAttachment[]>([
-      {
-        kind: 'image',
-        path: '/tmp/kpm-images/kpm-paste-1.png',
-        filename: 'kpm-paste-1.png',
-        mediaType: 'image/png',
-      },
-      {
-        kind: 'image',
-        path: '/tmp/kpm-images/kpm-paste-2.jpeg',
-        filename: 'kpm-paste-2.jpeg',
-        mediaType: 'image/jpeg',
-      },
-    ]);
+    expect(options.attachments).toEqual(attachments);
   });
 
   it('resolves a pathless focused repo to its active worktree', async () => {
@@ -204,14 +194,30 @@ describe('ChatService.sendMessage', () => {
       projectId: 'project-1',
       message: 'describe this',
       chatSessionId: 'session-1',
-      tempImages: ['/tmp/kpm-images/kpm-paste-1.png'],
+      attachments: [SHOT],
     });
 
     expect(spies.addMessage).toHaveBeenCalledTimes(1);
     const [, role, content] = spies.addMessage.mock.calls[0];
     expect(role).toBe('user');
     expect(content).toBe('describe this');
-    expect(content).not.toMatch(/Images attached/i);
+  });
+
+  it('sends an attachment-only message with no text and persists the file names for history', async () => {
+    const { deps, spies } = makeDeps();
+    const service = createChatService(deps);
+
+    await service.sendMessage({
+      projectId: 'project-1',
+      message: '',
+      chatSessionId: 'session-1',
+      attachments: [SHOT, { kind: 'pdf', path: '/tmp/kpm-images/kpm-attach-2.pdf', filename: 'spec.pdf' }],
+    });
+
+    const [, text] = spies.sendChatMessage.mock.calls[0];
+    expect(text).toBe('');
+    const [, , content] = spies.addMessage.mock.calls[0];
+    expect(content).toBe('Attached shot.png, spec.pdf');
   });
 
   it('does not persist a user message when the streaming service rejects it', async () => {
@@ -237,6 +243,27 @@ describe('ChatService.sendMessage', () => {
       chatSessionId: 'session-1',
       error: 'A follow-up is already queued.',
     });
+  });
+
+  it('does not persist a follow-up that Stop withdrew before it reached the model', async () => {
+    const { deps, spies } = makeDeps({
+      streamingSessionService: {
+        sendChatMessage: vi.fn(async () => success<ChatSendDisposition>('withdrawn')),
+        disconnectChatSession: vi.fn(),
+      },
+    });
+    const service = createChatService(deps);
+
+    const result = await service.sendMessage({
+      projectId: 'project-1',
+      message: 'never delivered',
+      chatSessionId: 'session-1',
+      clientMessageId: 'client-1',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(spies.addMessage).not.toHaveBeenCalled();
+    expect(spies.emitChatError).not.toHaveBeenCalled();
   });
 
   it('rejects a retry client message ID when it targets another chat session', async () => {
@@ -268,26 +295,28 @@ describe('ChatService.sendMessage', () => {
     });
   });
 
-  it('rejects an unsupported attachment extension with a clear error', async () => {
-    const { deps, spies } = makeDeps();
+  it('refuses an attachment kind the resolved provider cannot read, before sending', async () => {
+    const { deps, spies } = makeDeps({
+      modelChoice: {
+        resolveForTurn: vi.fn(async () => success({ provider: 'codex', model: 'gpt-5.6-terra', effort: null, revision: 0 })),
+      } as unknown as ChatServiceDeps['modelChoice'],
+    });
     const service = createChatService(deps);
 
     const result = await service.sendMessage({
       projectId: 'project-1',
-      message: 'describe',
+      message: 'summarize',
       chatSessionId: 'session-1',
-      tempImages: ['/tmp/kpm-images/kpm-paste-1.bmp'],
+      attachments: [{ kind: 'pdf', path: '/tmp/kpm-images/kpm-attach-2.pdf', filename: 'spec.pdf' }],
     });
 
     expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error).toMatch(/bmp|unsupported/i);
-    }
+    if (!result.ok) expect(result.error).toBe('Codex can\'t read PDFs. Remove "spec.pdf" to send.');
     expect(spies.sendChatMessage).not.toHaveBeenCalled();
     expect(spies.addMessage).not.toHaveBeenCalled();
   });
 
-  it('omits attachments option when no temp images are present', async () => {
+  it('omits attachments option when there are none', async () => {
     const { deps, spies } = makeDeps();
     const service = createChatService(deps);
 
@@ -328,33 +357,9 @@ describe('ChatService.sendMessage', () => {
     expect(spies.sendChatMessage).toHaveBeenCalledWith(
       'project-1',
       'use the selected model',
-      expect.objectContaining({ authoritativeChoice: resolvedChoice }),
+      expect.objectContaining({ choice: resolvedChoice }),
     );
     expect(spies.addMessage.mock.calls[0][5]).toBe('codex');
-  });
-
-  it('forwards and persists an explicit chat provider', async () => {
-    const { deps, spies } = makeDeps();
-    const service = createChatService(deps);
-
-    const result = await service.sendMessage({
-      projectId: 'project-1',
-      message: 'use codex',
-      chatSessionId: 'session-1',
-      provider: 'codex',
-    });
-
-    expect(result.ok).toBe(true);
-    const [, , options] = spies.sendChatMessage.mock.calls[0];
-    expect(options.provider).toBe('codex');
-    expect(spies.addMessage).toHaveBeenCalledWith(
-      'project-1',
-      'user',
-      'use codex',
-      'session-1',
-      undefined,
-      'codex',
-    );
   });
 
   it('expands pi prompt templates before sending while preserving the user-entered text in history', async () => {
@@ -385,24 +390,6 @@ describe('ChatService.sendMessage', () => {
       undefined,
       'claude',
     );
-  });
-
-  it('uses the configured default chat provider when none is supplied', async () => {
-    const { deps, spies } = makeDeps({
-      getDefaultChatProvider: () => 'codex',
-    });
-    const service = createChatService(deps);
-
-    const result = await service.sendMessage({
-      projectId: 'project-1',
-      message: 'default provider',
-      chatSessionId: 'session-1',
-    });
-
-    expect(result.ok).toBe(true);
-    const [, , options] = spies.sendChatMessage.mock.calls[0];
-    expect(options.provider).toBe('codex');
-    expect(spies.addMessage.mock.calls[0][5]).toBe('codex');
   });
 
   it('persists focus document chat turns', async () => {
@@ -465,7 +452,6 @@ describe('ChatService.getOrCreateFocusDocumentSession', () => {
     const existing = {
       id: 'session-1',
       project_id: 'project-1',
-      claude_session_id: 'claude-1',
       provider: 'claude' as const,
       provider_session_id: 'claude-1',
       scope: 'focus_document' as const,
@@ -482,19 +468,16 @@ describe('ChatService.getOrCreateFocusDocumentSession', () => {
         createFocusDocument: vi.fn(),
         get: vi.fn(),
         getFocusDocument: vi.fn(() => existing),
-        updateFocusDocument: vi.fn((id: string, title: string, contentHash: string, clearClaudeSessionId: boolean) => ({
+        updateFocusDocument: vi.fn((id: string, title: string, contentHash: string, clearProviderSessionId: boolean) => ({
           ...existing,
           id,
           focus_document_title: title,
           focus_document_hash: contentHash,
-          claude_session_id: clearClaudeSessionId ? null : existing.claude_session_id,
-          provider_session_id: clearClaudeSessionId ? null : existing.provider_session_id,
+          provider_session_id: clearProviderSessionId ? null : existing.provider_session_id,
         })),
-        updateClaudeSessionId: vi.fn(),
         updateProviderSessionId: vi.fn(),
         updateModelChoice: vi.fn(),
         updateTitle: vi.fn(),
-        clearClaudeSessionIdsByProject: vi.fn(),
         clearProviderSessionIdsByProject: vi.fn(),
         delete: vi.fn(),
       },

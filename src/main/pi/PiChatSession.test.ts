@@ -1,18 +1,24 @@
 import { describe, it, expect, vi } from 'vitest';
+import { mkdtempSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import type * as PiCodingAgent from '@earendil-works/pi-coding-agent';
 import {
   PiChatSession,
-  buildToolCallGate,
   parsePiModelSelector,
   resolvePiModelSelection,
   resolvePiProjectTrust,
   resolvePiSessionManager,
+  canonicalPiToolCall,
+  selectPiModel,
   type CreatePiSessionFn,
   type PiModelRuntimeHandle,
-  type PiWriteConsentFn,
   type PiSessionHandle,
 } from './PiChatSession';
 import type { PlanContext } from '../chat/prompts';
+import type { ProviderChatMessage } from '../services/streaming/providerChatMessage';
+import { getToolActivity } from '../claude/activity';
+import { extractFilePaths } from '../services/toollog/extractFilePaths';
 
 vi.mock('../kpmTools/runtimeRegistry', () => ({
   executeKpmTool: vi.fn(),
@@ -41,7 +47,6 @@ function makeContext(): PlanContext {
       name: 'Test Project',
       phase: 'discovery',
       folder_path: '/tmp/project',
-      storybook_url: null,
       created_at: '2026-01-01T00:00:00.000Z',
       session_tokens: 0,
       session_input_tokens: 0,
@@ -90,6 +95,27 @@ function makeFakeSession(promptImpl?: (text: string) => void | Promise<void>): F
 }
 
 describe('PiChatSession', () => {
+  it('sends image attachments as base64 images and inlines text files by name', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'kpm-pi-test-'));
+    const imagePath = join(dir, 'kpm-attach-1.png');
+    const notesPath = join(dir, 'kpm-attach-2.md');
+    writeFileSync(imagePath, 'image');
+    writeFileSync(notesPath, '# Notes');
+    const fake = makeFakeSession(() => fake.emit({ type: 'agent_end', messages: [], willRetry: false }));
+    const session = new PiChatSession({ context: makeContext(), onMessage: vi.fn(), createSession: async () => fake.handle });
+
+    await session.start('what is this', [
+      { kind: 'image', path: imagePath, filename: 'shot.png', mediaType: 'image/png' },
+      { kind: 'text', path: notesPath, filename: 'notes.md', mediaType: 'text/markdown' },
+    ]);
+
+    await waitFor(() => expect(fake.promptMock).toHaveBeenCalledTimes(1));
+    expect(fake.promptMock).toHaveBeenCalledWith(
+      '<file name="notes.md">\n# Notes\n</file>\n\nwhat is this',
+      { images: [{ type: 'image', data: Buffer.from('image').toString('base64'), mimeType: 'image/png' }] },
+    );
+  });
+
   it('persists a complete assistant text block at message_end from text_delta-only streaming', async () => {
     const fake = makeFakeSession((_text) => {
       fake.emit({
@@ -213,6 +239,62 @@ describe('PiChatSession', () => {
     expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({
       cost: { usd: 0.12, basis: 'per-turn' },
     }));
+  });
+
+  describe('how a turn ends', () => {
+    const errorEnd = (errorMessage: string) => ({ type: 'message_end', message: { role: 'assistant', content: [], stopReason: 'error', errorMessage } });
+    const answerEnd = (text: string, stopReason = 'stop') => ({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text }], stopReason } });
+
+    async function runTurn(events: unknown[]): Promise<ProviderChatMessage[]> {
+      const fake = makeFakeSession(() => { for (const event of events) fake.emit(event); });
+      const onMessage = vi.fn();
+      const session = new PiChatSession({ context: makeContext(), onMessage, createSession: async () => fake.handle });
+      await session.start('hi');
+      await waitFor(() => expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'result' })));
+      return onMessage.mock.calls.map(([msg]) => msg as ProviderChatMessage);
+    }
+
+    it('raises no error for an attempt pi retried and recovered from', async () => {
+      const messages = await runTurn([
+        errorEnd('529 overloaded'),
+        { type: 'auto_retry_start', attempt: 1, maxAttempts: 3, delayMs: 2000, errorMessage: '529 overloaded' },
+        answerEnd('Recovered answer'),
+      ]);
+
+      expect(messages).not.toContainEqual(expect.objectContaining({ type: 'provider_error' }));
+      expect(messages).toContainEqual({ type: 'provider_notice', label: 'Retrying', detail: 'pi hit an error and is retrying in 2s (attempt 1/3): 529 overloaded' });
+    });
+
+    it('reports the final unrecovered error in pi terms, before the result and outside the answer', async () => {
+      const messages = await runTurn([
+        errorEnd('529 overloaded'),
+        { type: 'auto_retry_start', attempt: 1, maxAttempts: 1, delayMs: 0, errorMessage: '529 overloaded' },
+        errorEnd('529 overloaded again'),
+        { type: 'auto_retry_end', success: false, attempt: 1, finalError: '529 overloaded again' },
+      ]);
+
+      const errors = messages.flatMap((msg) => (msg.type === 'provider_error' ? [msg.message] : []));
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toMatch(/^pi stopped with an error\./);
+      expect(errors[0]).toContain('529 overloaded again');
+      expect(errors[0]).not.toMatch(/Claude/);
+      const types = messages.map((msg) => msg.type);
+      expect(types.indexOf('provider_error')).toBeLessThan(types.indexOf('result'));
+      expect(types).not.toContain('assistant');
+    });
+
+    it('flags an answer cut off at the output limit', async () => {
+      const messages = await runTurn([answerEnd('Half an answ', 'length')]);
+
+      expect(messages).toContainEqual(expect.objectContaining({ type: 'result', outputLimitReached: true }));
+    });
+
+    it('does not flag a truncation pi recovered from by continuing', async () => {
+      const messages = await runTurn([answerEnd('Half', 'length'), answerEnd('Whole answer')]);
+
+      const result = messages.find((msg) => msg.type === 'result');
+      expect(result).not.toHaveProperty('outputLimitReached');
+    });
   });
 
   it('interrupt() calls session.abort()', async () => {
@@ -492,117 +574,6 @@ describe('resolvePiSessionManager', () => {
   });
 });
 
-describe('buildToolCallGate', () => {
-  const readOnly = ['read', 'grep', 'find', 'ls', 'modify_plan'];
-  const withWrites = [...readOnly, 'write', 'edit', 'bash'];
-  const allow: PiWriteConsentFn = async () => ({ allowed: true });
-
-  it('blocks tool names outside the allowlist', async () => {
-    const gate = buildToolCallGate(readOnly);
-
-    for (const toolName of ['write', 'bash', 'edit']) {
-      const result = await gate({ toolName, input: {} });
-      expect(result?.block).toBe(true);
-      expect(typeof result?.reason).toBe('string');
-    }
-  });
-
-  it('allows read-only builtins and KPM tools in the allowlist', async () => {
-    const gate = buildToolCallGate(readOnly);
-
-    await expect(gate({ toolName: 'read', input: {} })).resolves.toBeUndefined();
-    await expect(gate({ toolName: 'grep', input: {} })).resolves.toBeUndefined();
-    await expect(gate({ toolName: 'modify_plan', input: {} })).resolves.toBeUndefined();
-  });
-
-  it('allows the MCP gateway without the write grant, and still blocks other extension tools', async () => {
-    // `mcp` reaches external services rather than the repo, so it is not a
-    // write builtin. Other tools the user's pi extensions register stay out.
-    const gate = buildToolCallGate([...readOnly, 'mcp']);
-
-    await expect(gate({ toolName: 'mcp', input: { search: 'issue' } })).resolves.toBeUndefined();
-    expect((await gate({ toolName: 'cursor_agent', input: {} }))?.block).toBe(true);
-    expect((await gate({ toolName: 'hypa_rewrite', input: {} }))?.block).toBe(true);
-  });
-
-  it('blocks an allowlisted write tool when no consent function is wired', async () => {
-    const gate = buildToolCallGate(withWrites);
-
-    const result = await gate({ toolName: 'write', input: { path: '/repos/my-app/a.ts' } });
-
-    expect(result?.block).toBe(true);
-  });
-
-  it('routes write, edit, and bash through conversation consent', async () => {
-    const requestConsent = vi.fn<PiWriteConsentFn>(allow);
-    const gate = buildToolCallGate(withWrites, requestConsent);
-
-    await gate({ toolName: 'write', input: { path: '/repos/my-app/a.ts' } });
-    await gate({ toolName: 'edit', input: { path: '/repos/my-app/b.ts' } });
-    await gate({ toolName: 'bash', input: { command: 'rm -rf build' } });
-
-    expect(requestConsent).toHaveBeenCalledTimes(3);
-    for (const call of requestConsent.mock.calls) {
-      expect(call).toEqual([]);
-    }
-  });
-
-  it('does not ask consent for read-only git in bash', async () => {
-    const requestConsent = vi.fn<PiWriteConsentFn>(allow);
-    const gate = buildToolCallGate(withWrites, requestConsent);
-
-    const readResult = await gate({ toolName: 'bash', input: { command: 'git status --short' } });
-    const writeResult = await gate({ toolName: 'bash', input: { command: 'git commit -m x' } });
-
-    expect(readResult).toBeUndefined();
-    expect(writeResult).toBeUndefined();
-    expect(requestConsent).toHaveBeenCalledTimes(1);
-  });
-
-  it('does not ask consent for read-only builtins', async () => {
-    const requestConsent = vi.fn<PiWriteConsentFn>(allow);
-    const gate = buildToolCallGate(withWrites, requestConsent);
-
-    await gate({ toolName: 'read', input: { path: '/repos/my-app/a.ts' } });
-    await gate({ toolName: 'grep', input: { pattern: 'TODO' } });
-
-    expect(requestConsent).not.toHaveBeenCalled();
-  });
-
-  it('blocks with the consent layer reason when the user declines', async () => {
-    const gate = buildToolCallGate(withWrites, async () => ({ allowed: false, reason: 'user said no' }));
-
-    const result = await gate({ toolName: 'write', input: { path: '/repos/my-app/a.ts' } });
-
-    expect(result).toEqual({ block: true, reason: 'user said no' });
-  });
-
-  it('allows the write once consent is granted', async () => {
-    const gate = buildToolCallGate(withWrites, allow);
-
-    await expect(gate({ toolName: 'write', input: { path: '/repos/my-app/a.ts' } })).resolves.toBeUndefined();
-  });
-
-  it('blocks protected paths before write consent and marks recursive tools as traversal', async () => {
-    const requestConsent = vi.fn<PiWriteConsentFn>(allow);
-    const pathIsProtected = vi.fn(async (targetPath: string) => (
-      targetPath === '.' || targetPath.includes('credentials')
-    ));
-    const gate = buildToolCallGate(withWrites, requestConsent, pathIsProtected);
-
-    await expect(
-      gate({ toolName: 'write', input: { path: '/protected/credentials/token' } }),
-    ).resolves.toMatchObject({ block: true });
-    await expect(
-      gate({ toolName: 'find', input: {} }),
-    ).resolves.toMatchObject({ block: true });
-
-    expect(requestConsent).not.toHaveBeenCalled();
-    expect(pathIsProtected).toHaveBeenNthCalledWith(1, '/protected/credentials/token', false);
-    expect(pathIsProtected).toHaveBeenNthCalledWith(2, '.', true);
-  });
-});
-
 describe('resolvePiProjectTrust', () => {
   it('always resolves to false, regardless of what the pre-trust extension load reports', async () => {
     await expect(resolvePiProjectTrust()).resolves.toBe(false);
@@ -659,5 +630,47 @@ describe('resolvePiModelSelection', () => {
     const runtime = makeFakeModelRuntime([{ provider: 'openai-codex', id: 'gpt-5.4' }]);
 
     await expect(resolvePiModelSelection(runtime, { provider: 'cursor', modelId: 'auto' })).resolves.toBeUndefined();
+  });
+});
+
+describe('canonicalPiToolCall', () => {
+  it.each([
+    ['read', { path: '/repo/src/a.ts', offset: 10 }, 'a.ts', ['/repo/src/a.ts']],
+    ['edit', { path: '/repo/src/a.ts', oldText: 'x', newText: 'y' }, 'a.ts', ['/repo/src/a.ts']],
+    ['write', { path: '/repo/NOTES.md', content: 'hi' }, 'NOTES.md', ['/repo/NOTES.md']],
+    ['bash', { command: 'npm test' }, 'npm', []],
+    ['grep', { pattern: 'TODO', path: '/repo/src' }, 'src', ['/repo/src']],
+  ])('shows and logs pi %s with its path or command', (toolName, input, label, filePaths) => {
+    const call = canonicalPiToolCall(toolName, input);
+    expect(getToolActivity(call.name, call.input)?.label).toBe(label);
+    expect(extractFilePaths(call.name, call.input)).toEqual(filePaths);
+  });
+
+  it('leaves KPM and extension tools under their own names', () => {
+    expect(canonicalPiToolCall('get_plan_items', { status: 'open' })).toEqual({ name: 'get_plan_items', input: { status: 'open' } });
+  });
+});
+
+describe('selectPiModel', () => {
+  it("applies KPM's thinking level after the model switch that resets it", async () => {
+    const calls: string[] = [];
+    const session = {
+      thinkingLevel: 'high',
+      async setModel(model: string) { calls.push(`model:${model}`); this.thinkingLevel = 'from-pi-settings'; },
+      setThinkingLevel(level: string) { calls.push(`thinking:${level}`); this.thinkingLevel = level; },
+    };
+
+    await selectPiModel(session, 'openai/gpt-5.5', 'low');
+
+    expect(calls).toEqual(['model:openai/gpt-5.5', 'thinking:low']);
+    expect(session.thinkingLevel).toBe('low');
+  });
+
+  it("keeps pi's own level when KPM has none to apply", async () => {
+    const session = { setModel: vi.fn(async () => {}), setThinkingLevel: vi.fn() };
+
+    await selectPiModel(session, 'openai/gpt-5.5', undefined);
+
+    expect(session.setThinkingLevel).not.toHaveBeenCalled();
   });
 });

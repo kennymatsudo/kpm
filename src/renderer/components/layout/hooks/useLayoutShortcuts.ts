@@ -1,12 +1,13 @@
-import { useEffect } from 'react';
-import type { MainView } from '../MainViewSwitcher';
+import { useEffect, useState } from 'react';
+import { createTabScopeTracker, type TabScope } from '../tabScope';
 import { useSettingsUIStore, useCommandPaletteStore, useSearchStore } from '../../../stores';
 import { subscribeToCloseContextMenu } from '../../../services/menuService';
 
 export interface UseLayoutShortcutsOptions {
   onToggleSidebar: () => void;
   onToggleChat: () => void;
-  onMainViewChange: (view: MainView) => void;
+  /** Pick the tab at a 1-indexed position in the strip the user last worked in. Bound to Cmd/Ctrl+1..9. */
+  onSelectTab: (scope: TabScope, position: number) => void;
   onOpenCommandPalette: () => void;
   onCreateItem?: () => void;
   onToggleToolLog?: () => void;
@@ -28,7 +29,7 @@ export interface UseLayoutShortcutsOptions {
 export function useLayoutShortcuts({
   onToggleSidebar,
   onToggleChat,
-  onMainViewChange,
+  onSelectTab,
   onOpenCommandPalette,
   onCreateItem,
   onToggleToolLog,
@@ -40,6 +41,20 @@ export function useLayoutShortcuts({
   onCycleChatSession,
   onCycleDocument,
 }: UseLayoutShortcutsOptions): void {
+  // Outlives the keydown effect below, which re-binds whenever a handler
+  // changes; a re-bind must not forget where the user last clicked.
+  const [tabScope] = useState(createTabScopeTracker);
+
+  useEffect(() => {
+    const noteInteraction = (e: Event) => tabScope.note(e.target);
+    window.addEventListener('pointerdown', noteInteraction, true);
+    window.addEventListener('focusin', noteInteraction, true);
+    return () => {
+      window.removeEventListener('pointerdown', noteInteraction, true);
+      window.removeEventListener('focusin', noteInteraction, true);
+    };
+  }, [tabScope]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -150,34 +165,25 @@ export function useLayoutShortcuts({
         onSwitchProjectByPosition?.(position);
         return;
       }
-      // Cmd+1-9 - Context-aware: Settings tabs (when open) or Main views (1-2)
-      if (!isEditableElement && (e.metaKey || e.ctrlKey) && /^[1-9]$/.test(e.key)) {
+      // Cmd+1-9 - Settings tabs while Settings is open, otherwise the tab strip
+      // the user last clicked or focused in. Runs inside editable elements so
+      // the chat composer can switch chats without leaving the text box.
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && /^[1-9]$/.test(e.key)) {
         const { isOpen: settingsIsOpen, goToTab, visibleTabIds } = useSettingsUIStore.getState();
         const keyNum = parseInt(e.key, 10);
+        e.preventDefault();
 
         if (settingsIsOpen) {
-          // Navigate settings tabs (1-indexed, up to the number of visible tabs)
-          if (keyNum <= visibleTabIds.length) {
-            e.preventDefault();
-            goToTab(keyNum);
-          }
+          if (keyNum <= visibleTabIds.length) goToTab(keyNum);
         } else {
-          // Navigate main views (only 1-2)
-          if (keyNum <= 2) {
-            e.preventDefault();
-            if (e.key === '1') {
-              onMainViewChange('workspace');
-            } else if (e.key === '2') {
-              onMainViewChange('planning');
-            }
-          }
+          onSelectTab(tabScope.current(), keyNum);
         }
       }
     };
     // Use capture phase to catch event before it reaches other elements
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [onToggleSidebar, onToggleChat, onMainViewChange, onOpenCommandPalette, onCreateItem, onToggleToolLog, onOpenGlobalSearch, onToggleTerminal, onSwitchProjectByPosition, onToggleFocusMode, onCycleChatSession]);
+  }, [tabScope, onToggleSidebar, onToggleChat, onSelectTab, onOpenCommandPalette, onCreateItem, onToggleToolLog, onOpenGlobalSearch, onToggleTerminal, onSwitchProjectByPosition, onToggleFocusMode, onCycleChatSession, onCycleDocument]);
 
   useEffect(() => {
     return subscribeToCloseContextMenu(() => {

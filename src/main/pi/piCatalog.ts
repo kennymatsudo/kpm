@@ -30,6 +30,10 @@ const piCatalogSchema = z.object({
     id: z.string(),
     name: z.string(),
     contextWindow: z.number().optional(),
+    /** Levels pi accepts for this model; absent from a catalog written before KPM read them. */
+    thinkingLevels: z.array(z.string()).optional(),
+    /** The level pi starts this model on, from the user's pi settings. */
+    defaultThinkingLevel: z.string().optional(),
   })),
   extensionErrors: z.array(z.string()),
   diagnostics: z.array(z.string()),

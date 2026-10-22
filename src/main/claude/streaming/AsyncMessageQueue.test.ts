@@ -193,6 +193,58 @@ describe('AsyncMessageQueue', () => {
     });
   });
 
+  describe('pause()', () => {
+    it('holds pushed messages from a waiting pull until resume()', async () => {
+      queue.pause();
+      const pulled = queue.pull();
+      queue.push(createTestMessage('Held'));
+
+      expect(queue.pendingCount).toBe(1);
+      expect(getFirstText(queue.cancelLast())).toBe('Held');
+
+      queue.push(createTestMessage('Released'));
+      queue.resume();
+      expect(getFirstText(await pulled)).toBe('Released');
+    });
+
+    it('releasePending() lets only the messages queued so far through', async () => {
+      queue.pause();
+      queue.push(createTestMessage('First'));
+      queue.push(createTestMessage('Second'));
+      queue.releasePending();
+      queue.push(createTestMessage('Later'));
+
+      expect(getFirstText(await queue.pull())).toBe('First');
+      expect(getFirstText(await queue.pull())).toBe('Second');
+      expect(queue.pendingCount).toBe(1);
+
+      const later = queue.pull();
+      let settled = false;
+      void later.then(() => { settled = true; });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(settled).toBe(false);
+
+      queue.resume();
+      expect(getFirstText(await later)).toBe('Later');
+    });
+
+    it('does not release a message cancelled after releasePending()', async () => {
+      queue.pause();
+      queue.push(createTestMessage('First'));
+      queue.releasePending();
+      queue.cancelLast();
+      queue.push(createTestMessage('Later'));
+
+      const pulled = queue.pull();
+      let settled = false;
+      void pulled.then(() => { settled = true; });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(settled).toBe(false);
+      queue.close();
+      expect(await pulled).toBeNull();
+    });
+  });
+
   describe('close()', () => {
     it('sets isClosed to true', () => {
       queue.close();

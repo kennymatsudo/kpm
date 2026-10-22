@@ -18,6 +18,29 @@
 
 const options = JSON.parse(process.argv[2] ?? '{}');
 
+// Mirrors pi-ai's `getSupportedThinkingLevels`, which pi-coding-agent does not
+// re-export: a non-reasoning model has only "off", a null map entry marks a
+// level unsupported, and xhigh/max exist only when the map names them.
+const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+function supportedThinkingLevels(model) {
+  if (!model.reasoning) return ['off'];
+  return THINKING_LEVELS.filter((level) => {
+    const mapped = model.thinkingLevelMap?.[level];
+    if (mapped === null) return false;
+    if (level === 'xhigh' || level === 'max') return mapped !== undefined;
+    return true;
+  });
+}
+
+// The level pi itself starts this model on (AgentSession's model-switch rule),
+// so KPM's picker opens on the same level instead of a guess.
+function startingThinkingLevel(settingsManager, model, supported) {
+  const preferred = settingsManager.getModelThinkingLevel(model.provider, model.id)
+    ?? settingsManager.getDefaultThinkingLevel()
+    ?? 'medium';
+  return supported.includes(preferred) ? preferred : undefined;
+}
+
 function fail(error) {
   process.stderr.write(error instanceof Error ? `${error.message}\n` : `${String(error)}\n`);
   process.exit(1);
@@ -43,12 +66,18 @@ try {
   const configured = new Set(credentials);
   const models = (await modelRuntime.getAvailable())
     .filter((model) => configured.has(model.provider))
-    .map((model) => ({
-      provider: model.provider,
-      id: model.id,
-      name: model.name,
-      ...(typeof model.contextWindow === 'number' ? { contextWindow: model.contextWindow } : {}),
-    }));
+    .map((model) => {
+      const thinkingLevels = supportedThinkingLevels(model);
+      const defaultThinkingLevel = startingThinkingLevel(settingsManager, model, thinkingLevels);
+      return {
+        provider: model.provider,
+        id: model.id,
+        name: model.name,
+        ...(typeof model.contextWindow === 'number' ? { contextWindow: model.contextWindow } : {}),
+        thinkingLevels,
+        ...(defaultThinkingLevel ? { defaultThinkingLevel } : {}),
+      };
+    });
 
   // The model the user's own `pi` CLI would start on, so KPM can offer the
   // same one rather than an arbitrary catalog entry.

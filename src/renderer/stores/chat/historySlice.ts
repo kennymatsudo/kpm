@@ -1,5 +1,5 @@
 import type { ChatMessage, ChatSessionSummary } from '../../../shared/types';
-import { getChatSessionHistory, loadChatSession } from '../../services/chatService';
+import { getChatSessionHistory, getChatSessionLabels, loadChatSession, renameChatSession } from '../../services/chatService';
 import type { ChatState, ChatSet, ChatGet, Message, PerSessionState } from './types';
 import { createInitialPerSessionState } from './baseState';
 import { readPersistedTabs } from './persistence';
@@ -22,6 +22,8 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
   | 'getChatSessionId'
   | 'loadSessionHistory'
   | 'loadFromHistory'
+  | 'loadTabLabels'
+  | 'renameSession'
   | 'restoreLastSession'
   | 'hydrateOpenSessions'
 > {
@@ -79,6 +81,54 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
         }
       } catch (error) {
         console.error('[ChatStore] Failed to load session history:', error);
+      }
+    },
+
+    loadTabLabels: async (projectId) => {
+      const unlabeled = Array.from(get().sessions.entries())
+        .filter(([, session]) => !session.hydrated && !session.title && !session.firstMessage)
+        .map(([id]) => id);
+      if (unlabeled.length === 0) return;
+      try {
+        const result = await getChatSessionLabels(projectId, unlabeled);
+        if (!result.success) return;
+        const sessions = new Map(get().sessions);
+        for (const label of result.labels) {
+          const session = sessions.get(label.chat_session_id);
+          if (!session) continue;
+          sessions.set(label.chat_session_id, {
+            ...session,
+            title: session.title ?? label.title,
+            firstMessage: label.first_message,
+          });
+        }
+        set({ sessions });
+      } catch (error) {
+        console.error('[ChatStore] Failed to load tab labels:', error);
+      }
+    },
+
+    renameSession: async (projectId, chatSessionId, title) => {
+      const applyTitle = (next: string | null) => {
+        const state = get();
+        const session = state.sessions.get(chatSessionId);
+        const sessions = new Map(state.sessions);
+        if (session) sessions.set(chatSessionId, { ...session, title: next, pendingTitle: null });
+        set({
+          sessions,
+          sessionHistory: state.sessionHistory.map((entry) =>
+            entry.chat_session_id === chatSessionId ? { ...entry, title: next } : entry,
+          ),
+        });
+      };
+
+      const previous = get().sessions.get(chatSessionId)?.title ?? null;
+      const trimmed = title.replace(/\s+/g, ' ').trim();
+      applyTitle(trimmed || null);
+      const result = await renameChatSession(projectId, chatSessionId, trimmed);
+      if (!result.success) {
+        console.error('[ChatStore] Failed to rename chat:', result.error);
+        applyTitle(previous);
       }
     },
 
@@ -154,6 +204,7 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
         const viewedSessionId = state.viewedSessionId ?? persistedViewed ?? persisted.open[0];
 
         set({ sessions, viewedSessionId, nextSessionNumber, persistedProjectId: projectId });
+        void get().loadTabLabels(projectId);
 
         if (!isCurrent(shouldContinue)) return;
         const viewedSession = viewedSessionId ? sessions.get(viewedSessionId) : null;
@@ -244,6 +295,7 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
             error: null,
             sessionState: baseSession.sessionState,
             choice: result.choice ?? baseSession.choice,
+            title: result.title ?? baseSession.title,
             hydrated: true,
           });
 

@@ -26,8 +26,11 @@ import {
   type AccountInfo,
   type SlashCommand,
 } from '@anthropic-ai/claude-agent-sdk';
+import { userPermissionModeOptions } from '../userPermissionMode';
 export type { McpServerStatus, SDKControlGetContextUsageResponse, ModelInfo, AccountInfo } from '@anthropic-ai/claude-agent-sdk';
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources';
+import type { ChatAttachment } from '../../../shared/types';
+import { buildUserContentBlocks } from '../attachmentBlocks';
 import type { SessionMcpInspection } from '../../services/streaming/sessionMcp';
 import { AsyncMessageQueue, type StreamingUserMessage } from './AsyncMessageQueue';
 import { isCommandsChangedMessage, isInitMessage } from '../sdkTypeGuards';
@@ -40,6 +43,10 @@ export interface SlashCommandContext {
   skillNames: string[];
   /** Installed plugin names (init message `plugins[].name`) */
   pluginNames: string[];
+}
+
+function hasToolUse(content: unknown): boolean {
+  return Array.isArray(content) && content.some((block) => (block as { type?: unknown }).type === 'tool_use');
 }
 
 /**
@@ -102,23 +109,23 @@ export class StreamingSession {
    * Start the session with an initial message and wait for MCP to be ready.
    * The SDK requires an initial message to initialize the session.
    *
-   * @param initialMessage - The first message to send. Either plain text, or
-   *   a pre-built array of SDK content blocks (for attachments).
+   * @param initialMessage - The first message's text. May be empty when
+   *   attachments carry the turn.
+   * @param attachments - Sent as native content blocks alongside the text.
    * @returns Resolves when MCP is connected and session can accept more messages.
    * @throws If MCP connection fails or timeout is reached.
    */
-  async start(initialMessage: string | ContentBlockParam[]): Promise<void> {
+  async start(initialMessage: string, attachments: ChatAttachment[] = []): Promise<void> {
     if (this._isActive) {
       throw new Error('Session already started');
     }
 
-    if (typeof initialMessage === 'string') {
-      if (!initialMessage.trim()) {
-        throw new Error('Initial message is required to start session');
-      }
-    } else if (initialMessage.length === 0) {
+    if (!initialMessage.trim() && attachments.length === 0) {
       throw new Error('Initial message is required to start session');
     }
+    const initialContent: string | ContentBlockParam[] = attachments.length > 0
+      ? await buildUserContentBlocks(initialMessage, attachments)
+      : initialMessage;
 
     this._isActive = true;
 
@@ -144,9 +151,9 @@ export class StreamingSession {
     // Pre-queue the initial message so the generator can yield it immediately.
     // This is needed because the SDK waits for the first yield before initializing.
     const seedContent: string | ContentBlockParam[] =
-      typeof initialMessage === 'string'
-        ? [{ type: 'text', text: initialMessage }]
-        : initialMessage;
+      typeof initialContent === 'string'
+        ? [{ type: 'text', text: initialContent }]
+        : initialContent;
     this.messageQueue.push({
       type: 'user',
       session_id: '', // Will be filled by SDK
@@ -160,10 +167,12 @@ export class StreamingSession {
     this.abortController = this.config.sdkOptions.abortController ?? new AbortController();
 
     // Create the query with async generator for streaming input
+    const permissionModeOptions = await userPermissionModeOptions();
     this.queryInstance = query({
       prompt: this.createInputGenerator(),
       options: {
         onUserDialog: declineHostDialogs,
+        ...permissionModeOptions,
         ...this.config.sdkOptions,
         abortController: this.abortController,
       },
@@ -190,6 +199,10 @@ export class StreamingSession {
   /**
    * Create the async generator that yields user messages to the SDK.
    * This bridges our push-based IPC to the SDK's pull-based generator.
+   *
+   * Yielded messages cannot be withdrawn from the CLI. Hold follow-ups until
+   * a tool call can use them as steering input or a result starts the next turn,
+   * keeping them cancellable until then.
    */
   private async *createInputGenerator(): AsyncIterable<StreamingUserMessage> {
     while (true) {
@@ -199,6 +212,7 @@ export class StreamingSession {
         return; // Queue closed, end generator
       }
 
+      this.messageQueue.pause();
       yield msg;
     }
   }
@@ -256,6 +270,14 @@ export class StreamingSession {
           this.config.onMessage(msg);
         } catch (callbackError) {
           console.error('[StreamingSession] onMessage callback error (session continues):', callbackError);
+        }
+
+        // Release held sends only after the handler has run: it settles the
+        // turn from pendingQueuedCount(), which must still count them.
+        if (msg.type === 'result') {
+          this.messageQueue.resume();
+        } else if (msg.type === 'assistant' && hasToolUse(msg.message.content)) {
+          this.messageQueue.releasePending();
         }
       }
 
@@ -322,14 +344,16 @@ export class StreamingSession {
   }
 
   /**
-   * Send a structured user turn whose content has already been built (e.g. for
-   * multimodal attachments). Use {@link send} for text-only messages.
-   * @throws If session is not ready (start() not resolved)
+   * Send a user turn with attachments as native content blocks. Use
+   * {@link send} for text-only messages.
+   * @throws If session is not ready (start() not resolved), or an attachment
+   *   can't be read or is too large.
    */
-  sendUserContent(content: ContentBlockParam[]): void {
+  async sendWithAttachments(text: string, attachments: ChatAttachment[]): Promise<void> {
     if (!this._isReady) {
       throw new Error('Session is not ready - wait for start() to resolve');
     }
+    const content = await buildUserContentBlocks(text, attachments);
 
     this.sendRaw({
       type: 'user',
@@ -360,12 +384,13 @@ export class StreamingSession {
    */
   async interrupt(): Promise<void> {
     await this.queryInstance?.interrupt();
+    this.messageQueue.resume();
   }
 
   /**
    * Number of user messages waiting in the input queue (pushed via send/
-   * sendUserContent/sendRaw but not yet pulled by the SDK generator). Reflects
-   * follow-ups queued while a prior turn is still streaming.
+   * sendWithAttachments/sendRaw but not yet pulled by the SDK generator).
+   * Reflects follow-ups held while a turn is still streaming.
    */
   pendingQueuedCount(): number {
     return this.messageQueue.pendingCount;

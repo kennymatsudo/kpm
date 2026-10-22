@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { ContentBlockParam } from '@anthropic-ai/sdk/resources';
+import type { ChatAttachment } from '../../../shared/types';
 import { BaseTurnQueueChatSession, type SessionEndReason } from './BaseTurnQueueChatSession';
 
 interface FakeTurn {
@@ -28,10 +28,10 @@ class FakeTurnQueueChatSession extends BaseTurnQueueChatSession<FakeTurn> {
     super(onMessage, onSessionEnd);
   }
 
-  async start(initialMessage: string | ContentBlockParam[]): Promise<void> {
+  async start(initialMessage: string): Promise<void> {
     this.active = true;
     this.ready = true;
-    const label = typeof initialMessage === 'string' ? initialMessage : 'initial';
+    const label = initialMessage;
     this.turnPromise = this.runTurnAndDrain({ label });
   }
 
@@ -39,8 +39,8 @@ class FakeTurnQueueChatSession extends BaseTurnQueueChatSession<FakeTurn> {
     this.enqueue({ label: text });
   }
 
-  sendUserContent(content: ContentBlockParam[]): void {
-    this.enqueue({ label: `content:${content.length}` });
+  async sendWithAttachments(_text: string, attachments: ChatAttachment[]): Promise<void> {
+    this.enqueue({ label: `content:${attachments.length}` });
   }
 
   interrupt(): Promise<void> {

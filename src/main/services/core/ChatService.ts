@@ -1,5 +1,4 @@
 import { randomUUID } from 'crypto';
-import * as path from 'path';
 import type { IChatMessageRepository, IChatSessionRepository, IProjectRepository, IRepoRepository } from '../../db/interfaces';
 import type {
   ChatAttachment,
@@ -7,7 +6,6 @@ import type {
   ChatMessage,
   ChatProvider,
   ChatViewMode,
-  ClaudeModel,
   FocusChatDocument,
   FocusedResource,
 } from '../../../shared/types';
@@ -16,14 +14,14 @@ import type { StreamingSessionService } from '../streaming/StreamingSessionServi
 import type { SlashCommandService } from './SlashCommandService';
 import type { ChatModelChoiceService } from '../../chat/modelChoice';
 import { resolveEffectiveRepoPath } from '../../../shared/repoPath';
+import { unsupportedAttachmentError } from '../../../shared/providerCapabilities';
 
 export interface ChatServiceDeps {
   projects: IProjectRepository;
   repos: Pick<IRepoRepository, 'getByProject'>;
   chatMessages: IChatMessageRepository;
   chatSessions: IChatSessionRepository;
-  modelChoice?: ChatModelChoiceService;
-  getDefaultChatProvider?: () => ChatProvider;
+  modelChoice: ChatModelChoiceService;
   streamingSessionService: Pick<
     StreamingSessionService,
     'sendChatMessage' | 'disconnectChatSession'
@@ -35,21 +33,6 @@ export interface ChatServiceDeps {
 export interface SendChatMessageInput {
   projectId: string;
   message: string;
-  /** @deprecated Ignored when the authoritative model-choice module is configured. */
-  provider?: ChatProvider;
-  /** @deprecated Ignored when the authoritative model-choice module is configured. */
-  model?: ClaudeModel;
-  /** @deprecated Ignored when the authoritative model-choice module is configured. */
-  providerModel?: string;
-  /** @deprecated Ignored when the authoritative model-choice module is configured. */
-  effort?: 'low' | 'medium' | 'high' | 'max';
-  /**
-   * Wire-format list of paste-derived temp image absolute paths. Backward-
-   * compatible with the existing IPC boundary; converted to {@link ChatAttachment}
-   * before reaching the streaming layer.
-   */
-  tempImages?: string[];
-  /** Pre-built attachment list. Takes precedence when present. */
   attachments?: ChatAttachment[];
   chatSessionId?: string;
   clientMessageId?: string;
@@ -78,49 +61,7 @@ export interface FocusDocumentSessionInput {
 export interface FocusDocumentSessionResult {
   chatSessionId: string;
   messages: ChatMessage[];
-  choice?: ChatChoiceView;
-}
-
-/**
- * Map a paste-derived temp image path to a structured {@link ChatAttachment}.
- *
- * The renderer's paste flow only produces images today (PNG/JPEG/GIF/WebP);
- * BMP is supported by the temp-image cache but the SDK rejects it, so we
- * surface a clear error rather than silently dropping it.
- */
-function tempImagePathToAttachment(filePath: string): ChatAttachment {
-  const ext = path.extname(filePath).toLowerCase();
-  const filename = path.basename(filePath);
-  switch (ext) {
-    case '.png':
-      return { kind: 'image', path: filePath, filename, mediaType: 'image/png' };
-    case '.jpg':
-    case '.jpeg':
-      return { kind: 'image', path: filePath, filename, mediaType: 'image/jpeg' };
-    case '.gif':
-      return { kind: 'image', path: filePath, filename, mediaType: 'image/gif' };
-    case '.webp':
-      return { kind: 'image', path: filePath, filename, mediaType: 'image/webp' };
-    case '.bmp':
-      throw new Error(
-        `BMP images aren't supported by the model. Convert "${filename}" to PNG, JPEG, GIF, or WebP and try again.`,
-      );
-    default:
-      throw new Error(`Unsupported attachment type "${ext}" for "${filename}"`);
-  }
-}
-
-function buildAttachments(
-  tempImages: string[] | undefined,
-  attachments: ChatAttachment[] | undefined,
-): ChatAttachment[] {
-  if (attachments && attachments.length > 0) {
-    return attachments;
-  }
-  if (!tempImages || tempImages.length === 0) {
-    return [];
-  }
-  return tempImages.map(tempImagePathToAttachment);
+  choice: ChatChoiceView;
 }
 
 /**
@@ -141,17 +82,20 @@ export function createChatService(deps: ChatServiceDeps) {
   function persistAcceptedUserMessage(
     projectId: string,
     message: string,
+    attachments: ChatAttachment[],
     chatSessionId: string | undefined,
     clientMessageId: string | undefined,
     provider: ChatProvider,
   ): void {
     try {
-      // Persist the plain user text — no attachment prefix. Attachment
-      // metadata persistence lands in Phase 3.
+      // Attachments are not persisted, so an attachment-only message is
+      // stored as the file names; otherwise history would show an empty bubble.
+      // Display only: providers resume from their own transcripts.
+      const displayText = message.trim() || `Attached ${attachments.map((a) => a.filename).join(', ')}`;
       deps.chatMessages.addMessage(
         projectId,
         'user',
-        message,
+        displayText,
         chatSessionId,
         clientMessageId,
         provider,
@@ -176,6 +120,7 @@ export function createChatService(deps: ChatServiceDeps) {
   }
 
   return {
+    /** Prepare and send user input, saving it unless withdrawn and surfacing failures. */
     async sendMessage(
       input: SendChatMessageInput,
       promptContext?: ChatPromptContext,
@@ -183,8 +128,7 @@ export function createChatService(deps: ChatServiceDeps) {
       const {
         projectId,
         message,
-        tempImages,
-        attachments: providedAttachments,
+        attachments = [],
         chatSessionId,
         clientMessageId,
       } = input;
@@ -193,16 +137,6 @@ export function createChatService(deps: ChatServiceDeps) {
         if (!project) {
           emitError(projectId, chatSessionId, 'Project not found');
           return failure('Project not found');
-        }
-
-        let attachments: ChatAttachment[];
-        try {
-          attachments = buildAttachments(tempImages, providedAttachments);
-        } catch (conversionError) {
-          const errorText =
-            conversionError instanceof Error ? conversionError.message : 'Unsupported attachment';
-          emitError(projectId, chatSessionId, errorText);
-          return failure(errorText);
         }
 
         const expansion = deps.slashCommandService?.expandPiPromptInvocation(message, {
@@ -229,30 +163,22 @@ export function createChatService(deps: ChatServiceDeps) {
             return failure(errorText);
           }
         }
-        const resolvedChoice = deps.modelChoice
-          ? await deps.modelChoice.resolveForTurn(projectId, chatSessionId)
-          : success({
-              provider: input.provider ?? deps.getDefaultChatProvider?.() ?? 'claude',
-              model: input.providerModel ?? input.model ?? 'sonnet',
-              effort: input.effort ?? null,
-              revision: 0,
-            });
+        const resolvedChoice = await deps.modelChoice.resolveForTurn(projectId, chatSessionId);
         if (!resolvedChoice.ok) {
           emitError(projectId, chatSessionId, resolvedChoice.error);
           return failure(resolvedChoice.error);
+        }
+        const unsupported = unsupportedAttachmentError(resolvedChoice.data.provider, attachments);
+        if (unsupported) {
+          emitError(projectId, chatSessionId, unsupported);
+          return failure(unsupported);
         }
 
         const result = await deps.streamingSessionService.sendChatMessage(
           projectId,
           messageForModel,
           {
-            authoritativeChoice: resolvedChoice.data,
-            ...(!deps.modelChoice ? {
-              provider: resolvedChoice.data.provider,
-              model: input.model,
-              providerModel: input.providerModel,
-              effort: input.effort,
-            } : {}),
+            choice: resolvedChoice.data,
             focusedResources: resolveFocusedResources(projectId, promptContext?.focusedResources ?? []),
             chatSessionId,
             currentView: promptContext?.currentView,
@@ -267,10 +193,12 @@ export function createChatService(deps: ChatServiceDeps) {
           emitError(projectId, chatSessionId, result.error);
           return failure(result.error);
         }
+        if (result.data === 'withdrawn') return success(undefined);
 
         persistAcceptedUserMessage(
           projectId,
           message,
+          attachments,
           chatSessionId,
           clientMessageId,
           resolvedChoice.data.provider,
@@ -341,7 +269,7 @@ export function createChatService(deps: ChatServiceDeps) {
           );
         }
 
-        const openedChoice = deps.modelChoice ? await deps.modelChoice.open({
+        const openedChoice = await deps.modelChoice.open({
           projectId,
           chatSessionId: chatSession.id,
           scope: 'focus_document',
@@ -350,14 +278,14 @@ export function createChatService(deps: ChatServiceDeps) {
             title: trimmedTitle,
             contentHash,
           },
-        }) : null;
-        if (openedChoice && !openedChoice.ok) return failure(openedChoice.error);
+        });
+        if (!openedChoice.ok) return failure(openedChoice.error);
 
         const messages = deps.chatMessages.getMessagesByChatSession(projectId, chatSession.id);
         return success({
           chatSessionId: chatSession.id,
           messages,
-          ...(openedChoice?.ok ? { choice: openedChoice.data } : {}),
+          choice: openedChoice.data,
         });
       } catch (error) {
         return failure(error instanceof Error ? error.message : String(error));

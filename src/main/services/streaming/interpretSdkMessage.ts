@@ -139,6 +139,23 @@ export function interpretSdkMessage(
     return events;
   }
 
+  // Codex and pi failures arrive as their own frame rather than as assistant
+  // text, so the banner never lands in the persisted answer and never reads
+  // as Claude's.
+  if (sdkMsg.type === 'provider_error') {
+    view.turnErrorSurfaced = true;
+    events.push({ kind: 'error', error: sdkMsg.message });
+    return events;
+  }
+
+  if (sdkMsg.type === 'provider_notice') {
+    events.push({
+      kind: 'activity',
+      activity: { id: randomUUID(), type: 'other' as const, label: sdkMsg.label, detail: sdkMsg.detail },
+    });
+    return events;
+  }
+
   // Handle assistant messages (text chunks)
   if (sdkMsg.type === 'assistant') {
     // Subagent messages (e.g. the read-only explorer) arrive with
@@ -147,18 +164,18 @@ export function interpretSdkMessage(
     // we surface their progress on the parent activity card instead.
     const isSubagentMessage = sdkMsg.parent_tool_use_id != null;
 
-    // Capture the SDK-resolved model ID (e.g. "claude-opus-4-8") so we can
+    // Capture the SDK-resolved full model ID so we can
     // display it accurately in the chat header instead of the short alias.
-    // Skip subagent messages — the explorer runs on Sonnet and would mislabel
-    // the header.
+    // Skip subagent messages — a subagent can run on a different model and
+    // would mislabel the header.
     if (!isSubagentMessage) {
       const msgModel = (sdkMsg.message as { model?: string } | undefined)?.model;
       if (msgModel) view.resolvedModel = msgModel;
     }
 
-    // An assistant message can carry an `error` category when the turn aborts
-    // on an API/model failure (`overloaded`, `server_error`, `billing_error`,
-    // …). Without surfacing it the turn just stops silently.
+    // A Claude assistant message can carry an `error` category when the turn
+    // aborts on an API/model failure (`overloaded`, `server_error`,
+    // `billing_error`, …). Without surfacing it the turn just stops silently.
     // Subagent errors surface via the Task tool_result, so don't double-band them here.
     if (!isSubagentMessage && typeof sdkMsg.error === 'string') {
       const errorText = describeAssistantError(sdkMsg.error);

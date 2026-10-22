@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  effortLevelsFor,
   formatPlaybookStepTitle,
   getPlaybookLoops,
   getPlaybookValidationIssues,
@@ -14,6 +15,7 @@ import {
 } from '../../../shared/playbooks';
 import { resolveCandidateChain } from '../../../shared/playbookRuntime';
 import type { DefaultModel } from '../../../shared/modelDefault';
+import { useModelName } from '../../stores/modelCatalogStore';
 import type { SlashCommandInfo } from '../../../shared/types';
 import {
   createPlaybook,
@@ -118,7 +120,6 @@ function stepTemplate(kind: string, steps: PlaybookStep[]): PlaybookStep {
   switch (kind) {
     case 'review': return { id: uniqueId(steps, 'review'), session: 'subagent', agents: [{ provider: 'codex' }], systemPromptKey: 'agents.review_system', directive: { kind: 'prompt' }, verdict: 'findings' };
     case 'address': return { ...commonMain, id: uniqueId(steps, 'address'), directive: { kind: 'prompt', promptKey: 'agents.review_assessment' } };
-    case 'skill': return { ...commonMain, id: uniqueId(steps, 'skill'), directive: { kind: 'skill', name: 'tdd' } };
     case 'fanout': return { id: uniqueId(steps, 'review'), session: 'subagent', runs: [[{ provider: 'codex' }], [{ provider: 'claude' }]], systemPromptKey: 'agents.review_system', directive: { kind: 'prompt' }, verdict: 'findings' };
     case 'synthesize': return { id: uniqueId(steps, 'synthesize'), session: 'subagent', agents: [{ provider: 'claude' }], systemPromptKey: 'agents.review_system', directive: { kind: 'prompt', text: `Synthesize {{output:${steps.at(-1)?.id ?? 'review'}}}` }, verdict: 'findings' };
     case 'pause': return { ...commonMain, id: uniqueId(steps, 'approval'), pauseBefore: true };
@@ -267,7 +268,7 @@ export function PlaybooksSettings() {
                       {(step.session === 'subagent' || firstMain) && <Row label="Role instructions"><select value={step.systemPromptKey ?? ''} onChange={(event) => patchStep(step.id, { systemPromptKey: event.target.value || undefined })} className="input w-full"><option value="agents.implementation_system">Implement changes</option><option value="agents.review_system">Review changes</option>{step.systemPromptKey && !['agents.implementation_system', 'agents.review_system'].includes(step.systemPromptKey) && <option value={step.systemPromptKey}>Saved instruction set</option>}</select></Row>}
                       <Row label="Task">
                         <div className="space-y-2">
-                          <select value={step.directive.kind} onChange={(event) => patchStep(step.id, { directive: event.target.value === 'skill' ? { kind: 'skill', name: skills[0]?.name ?? 'tdd' } : { kind: 'prompt', text: '' } })} className="input"><option value="prompt">Instructions</option><option value="skill">Skill</option></select>
+                          <select value={step.directive.kind} onChange={(event) => patchStep(step.id, { directive: event.target.value === 'skill' ? { kind: 'skill', name: skills[0]?.name ?? 'tdd' } : { kind: 'prompt', text: '' } })} className="input"><option value="prompt">Instructions</option>{step.directive.kind === 'skill' && <option value="skill">Skill</option>}</select>
                           {step.directive.kind === 'skill' ? <>
                             <select value={step.directive.name} onChange={(event) => patchStep(step.id, { directive: { kind: 'skill', name: event.target.value, args: step.directive.kind === 'skill' ? step.directive.args : undefined } })} className="input"><option value={step.directive.name}>{step.directive.name}</option>{skills.filter((skill) => skill.name !== (step.directive.kind === 'skill' ? step.directive.name : '')).map((skill) => <option key={skill.name} value={skill.name}>{skill.name}</option>)}</select>
                             <input value={step.directive.args ?? ''} onChange={(event) => patchStep(step.id, { directive: { kind: 'skill', name: step.directive.kind === 'skill' ? step.directive.name : 'tdd', args: event.target.value || undefined } })} className="input w-full" placeholder="Arguments; use an earlier step's output if needed" />
@@ -303,7 +304,7 @@ export function PlaybooksSettings() {
                 return blocks;
               })()}
             </div>
-            <div className="relative mt-3"><button className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-accent transition-colors hover:bg-accent-subtle" onClick={() => setShowAdd(!showAdd)}><svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>Add step</button>{showAdd && <div className="absolute z-10 mt-1 w-56 rounded-lg border border-border-subtle bg-surface-elevated p-1 shadow-lg">{[['review','Review the work'],['address','Address findings'],['skill','Run my skill'],['fanout','Ask several agents'],['synthesize','Synthesize reports'],['pause','Pause for approval'],['blank','Blank step']].map(([kind, label]) => <button key={kind} className="dropdown-item w-full text-left" onClick={() => { setDraft({ ...draft, steps: [...draft.steps, stepTemplate(kind, draft.steps)] }); setShowAdd(false); }}>{label}</button>)}</div>}</div>
+            <div className="relative mt-3"><button className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-accent transition-colors hover:bg-accent-subtle" onClick={() => setShowAdd(!showAdd)}><svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>Add step</button>{showAdd && <div className="absolute z-10 mt-1 w-56 rounded-lg border border-border-subtle bg-surface-elevated p-1 shadow-lg">{[['review','Review the work'],['address','Address findings'],['fanout','Ask several agents'],['synthesize','Synthesize reports'],['pause','Pause for approval'],['blank','Blank step']].map(([kind, label]) => <button key={kind} className="dropdown-item w-full text-left" onClick={() => { setDraft({ ...draft, steps: [...draft.steps, stepTemplate(kind, draft.steps)] }); setShowAdd(false); }}>{label}</button>)}</div>}</div>
           </div>
         )}
       </main>
@@ -329,6 +330,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 }
 
 function AgentEditor({ step, providers, defaultModel, onChange }: { step: PlaybookStep; providers: BoardProvider[]; defaultModel: DefaultModel | null; onChange: (patch: Partial<PlaybookStep>) => void }) {
+  const modelName = useModelName();
   const chains = step.runs ?? [step.agents ?? [{ provider: 'claude' }]];
   const apply = (next: PlaybookStep) => onChange({ agents: next.agents, runs: next.runs });
   return (
@@ -343,6 +345,11 @@ function AgentEditor({ step, providers, defaultModel, onChange }: { step: Playbo
               const isDefault = isDefaultAgent(candidate);
               const provider = isDefaultAgent(candidate) ? undefined : providers.find((entry) => entry.id === candidate.provider);
               const effort = candidate.effort;
+              const effortLevels = isDefault
+                ? effortLevelsFor(providers.find((entry) => entry.id === defaultModel?.provider), defaultModel?.model)
+                : effortLevelsFor(provider, candidate.model);
+              // A saved level the model no longer lists stays visible rather than silently reading as default.
+              const effortOptions = effort && !effortLevels.includes(effort) ? [...effortLevels, effort] : effortLevels;
               return (
                 <div key={candidateIndex} className="rounded-md border border-border-subtle bg-surface-1 p-2">
                   <div className="mb-2 flex items-center gap-1 text-tiny text-text-muted">
@@ -355,9 +362,9 @@ function AgentEditor({ step, providers, defaultModel, onChange }: { step: Playbo
                   <div className="flex flex-wrap items-center gap-2">
                     <select value={isDefault ? DEFAULT_PROVIDER_VALUE : candidate.provider} onChange={(event) => apply(updateAgentCandidate(step, runIndex, candidateIndex, event.target.value === DEFAULT_PROVIDER_VALUE ? { useDefault: true, ...(effort ? { effort } : {}) } : { provider: event.target.value, ...(effort ? { effort } : {}) }))} className="input"><option value={DEFAULT_PROVIDER_VALUE}>Default (your KPM model)</option>{providers.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}{entry.available ? '' : ' (unavailable)'}</option>)}</select>
                     {isDefaultAgent(candidate)
-                      ? <span className="text-tiny text-text-muted">Follows your KPM model{defaultModel ? ` · ${defaultModel.provider}/${defaultModel.model}` : ''}</span>
+                      ? <span className="text-tiny text-text-muted">Follows your KPM model{defaultModel ? ` · ${modelName(defaultModel.model)}` : ''}</span>
                       : <select value={candidate.model ?? provider?.models.find((model) => model.isDefault)?.id ?? ''} onChange={(event) => apply(updateAgentCandidate(step, runIndex, candidateIndex, { provider: candidate.provider, model: event.target.value, ...(effort ? { effort } : {}) }))} className="input">{provider?.models.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select>}
-                    <select value={effort ?? ''} onChange={(event) => { const next = (event.target.value || undefined) as AgentCandidate['effort']; apply(updateAgentCandidate(step, runIndex, candidateIndex, isDefaultAgent(candidate) ? { useDefault: true, ...(next ? { effort: next } : {}) } : { provider: candidate.provider, ...(candidate.model ? { model: candidate.model } : {}), ...(next ? { effort: next } : {}) })); }} className="input"><option value="">Default effort</option>{['low','medium','high','xhigh','max'].map((level) => <option key={level} value={level}>{level}</option>)}</select>
+                    {effortOptions.length > 0 && <select value={effort ?? ''} onChange={(event) => { const next = (event.target.value || undefined) as AgentCandidate['effort']; apply(updateAgentCandidate(step, runIndex, candidateIndex, isDefaultAgent(candidate) ? { useDefault: true, ...(next ? { effort: next } : {}) } : { provider: candidate.provider, ...(candidate.model ? { model: candidate.model } : {}), ...(next ? { effort: next } : {}) })); }} className="input"><option value="">Default effort</option>{effortOptions.map((level) => <option key={level} value={level}>{level}</option>)}</select>}
                   </div>
                 </div>
               );

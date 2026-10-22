@@ -105,6 +105,19 @@ export function Chat({ currentView }: ChatProps) {
     void loadFromHistory(currentProjectId, viewedSessionId);
   }, [currentProjectId, viewedSessionId, viewedHydrated, loadFromHistory]);
 
+  // Closing the last tab hides the panel and leaves no session, so reopening
+  // it needs a fresh one or the model picker has nothing to load. Waits for
+  // this project's tabs to be restored so it never races that restore.
+  const { tabsRestoredForProject, sessionCount, startNewChatSession } = useChatStore(useShallow((state) => ({
+    tabsRestoredForProject: state.persistedProjectId,
+    sessionCount: state.sessions.size,
+    startNewChatSession: state.startNewChatSession,
+  })));
+  useEffect(() => {
+    if (!currentProjectId || tabsRestoredForProject !== currentProjectId || sessionCount > 0) return;
+    startNewChatSession();
+  }, [currentProjectId, tabsRestoredForProject, sessionCount, startNewChatSession]);
+
   const { send, retry, cancel, cancelQueued } = useChat(currentProjectId, currentView);
 
   const handleSend = useCallback((message: string, attachments?: ChatAttachment[], chatSessionId?: string) => {

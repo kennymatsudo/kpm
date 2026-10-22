@@ -13,7 +13,7 @@ import { AttachmentChip } from './AttachmentChip';
 import { SlashCommandMenu } from './SlashCommandMenu';
 import { useSlashCommandTypeahead } from './useSlashCommandTypeahead';
 import { CHAT_STYLES } from '../../constants/chatStyles';
-import { getProviderCapabilities } from '../../../shared/providerCapabilities';
+import { getProviderCapabilities, unsupportedAttachmentError } from '../../../shared/providerCapabilities';
 import type { ChatAttachment, FocusedResource } from '../../../shared/types';
 import { sessionContextWindow, sessionModelId, sessionProvider } from '../../stores/chat/chatChoice';
 
@@ -33,6 +33,7 @@ interface ChatInputProps {
   addFocusedResource?: (resource: FocusedResource) => void;
 }
 
+/** Edit the viewed session's draft and attachments while preserving unflushed typing. */
 export function ChatInput({ onSend, onCancel, disabled, addFocusedResource }: ChatInputProps) {
   // Draft message and streaming state from viewed session
   const {
@@ -50,6 +51,8 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource }: Ch
     choiceSendReason,
     setDraftMessage,
     setPendingAttachments,
+    restoredDraft,
+    clearRestoredDraft,
     getChatSessionId,
     getOrCreateSession,
   } = useChatStore(useShallow((state) => {
@@ -69,6 +72,8 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource }: Ch
       choiceSendReason: session?.choice?.send.reason,
       setDraftMessage: state.setDraftMessage,
       setPendingAttachments: state.setPendingAttachments,
+      restoredDraft: session?.restoredDraft,
+      clearRestoredDraft: state.clearRestoredDraft,
       getChatSessionId: state.getChatSessionId,
       getOrCreateSession: state.getOrCreateSession,
     };
@@ -141,6 +146,19 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource }: Ch
     }
   }, [viewedSessionId, viewedSessionDraftMessage, flushDraft]);
 
+  // Preserve unflushed typing when prepending withdrawn input, because the
+  // store draft lags the local edit by the debounce interval.
+  useEffect(() => {
+    if (!restoredDraft || !viewedSessionId) return;
+    const unflushedDraft = pendingRef.current?.sessionId === viewedSessionId ? pendingRef.current.value : null;
+    const currentDraft = unflushedDraft ?? viewedSessionDraftMessage;
+    setMessage([restoredDraft.text, currentDraft].filter((part) => part.trim()).join('\n\n'));
+    if (restoredDraft.attachments.length > 0) {
+      setPendingAttachments(viewedSessionId, [...restoredDraft.attachments, ...attachments]);
+    }
+    clearRestoredDraft(viewedSessionId);
+  }, [restoredDraft, viewedSessionId, viewedSessionDraftMessage, attachments, setMessage, setPendingAttachments, clearRestoredDraft]);
+
   // Persist any pending edit if the composer unmounts (e.g., view switch).
   useEffect(() => () => flushDraft(), [flushDraft]);
 
@@ -161,6 +179,8 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource }: Ch
   const [isDragOver, setIsDragOver] = useState(false);
 
   const capabilities = getProviderCapabilities(viewedSessionProvider ?? 'claude');
+  // Derived rather than checked at attach time, so it tracks a provider change.
+  const unsupportedAttachment = unsupportedAttachmentError(viewedSessionProvider ?? 'claude', attachments);
   const visibleSuggestions = capabilities.promptSuggestions ? suggestions : NO_SUGGESTIONS;
 
   // Slash command typeahead is shown only for providers that support live slash commands.
@@ -200,13 +220,20 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource }: Ch
       ? visibleSuggestions[suggestionIndex % visibleSuggestions.length]
       : restingPlaceholder;
 
-  // Auto-resize textarea
+  // Auto-resize textarea. Text appended at the end can only make the box
+  // taller, so that case skips the `height = 'auto'` reset, which would force
+  // a full relayout of the chat column on every keystroke. Any other edit
+  // (delete, clear, paste over a selection) may shrink it and takes the reset.
+  const resizedForMessageRef = useRef<string | null>(null);
   useEffect(() => {
     const textarea = textareaRef.current;
-    if (textarea) {
-      textarea.style.height = 'auto';
-      textarea.style.height = `${Math.min(textarea.scrollHeight, CHAT_STYLES.composer.maxHeightPx)}px`;
-    }
+    if (!textarea) return;
+    const previous = resizedForMessageRef.current;
+    resizedForMessageRef.current = message;
+    const onlyGrew = previous !== null && message.length >= previous.length && message.startsWith(previous);
+    if (onlyGrew && textarea.scrollHeight <= textarea.clientHeight) return;
+    if (!onlyGrew) textarea.style.height = 'auto';
+    textarea.style.height = `${Math.min(textarea.scrollHeight, CHAT_STYLES.composer.maxHeightPx)}px`;
   }, [message]);
 
   // Re-focus textarea when streaming ends, but only if the user
@@ -257,8 +284,9 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource }: Ch
         const blob = item.getAsFile();
         if (!blob) continue;
 
-        if (!isSupportedImageFormat(blob.type)) {
-          setAttachmentError('Unsupported image format. Supported: PNG, JPEG, GIF, WebP, BMP');
+        // The temp-image cache also takes BMP, but no model reads it.
+        if (!isSupportedImageFormat(blob.type) || blob.type === 'image/bmp') {
+          setAttachmentError('Unsupported image format. Supported: PNG, JPEG, GIF, WebP');
           break;
         }
 
@@ -271,7 +299,7 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource }: Ch
           const result = await saveTempImage(uint8Array, blob.type);
 
           if (result.success) {
-            const mediaType = blob.type as 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
+            const mediaType = blob.type;
             // Pasted images are always image kind. The temp-image service
             // returns the pasted bytes' actual MIME, so trust it here.
             setAttachments((prev) => [
@@ -348,14 +376,12 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource }: Ch
   const handleSend = () => {
     const trimmed = message.trim();
     // Allow sending if there's text OR if there are attachments.
-    // Sending while streaming is allowed for Claude — the backend queues this
-    // as the next turn. For Codex, keep the old behavior (block until the
-    // current response finishes) since its service rejects mid-stream sends.
-    if ((trimmed || attachments.length > 0) && !disabled && !sendDisabledWhileStreaming) {
+    // Live follow-ups use the selected provider's steering or queue behavior.
+    if ((trimmed || attachments.length > 0) && !unsupportedAttachment && !disabled && !sendDisabledWhileStreaming) {
       const chatSessionId = viewedSessionId ?? getChatSessionId();
       getOrCreateSession(chatSessionId);
       onSend(
-        trimmed || '(see attached files)',
+        trimmed,
         attachments.length > 0 ? attachments : undefined,
         chatSessionId,
       );
@@ -503,9 +529,9 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource }: Ch
       )}
 
       {/* Attachment error message */}
-      {attachmentError && (
+      {(attachmentError ?? unsupportedAttachment) && (
         <div className="collapse-reveal mb-2 px-3 py-2 bg-danger-muted text-danger text-xs rounded-lg">
-          {attachmentError}
+          {attachmentError ?? unsupportedAttachment}
         </div>
       )}
 
@@ -607,7 +633,7 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource }: Ch
           )}
           <button
             onClick={handleSend}
-            disabled={(!message.trim() && attachments.length === 0) || disabled || sendDisabledWhileStreaming}
+            disabled={(!message.trim() && attachments.length === 0) || Boolean(unsupportedAttachment) || disabled || sendDisabledWhileStreaming}
             className="btn btn-primary h-8 w-8 !p-0 flex-shrink-0 rounded-lg transition-transform active:scale-90"
             title={
               sendDisabledWhileStreaming

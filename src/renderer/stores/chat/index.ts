@@ -8,6 +8,7 @@ import { createHistorySlice } from './historySlice';
 import { createSettingsSlice } from './settingsSlice';
 import { getOptionalSetting, getSetting, getProviderReadiness } from '../../services/settingsService';
 import { writePersistedTabs } from './persistence';
+import { onModelCatalogChange } from '../../services/chatService';
 import { getStoredChatProvider } from '../../../shared/appSettings';
 import { resolveEffectiveProvider } from '../../../shared/providerResolution';
 
@@ -29,8 +30,16 @@ export const useChatStore: UseBoundStore<StoreApi<ChatState>> = create<ChatState
 // Load persisted model and effort preferences (guarded for Node.js test environments)
 if (typeof window !== 'undefined') {
   void useChatStore.getState().loadSlashCommands();
+  // A picker is built when its Chat opens. The model list can land after that
+  // (the first launch fetches it in the background), so rebuild open pickers.
+  onModelCatalogChange(() => {
+    const { sessions, persistedProjectId, openChatChoice } = useChatStore.getState();
+    if (!persistedProjectId) return;
+    for (const [chatSessionId, session] of sessions) {
+      if (session.choice) void openChatChoice(persistedProjectId, chatSessionId);
+    }
+  });
   void getSetting('chatModel').then((model) => useChatStore.setState({ model }));
-  void getSetting('chatEffort').then((effort) => useChatStore.setState({ effort }));
   // Resolve the effective provider from the user's stored choice and what's
   // actually ready — never fall back to a hardcoded provider. A deliberate
   // choice that is ready is kept; otherwise adopt a single ready provider, or

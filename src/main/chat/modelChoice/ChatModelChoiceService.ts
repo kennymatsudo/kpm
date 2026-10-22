@@ -8,6 +8,7 @@ import type {
   PiProviderOption,
   ProvidersReadiness,
 } from '../../../shared/types';
+import { CLAUDE_CHAT_MODEL_IDS, type ModelCatalog } from '../../../shared/modelCatalog';
 import { failure, success, type AsyncResult, type ServiceResult } from '../../services/result';
 import {
   buildChatChoiceCatalog,
@@ -31,7 +32,6 @@ export interface ChatModelChoiceDefaults {
     /** Null means no pi default has ever been configured. */
     pi: string | null;
   };
-  effort: ChatChoiceEffort;
 }
 
 export interface ChatModelChoiceDeps {
@@ -39,6 +39,7 @@ export interface ChatModelChoiceDeps {
   getDefaults: () => ChatModelChoiceDefaults;
   getReadiness: () => Promise<ProvidersReadiness>;
   listPiProviders: () => Promise<PiProviderOption[]>;
+  getModelCatalog: () => ModelCatalog;
 }
 
 function isProvider(value: unknown): value is ChatProvider {
@@ -62,15 +63,6 @@ function parseAggregate(raw: string): PersistedChatModelChoice | undefined {
   } catch {
     return undefined;
   }
-}
-
-function supportedEffort(
-  model: { effortLevels: { value: ChatChoiceEffort }[]; defaultEffort: ChatChoiceEffort | null },
-  desired: ChatChoiceEffort,
-): ChatChoiceEffort | null {
-  return model.effortLevels.some((level) => level.value === desired)
-    ? desired
-    : model.defaultEffort;
 }
 
 function piSelector(option: PiProviderOption): string {
@@ -102,14 +94,10 @@ function createSnapshot(
   };
   const remembered = Object.fromEntries((['claude', 'codex', 'pi'] as const).map((provider) => {
     const modelId = defaultModels[provider];
-    const model = findModel(providers, provider, modelId);
-    // The configured effort is Claude's — Settings only offers it there. Every other
-    // provider starts at its own model's declared default rather than inheriting a
-    // level that was chosen against a different reasoning scale.
-    const desired = provider === 'claude' ? defaults.effort : model?.defaultEffort ?? defaults.effort;
+    // Every model starts at the effort its provider would pick for it.
     return [provider, {
       model: modelId,
-      effort: model ? supportedEffort(model, desired) : desired,
+      effort: findModel(providers, provider, modelId)?.defaultEffort ?? null,
     }];
   })) as PersistedChatModelChoice['remembered'];
   return { version: 1, selectedProvider, remembered };
@@ -159,7 +147,7 @@ export function createChatModelChoiceService(deps: ChatModelChoiceDeps): ChatMod
       deps.getReadiness(),
       includePiCatalog ? deps.listPiProviders() : Promise.resolve<PiProviderOption[]>([]),
     ]);
-    return { catalog: buildChatChoiceCatalog(readiness, piProviders), piProviders };
+    return { catalog: buildChatChoiceCatalog(readiness, piProviders, deps.getModelCatalog()), piProviders };
   }
 
   function persist(
@@ -286,10 +274,10 @@ export function createChatModelChoiceService(deps: ChatModelChoiceDeps): ChatMod
         case 'choose_model': {
           const descriptor = findModel(catalog, current.selectedProvider, input.intent.model);
           if (!descriptor) return failure(`Model “${input.intent.model}” is not available for ${current.selectedProvider}.`);
+          // A different model starts at its own default: the level picked for the
+          // previous model was a choice about that model, not this one.
           const remembered = current.remembered[current.selectedProvider];
-          const effort = descriptor.effortLevels.some((level) => level.value === remembered.effort)
-            ? remembered.effort
-            : descriptor.defaultEffort;
+          const effort = descriptor.id === remembered.model ? remembered.effort : descriptor.defaultEffort;
           next = {
             ...current,
             remembered: {
@@ -346,7 +334,12 @@ export function createChatModelChoiceService(deps: ChatModelChoiceDeps): ChatMod
     const opened = await open(input);
     if (!opened.ok) return opened;
     if (!opened.data.send.allowed) return failure(opened.data.send.reason ?? 'The saved Chat model choice is unavailable.');
-    return success({ ...opened.data.selected, revision: opened.data.revision });
+    const { provider, model, effort } = opened.data.selected;
+    const revision = opened.data.revision;
+    if (provider !== 'claude') return success({ provider, model, effort, revision });
+    const claudeModel = CLAUDE_CHAT_MODEL_IDS.find((id) => id === model);
+    if (!claudeModel) return failure(`The saved Claude model “${model}” is unavailable. Choose another model.`);
+    return success({ provider, model: claudeModel, effort, revision });
   }
 
   return { open, change, resolveForTurn };

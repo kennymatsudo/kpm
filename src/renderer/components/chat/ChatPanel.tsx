@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import { memo, type CSSProperties } from 'react';
 import { Chat } from './index';
 import { ChatHeader } from './ChatHeader';
 import { ErrorBoundary } from '../app/ErrorBoundary';
@@ -10,9 +10,13 @@ interface ChatPanelProps {
   style?: CSSProperties;
 }
 
-export function ChatPanel({ view, className, style }: ChatPanelProps) {
+export const ChatPanel = memo(function ChatPanel({ view, className, style }: ChatPanelProps) {
   return (
-    <div className={`panel-right flex flex-col min-w-0 ${className ?? ''}`} style={style}>
+    <div
+      data-tab-scope="chat"
+      className={`panel-right flex flex-col min-w-0 ${className ?? ''}`}
+      style={style}
+    >
       <ChatHeader />
       <div className="flex-1 min-h-0 overflow-hidden">
         <ErrorBoundary name="Chat">
@@ -21,4 +25,4 @@ export function ChatPanel({ view, className, style }: ChatPanelProps) {
       </div>
     </div>
   );
-}
+});

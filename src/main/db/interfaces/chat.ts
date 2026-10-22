@@ -8,7 +8,9 @@ import type {
   ChatProvider,
   ChatMessage,
   ChatSession,
+  ChatSessionLabel,
   ChatSessionSummary,
+  ChatTitleSource,
 } from '../../../shared/types';
 
 // =============================================================================
@@ -28,7 +30,13 @@ export interface IChatMessageRepository {
     provider?: ChatProvider,
     model?: string | null,
   ): ChatMessage;
+  /** Remove a user message that never reached the model. */
+  deleteUserMessageByClientMessageId(sessionId: string, chatSessionId: string, clientMessageId: string): void;
   getRecentSessions(sessionId: string, limit?: number): ChatSessionSummary[];
+  /** Finished assistant replies in one chat, i.e. its completed turns. */
+  countAssistantMessages(sessionId: string, chatSessionId: string): number;
+  /** Title and opening message for each listed chat that exists. */
+  getSessionLabels(sessionId: string, chatSessionIds: string[]): ChatSessionLabel[];
   /** Delete sessions beyond the keep limit (default 10), returns count deleted */
   pruneOldSessions(sessionId: string, keepCount?: number): number;
 }
@@ -58,23 +66,19 @@ export interface IChatSessionRepository {
     id: string,
     title: string,
     contentHash: string,
-    clearClaudeSessionId: boolean,
+    clearProviderSessionId: boolean,
   ): ChatSession;
-  /** Update the Claude SDK session ID for resume functionality */
-  updateClaudeSessionId(id: string, claudeSessionId: string): void;
   /** Update the native provider session/thread ID for resume functionality. */
   updateProviderSessionId(id: string, provider: ChatProvider, providerSessionId: string): void;
   /** Atomically persist the versioned model-choice aggregate at an expected revision. */
   updateModelChoice(id: string, expectedRevision: number, choiceJson: string): ChatSession | undefined;
-  /** Update the SDK-derived display title (auto-summary or user-renamed). */
-  updateTitle(id: string, title: string): void;
+  /** Replace the display title; `turn` is the completed-turn count it was written at. */
+  updateTitle(id: string, title: string | null, source: ChatTitleSource | null, turn: number | null): void;
   /**
-   * Null out claude_session_id for every chat session in a project.
-   * Forces the next send to spawn a fresh SDK session instead of resuming
-   * one whose cwd was baked in at spawn time (e.g. after a worktree switch).
+   * Null out provider_session_id for every chat session in a project.
+   * Forces the next send to spawn a fresh session instead of resuming one
+   * whose cwd was baked in at spawn time (e.g. after a worktree switch).
    */
-  clearClaudeSessionIdsByProject(projectId: string): void;
-  /** Null out native provider session IDs for every chat session in a project. */
   clearProviderSessionIdsByProject(projectId: string): void;
   /** Delete a chat session */
   delete(id: string): void;

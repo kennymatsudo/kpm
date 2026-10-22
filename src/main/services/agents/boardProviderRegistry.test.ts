@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PI_UNRESOLVED_MODEL_ID } from '../../../shared/types';
 import { createTestConfig, setConfig } from '../../config';
 import { listBoardProviders } from './boardProviderRegistry';
+import { FALLBACK_MODEL_CATALOG } from '../../../shared/modelCatalog';
 
 describe('board provider registry', () => {
   it('reports executable board providers and configured Pi models', async () => {
@@ -45,18 +46,64 @@ describe('board provider registry', () => {
     });
   });
 
-  it('offers the shared Codex catalog while preserving the board default', async () => {
+  it('offers the fetched Codex list while preserving the board default', async () => {
     setConfig(createTestConfig({ agentSession: { codexModel: 'gpt-5.5' } }));
     const providers = await listBoardProviders({
       isAvailable: async () => true,
       listPiModels: async () => [],
+      getModelCatalog: () => ({
+        ...FALLBACK_MODEL_CATALOG,
+        codex: [
+          { id: 'gpt-6-astra', label: 'GPT-6-Astra', effortLevels: [] },
+          { id: 'gpt-5.6-terra', label: 'GPT-5.6-Terra', effortLevels: [] },
+        ],
+      }),
     });
 
     expect(providers.find((provider) => provider.id === 'codex')?.models).toEqual([
       { id: 'gpt-5.5', name: 'gpt-5.5', isDefault: true },
-      { id: 'gpt-5.6-sol', name: 'Sol' },
-      { id: 'gpt-5.6-terra', name: 'Terra' },
-      { id: 'gpt-5.6-luna', name: 'Luna' },
+      { id: 'gpt-6-astra', name: 'GPT-6-Astra', effortLevels: [] },
+      { id: 'gpt-5.6-terra', name: 'GPT-5.6-Terra', effortLevels: [] },
     ]);
+  });
+
+  it('names Claude models the way Claude does', async () => {
+    const providers = await listBoardProviders({
+      isAvailable: async () => true,
+      listPiModels: async () => [],
+      getModelCatalog: () => ({
+        ...FALLBACK_MODEL_CATALOG,
+        claude: [
+          { id: 'sonnet', label: 'Sonnet 5', effortLevels: [] },
+          { id: 'opus', label: 'Opus 5.5', effortLevels: [] },
+        ],
+      }),
+    });
+
+    expect(providers.find((provider) => provider.id === 'claude')?.models).toEqual([
+      { id: 'sonnet', name: 'Sonnet 5', isDefault: true, effortLevels: [] },
+      { id: 'opus', name: 'Opus 5.5', effortLevels: [] },
+    ]);
+  });
+
+  it('offers each model the effort levels its provider accepts, and none for Gemini', async () => {
+    setConfig(createTestConfig({}));
+    const providers = await listBoardProviders({
+      isAvailable: async () => true,
+      listPiModels: async () => [
+        { provider: 'openai', modelId: 'gpt-5.5', label: 'OpenAI — GPT-5.5', safe: true, thinkingLevels: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'] },
+      ],
+      getModelCatalog: () => ({
+        ...FALLBACK_MODEL_CATALOG,
+        claude: [{ id: 'sonnet', label: 'Sonnet 5', effortLevels: ['low', 'medium', 'high'] }],
+        codex: [{ id: 'gpt-6-astra', label: 'GPT-6-Astra', effortLevels: ['minimal', 'low', 'medium', 'high', 'xhigh'] }],
+      }),
+    });
+    const levels = (id: string) => providers.find((provider) => provider.id === id)?.models.map((model) => model.effortLevels);
+
+    expect(levels('claude')).toEqual([['low', 'medium', 'high']]);
+    expect(levels('codex')).toEqual([undefined, ['low', 'medium', 'high', 'xhigh']]);
+    expect(levels('pi')).toEqual([['low', 'medium', 'high', 'xhigh']]);
+    expect(levels('gemini')).toEqual([[]]);
   });
 });

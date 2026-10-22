@@ -3,8 +3,9 @@ import { createInitialChatState } from './baseState';
 import { streamingBuffer } from './utils';
 import { applyStreamEvent } from './chatStreamReducer';
 
+/** Build per-session actions for messages, composer drafts, and chat metadata. */
 export function createMessageSlice(set: ChatSet, _get: ChatGet): Pick<ChatState,
-  'addUserMessage' | 'markFollowUpDelivered' | 'withdrawFollowUp' | 'setRetrying' | 'setError' | 'clearError' | 'setDraftMessage' | 'setPendingAttachments' | 'setSuggestions' | 'setClaudeSessionId' | 'setSessionTitle' | 'setMcpStatus' | 'setBackgroundTasks' | 'setLastTurnUsage' | 'setSessionState' | 'reset' | 'resetProjectState'
+  'addUserMessage' | 'markFollowUpDelivered' | 'withdrawFollowUp' | 'setRetrying' | 'setError' | 'clearError' | 'setDraftMessage' | 'setPendingAttachments' | 'clearRestoredDraft' | 'setSuggestions' | 'setProviderSessionId' | 'setSessionTitle' | 'setMcpStatus' | 'setBackgroundTasks' | 'setLastTurnUsage' | 'setSessionState' | 'reset' | 'resetProjectState'
 > {
   return {
     addUserMessage: (chatSessionId, content, attachments, options) => set((state) => {
@@ -73,14 +74,14 @@ export function createMessageSlice(set: ChatSet, _get: ChatGet): Pick<ChatState,
     }),
 
     setError: (chatSessionId, error) => {
-      streamingBuffer.clear(chatSessionId);
+      const buffered = streamingBuffer.flush(chatSessionId);
 
       set((state) => {
         const session = state.sessions.get(chatSessionId);
         if (!session) return state;
 
         const sessions = new Map(state.sessions);
-        sessions.set(chatSessionId, applyStreamEvent(session, { type: 'error', error }));
+        sessions.set(chatSessionId, applyStreamEvent(session, { type: 'error', error, buffered }));
         return { sessions };
       });
     },
@@ -103,6 +104,16 @@ export function createMessageSlice(set: ChatSet, _get: ChatGet): Pick<ChatState,
       return { sessions };
     }),
 
+    clearRestoredDraft: (chatSessionId) => set((state) => {
+      const session = state.sessions.get(chatSessionId);
+      if (!session?.restoredDraft) return state;
+
+      const { restoredDraft: _restoredDraft, ...rest } = session;
+      const sessions = new Map(state.sessions);
+      sessions.set(chatSessionId, rest);
+      return { sessions };
+    }),
+
     setPendingAttachments: (chatSessionId, pendingAttachments) => set((state) => {
       const sessions = new Map(state.sessions);
       const session = sessions.get(chatSessionId);
@@ -121,12 +132,12 @@ export function createMessageSlice(set: ChatSet, _get: ChatGet): Pick<ChatState,
       return { sessions };
     }),
 
-    setClaudeSessionId: (chatSessionId, claudeSessionId) => set((state) => {
+    setProviderSessionId: (chatSessionId, providerSessionId) => set((state) => {
       const sessions = new Map(state.sessions);
       const session = sessions.get(chatSessionId);
       if (!session) return state;
 
-      sessions.set(chatSessionId, { ...session, claudeSessionId });
+      sessions.set(chatSessionId, { ...session, providerSessionId });
       return { sessions };
     }),
 
@@ -136,7 +147,12 @@ export function createMessageSlice(set: ChatSet, _get: ChatGet): Pick<ChatState,
       if (!session) return state;
 
       const trimmed = title.trim();
-      sessions.set(chatSessionId, { ...session, title: trimmed.length > 0 ? trimmed : null });
+      if (!trimmed) return state;
+      if (state.viewedSessionId === chatSessionId && session.title) {
+        sessions.set(chatSessionId, { ...session, pendingTitle: trimmed });
+      } else {
+        sessions.set(chatSessionId, { ...session, title: trimmed, pendingTitle: null });
+      }
       return { sessions };
     }),
 

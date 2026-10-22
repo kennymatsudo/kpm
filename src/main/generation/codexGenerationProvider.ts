@@ -11,6 +11,7 @@
 import * as os from 'os';
 import { Codex, type ThreadOptions, type Usage } from '@openai/codex-sdk';
 import { findCodexBinaryPath } from '../codex/binary';
+import { readCodexTokenCounts, toKpmUsage } from '../codex/codexUsage';
 import type {
   GenerationOutcome,
   GenerationProviderAdapter,
@@ -42,11 +43,12 @@ function mapUsage(usage: Usage | null): GenerationUsage | undefined {
   if (!usage) {
     return undefined;
   }
+  const kpmUsage = toKpmUsage(readCodexTokenCounts(usage));
   return {
-    inputTokens: usage.input_tokens,
-    outputTokens: usage.output_tokens,
-    cacheReadTokens: usage.cached_input_tokens,
-    cacheWriteTokens: 0,
+    inputTokens: kpmUsage.input_tokens,
+    outputTokens: kpmUsage.output_tokens,
+    cacheReadTokens: kpmUsage.cache_read_input_tokens,
+    cacheWriteTokens: kpmUsage.cache_creation_input_tokens,
   };
 }
 
@@ -80,7 +82,7 @@ export const codexGenerationProvider: GenerationProviderAdapter = {
 
       const usage = mapUsage(turn.usage);
       if (usage && hooks?.onUsage) {
-        hooks.onUsage(usage, null);
+        hooks.onUsage(usage, null, true);
       }
 
       return {

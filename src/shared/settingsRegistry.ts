@@ -10,11 +10,9 @@
  */
 
 import {
-  CODEX_CHAT_MODELS,
   CHAT_PROVIDERS,
   DEFAULT_CODEX_CHAT_MODEL,
   type ClaudeModel,
-  type ChatEffortLevel,
   type CodexChatModel,
   type ChatProvider,
 } from './types';
@@ -69,7 +67,12 @@ function booleanSetting(key: string, fallback: boolean): SettingDefinition<boole
   };
 }
 
-const CODEX_MODEL_VALUES = CODEX_CHAT_MODELS.map((option) => option.value);
+// Not an enum: Codex ships new models without a KPM release, so any saved id is kept.
+const chatCodexModel: SettingDefinition<CodexChatModel> = {
+  key: 'chat_codex_model',
+  decode: (raw) => (raw ? raw : DEFAULT_CODEX_CHAT_MODEL),
+  encode: (value) => value,
+};
 
 const chatPiProviderModel: SettingDefinition<string | null> = {
   key: 'chat_pi_provider_model',
@@ -141,16 +144,7 @@ export const SETTINGS = {
   ),
   chatProvider: enumSetting<ChatProvider>('chat_provider', CHAT_PROVIDERS, DEFAULT_CHAT_PROVIDER),
   chatModel: enumSetting<ClaudeModel>('chat_model', ['opus', 'sonnet'], 'sonnet'),
-  chatEffort: enumSetting<ChatEffortLevel>(
-    'chat_effort',
-    ['low', 'medium', 'high', 'max'],
-    'medium'
-  ),
-  chatCodexModel: enumSetting<CodexChatModel>(
-    'chat_codex_model',
-    CODEX_MODEL_VALUES,
-    DEFAULT_CODEX_CHAT_MODEL
-  ),
+  chatCodexModel,
   chatPiProviderModel,
   chatPiAckUnsafeProviders,
   branchNameTemplate,

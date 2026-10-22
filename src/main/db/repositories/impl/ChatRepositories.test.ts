@@ -54,3 +54,38 @@ describe('Chat repositories model-choice persistence', () => {
     }
   });
 });
+
+describe('Chat repositories labels', () => {
+  it('uses the earliest user message as the opening, not the alphabetically first', () => {
+    const db = createTestDb();
+    try {
+      seedProject(db, 'p1');
+      const sessions = new ChatSessionRepository(db);
+      const messages = new ChatMessageRepository(db);
+      sessions.create('c1', 'p1');
+      messages.addMessage('p1', 'user', 'Zebra crossing bug', 'c1');
+      messages.addMessage('p1', 'assistant', 'Looking.', 'c1');
+      messages.addMessage('p1', 'user', 'Also check the apples', 'c1');
+
+      expect(messages.getRecentSessions('p1')[0].first_message).toBe('Zebra crossing bug');
+      expect(messages.getSessionLabels('p1', ['c1'])).toEqual([
+        { chat_session_id: 'c1', title: null, first_message: 'Zebra crossing bug' },
+      ]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('records who wrote a title and at which turn', () => {
+    const db = createTestDb();
+    try {
+      seedProject(db, 'p1');
+      const sessions = new ChatSessionRepository(db);
+      sessions.create('c1', 'p1');
+      sessions.updateTitle('c1', 'Zebra crossing bug', 'generated', 1);
+      expect(sessions.get('c1')).toMatchObject({ title: 'Zebra crossing bug', title_source: 'generated', title_turn: 1 });
+    } finally {
+      db.close();
+    }
+  });
+});

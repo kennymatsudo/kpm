@@ -20,6 +20,15 @@ export function formatCurrency(microUsd: number): string {
   return `$${usd.toFixed(2)}`;
 }
 
+/**
+ * Cost of an aggregate row. A row made only of unpriced runs (Codex, which
+ * reports no cost) shows a dash, since its $0 means unknown rather than free.
+ */
+export function formatAggregateCost(row: { cost_micro_usd: number; events: number; unpriced_events: number }): string {
+  if (row.events > 0 && row.unpriced_events >= row.events) return '—';
+  return formatCurrency(row.cost_micro_usd);
+}
+
 /** Full form for tables: "1,234,567". */
 export function formatTokensFull(n: number): string {
   return n.toLocaleString('en-US');
@@ -34,51 +43,11 @@ const SOURCE_LABELS: Record<string, string> = {
   review_assessment: 'Review assessment',
   review_assessment_post_impl: 'Review reply',
   custom_prompt: 'Custom prompt',
+  'chat-title': 'Chat titles',
 };
 
 export function formatSource(source: string): string {
   return SOURCE_LABELS[source] ?? source;
-}
-
-const MODEL_LABELS: Record<string, string> = {
-  opus: 'Opus',
-  sonnet: 'Sonnet',
-  haiku: 'Haiku',
-};
-
-export function formatModel(model: string): string {
-  if (MODEL_LABELS[model]) return MODEL_LABELS[model];
-  const piSelectorLabel = formatPiSelector(model);
-  if (piSelectorLabel) return piSelectorLabel;
-  // Compact a full model id like "claude-opus-5" → "Opus 5", "claude-opus-4-8" → "Opus 4.8"
-  const lower = model.toLowerCase();
-  if (lower.includes('opus')) return modelWithVersion('Opus', model);
-  if (lower.includes('sonnet')) return modelWithVersion('Sonnet', model);
-  if (lower.includes('haiku')) return modelWithVersion('Haiku', model);
-  if (lower.startsWith('gpt-')) return formatGptModel(model);
-  return model;
-}
-
-function formatGptModel(raw: string): string {
-  return raw
-    .split('-')
-    .map((part) => part === 'gpt' ? 'GPT' : part)
-    .join('-');
-}
-
-function formatPiSelector(model: string): string | null {
-  const separatorIndex = model.indexOf('/');
-  if (separatorIndex <= 0 || separatorIndex === model.length - 1) return null;
-  const provider = model.slice(0, separatorIndex);
-  const modelId = model.slice(separatorIndex + 1);
-  return `${provider} · ${modelId}`;
-}
-
-function modelWithVersion(label: string, raw: string): string {
-  const versionMatch = /(\d+)(?:[-.](\d+))?/.exec(raw);
-  if (!versionMatch) return label;
-  const [, major, minor] = versionMatch;
-  return minor ? `${label} ${major}.${minor}` : `${label} ${major}`;
 }
 
 export type ModelTier = 'opus' | 'sonnet' | 'haiku' | 'other';
