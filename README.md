@@ -1,16 +1,10 @@
 # KPM
 
-KPM is a Mac app for planning and running work with coding agents. It runs Claude Code, Codex, and pi with your own settings, and gives your plans, tasks, pull requests, and tickets one place to live.
+When you do most of your work through coding agents across several repos, the work around the agents falls behind. You re-explain the project at the start of every chat. Design docs live in whichever repo you happened to be in, and a week later they no longer match the code. A PR merges and its ticket still says in progress. With two agents running at once, you lose track of which worktree has which change.
 
-## Why I built this
+KPM is a Mac app that keeps your plans, tasks, pull requests, and tickets in one place, and runs Claude Code, Codex, and pi against them with your own settings. It is built for one person working across several repos. If you work in one repo and don't use a tracker, Claude Code or Codex in a terminal is simpler.
 
-I do most of my work through agents, and the agents were fine. The work around them wasn't.
-
-I re-explained my project at the start of every chat. My design docs lived in whichever repo I happened to be in, and a week later they no longer matched the code. My tickets fell behind too. A PR would merge and the ticket still said in progress. When I ran two agents at once, I lost track of which worktree had which change.
-
-KPM is what I use to stop doing that by hand. It's built for one person working across several repos. If you work in one repo and don't use a tracker, Claude Code or Codex in a terminal is simpler.
-
-## What it does
+## What KPM does
 
 - Starts every chat from your plans, your tasks, and every repo the project touches. Old chats pick up where they left off.
 - Keeps plans in a project folder outside your repos, so they can't be committed by accident. Ask chat to check a doc against the code, and review its edits as a diff.
@@ -45,7 +39,7 @@ Update with `git pull && make app`. On first launch, KPM asks for keychain acces
 
 KPM is Electron, React, TypeScript, and SQLite, with the Claude Agent SDK, Codex SDK, and pi for AI features. Read [`docs/core-principles.md`](docs/core-principles.md) first. If you work with a coding agent, point it at [`AGENTS.md`](AGENTS.md). Run `npm run check` before opening a PR against `main`.
 
-Releases are SemVer tags on `main`, made with `make release:patch`, `make release:minor`, or `make release:major`. [`CONTEXT.md`](CONTEXT.md) defines the domain terms, and [`CHANGELOG.md`](CHANGELOG.md) has the history.
+Releases are SemVer tags on `main`, made with `make release:patch`, `make release:minor`, or `make release:major`. [`CONTEXT.md`](CONTEXT.md) defines the domain terms, and [`CHANGELOG.md`](CHANGELOG.md) lists what each release changed.
 
 ## License
 

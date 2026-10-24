@@ -1,6 +1,6 @@
 # KPM domain glossary
 
-The ubiquitous language for KPM. Use these terms exactly in code, comments, and design discussion. This file names the domain.
+These are KPM's domain terms. Use them exactly in code, comments, and design discussion.
 
 ## Generation
 
@@ -27,17 +27,17 @@ A **Default candidate** is a playbook `AgentCandidate` marked `useDefault: true`
 
 A **connected repo** is a git repository attached to a project (the `Repo` type / `repos` table). Chat reads its files freely; direct writes follow the user's own harness permissions. Agents write only in isolated worktrees during board execution.
 
-- A **publishing grant** (code name: `write grant`) lets KPM's own `git_push` and pull request tools act for a whole project. It is requested on the first push or pull request change and covers every chat in the project plus background action runs until the user turns it off. Direct file, shell, and git writes do not use it. The rule is P4.
-
-- The **main checkout** is the repo's canonical clone (`repos.path`), the working tree at the primary checkout.
+- The **main checkout** is the repo's own clone (`repos.path`).
 - The **active worktree** is a linked git worktree the user has switched the connected repo to (`repos.active_worktree_path`, null when none), set via the "Switch worktree" menu.
 - The **effective path** is where the connected repo currently resolves on disk: the active worktree if set, otherwise the main checkout. `resolveEffectiveRepoPath` (`src/shared/repoPath.ts`) is the one resolver both processes read it through. Every connected-repo read (chat tools, system prompts, workspace file access, add-dir scoping, branch watching) resolves through it so the switch is honored consistently.
 
+A **session worktree** (`dev_sessions.worktree_path`) is a throwaway worktree created for each board agent execution so its writes stay isolated. It never crosses with the active worktree: switching a connected repo's active worktree does not touch session worktrees, and board execution does not read `active_worktree_path`.
+
 **Branch facts** are the git questions KPM asks a checkout repeatedly, each with exactly one resolver in `src/main/services/repo/branchFacts.ts`: the current branch, the default branch, the base branch to compare against, whether a branch is off limits to an agent, and whether it has an upstream. "No branch" is always `null`.
 
-A **git write** is an invocation that moves a branch ref, locally or on a remote. All of them go through `src/main/services/repo/gitWrites.ts`. Each takes a **write authorization** saying why the caller may move the ref: `projectWriteGrant` (chat, which must hold or request the project's publishing grant) or `boardSession` (the user's own action on a session they started). Reads are not git writes and keep their own paths.
+A **publishing grant** (code name: `write grant`) lets KPM's own `git_push` and pull request tools act for a whole project. KPM requests it on the first push or pull request change, and it covers every chat in the project plus background action runs until the user turns it off. Direct file, shell, and git writes do not use it. The rule is P4.
 
-Distinct from a **session worktree** (`dev_sessions.worktree_path`): a throwaway worktree scaffolded per board agent execution for isolated writes. The two never cross. Switching a connected repo's active worktree does not touch session worktrees, and board execution does not read `active_worktree_path`.
+A **git write** is an invocation that moves a branch ref, locally or on a remote. All of them go through `src/main/services/repo/gitWrites.ts`. Each takes a **write authorization** saying why the caller may move the ref: `projectWriteGrant` (chat, which must hold or request the project's publishing grant) or `boardSession` (the user's own action on a session they started). Reads are not git writes and keep their own paths.
 
 ## Work Brief and Repository Scope
 
@@ -61,11 +61,11 @@ Staging and draining are two adjacent owners, and nothing else drives a deletion
 - `removePlanItem` (`db/domain/PlanItemRemoval.ts`) **stages**: every item about to disappear gets a deletion queued in the same unit of work as the delete.
 - The **deletion drain** (`db/domain/TrackerDeletionDrain.ts`) **describes and drains**: `describeDeletions` attaches each row's current tracker state for review, `drainDeletions` deletes the approved rows and clears them from the queue. A row that fails keeps its place with the error recorded, so the next drain retries it.
 
-A deletion needs no issue type, plan item, parent, or status mapping, so it is deliberately independent of everything the create/update export path resolves, so a failure there cannot take the staged deletions with it.
+A deletion needs no issue type, plan item, parent, or status mapping, so it is independent of everything the create/update export path resolves, and a failure there cannot take the staged deletions with it.
 
 ## Action
 
-An **Action** is a saved prompt plus how it starts and what it may do (`src/shared/actions.ts`, the `actions` table). Its **trigger** is `manual`, `interval`, or `event` (an `ActionTriggerEvent` such as `pr_changed`); manual invocation stays available under every trigger. Its **capability grant** (`ActionCapability`) is the whole of what a run may touch, and delivery follows from it: `report_finding` becomes a notification, `write_outputs` writes to the project folder's `outputs/actions/`, and `propose_*` grants go through the normal review flow. The tool runtime enforces the grant, so a prompt cannot talk its way past it.
+An **Action** is a saved prompt plus how it starts and what it may do (`src/shared/actions.ts`, the `actions` table). Its **trigger** is `manual`, `interval`, or `event` (an `ActionTriggerEvent` such as `pr_changed`); manual invocation stays available under every trigger. Its **capability grant** (`ActionCapability`) is the whole of what a run may touch, and delivery follows from it: `report_finding` becomes a notification, `write_outputs` writes to the project folder's `outputs/actions/`, and `propose_*` grants go through the normal review flow. The tool runtime enforces the grant, so prompt text cannot widen it.
 
 An **action run** is one execution, recorded in `action_runs`. Manual runs happen either in a real chat (proposals reach the usual review UI) or headless; automatic runs are always headless and happen only while the app is open (`ActionRunnerService`). An automatic trigger requires at least one output capability, or it would run and leave no trace.
 
@@ -77,7 +77,7 @@ A **terminal view** is the xterm.js instance rendered for a session. A view **at
 
 Output reaches a view only while it is attached. A detached session keeps appending to its scrollback, which is what makes the replay gapless: a chunk is either already in the scrollback handed over at attach or emitted afterwards, never both.
 
-Distinct from an **agent PTY** (`CliAgentSession`): a hidden, hook-instrumented CLI agent process in a session worktree, never attached to a view.
+An **agent PTY** (`CliAgentSession`) is a separate thing: a hidden CLI agent process, instrumented with hooks, that runs in a session worktree and never attaches to a view.
 
 ## Credentials
 

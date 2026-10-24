@@ -1,6 +1,6 @@
-# Core Principles
+# Core principles
 
-The commitments to consult when a design decision is contested. Each one takes a side on purpose: it says why KPM is built the way it is, then which way to lean. Principles name no files, tools, or settings; the mechanisms that enforce them are the invariants in [`AGENTS.md`](../AGENTS.md), which cite them as (P1)…(P10).
+These principles settle a design decision when people disagree on it. Each says why KPM is built the way it is and which way to lean. The invariants in [`AGENTS.md`](../AGENTS.md) enforce them and cite them as (P1) to (P10), so the principles themselves name no files, tools, or settings.
 
 ## Product
 
@@ -15,7 +15,7 @@ KPM is where one developer goes to know what to do next, why it matters, and whe
 
 ### 2. Plans stay out of repos
 
-Plans, notes, and project context belong to KPM, not to the code they describe. They never live as files inside a connected repo, so they can't be committed by accident and need no ignore rules. KPM is connected to repos, not embedded in them.
+Plans, notes, and project context belong to KPM, not to the code they describe. They never live as files inside a connected repo, so they can't be committed by accident and need no ignore rules.
 
 **Lean toward:** keeping every planning artifact in KPM's own storage.
 **Lean away from:** plan files, exports, or tool folders written into a working tree.
@@ -24,7 +24,7 @@ Plans, notes, and project context belong to KPM, not to the code they describe. 
 
 ### 3. Grounded in the whole project
 
-The chat is a thinking partner that starts from the project's real state: the live plan, the project context, and every connected repo. The developer rarely asks for something in the abstract; they ask the AI to think alongside them with the project in view. Work often spans several repos, and KPM is the one place that sees them together. A tracker can link tickets but can't tell you that a frontend change depends on a migration that depends on an API change.
+Chat starts from the project's real state: the live plan, the project context, and every connected repo. The developer rarely asks for something in the abstract; they ask the AI to think alongside them with the project in view. Work often spans several repos, and KPM is the one place that sees them together. A tracker can link tickets but can't tell you that a frontend change depends on a migration that depends on an API change.
 
 **Lean toward:** deeper grounding, and making a multi-repo effort legible from one place.
 **Lean away from:** chat that starts cold, treating chat as a mode separate from the plan, and assuming a single repo or language.
@@ -55,14 +55,14 @@ Read each setting from the tool that owns it; never approximate it. Each provide
 
 ### 6. Never silently substitute
 
-When KPM can't do what the developer chose, it stops and says so. A model that is no longer available is not swapped for another; an agent that can't run is not replaced behind the developer's back; a number KPM couldn't measure is shown as unknown, not guessed; a tracker deletion that failed keeps its place until it succeeds. A visible failure costs a moment. A silent substitution costs trust in everything else KPM reports.
+When KPM can't do what the developer chose, it stops and says so. A model that is no longer available is not swapped for another; an agent that can't run is not replaced behind the developer's back; a number KPM couldn't measure is shown as unknown, not guessed; a tracker deletion that failed keeps its place until it succeeds. A visible failure costs the developer a moment; a silent substitution makes them doubt everything else KPM reports.
 
 **Lean toward:** explicit failure with a clear way to recover.
 **Lean away from:** fallbacks that change what the developer asked for without telling them.
 
 ---
 
-### 7. Automation is a lifecycle, not a prompt
+### 7. Automation runs a bounded lifecycle
 
 Anything KPM runs on its own (an agent working a task, a background check, a scheduled action) has a beginning, a bounded middle, and a named end. Its state is persisted, so it survives restarts, stops, and resumes. Every loop has a limit, so none runs forever. Agents write in isolation, so the developer's own branches are untouched until they merge, and work can be reviewed by a different agent than the one that wrote it. Agents are interchangeable. The sequence is something the developer chooses and configures; the safety rails stay the same whatever they choose.
 
@@ -75,7 +75,7 @@ Anything KPM runs on its own (an agent working a task, a background check, a sch
 
 KPM has its own references, syntax, and local-only fields. None of it leaks to an external system. Every export translates internal references into readable text and drops local-only fields before anything is sent. A ticket should never contain KPM internals.
 
-**The rule:** if it crosses an export boundary, it is translated. No exceptions.
+**The rule:** everything that crosses an export boundary is translated, with no exceptions.
 
 ---
 

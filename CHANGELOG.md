@@ -1,17 +1,13 @@
 # Changelog
 
-Release process: see Releases in the [README](README.md).
+Each release lists its user-facing changes under four headings:
 
-## Categories
-
-Each release groups changes into:
-
-- **New**: net-new user-facing features
-- **Improved**: enhancements to existing features
+- **New**: features that didn't exist before
+- **Improved**: changes to existing features
 - **Fixed**: bug fixes
 - **Removed**: features taken out
 
-Internal-only changes (refactors, dependency bumps, CI, docs) are intentionally excluded from release notes. See the [git log](https://github.com/kennymatsudo/kpm/commits/main) for the full history.
+Refactors, dependency bumps, CI, and docs changes are left out. The [git log](https://github.com/kennymatsudo/kpm/commits/main) has every change. Releases are cut as described under Contributing in the [README](README.md).
 
 ## Unreleased
 

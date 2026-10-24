@@ -1,6 +1,6 @@
-# KPM Feature Index
+# KPM feature index
 
-An index of what a user can do in KPM and where the code lives. Read the code for behavior, [`core-principles.md`](core-principles.md) for why, and `src/**/AGENTS.md` for conventions. When you add a product surface, add one line under its area (feature, what the user can do, owning path).
+What a user can do in KPM and where the code lives. Each line names a feature, what the user can do with it, and the paths that own it. Add a line under its area when you add a product surface.
 
 ## App shell
 
@@ -20,12 +20,12 @@ An index of what a user can do in KPM and where the code lives. Read the code fo
 - **Work Brief and Repository Scope**: edit title, description, intent, and acceptance criteria as one revisioned brief; only the description reaches Jira or Linear. `src/shared/workBrief.ts`, `src/renderer/components/planning/WorkBriefEditor.tsx`
 - **Relations**: depend on, block, or relate items through chat; there is no dedicated relation editor. `src/main/db/repositories/impl/PlanRelationRepository.ts`, `src/main/kpmTools/tools/relations.ts`
 - **Board**: kanban by status category; drag to change status, drag to In Progress to start an agent. `src/renderer/components/board-view/`
-- **Proposed changes and approval**: everything chat proposes is queued for review or auto-applied per setting (`chat_approval_mode`). `src/renderer/stores/proposedChangeDisposal.ts`, `src/renderer/components/planning/PendingActionsPanel.tsx`
+- **Proposed changes and approval**: everything chat proposes is queued for review or auto-applied per setting (`chat_approval_mode`); playbook changes always queue. `src/renderer/stores/proposedChangeDisposal.ts`, `src/renderer/components/planning/PendingActionsPanel.tsx`
 - **Plan references (`@plan/<uuid>`)**: chips in markdown, rewritten at every export boundary. `src/shared/planRefs.ts`, `src/main/documents/exportBoundary.ts`, `src/renderer/components/plan-ref/`
 
 ## Chat
 
-- **Chat sessions**: multiple tabbed chats per project, each with its own provider (Claude, Codex, or pi), model, and effort; live follow-ups (Claude SDK input, Codex active-turn steering, pi queued turns), image and file attachments, `/` slash commands (Claude only), Codex and pi cannot read PDFs. `src/main/services/streaming/StreamingSessionService.ts`, `src/main/claude/streaming/StreamingSession.ts`, `src/main/codex/CodexChatSession.ts`, `src/main/pi/PiChatSession.ts`, `src/renderer/components/chat/`
+- **Chat sessions**: multiple tabbed chats per project, each with its own provider (Claude, Codex, or pi), model, and effort; live follow-ups (Claude SDK input, Codex active-turn steering, pi queued turns), image and file attachments, `/` slash commands (Claude only); Codex and pi can't read PDFs. `src/main/services/streaming/StreamingSessionService.ts`, `src/main/claude/streaming/StreamingSession.ts`, `src/main/codex/CodexChatSession.ts`, `src/main/pi/PiChatSession.ts`, `src/renderer/components/chat/`
 - **Model catalog**: model lists fetched at launch with a built-in fallback. `src/main/providers/modelCatalog.ts`, `src/shared/providerCapabilities.ts`
 - **Focused resources**: pin files, folders, repos, and plan items to the next message. `src/main/chat/prompts/focusedResources.ts`, `src/renderer/stores/project/uiSlice.ts`
 - **System prompt and overrides**: override any registry prompt in Settings, Prompts; optionally include `~/.claude/CLAUDE.md`. `src/main/chat/prompts/`, `src/main/services/core/PromptOverrideService.ts`
@@ -46,9 +46,9 @@ An index of what a user can do in KPM and where the code lives. Read the code fo
 ## Board execution
 
 - **Dev sessions**: Play runs an implementation agent in an isolated worktree; detail pane has Activity, Changes, and Review tabs; attach an outside worktree or link an existing PR (chat does both through `propose_board_change`). Backends: Claude, Codex, pi, and Gemini CLI. `src/main/services/repo/DevSessionService.ts`, `src/main/services/agents/`, `src/renderer/components/board-view/`
-- **Board Claude session class**: `ClaudeSdkSession` is the board agent session, not chat. `src/main/services/agents/ClaudeSdkSession.ts`
+- **Board Claude session class**: `ClaudeSdkSession` runs board agents; chat uses `StreamingSession`. `src/main/services/agents/ClaudeSdkSession.ts`
 - **Execution playbooks**: ordered steps with agent fallback chains, review loops, and pause gates; built-ins plus custom, edited in Settings, Playbooks. `src/shared/playbooks.ts`, `src/main/services/core/PlaybookService.ts`, `src/main/services/agents/playbookStepRunner.ts`, `src/renderer/components/settings/PlaybooksSettings.tsx`
-- **Drafting playbooks from chat**: chat creates or changes a playbook with `read_config` and `propose_config_change`; always queued for review, approve or reject only, and there is no delete. The tools are hidden from doc focus mode and unreachable from action runs. Steps written by chat use prompt text only, because skills are found only in `~/.claude/skills`, load differently per provider, and are read from disk at step start, which would break the run's snapshot. `src/shared/configKinds.ts`, `src/main/kpmTools/tools/config.ts`, `src/renderer/components/settings/PendingConfigPanel.tsx`
+- **Drafting playbooks from chat**: chat creates or changes a playbook with `read_config` and `propose_config_change`. Changes always queue for review (approve or reject, no delete), and the tools are unavailable in doc focus mode and action runs. Chat-written steps use prompt text only, because skills live only in `~/.claude/skills`, load differently per provider, and are read from disk at step start, which would break the run's snapshot. `src/shared/configKinds.ts`, `src/main/kpmTools/tools/config.ts`, `src/renderer/components/settings/PendingConfigPanel.tsx`
 - **Automated review loop**: reviewer findings go back to the implementer; Run Review triggers one on demand. `src/main/services/agents/autoReview.ts`, `reviewOutputContract.ts`
 - **Pull requests**: create (draft by default) or link a PR and generate its title and description; chat finds and reads PRs and edits them after the publishing grant. `src/main/services/repo/GitHubService.ts`, `src/main/kpmTools/tools/github.ts`, `github-writes.ts`, `git-push.ts`, `src/renderer/components/development/`
 - **PR review threads**: polled threads are assessed and shown as a decision queue; replies are approved before posting. `src/main/services/repo/ReviewPollService.ts`, `ReviewAssessmentService.ts`, `src/renderer/components/development/ReviewTab.tsx`
