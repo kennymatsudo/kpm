@@ -34,6 +34,10 @@ export function getIgnoredPaths(repoRoot: string, relativePaths: string[]): Prom
       resolve(new Set(stdout.split('\n').filter(Boolean)));
     });
     proc.on('error', () => resolve(new Set()));
+    // git exits on the first path it refuses (e.g. one beyond a symlink) while
+    // a long list is still being written; without a listener the EPIPE is an
+    // uncaught exception in the main process.
+    proc.stdin.on('error', () => {});
     proc.stdin.write(relativePaths.join('\n'));
     proc.stdin.end();
   });

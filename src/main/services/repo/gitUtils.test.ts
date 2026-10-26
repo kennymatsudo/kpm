@@ -1,9 +1,9 @@
 import { execFileSync } from 'child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { afterEach, describe, expect, it } from 'vitest';
-import { findEnclosingGitRoot, getCommittedDiff, getDiff } from './gitUtils';
+import { findEnclosingGitRoot, getCommittedDiff, getDiff, getIgnoredPaths } from './gitUtils';
 
 function runGit(repoPath: string, args: string[]): string {
   return execFileSync('git', args, {
@@ -108,5 +108,25 @@ describe('findEnclosingGitRoot', () => {
   it('returns null when no repo exists up the tree', () => {
     const root = freshTempDir();
     expect(findEnclosingGitRoot(root)).toBeNull();
+  });
+});
+
+describe('getIgnoredPaths', () => {
+  const tempDirs: string[] = [];
+  afterEach(() => {
+    for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('resolves when git quits on a path beyond a symlink before reading a long list', async () => {
+    const repoPath = mkdtempSync(join(tmpdir(), 'git-ignored-'));
+    tempDirs.push(repoPath);
+    runGit(repoPath, ['init', '-b', 'main']);
+    mkdirSync(join(repoPath, 'real'));
+    symlinkSync(join(repoPath, 'real'), join(repoPath, 'linked'));
+
+    // Far more than a pipe buffer, so the write is still pending when git exits.
+    const filler = Array.from({ length: 20_000 }, (_, i) => `src/file-${i}.ts`);
+
+    await expect(getIgnoredPaths(repoPath, ['linked/inside.md', ...filler])).resolves.toBeInstanceOf(Set);
   });
 });

@@ -85,9 +85,16 @@ export function resolveGitRoot(startPath: string): string | null {
   return root;
 }
 
+/**
+ * Skips the children of a symlinked directory: git refuses a path beyond a
+ * symlink with a fatal error, which would drop the answers for the whole batch.
+ */
 function flattenNodes(nodes: FileNode[]): FileNode[] {
   const result: FileNode[] = [];
-  const walk = (ns: FileNode[]) => ns.forEach(n => { result.push(n); if (n.children) walk(n.children); });
+  const walk = (ns: FileNode[]) => ns.forEach(n => {
+    result.push(n);
+    if (n.children && !n.isSymlink) walk(n.children);
+  });
   walk(nodes);
   return result;
 }

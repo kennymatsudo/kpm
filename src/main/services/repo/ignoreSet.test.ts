@@ -171,6 +171,24 @@ describe('markIgnoredNodes', () => {
     expect(nodes[1].isIgnored).toBeUndefined();
   });
 
+  it('does not send paths inside a symlinked directory to git', async () => {
+    getIgnoredPathsMock.mockResolvedValue(new Set());
+
+    const nodes: FileNode[] = [
+      makeNode({
+        name: 'skills',
+        path: 'skills',
+        isDirectory: true,
+        isSymlink: true,
+        children: [makeNode({ name: 'SKILL.md', path: 'skills/SKILL.md', isDirectory: false })],
+      }),
+    ];
+
+    await markIgnoredNodes(nodes, '/repo', '/repo');
+
+    expect(getIgnoredPathsMock).toHaveBeenCalledWith('/repo', ['skills']);
+  });
+
   it('fails open without throwing when git is unavailable', async () => {
     getIgnoredPathsMock.mockResolvedValue(new Set());
 
