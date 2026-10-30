@@ -32,6 +32,7 @@ test.describe.serial('Command palette', () => {
     const input = window.getByPlaceholder('Type a command or search...');
     await expect(input).toBeVisible({ timeout: 3000 });
 
+    await input.fill('zzzznonexistent');
     await expect(window.getByText('No commands found')).toBeVisible();
 
     await window.keyboard.press('Escape');
@@ -44,8 +45,8 @@ test.describe.serial('Command palette', () => {
     const input = window.getByPlaceholder('Type a command or search...');
     await expect(input).toBeVisible({ timeout: 3000 });
 
-    // Click the backdrop (top-left corner of the viewport, outside the palette)
-    await window.mouse.click(10, 10);
+    // Click below the native title bar and outside the palette.
+    await window.locator('[cmdk-overlay]').click({ position: { x: 10, y: 80 } });
 
     await expect(input).not.toBeVisible();
   });

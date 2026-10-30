@@ -29,18 +29,17 @@ test.describe.serial('Keyboard shortcuts', () => {
     }
   });
 
-  test('shortcuts modal opens on button click and closes on escape', async ({ window }) => {
-    await window.getByRole('button', { name: 'Show keyboard shortcuts' }).click();
+  test('keyboard shortcuts open in settings and close on escape', async ({ window }) => {
+    await window.keyboard.press('Meta+,');
+    await window.getByRole('tab', { name: 'Keyboard Shortcuts' }).click();
 
-    await expect(window.getByText('Keyboard Shortcuts')).toBeVisible();
-    // Verify all 5 section headers are present (use heading role to avoid ambiguity)
-    await expect(window.getByRole('heading', { name: 'Navigation' })).toBeVisible();
-    await expect(window.getByRole('heading', { name: 'Quick Actions' })).toBeVisible();
-    await expect(window.getByRole('heading', { name: 'Plan Items' })).toBeVisible();
-    await expect(window.getByRole('heading', { name: 'Views' })).toBeVisible();
-    await expect(window.getByRole('heading', { name: 'Chat' })).toBeVisible();
+    await expect(window.getByRole('heading', { name: 'Keyboard Shortcuts' })).toBeVisible();
+    await expect(window.getByRole('heading', { name: 'Global' })).toBeVisible();
+    await expect(window.getByText('Toggle sidebar', { exact: true })).toBeVisible();
+    await expect(window.getByText('Create plan item', { exact: true })).toBeVisible();
+    await expect(window.getByText('Toggle terminal', { exact: true })).toBeVisible();
 
     await window.keyboard.press('Escape');
-    await expect(window.getByText('Keyboard Shortcuts')).not.toBeVisible();
+    await expect(window.getByRole('dialog', { name: 'Settings' })).not.toBeVisible();
   });
 });

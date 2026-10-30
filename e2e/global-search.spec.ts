@@ -64,7 +64,7 @@ test.describe.serial('Global search', () => {
     // Wait for debounce
     await window.waitForTimeout(400);
 
-    await expect(window.getByText('No results found')).toBeVisible();
+    await expect(window.getByText('No results', { exact: true })).toBeVisible();
     await window.keyboard.press('Escape');
     await expect(input).not.toBeVisible();
   });

@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import type { StatusCategory } from '../src/shared/types';
 import { expect } from './fixtures';
 
 /**
@@ -11,8 +12,8 @@ import { expect } from './fixtures';
  * Works both from empty state (no projects) and when projects already exist.
  */
 export async function createProject(window: Page, name: string): Promise<void> {
-  // Check if the "New Project" button exists (no project state)
-  const newProjectButton = window.getByTestId('new-project-button');
+  // The welcome screen exposes project creation while the sidebar is collapsed.
+  const newProjectButton = window.getByRole('button', { name: 'New project', exact: true });
   if (await newProjectButton.isVisible({ timeout: 1000 }).catch(() => false)) {
     await newProjectButton.click();
   } else {
@@ -143,15 +144,15 @@ export async function switchToProject(window: Page, projectName: string): Promis
 }
 
 /**
- * Switches to a main view (Plan or Develop).
+ * Switches between the workspace and execution board.
  */
-export async function switchMainView(window: Page, view: 'Plan' | 'Develop'): Promise<void> {
+export async function switchMainView(window: Page, view: 'Execute' | 'Workspace'): Promise<void> {
   await window.getByRole('button', { name: view }).click();
 }
 
 export type StatusLabel = 'Not Started' | 'In Progress' | 'In Review' | 'Done' | 'Blocked' | 'Canceled';
 
-const STATUS_CATEGORY_BY_LABEL: Record<StatusLabel, string> = {
+const STATUS_CATEGORY_BY_LABEL: Record<StatusLabel, StatusCategory> = {
   'Not Started': 'not_started',
   'In Progress': 'in_progress',
   'In Review': 'in_review',
@@ -171,30 +172,21 @@ export async function setItemStatus(
   status: StatusLabel
 ): Promise<void> {
   await window.evaluate(async ({ title, statusCategory }) => {
-    const w = window as unknown as { api: {
-      projects: { list: () => Promise<{ id: string }[]> };
-      plan: {
-        listItems: (projectId: string) => Promise<{ id: string; title: string }[]>;
-        executeActions: (
-          projectId: string,
-          actions: { type: string; item_id: string; updates: { status_category: string } }[]
-        ) => Promise<unknown>;
-      };
-    } };
+    const api = globalThis.window.api;
 
-    const projects = await w.api.projects.list();
+    const projects = await api.projects.list();
     if (projects.length === 0) throw new Error('No projects found');
     const projectId = projects[0].id;
 
-    const items = await w.api.plan.listItems(projectId);
+    const items = await api.plan.listItems({ projectId });
     const item = items.find((i) => i.title === title);
     if (!item) throw new Error(`Item "${title}" not found`);
 
-    await w.api.plan.executeActions(projectId, [{
+    await api.plan.executeActions({ projectId, actions: [{
       type: 'update_item',
       item_id: item.id,
       updates: { status_category: statusCategory },
-    }]);
+    }] });
   }, { title: itemTitle, statusCategory: STATUS_CATEGORY_BY_LABEL[status] });
 
   await window.reload();
@@ -301,7 +293,8 @@ export async function deletePlanItem(window: Page, itemTitle: string): Promise<v
   // Click the danger-styled Delete button in the portal dropdown menu
   await window.locator('.dropdown-item-danger').click();
   // Confirm deletion in the confirmation dialog
-  const confirmButton = window.getByRole('button', { name: 'Delete this item permanently' });
+  const confirmButton = window.getByRole('alertdialog', { name: 'Delete 1 Item?' })
+    .getByRole('button', { name: 'Delete 1 Item', exact: true });
   await expect(confirmButton).toBeVisible();
   await confirmButton.click();
   // Verify item is gone
@@ -319,31 +312,23 @@ export async function reparentItem(
   parentTitle: string
 ): Promise<void> {
   await window.evaluate(async ({ child, parent }) => {
-    const w = window as unknown as { api: {
-      projects: {
-        list: () => Promise<{ id: string }[]>;
-      };
-      plan: {
-        listItems: (projectId: string) => Promise<{ id: string; title: string }[]>;
-        executeActions: (projectId: string, actions: { type: string; item_id: string; new_parent_id: string | null }[]) => Promise<unknown>;
-      };
-    } };
+    const api = globalThis.window.api;
 
-    const projects = await w.api.projects.list();
+    const projects = await api.projects.list();
     if (projects.length === 0) throw new Error('No projects found');
     const projectId = projects[0].id;
 
-    const items = await w.api.plan.listItems(projectId);
+    const items = await api.plan.listItems({ projectId });
     const childItem = items.find(i => i.title === child);
     const parentItem = items.find(i => i.title === parent);
     if (!childItem) throw new Error(`Child item "${child}" not found`);
     if (!parentItem) throw new Error(`Parent item "${parent}" not found`);
 
-    await w.api.plan.executeActions(projectId, [{
+    await api.plan.executeActions({ projectId, actions: [{
       type: 'reparent',
       item_id: childItem.id,
       new_parent_id: parentItem.id,
-    }]);
+    }] });
   }, { child: childTitle, parent: parentTitle });
 
   // Reload to ensure the Zustand store picks up the DB change

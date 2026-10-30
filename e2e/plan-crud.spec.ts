@@ -59,7 +59,7 @@ test.describe.serial('Plan CRUD operations', () => {
     await titleInput.clear();
     await titleInput.fill('Updated Feature');
 
-    const descriptionInput = window.getByPlaceholder('Add a description... (Markdown supported)');
+    const descriptionInput = window.getByRole('textbox', { name: 'Description' });
     await descriptionInput.fill('This is a test description for the item.');
 
     await window.getByRole('button', { name: 'Save Changes' }).click();
@@ -69,7 +69,7 @@ test.describe.serial('Plan CRUD operations', () => {
 
     // Re-open to verify description persisted
     await openItemEditPanel(window, 'Updated Feature');
-    const descriptionInput2 = window.getByPlaceholder('Add a description... (Markdown supported)');
+    const descriptionInput2 = window.getByRole('textbox', { name: 'Description' });
     await expect(descriptionInput2).toHaveValue('This is a test description for the item.');
     await window.getByRole('button', { name: 'Close' }).click();
   });
@@ -117,7 +117,7 @@ test.describe.serial('Plan CRUD operations', () => {
 
   test('delete project returns to empty state', async ({ window }) => {
     await deleteProject(window, PROJECT_NAME);
-    await expect(window.getByText('No project open')).toBeVisible();
+    await expect(window.getByRole('heading', { name: 'KPM', exact: true })).toBeVisible();
 
     // Re-create project so afterAll doesn't error trying to delete
     // Actually just let afterAll catch the error - project is already gone

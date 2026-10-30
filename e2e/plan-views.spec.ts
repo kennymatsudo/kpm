@@ -32,19 +32,20 @@ test.describe.serial('Board view and its toolbar', () => {
     }
   });
 
-  test('switch between Plan and Develop main views', async ({ window }) => {
-    const planButton = window.getByRole('button', { name: 'Plan' });
-    const developButton = window.getByRole('button', { name: 'Develop' });
+  test('switch between Execute and Workspace main views', async ({ window }) => {
+    const executeButton = window.getByRole('button', { name: 'Execute' });
+    const workspaceButton = window.getByRole('button', { name: 'Workspace' });
 
-    await expect(planButton).toBeVisible();
-    await expect(developButton).toBeVisible();
+    await expect(executeButton).toBeVisible();
+    await expect(workspaceButton).toBeVisible();
 
-    // Switch to Develop view
-    await switchMainView(window, 'Develop');
-    await expect(window.getByText('Sessions', { exact: true })).toBeVisible();
+    // Switch to the workspace
+    await switchMainView(window, 'Workspace');
+    await expect(window.getByTestId('board-view')).not.toBeVisible();
+    await expect(workspaceButton).toHaveAttribute('aria-pressed', 'true');
 
-    // Switch back to Plan view
-    await switchMainView(window, 'Plan');
+    // Switch back to the execution board
+    await switchMainView(window, 'Execute');
     await expect(planCard(window, 'Authentication Feature')).toBeVisible();
   });
 
@@ -85,10 +86,10 @@ test.describe.serial('Board view and its toolbar', () => {
     const statusFilterButton = window.getByRole('button', { name: 'Status (3)' });
     await statusFilterButton.click();
 
-    // The status dropdown is rendered via portal — use last() to avoid matching card status text
-    const doneCheckbox = window.getByText('Done').last();
+    const doneCheckbox = window.getByRole('button', { name: 'Done', exact: true });
     await doneCheckbox.click();
-    await window.keyboard.press('Escape');
+    const statusFilterButtonFiltered = window.getByRole('button', { name: /Status.*2\/3/ });
+    await statusFilterButtonFiltered.click();
 
     // Done item should be hidden
     await expect(planCard(window, 'User Dashboard')).not.toBeVisible();
@@ -96,11 +97,10 @@ test.describe.serial('Board view and its toolbar', () => {
     await expect(planCard(window, 'Payment Integration')).toBeVisible();
 
     // Re-enable Done status — button now shows filtered count
-    const statusFilterButtonFiltered = window.getByRole('button', { name: /Status.*2\/3/ });
     await statusFilterButtonFiltered.click();
-    const doneCheckbox2 = window.getByText('Done').last();
+    const doneCheckbox2 = window.getByRole('button', { name: 'Done', exact: true });
     await doneCheckbox2.click();
-    await window.keyboard.press('Escape');
+    await statusFilterButton.click();
 
     await expect(planCard(window, 'User Dashboard')).toBeVisible();
   });

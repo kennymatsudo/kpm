@@ -4,6 +4,7 @@ import { chromium } from 'playwright';
 import { findLatestBuild, parseElectronApp } from 'electron-playwright-helpers';
 import { spawn } from 'child_process';
 import type { ChildProcess } from 'child_process';
+import { once } from 'node:events';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -160,9 +161,13 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       // Cleanup after all tests in this worker are done
       console.log('Cleaning up Electron...');
       await browser.close();
-      electronProcess.kill();
+      if (electronProcess.exitCode === null && electronProcess.signalCode === null) {
+        const closed = once(electronProcess, 'close');
+        electronProcess.kill();
+        await closed;
+      }
 
-      // Clean up test data
+      // Electron must finish writing its profile before the directory is removed.
       if (fs.existsSync(testDataPath)) {
         fs.rmSync(testDataPath, { recursive: true });
       }

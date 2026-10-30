@@ -17,7 +17,7 @@ test.describe.serial('Project operations and navigation', () => {
   });
 
   test('no project shows welcome message', async ({ window }) => {
-    await expect(window.getByText('No project open')).toBeVisible();
+    await expect(window.getByRole('heading', { name: 'KPM', exact: true })).toBeVisible();
   });
 
   test('create project', async ({ window }) => {
@@ -112,15 +112,15 @@ test.describe.serial('Project operations and navigation', () => {
 
     await expect(window.getByText('Enter Key Test')).toBeVisible();
 
-    // Clean up the second project - navigate to Plan view first
-    await window.getByRole('button', { name: 'Plan' }).click();
+    // Clean up the second project - navigate to the execution board first
+    await window.getByRole('button', { name: 'Execute' }).click();
     await deleteProject(window);
   });
 
   test('tab navigation works through form elements', async ({ window }) => {
     // After deleting "Enter Key Test", app auto-switches to "Renamed Project"
-    // Navigate to Plan view to see the items
-    await window.getByRole('button', { name: 'Plan' }).click();
+    // Navigate to the execution board to see the items
+    await window.getByRole('button', { name: 'Execute' }).click();
     await expect(window.getByTestId('board-view')).toBeVisible();
 
     await openItemEditPanel(window, 'Test Item');
@@ -132,8 +132,8 @@ test.describe.serial('Project operations and navigation', () => {
 
     await window.keyboard.press('Tab');
 
-    const descriptionInput = window.getByPlaceholder('Add a description... (Markdown supported)');
-    await expect(descriptionInput).toBeFocused();
+    const intentInput = window.getByPlaceholder('What should this work accomplish?');
+    await expect(intentInput).toBeFocused();
 
     await window.keyboard.press('Escape');
   });
@@ -155,8 +155,8 @@ test.describe.serial('Project operations and navigation', () => {
     // The Delete button in the context menu is a plain <button> with class dropdown-item-danger
     await window.locator('.dropdown-item-danger').click();
 
-    await expect(window.getByText('Delete Item?')).toBeVisible();
-    await expect(window.getByRole('button', { name: 'Delete this item permanently' })).toBeVisible();
+    await expect(window.getByRole('alertdialog', { name: 'Delete 1 Item?' })).toBeVisible();
+    await expect(window.getByRole('button', { name: 'Delete 1 Item', exact: true })).toBeVisible();
     await expect(window.getByRole('button', { name: /Cancel/ })).toBeVisible();
 
     await window.getByRole('button', { name: /Cancel/ }).click();
@@ -169,12 +169,12 @@ test.describe.serial('Project operations and navigation', () => {
 
     // Verify we can switch to the other project via the TopBar menu
     await switchToProject(window, 'Renamed Project');
-    await window.getByRole('button', { name: 'Plan' }).click();
+    await window.getByRole('button', { name: 'Execute' }).click();
     await expect(window.getByTestId('board-view')).toBeVisible();
 
     // Switch back to Project B
     await switchToProject(window, 'Project B');
-    await window.getByRole('button', { name: 'Plan' }).click();
+    await window.getByRole('button', { name: 'Execute' }).click();
     await expect(window.getByTestId('board-view')).toBeVisible();
 
     // Clean up — delete Project B first (currently active)
@@ -182,6 +182,6 @@ test.describe.serial('Project operations and navigation', () => {
     // After deleting, app auto-switches to Renamed Project
     await deleteProject(window, 'Renamed Project');
 
-    await expect(window.getByText('No project open')).toBeVisible();
+    await expect(window.getByRole('heading', { name: 'KPM', exact: true })).toBeVisible();
   });
 });
