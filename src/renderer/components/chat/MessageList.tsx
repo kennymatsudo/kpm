@@ -494,13 +494,15 @@ export const MessageRow = memo(function MessageRow({
   onCancelQueued,
   /** Only the newest turn animates in; see `.chat-message-enter`. */
   entering,
-  changesFor,
+  changesSessionId,
+  changesClientMessageIds,
 }: {
   message: Message;
   onCancelQueued?: (clientMessageId: string) => void;
   entering?: boolean;
   /** The turn this reply answers; set only where the changes card belongs. */
-  changesFor?: { chatSessionId: string; clientMessageIds: string[] };
+  changesSessionId?: string;
+  changesClientMessageIds?: string[];
 }) {
   const { openChanges } = useChangesTab();
   const isUser = message.role === 'user';
@@ -541,10 +543,10 @@ export const MessageRow = memo(function MessageRow({
           timestamp={message.timestamp}
           model={message.model}
         >
-          {changesFor?.clientMessageIds.map((clientMessageId) => (
+          {changesSessionId && changesClientMessageIds?.map((clientMessageId) => (
             <TurnChangesCard
               key={clientMessageId}
-              chatSessionId={changesFor.chatSessionId}
+              chatSessionId={changesSessionId}
               clientMessageId={clientMessageId}
               onOpen={openChanges}
             />
@@ -681,14 +683,16 @@ const VirtualizedMessageRow = memo(function VirtualizedMessageRow({
   onHeightChange,
   onCancelQueued,
   entering,
-  changesFor,
+  changesSessionId,
+  changesClientMessageIds,
 }: {
   message: Message;
   top: number;
   onHeightChange: (id: string, height: number) => void;
   onCancelQueued?: (clientMessageId: string) => void;
   entering?: boolean;
-  changesFor?: { chatSessionId: string; clientMessageIds: string[] };
+  changesSessionId?: string;
+  changesClientMessageIds?: string[];
 }) {
   const rowRef = useRef<HTMLDivElement>(null);
 
@@ -716,7 +720,8 @@ const VirtualizedMessageRow = memo(function VirtualizedMessageRow({
         message={message}
         onCancelQueued={onCancelQueued}
         entering={entering}
-        changesFor={changesFor}
+        changesSessionId={changesSessionId}
+        changesClientMessageIds={changesClientMessageIds}
       />
     </div>
   );
@@ -1087,11 +1092,8 @@ export function MessageList({
               onHeightChange={handleMessageHeightChange}
               onCancelQueued={onCancelQueued}
               entering={message.id === newestMessageId}
-              changesFor={
-                viewedSessionId && turnCards.has(message.id)
-                  ? { chatSessionId: viewedSessionId, clientMessageIds: turnCards.get(message.id)! }
-                  : undefined
-              }
+              changesSessionId={viewedSessionId ?? undefined}
+              changesClientMessageIds={turnCards.get(message.id)}
             />
           ))}
         </div>
