@@ -1235,14 +1235,15 @@ describe('136_usage_cumulative_token_snapshots', () => {
   });
 });
 
-describe('fork_002_turn_snapshot_incomplete', () => {
-  it('adds a nullable incomplete column to chat_turn_snapshots', () => {
+describe('137_diff_review', () => {
+  it('creates the diff review tables with a nullable incomplete column', () => {
     const db = new BetterSqlite3(':memory:');
     try {
       runMigrations(db);
       const cols = db.prepare("PRAGMA table_info('chat_turn_snapshots')").all() as { name: string; notnull: number }[];
       expect(cols.find((c) => c.name === 'incomplete')).toMatchObject({ notnull: 0 });
-      expect(db.prepare('SELECT id FROM schema_migrations WHERE name = ?').get('fork_002_turn_snapshot_incomplete')).toEqual({ id: 9002 });
+      expect(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'diff_review_comments'").get()).toBeTruthy();
+      expect(db.prepare('SELECT id FROM schema_migrations WHERE name = ?').get('137_diff_review')).toEqual({ id: 1137 });
     } finally {
       db.close();
     }

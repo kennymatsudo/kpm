@@ -4955,9 +4955,8 @@ export const migrations: Migration[] = [
     },
   },
   {
-    // Fork-only range (9000+) so upstream's sequential ids never collide.
-    id: 9001,
-    name: 'fork_001_diff_review',
+    id: 1137,
+    name: '137_diff_review',
     up: (db: BetterSqliteDatabase) => {
       db.exec(`
         CREATE TABLE IF NOT EXISTS chat_turn_snapshots (
@@ -4971,6 +4970,7 @@ export const migrations: Migration[] = [
           after_tree TEXT,
           files_json TEXT,
           error TEXT,
+          incomplete INTEGER,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           UNIQUE (chat_session_id, client_message_id, root_path)
         );
@@ -4993,13 +4993,6 @@ export const migrations: Migration[] = [
         CREATE INDEX IF NOT EXISTS idx_diff_review_comments_session
           ON diff_review_comments(chat_session_id, created_at);
       `);
-    },
-  },
-  {
-    id: 9002,
-    name: 'fork_002_turn_snapshot_incomplete',
-    up: (db: BetterSqliteDatabase) => {
-      db.exec('ALTER TABLE chat_turn_snapshots ADD COLUMN incomplete INTEGER');
     },
   },
 ];
