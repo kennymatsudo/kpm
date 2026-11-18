@@ -141,12 +141,79 @@ describe('TurnSnapshotService', () => {
     expect(overlap).toBe(false);
   });
 
-  it('listTurnChanges skips open turns and empty turns', async () => {
+  it('listTurnChanges skips open turns', async () => {
     const { service } = setup({ snapshots: { '/r1': ['b1', 'a1', 'b2'] } });
     await service.beginTurn(turn);
     await service.endTurn('s', { clientMessageId: 'm2' });
     const result = service.listTurnChanges('s');
     expect(result.ok && result.data.map((t) => t.clientMessageId)).toEqual(['m1']);
+  });
+
+  it('listTurnChanges skips a finished turn with zero files', async () => {
+    const { service, repo } = setup({ snapshots: { '/r1': ['b', 'a'] } });
+    await service.beginTurn(turn);
+    await service.endTurn('s');
+    repo.finish(repo.rows[0].id, 'a', []);
+    const result = service.listTurnChanges('s');
+    expect(result).toEqual({ ok: true, data: [] });
+  });
+
+  it('beginTurn while a turn is open ends it first', async () => {
+    const { service, repo } = setup({ snapshots: { '/r1': ['b1', 'a1', 'b2'] } });
+    const finish = vi.spyOn(repo, 'finish');
+    await service.beginTurn(turn);
+    await service.beginTurn({ ...turn, clientMessageId: 'm2' });
+    expect(finish).toHaveBeenCalledTimes(1);
+    expect(repo.rows.map((r) => [r.clientMessageId, r.beforeTree])).toEqual([
+      ['m1', 'b1'],
+      ['m2', 'b2'],
+    ]);
+  });
+
+  it('a second endTurn is a no-op', async () => {
+    const { service, git, emitted } = setup({ snapshots: { '/r1': ['b', 'a'] } });
+    await service.beginTurn(turn);
+    await service.endTurn('s');
+    await service.endTurn('s');
+    expect(git.snapshotRoot).toHaveBeenCalledTimes(2);
+    expect(emitted).toHaveLength(1);
+  });
+
+  it('a rejected end step does not block later calls for the session', async () => {
+    const { service, repo } = setup({ snapshots: { '/r1': ['b1', 'FAIL', 'b2', 'a2'] } });
+    await service.beginTurn(turn);
+    await service.endTurn('s');
+    await service.beginTurn({ ...turn, clientMessageId: 'm2' });
+    await service.endTurn('s');
+    expect(repo.rows.find((r) => r.clientMessageId === 'm2')?.afterTree).toBe('a2');
+  });
+
+  it('opens the next turn from the after tree when diffing fails', async () => {
+    const { service, repo, git, emitted } = setup({ snapshots: { '/r1': ['b', 'a'] } });
+    await service.beginTurn(turn);
+    git.diffTrees.mockRejectedValueOnce(new Error('diff boom'));
+    await service.endTurn('s', { clientMessageId: 'm2' });
+    expect(repo.rows.find((r) => r.clientMessageId === 'm1')?.error).toBe('diff boom');
+    expect(repo.rows.find((r) => r.clientMessageId === 'm2')?.beforeTree).toBe('a');
+    expect(emitted[0].unavailableReason).toBe('diff boom');
+  });
+
+  it('keeps going when recording a failure throws', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { service, repo, git, emitted } = setup({
+      roots: ['/bad', '/ok'],
+      snapshots: { '/bad': ['b', 'FAIL'], '/ok': ['b', 'a'] },
+    });
+    vi.spyOn(repo, 'fail').mockImplementation(() => {
+      throw new Error('db down');
+    });
+    await service.beginTurn(turn);
+    await expect(service.endTurn('s', { clientMessageId: 'm2' })).resolves.toBeUndefined();
+    expect(git.snapshotRoot).toHaveBeenCalled();
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0].files.map((f) => f.path)).toEqual(['a.ts']);
+    expect(repo.rows.some((r) => r.clientMessageId === 'm2' && r.rootPath === '/ok')).toBe(true);
+    warn.mockRestore();
   });
 
   it('getDiff chat scope diffs the first before to the last after', async () => {

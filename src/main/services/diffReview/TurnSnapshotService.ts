@@ -105,8 +105,23 @@ export function createTurnSnapshotService(deps: TurnSnapshotServiceDeps) {
 
     const outcomes = await Promise.all(
       turn.roots.map(async (root) => {
+        const recordFailure = (message: string): void => {
+          try {
+            snapshots.fail(root.rowId, message);
+          } catch (dbError) {
+            console.warn(`[TurnSnapshot] could not record failure for ${root.rootPath}: ${messageOf(dbError)}`);
+          }
+        };
+        let after: Awaited<ReturnType<typeof snapshot>>;
         try {
-          const after = await snapshot(root.rootPath);
+          after = await snapshot(root.rootPath);
+        } catch (error) {
+          const message = messageOf(error);
+          recordFailure(message);
+          return { root, afterTree: null, files: [] as TurnFileChange[], error: message };
+        }
+        // The after tree stays usable as the next turn's start even when diffing or saving fails.
+        try {
           let files: TurnFileChange[] = [];
           if (after.tree !== root.beforeTree) {
             const patch = await git.diffTrees(after, root.beforeTree, after.tree, options);
@@ -117,8 +132,8 @@ export function createTurnSnapshotService(deps: TurnSnapshotServiceDeps) {
           return { root, afterTree: after.tree, files, error: null as string | null };
         } catch (error) {
           const message = messageOf(error);
-          snapshots.fail(root.rowId, message);
-          return { root, afterTree: null, files: [] as TurnFileChange[], error: message };
+          recordFailure(message);
+          return { root, afterTree: after.tree, files: [] as TurnFileChange[], error: message };
         }
       }),
     );
@@ -240,7 +255,7 @@ export function createTurnSnapshotService(deps: TurnSnapshotServiceDeps) {
         });
         return success(await diffRows(ranges, input.filePath));
       }
-        const ranges: { rootPath: string; store: SnapshotStore; from: string; to: string }[] = [];
+      const ranges: { rootPath: string; store: SnapshotStore; from: string; to: string }[] = [];
       for (const rootPath of resolveRoots(input.projectId).filter(wanted)) {
         const snap = await snapshot(rootPath);
         if (snap.store !== 'repo') continue;
