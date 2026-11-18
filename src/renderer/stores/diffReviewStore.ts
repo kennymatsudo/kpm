@@ -13,7 +13,8 @@ interface DiffReviewState {
   commentsBySession: Record<string, DiffReviewComment[]>;
   /** Sessions whose comments the user chose to hold back from the next send. */
   heldBySession: Record<string, boolean>;
-  loadComments: (chatSessionId: string) => Promise<void>;
+  /** `isRetry` is set by the store when it re-reads after a stale response. */
+  loadComments: (chatSessionId: string, isRetry?: boolean) => Promise<void>;
   addComment: (input: NewDiffReviewComment) => Promise<DiffReviewComment | null>;
   editComment: (id: string, chatSessionId: string, body: string) => Promise<void>;
   removeComment: (id: string, chatSessionId: string) => Promise<void>;
@@ -25,26 +26,39 @@ interface DiffReviewState {
   resetProjectState: () => void;
 }
 
+/**
+ * Local mutations per session. A load whose response arrives after one is
+ * stale: applying it would undo the edit, bring back a deleted comment, or
+ * drop a new one.
+ */
+const mutationCounts = new Map<string, number>();
+const mutationCount = (chatSessionId: string) => mutationCounts.get(chatSessionId) ?? 0;
+
 export const useDiffReviewStore = create<DiffReviewState>()((set, get) => {
   const replaceSession = (chatSessionId: string, comments: DiffReviewComment[]) =>
     set((state) => ({ commentsBySession: { ...state.commentsBySession, [chatSessionId]: comments } }));
+  const mutateSession = (chatSessionId: string, comments: DiffReviewComment[]) => {
+    mutationCounts.set(chatSessionId, mutationCount(chatSessionId) + 1);
+    replaceSession(chatSessionId, comments);
+  };
   const currentComments = (chatSessionId: string) => get().commentsBySession[chatSessionId] ?? [];
 
   return {
     commentsBySession: {},
     heldBySession: {},
 
-    loadComments: async (chatSessionId) => {
+    loadComments: async (chatSessionId, isRetry = false) => {
+      const startedAt = mutationCount(chatSessionId);
       const result = await listDiffReviewComments(chatSessionId);
       if (!result.success) {
         toast.error('Could not load comments.');
         return;
       }
-      // Merge by id: a comment added while this load was in flight is not in
-      // the response and must survive.
-      const loadedIds = new Set(result.comments.map((comment) => comment.id));
-      const localOnly = currentComments(chatSessionId).filter((comment) => !loadedIds.has(comment.id));
-      replaceSession(chatSessionId, [...result.comments, ...localOnly]);
+      if (mutationCount(chatSessionId) !== startedAt) {
+        if (!isRetry) await get().loadComments(chatSessionId, true);
+        return;
+      }
+      replaceSession(chatSessionId, result.comments);
     },
 
     addComment: async (input) => {
@@ -53,7 +67,7 @@ export const useDiffReviewStore = create<DiffReviewState>()((set, get) => {
         toast.error('Could not save the comment.');
         return null;
       }
-      replaceSession(input.chatSessionId, [...currentComments(input.chatSessionId), result.comment]);
+      mutateSession(input.chatSessionId, [...currentComments(input.chatSessionId), result.comment]);
       return result.comment;
     },
 
@@ -63,7 +77,7 @@ export const useDiffReviewStore = create<DiffReviewState>()((set, get) => {
         toast.error('Could not save the comment.');
         return;
       }
-      replaceSession(
+      mutateSession(
         chatSessionId,
         currentComments(chatSessionId).map((comment) => (comment.id === id ? result.comment : comment)),
       );
@@ -75,7 +89,7 @@ export const useDiffReviewStore = create<DiffReviewState>()((set, get) => {
         toast.error('Could not delete the comment.');
         return;
       }
-      replaceSession(chatSessionId, currentComments(chatSessionId).filter((comment) => comment.id !== id));
+      mutateSession(chatSessionId, currentComments(chatSessionId).filter((comment) => comment.id !== id));
     },
 
     setHeld: (chatSessionId, held) =>
@@ -86,7 +100,7 @@ export const useDiffReviewStore = create<DiffReviewState>()((set, get) => {
 
     forgetComments: (chatSessionId, ids) => {
       const forgotten = new Set(ids);
-      replaceSession(chatSessionId, currentComments(chatSessionId).filter((comment) => !forgotten.has(comment.id)));
+      mutateSession(chatSessionId, currentComments(chatSessionId).filter((comment) => !forgotten.has(comment.id)));
     },
 
     resetProjectState: () => set({ commentsBySession: {}, heldBySession: {} }),

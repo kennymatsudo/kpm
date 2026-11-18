@@ -114,15 +114,60 @@ describe('loadComments', () => {
     expect(toastError).toHaveBeenCalledWith('Could not load comments.');
   });
 
-  it('keeps a comment added while the load was in flight', async () => {
-    let resolveLoad: (value: unknown) => void = () => {};
-    listDiffReviewComments.mockReturnValue(new Promise((resolve) => { resolveLoad = resolve; }));
-    const loading = store().loadComments(SESSION);
-    createDiffReviewComment.mockResolvedValue({ success: true, comment: comment('c2') });
-    await store().addComment(input);
-    resolveLoad({ success: true, comments: [comment('c1')] });
-    await loading;
-    expect(store().commentsBySession[SESSION].map((c) => c.id)).toEqual(['c1', 'c2']);
+  describe('mutation during an in-flight load', () => {
+    let resolveLoad: (value: unknown) => void;
+
+    beforeEach(async () => {
+      listDiffReviewComments.mockResolvedValue({ success: true, comments: [comment('c1'), comment('c2')] });
+      await store().loadComments(SESSION);
+      listDiffReviewComments.mockReset();
+      listDiffReviewComments.mockReturnValueOnce(new Promise((resolve) => { resolveLoad = resolve; }));
+    });
+
+    it('keeps a delete', async () => {
+      const loading = store().loadComments(SESSION);
+      deleteDiffReviewComment.mockResolvedValue({ success: true });
+      await store().removeComment('c1', SESSION);
+      listDiffReviewComments.mockResolvedValue({ success: true, comments: [comment('c2')] });
+      resolveLoad({ success: true, comments: [comment('c1'), comment('c2')] });
+      await loading;
+      expect(store().commentsBySession[SESSION].map((c) => c.id)).toEqual(['c2']);
+      expect(listDiffReviewComments).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps an edit', async () => {
+      const loading = store().loadComments(SESSION);
+      updateDiffReviewComment.mockResolvedValue({ success: true, comment: comment('c1', 'edited') });
+      await store().editComment('c1', SESSION, 'edited');
+      listDiffReviewComments.mockResolvedValue({ success: true, comments: [comment('c1', 'edited'), comment('c2')] });
+      resolveLoad({ success: true, comments: [comment('c1'), comment('c2')] });
+      await loading;
+      expect(store().commentsBySession[SESSION].map((c) => c.body)).toEqual(['edited', 'note']);
+    });
+
+    it('keeps an add', async () => {
+      const loading = store().loadComments(SESSION);
+      createDiffReviewComment.mockResolvedValue({ success: true, comment: comment('c3') });
+      await store().addComment(input);
+      listDiffReviewComments.mockResolvedValue({ success: true, comments: [comment('c1'), comment('c2'), comment('c3')] });
+      resolveLoad({ success: true, comments: [comment('c1'), comment('c2')] });
+      await loading;
+      expect(store().commentsBySession[SESSION].map((c) => c.id)).toEqual(['c1', 'c2', 'c3']);
+    });
+
+    it('retries only once', async () => {
+      const loading = store().loadComments(SESSION);
+      deleteDiffReviewComment.mockResolvedValue({ success: true });
+      await store().removeComment('c1', SESSION);
+      listDiffReviewComments.mockImplementation(async () => {
+        await store().removeComment('c2', SESSION);
+        return { success: true, comments: [comment('c1'), comment('c2')] };
+      });
+      resolveLoad({ success: true, comments: [comment('c1'), comment('c2')] });
+      await loading;
+      expect(listDiffReviewComments).toHaveBeenCalledTimes(2);
+      expect(store().commentsBySession[SESSION]).toEqual([]);
+    });
   });
 });
 
