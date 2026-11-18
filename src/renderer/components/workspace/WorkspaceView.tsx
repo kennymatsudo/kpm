@@ -177,11 +177,6 @@ export const WorkspaceView = memo(function WorkspaceView({ projectId, chatCollap
     });
   }, [isEditing, chatCollapsed]);
 
-  // Opening a file shows the file, not the Changes tab.
-  useEffect(() => {
-    useDiffReviewStore.getState().setChangesTabActive(false);
-  }, [activeDocumentId]);
-
   // Animate editor panel in/out
   useEffect(() => {
     if (isEditing) {

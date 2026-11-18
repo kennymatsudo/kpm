@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { FileNode } from '../../shared/types';
+import { emit } from './storeEvents';
 import { readWorkspaceFile, writeWorkspaceFile } from '../services/workspaceFileService';
 import {
   readPersistedDocuments,
@@ -226,12 +227,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
       return { openDocuments, activeDocumentId: id };
     });
+    emit({ type: 'document-opened', payload: { id } });
   },
 
   setActiveDocument: (id) => {
-    set((state) =>
-      state.openDocuments.some((document) => document.id === id) ? { activeDocumentId: id } : {}
-    );
+    if (!get().openDocuments.some((document) => document.id === id)) return;
+    set({ activeDocumentId: id });
+    emit({ type: 'document-opened', payload: { id } });
   },
 
   updateContent: (id, content) => {

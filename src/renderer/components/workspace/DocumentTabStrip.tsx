@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useWorkspaceStore, isDocumentDirty } from '../../stores/workspaceStore';
 import { CloseIcon } from '../icons';
@@ -25,7 +25,7 @@ export function DocumentTabStrip() {
       .join('\u0000')
   );
   const activeDocumentId = useWorkspaceStore((state) => state.activeDocumentId);
-  const { setActiveDocument: activateDocument, closeDocument } = useWorkspaceStore(
+  const { setActiveDocument, closeDocument } = useWorkspaceStore(
     useShallow((state) => ({
       setActiveDocument: state.setActiveDocument,
       closeDocument: state.closeDocument,
@@ -34,15 +34,6 @@ export function DocumentTabStrip() {
   const changesOpen = useDiffReviewStore((state) => state.changesTab !== null);
   const changesActive = useDiffReviewStore((state) => state.changesTab !== null && state.changesTabActive);
   const { closeChanges } = useChangesTab();
-  // Picking a document tab leaves the Changes tab. The workspace also clears
-  // the flag when the active id changes, but re-picking the same id does not.
-  const setActiveDocument = useCallback(
-    (id: string) => {
-      useDiffReviewStore.getState().setChangesTabActive(false);
-      activateDocument(id);
-    },
-    [activateDocument]
-  );
 
   const documents = useMemo(
     () =>

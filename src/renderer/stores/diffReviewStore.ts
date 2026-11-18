@@ -156,3 +156,8 @@ subscribe('chat-session-loaded', (event) => {
   void useDiffReviewStore.getState().loadComments(event.payload.chatSessionId);
   void useDiffReviewStore.getState().loadTurnChanges(event.payload.chatSessionId);
 });
+
+// Showing a document, even the one already active, leaves the Changes tab.
+subscribe('document-opened', () => {
+  useDiffReviewStore.getState().setChangesTabActive(false);
+});

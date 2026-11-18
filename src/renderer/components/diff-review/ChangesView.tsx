@@ -1,18 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { DiffScope, FileDiff } from '../../../shared/diffReview';
+import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
+import type { DiffScope } from '../../../shared/diffReview';
 import { getDiff } from '../../services/diffReviewService';
 import { useDiffReviewStore } from '../../stores/diffReviewStore';
 import { Select, SelectContent, SelectItem, SelectItemText, SelectTrigger, SelectValue } from '../ui/Select';
 import { ChangesFileSection } from './ChangesFileSection';
 import { ChangesFileTree } from './ChangesFileTree';
+import { INITIAL_CHANGES_FETCH, changesFetchReducer } from './changesFetch';
 import { buildChangesTree, countCommentsByFile, fileKey, totalsFor } from './changesTree';
 
 const NO_COMMENTS: never[] = [];
-
-type Load =
-  | { status: 'loading' }
-  | { status: 'error'; error: string }
-  | { status: 'ready'; files: FileDiff[] };
 
 /** Every file the chosen scope changed, in one scroll. */
 export function ChangesView({ projectId }: { projectId: string }) {
@@ -23,20 +19,23 @@ export function ChangesView({ projectId }: { projectId: string }) {
   const comments = useDiffReviewStore((state) =>
     chatSessionId ? (state.commentsBySession[chatSessionId] ?? NO_COMMENTS) : NO_COMMENTS,
   );
-  const [load, setLoad] = useState<Load>({ status: 'loading' });
+  const [{ load }, dispatch] = useReducer(changesFetchReducer, INITIAL_CHANGES_FETCH);
   const sections = useRef(new Map<string, HTMLElement>());
 
   useEffect(() => {
     if (!chatSessionId) return;
-    let cancelled = false;
-    setLoad({ status: 'loading' });
-    void getDiff({ projectId, chatSessionId, scope, clientMessageId: clientMessageId ?? undefined }).then((result) => {
-      if (cancelled) return;
-      setLoad(result.success ? { status: 'ready', files: result.files } : { status: 'error', error: result.error });
-    });
-    return () => {
-      cancelled = true;
-    };
+    // The reducer drops a result whose key is no longer current.
+    const key = [projectId, chatSessionId, scope, clientMessageId].join('|');
+    dispatch({ type: 'start', key });
+    getDiff({ projectId, chatSessionId, scope, clientMessageId: clientMessageId ?? undefined })
+      .then((result) =>
+        dispatch(
+          result.success
+            ? { type: 'success', key, files: result.files }
+            : { type: 'failure', key, error: result.error },
+        ),
+      )
+      .catch(() => dispatch({ type: 'failure', key, error: 'Could not load changes.' }));
   }, [projectId, chatSessionId, scope, clientMessageId]);
 
   const files = load.status === 'ready' ? load.files : null;
