@@ -215,6 +215,7 @@ const chat = {
     currentView?: ChatViewMode;
     clientMessageId?: string;
     focusDocument?: FocusChatDocument;
+    reviewCommentIds?: string[];
   }) => chatInvoke.send(payload),
   openChoice: chatInvoke.openChoice,
   changeChoice: chatInvoke.changeChoice,

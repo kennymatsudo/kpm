@@ -148,7 +148,14 @@ export interface SyncReviewCustomFieldOverridesUpdatedEvent {
   };
 }
 
+/** A chat session's history finished loading into the chat store. */
+export interface ChatSessionLoadedEvent {
+  type: 'chat-session-loaded';
+  payload: { projectId: string; chatSessionId: string };
+}
+
 export type StoreEvent =
+  | ChatSessionLoadedEvent
   | StatusChangedEvent
   | PlanItemCreatedEvent
   | NavigateToViewEvent

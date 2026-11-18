@@ -110,6 +110,36 @@ afterEach(() => {
 });
 
 describe('send', () => {
+  it('passes sendable review comment ids and reports them sent on success', async () => {
+    const chatState = makeChatState();
+    const onReviewCommentsSent = vi.fn();
+    const { deps, services } = makeDeps(chatState, { getReviewCommentIds: () => ['k1'], onReviewCommentsSent });
+
+    await createChatSender(deps).send('hi', undefined, CLIENT_MESSAGE_ID);
+
+    expect(services.sendChatMessage).toHaveBeenCalledWith(expect.objectContaining({ reviewCommentIds: ['k1'] }));
+    expect(onReviewCommentsSent).toHaveBeenCalledWith(SESSION_ID, ['k1']);
+  });
+
+  it('keeps review comments when the send fails', async () => {
+    const chatState = makeChatState();
+    const onReviewCommentsSent = vi.fn();
+    const { deps, services } = makeDeps(chatState, { getReviewCommentIds: () => ['k1'], onReviewCommentsSent });
+    services.sendChatMessage.mockResolvedValue({ success: false, error: 'no' });
+
+    await createChatSender(deps).send('hi', undefined, CLIENT_MESSAGE_ID);
+
+    expect(onReviewCommentsSent).not.toHaveBeenCalled();
+  });
+
+  it('omits reviewCommentIds when there are none', async () => {
+    const { deps, services } = makeDeps(makeChatState(), { getReviewCommentIds: () => [] });
+    await createChatSender(deps).send('hi', undefined, CLIENT_MESSAGE_ID);
+    expect(services.sendChatMessage).toHaveBeenCalledWith(
+      expect.not.objectContaining({ reviewCommentIds: expect.anything() }),
+    );
+  });
+
   it('sends immediately and adds an unqueued bubble when no turn is in flight', async () => {
     const chatState = makeChatState();
     const { deps, services } = makeDeps(chatState);
