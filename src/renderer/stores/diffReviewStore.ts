@@ -7,6 +7,7 @@ import {
   updateDiffReviewComment,
 } from '../services/diffReviewService';
 import { subscribe } from './storeEvents';
+import { toast } from './toastStore';
 
 interface DiffReviewState {
   commentsBySession: Record<string, DiffReviewComment[]>;
@@ -35,19 +36,33 @@ export const useDiffReviewStore = create<DiffReviewState>()((set, get) => {
 
     loadComments: async (chatSessionId) => {
       const result = await listDiffReviewComments(chatSessionId);
-      if (result.success) replaceSession(chatSessionId, result.comments);
+      if (!result.success) {
+        toast.error('Could not load comments.');
+        return;
+      }
+      // Merge by id: a comment added while this load was in flight is not in
+      // the response and must survive.
+      const loadedIds = new Set(result.comments.map((comment) => comment.id));
+      const localOnly = currentComments(chatSessionId).filter((comment) => !loadedIds.has(comment.id));
+      replaceSession(chatSessionId, [...result.comments, ...localOnly]);
     },
 
     addComment: async (input) => {
       const result = await createDiffReviewComment(input);
-      if (!result.success) return null;
+      if (!result.success) {
+        toast.error('Could not save the comment.');
+        return null;
+      }
       replaceSession(input.chatSessionId, [...currentComments(input.chatSessionId), result.comment]);
       return result.comment;
     },
 
     editComment: async (id, chatSessionId, body) => {
       const result = await updateDiffReviewComment(id, body);
-      if (!result.success) return;
+      if (!result.success) {
+        toast.error('Could not save the comment.');
+        return;
+      }
       replaceSession(
         chatSessionId,
         currentComments(chatSessionId).map((comment) => (comment.id === id ? result.comment : comment)),
@@ -56,7 +71,10 @@ export const useDiffReviewStore = create<DiffReviewState>()((set, get) => {
 
     removeComment: async (id, chatSessionId) => {
       const result = await deleteDiffReviewComment(id);
-      if (!result.success) return;
+      if (!result.success) {
+        toast.error('Could not delete the comment.');
+        return;
+      }
       replaceSession(chatSessionId, currentComments(chatSessionId).filter((comment) => comment.id !== id));
     },
 
