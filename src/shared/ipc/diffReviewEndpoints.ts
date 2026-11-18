@@ -11,7 +11,10 @@ const relativeFilePath = z
   .string()
   .min(1)
   .max(4096)
-  .refine((value) => !value.startsWith('/') && !value.split('/').includes('..'), 'Path must stay inside its root');
+  .refine(
+    (value) => !value.startsWith('/') && !value.includes('\\') && !value.split('/').includes('..'),
+    'Path must stay inside its root',
+  );
 const line = z.number().int().min(1).max(10_000_000);
 
 export const diffReviewEndpoints = {
