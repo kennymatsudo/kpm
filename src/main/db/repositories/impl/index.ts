@@ -32,3 +32,5 @@ export * from './ClaudeUsageRepository';
 export * from './PlaybookRepository';
 export * from './ActionRepository';
 export * from './ActionRunRepository';
+export * from './TurnSnapshotRepository';
+export * from './DiffReviewCommentRepository';

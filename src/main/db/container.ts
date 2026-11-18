@@ -38,6 +38,8 @@ import {
   PlaybookRepository as PlaybookRepositoryClass,
   ActionRepository as ActionRepositoryClass,
   ActionRunRepository as ActionRunRepositoryClass,
+  TurnSnapshotRepository as TurnSnapshotRepositoryClass,
+  DiffReviewCommentRepository as DiffReviewCommentRepositoryClass,
 } from './repositories/impl';
 import type { IFileSystem, IPathUtils } from './repositories/impl/ProjectRepository';
 
@@ -113,6 +115,8 @@ export function createRepositoryContainer(config: ContainerConfig): IRepositoryC
     confluenceLinks: new ConfluenceLinkRepositoryClass(database),
     linearDocumentLinks: new LinearDocumentLinkRepositoryClass(database),
     projectWriteGrants: new ProjectWriteGrantRepositoryClass(database),
+    turnSnapshots: new TurnSnapshotRepositoryClass(database),
+    diffReviewComments: new DiffReviewCommentRepositoryClass(database),
     reviewTasks: new ReviewTaskRepositoryClass(database),
     agentReviews: new AgentReviewRepositoryClass(database),
     reviewOwnership: new ReviewOwnershipRepositoryClass(database),
