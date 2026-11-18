@@ -23,9 +23,13 @@ export function useSyntaxColors(path: string, lines: string[]): string[] | null 
     const monaco = configureMonaco();
     const languageId = languageIdForPath(path, monaco.languages.getLanguages());
     if (!languageId) return;
-    const themeName = `kpm-diff-${resolved.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
-    monaco.editor.defineTheme(themeName, createMonacoThemeData(resolvedTheme));
-    monaco.editor.setTheme(themeName);
+    // Same name and data as CodeEditor's theme. Colorize uses the active theme,
+    // which any open editor has already set, so only claim it when none is open.
+    if (monaco.editor.getEditors().length === 0) {
+      const themeName = `kpm-${resolved.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+      monaco.editor.defineTheme(themeName, createMonacoThemeData(resolvedTheme));
+      monaco.editor.setTheme(themeName);
+    }
     monaco.editor
       .colorize(lines.join('\n'), languageId, { tabSize: 2 })
       .then((html) => {
@@ -33,7 +37,9 @@ export function useSyntaxColors(path: string, lines: string[]): string[] | null 
         const split = splitColorizedHtml(html, lines.length);
         if (split) setColored({ lines, html: split });
       })
-      .catch(() => {});
+      .catch((error: unknown) => {
+        console.debug('Syntax colorize failed', error);
+      });
     return () => {
       stale = true;
     };

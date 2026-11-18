@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_COLORIZE_LINES, languageIdForPath, splitColorizedHtml } from './syntaxColors';
+import { MAX_COLORIZE_LINES, coloredHtmlForLine, languageIdForPath, sideTexts, splitColorizedHtml } from './syntaxColors';
 
 const languages = [
   { id: 'plaintext', extensions: ['.txt'] },
@@ -35,5 +35,45 @@ describe('splitColorizedHtml', () => {
 describe('MAX_COLORIZE_LINES', () => {
   it('is 5000', () => {
     expect(MAX_COLORIZE_LINES).toBe(5000);
+  });
+});
+
+const L = (kind: 'add' | 'del' | 'context', oldLine: number | null, newLine: number | null, text: string) => ({
+  kind, oldLine, newLine, text,
+});
+
+describe('sideTexts and coloredHtmlForLine', () => {
+  const hunks = [
+    { lines: [L('context', 1, 1, 'a'), L('del', 2, null, 'b'), L('add', null, 2, 'B'), L('add', null, 3, 'C'), L('context', 3, 4, 'd')] },
+    { lines: [L('del', 10, null, 'x'), L('context', 11, 11, 'y'), L('add', null, 12, 'z')] },
+  ];
+  const { oldSide, newSide } = sideTexts(hunks);
+
+  it('splits each side across hunks', () => {
+    expect(oldSide.text).toEqual(['a', 'b', 'd', 'x', 'y']);
+    expect(newSide.text).toEqual(['a', 'B', 'C', 'd', 'y', 'z']);
+  });
+
+  it('maps colored line i back to the right line on each side', () => {
+    const oldColors = oldSide.text.map((t) => `o:${t}`);
+    const newColors = newSide.text.map((t) => `n:${t}`);
+    const html = (line: ReturnType<typeof L>) => coloredHtmlForLine(line, oldSide, newSide, oldColors, newColors);
+    expect(html(hunks[0].lines[0])).toBe('n:a');
+    expect(html(hunks[0].lines[1])).toBe('o:b');
+    expect(html(hunks[0].lines[2])).toBe('n:B');
+    expect(html(hunks[0].lines[3])).toBe('n:C');
+    expect(html(hunks[0].lines[4])).toBe('n:d');
+    expect(html(hunks[1].lines[0])).toBe('o:x');
+    expect(html(hunks[1].lines[1])).toBe('n:y');
+    expect(html(hunks[1].lines[2])).toBe('n:z');
+  });
+
+  it('returns null without colors', () => {
+    expect(coloredHtmlForLine(hunks[0].lines[0], oldSide, newSide, null, null)).toBeNull();
+  });
+
+  it('keeps escaped markup from source text inside its own line', () => {
+    const escaped = '<span>&lt;/span&gt;&lt;br/&gt;</span><br/><span>next</span>';
+    expect(splitColorizedHtml(escaped, 2)).toEqual(['<span>&lt;/span&gt;&lt;br/&gt;</span>', '<span>next</span>']);
   });
 });

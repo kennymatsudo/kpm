@@ -6,6 +6,7 @@ import { useDiffReviewStore } from '../../stores/diffReviewStore';
 import { PlusIcon } from '../icons';
 import { CommentBox } from './CommentBox';
 import { useLineSelection } from './useLineSelection';
+import { coloredHtmlForLine, sideTexts } from './syntaxColors';
 import { useSyntaxColors } from './useSyntaxColors';
 
 interface DiffReviewViewProps {
@@ -33,35 +34,12 @@ function headingFor(lines: DiffLine[]): string {
     : `Comment on lines ${prefix}${anchor.startLine}-${prefix}${anchor.endLine}`;
 }
 
-interface SideText {
-  text: string[];
-  index: Map<number, number>;
-}
-
-function sideTexts(file: FileDiff): { oldSide: SideText; newSide: SideText } {
-  const oldSide: SideText = { text: [], index: new Map() };
-  const newSide: SideText = { text: [], index: new Map() };
-  for (const hunk of file.hunks) {
-    for (const line of hunk.lines) {
-      if (line.kind !== 'add' && line.oldLine !== null) {
-        oldSide.index.set(line.oldLine, oldSide.text.length);
-        oldSide.text.push(line.text);
-      }
-      if (line.kind !== 'del' && line.newLine !== null) {
-        newSide.index.set(line.newLine, newSide.text.length);
-        newSide.text.push(line.text);
-      }
-    }
-  }
-  return { oldSide, newSide };
-}
-
 export function DiffReviewView({ file, projectId, chatSessionId, expandAll }: DiffReviewViewProps) {
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const rows = useMemo(() => buildReviewRows(file, { expanded, expandAll }), [file, expanded, expandAll]);
   const rowKeys = useMemo(() => rows.map((r) => r.key), [rows]);
-  const { oldSide, newSide } = useMemo(() => sideTexts(file), [file]);
+  const { oldSide, newSide } = useMemo(() => sideTexts(file.hunks), [file]);
   const oldColors = useSyntaxColors(file.path, oldSide.text);
   const newColors = useSyntaxColors(file.path, newSide.text);
   const { selection, committed, start, extend, finish, clear } = useLineSelection(rowKeys);
@@ -112,15 +90,6 @@ export function DiffReviewView({ file, projectId, chatSessionId, expandAll }: Di
     if (saved) clear();
   };
 
-  const coloredHtml = (line: DiffLine): string | null => {
-    if (line.kind === 'del') {
-      const at = line.oldLine === null ? undefined : oldSide.index.get(line.oldLine);
-      return at === undefined ? null : (oldColors?.[at] ?? null);
-    }
-    const at = line.newLine === null ? undefined : newSide.index.get(line.newLine);
-    return at === undefined ? null : (newColors?.[at] ?? null);
-  };
-
   const commentsEndingAt = (line: DiffLine): DiffReviewComment[] =>
     fileComments.filter(
       (c) =>
@@ -156,7 +125,7 @@ export function DiffReviewView({ file, projectId, chatSessionId, expandAll }: Di
               );
             }
             const { line } = row;
-            const html = coloredHtml(line);
+            const html = coloredHtmlForLine(line, oldSide, newSide, oldColors, newColors);
             const selected = selection !== null && index >= selection.start && index <= selection.end;
             const gutterOnOld = line.kind === 'del';
             const gutter = chatSessionId ? (
@@ -187,14 +156,10 @@ export function DiffReviewView({ file, projectId, chatSessionId, expandAll }: Di
                   <td className="select-none text-center text-text-tertiary">
                     {line.kind === 'add' ? '+' : line.kind === 'del' ? '-' : ''}
                   </td>
-                  {html !== null ? (
-                    <td
-                      className="whitespace-pre-wrap break-all pr-3 text-text-primary"
-                      dangerouslySetInnerHTML={{ __html: html }}
-                    />
-                  ) : (
-                    <td className="whitespace-pre-wrap break-all pr-3 text-text-primary">{line.text}</td>
-                  )}
+                  <td
+                    className="whitespace-pre-wrap break-all pr-3 text-text-primary"
+                    {...(html !== null ? { dangerouslySetInnerHTML: { __html: html } } : { children: line.text })}
+                  />
                 </tr>
                 {commentsEndingAt(line).map((comment) => (
                   <tr key={comment.id}>
