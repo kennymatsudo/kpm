@@ -44,5 +44,8 @@ export function registerWorkspaceHandlers({
   registerTaskPromptTemplateHandlers(services.taskPromptTemplateService);
   registerActionHandlers(services.actionService, services.container.actions, services.container.actionRuns);
   registerOnboardingHandlers(getMainWindow, services.onboardingService);
-  registerDiffReviewHandlers({ comments: services.container.diffReviewComments });
+  registerDiffReviewHandlers({
+    comments: services.container.diffReviewComments,
+    turnSnapshots: chatRuntime.turnSnapshotService,
+  });
 }

@@ -252,6 +252,7 @@ const chat = {
     ),
   onChunk: chatSubscriptions.chunk,
   onProposal: chatSubscriptions.proposal,
+  onTurnChanges: chatSubscriptions.turnChanges,
   onDone: chatSubscriptions.done,
   onQueueCleared: chatSubscriptions.queueCleared,
   onError: chatSubscriptions.error,

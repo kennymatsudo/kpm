@@ -15,6 +15,10 @@ function fakeComments() {
   };
 }
 
+function fakeTurnSnapshots() {
+  return { listTurnChanges: vi.fn(), getDiff: vi.fn() };
+}
+
 describe('diff review IPC handlers', () => {
   it('creates a comment with a generated uuid', () => {
     const comments = fakeComments();
@@ -23,7 +27,7 @@ describe('diff review IPC handlers', () => {
       side: 'new' as const, startLine: 1, endLine: 2, quotedText: 'x', body: 'hi',
     };
 
-    const result = buildDiffReviewHandlers({ comments }).createComment(input, {} as never) as { comment: DiffReviewComment };
+    const result = buildDiffReviewHandlers({ comments, turnSnapshots: fakeTurnSnapshots() }).createComment(input, {} as never) as { comment: DiffReviewComment };
 
     expect(result.comment.id).toMatch(UUID_RE);
     expect(result.comment).toMatchObject(input);
@@ -33,6 +37,38 @@ describe('diff review IPC handlers', () => {
     const comments = fakeComments();
     comments.update.mockReturnValue(undefined);
 
-    expect(() => buildDiffReviewHandlers({ comments }).updateComment({ id: 'x', body: 'b' }, {} as never)).toThrow('Comment not found');
+    expect(() => buildDiffReviewHandlers({ comments, turnSnapshots: fakeTurnSnapshots() }).updateComment({ id: 'x', body: 'b' }, {} as never)).toThrow('Comment not found');
+  });
+
+  it('returns the diff files for getDiff', () => {
+    const turnSnapshots = fakeTurnSnapshots();
+    const files = [{ rootPath: '/r', filePath: 'a.ts', status: 'modified' }];
+    turnSnapshots.getDiff.mockResolvedValue({ ok: true, data: files });
+    const input = { projectId: 'p', chatSessionId: 's', scope: 'chat' as const };
+
+    return expect(
+      buildDiffReviewHandlers({ comments: fakeComments(), turnSnapshots }).getDiff(input, {} as never),
+    ).resolves.toEqual({ files });
+  });
+
+  it('throws the service failure message from getDiff', () => {
+    const turnSnapshots = fakeTurnSnapshots();
+    turnSnapshots.getDiff.mockResolvedValue({ ok: false, error: 'Snapshot expired' });
+
+    return expect(
+      buildDiffReviewHandlers({ comments: fakeComments(), turnSnapshots }).getDiff(
+        { projectId: 'p', chatSessionId: 's', scope: 'chat' },
+        {} as never,
+      ),
+    ).rejects.toThrow('Snapshot expired');
+  });
+
+  it('lists turns for a session', () => {
+    const turnSnapshots = fakeTurnSnapshots();
+    turnSnapshots.listTurnChanges.mockReturnValue({ ok: true, data: [] });
+
+    expect(
+      buildDiffReviewHandlers({ comments: fakeComments(), turnSnapshots }).listTurnChanges({ chatSessionId: 's' }, {} as never),
+    ).toEqual({ turns: [] });
   });
 });

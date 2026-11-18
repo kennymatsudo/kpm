@@ -1,9 +1,10 @@
 import { create } from 'zustand';
-import type { DiffReviewComment, NewDiffReviewComment } from '../../shared/diffReview';
+import type { DiffReviewComment, NewDiffReviewComment, TurnChanges } from '../../shared/diffReview';
 import {
   createDiffReviewComment,
   deleteDiffReviewComment,
   listDiffReviewComments,
+  listTurnChanges,
   updateDiffReviewComment,
 } from '../services/diffReviewService';
 import { subscribe } from './storeEvents';
@@ -13,6 +14,11 @@ interface DiffReviewState {
   commentsBySession: Record<string, DiffReviewComment[]>;
   /** Sessions whose comments the user chose to hold back from the next send. */
   heldBySession: Record<string, boolean>;
+  turnChangesBySession: Record<string, TurnChanges[]>;
+  loadTurnChanges: (chatSessionId: string) => Promise<void>;
+  /** Replaces the entry with the same `clientMessageId`, or appends. */
+  applyTurnChanges: (changes: TurnChanges) => void;
+  turnChangesFor: (chatSessionId: string, clientMessageId: string) => TurnChanges | undefined;
   /** `isRetry` is set by the store when it re-reads after a stale response. */
   loadComments: (chatSessionId: string, isRetry?: boolean) => Promise<void>;
   addComment: (input: NewDiffReviewComment) => Promise<DiffReviewComment | null>;
@@ -47,6 +53,24 @@ export const useDiffReviewStore = create<DiffReviewState>()((set, get) => {
   return {
     commentsBySession: {},
     heldBySession: {},
+    turnChangesBySession: {},
+
+    loadTurnChanges: async (chatSessionId) => {
+      const result = await listTurnChanges(chatSessionId);
+      if (!result.success) return;
+      set((state) => ({ turnChangesBySession: { ...state.turnChangesBySession, [chatSessionId]: result.turns } }));
+    },
+
+    applyTurnChanges: (changes) =>
+      set((state) => {
+        const existing = state.turnChangesBySession[changes.chatSessionId] ?? [];
+        const index = existing.findIndex((turn) => turn.clientMessageId === changes.clientMessageId);
+        const next = index === -1 ? [...existing, changes] : existing.map((turn, i) => (i === index ? changes : turn));
+        return { turnChangesBySession: { ...state.turnChangesBySession, [changes.chatSessionId]: next } };
+      }),
+
+    turnChangesFor: (chatSessionId, clientMessageId) =>
+      get().turnChangesBySession[chatSessionId]?.find((turn) => turn.clientMessageId === clientMessageId),
 
     loadComments: async (chatSessionId, isRetry = false) => {
       const startedAt = mutationCount(chatSessionId);
@@ -105,10 +129,11 @@ export const useDiffReviewStore = create<DiffReviewState>()((set, get) => {
       mutateSession(chatSessionId, currentComments(chatSessionId).filter((comment) => !forgotten.has(comment.id)));
     },
 
-    resetProjectState: () => set({ commentsBySession: {}, heldBySession: {} }),
+    resetProjectState: () => set({ commentsBySession: {}, heldBySession: {}, turnChangesBySession: {} }),
   };
 });
 
 subscribe('chat-session-loaded', (event) => {
   void useDiffReviewStore.getState().loadComments(event.payload.chatSessionId);
+  void useDiffReviewStore.getState().loadTurnChanges(event.payload.chatSessionId);
 });

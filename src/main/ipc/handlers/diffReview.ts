@@ -2,12 +2,15 @@ import { randomUUID } from 'crypto';
 import { diffReviewEndpoints, type DiffReviewEndpointName } from '../../../shared/ipc/diffReviewEndpoints';
 import type { UnwrappedHandlerFor } from '../../../shared/ipc/endpoints';
 import type { IDiffReviewCommentRepository } from '../../db/interfaces';
+import type { TurnSnapshotService } from '../../services/diffReview/TurnSnapshotService';
+import { unwrapOrThrow } from '../../services/result';
 import { createRegistryIpcHandlers } from '../validation/utils';
 
 type Handlers = { [K in DiffReviewEndpointName]: UnwrappedHandlerFor<typeof diffReviewEndpoints, K> };
 
 export interface DiffReviewHandlerDeps {
   comments: IDiffReviewCommentRepository;
+  turnSnapshots: Pick<TurnSnapshotService, 'listTurnChanges' | 'getDiff'>;
 }
 
 export function buildDiffReviewHandlers(deps: DiffReviewHandlerDeps): Handlers {
@@ -20,6 +23,8 @@ export function buildDiffReviewHandlers(deps: DiffReviewHandlerDeps): Handlers {
       return { comment };
     },
     deleteComment: ({ id }) => { deps.comments.delete(id); },
+    listTurnChanges: ({ chatSessionId }) => ({ turns: unwrapOrThrow(deps.turnSnapshots.listTurnChanges(chatSessionId)) }),
+    getDiff: async (input) => ({ files: unwrapOrThrow(await deps.turnSnapshots.getDiff(input)) }),
   };
 }
 

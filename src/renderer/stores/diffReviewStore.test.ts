@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { DiffReviewComment, NewDiffReviewComment } from '../../shared/diffReview';
+import type { DiffReviewComment, NewDiffReviewComment, TurnChanges } from '../../shared/diffReview';
 import { emit } from './storeEvents';
 import { useDiffReviewStore } from './diffReviewStore';
 
@@ -7,11 +7,13 @@ const toastError = vi.hoisted(() => vi.fn());
 vi.mock('./toastStore', () => ({ toast: { error: toastError } }));
 
 const listDiffReviewComments = vi.hoisted(() => vi.fn());
+const listTurnChanges = vi.hoisted(() => vi.fn());
 const createDiffReviewComment = vi.hoisted(() => vi.fn());
 const updateDiffReviewComment = vi.hoisted(() => vi.fn());
 const deleteDiffReviewComment = vi.hoisted(() => vi.fn());
 vi.mock('../services/diffReviewService', () => ({
   listDiffReviewComments,
+  listTurnChanges,
   createDiffReviewComment,
   updateDiffReviewComment,
   deleteDiffReviewComment,
@@ -201,8 +203,48 @@ describe('forgetComments', () => {
 describe('chat-session-loaded event', () => {
   it('loads that session\'s comments', async () => {
     listDiffReviewComments.mockResolvedValue({ success: true, comments: [comment('c1')] });
+    listTurnChanges.mockResolvedValue({ success: true, turns: [] });
     emit({ type: 'chat-session-loaded', payload: { projectId: 'p1', chatSessionId: SESSION } });
     await vi.waitFor(() => expect(store().commentsBySession[SESSION]?.length).toBe(1));
     expect(listDiffReviewComments).toHaveBeenCalledWith(SESSION);
+  });
+});
+
+function turn(clientMessageId: string, fileCount = 1): TurnChanges {
+  return {
+    chatSessionId: SESSION,
+    clientMessageId,
+    createdAt: '2024-01-01T00:00:00.000Z',
+    files: Array.from({ length: fileCount }, (_, i) => ({
+      rootPath: '/repo',
+      path: `f${i}.ts`,
+      status: 'modified' as const,
+      additions: 1,
+      deletions: 0,
+    })),
+  };
+}
+
+describe('turn changes', () => {
+  it('applyTurnChanges replaces the entry with the same clientMessageId', () => {
+    store().applyTurnChanges(turn('m1', 1));
+    store().applyTurnChanges(turn('m2', 1));
+    store().applyTurnChanges(turn('m1', 2));
+
+    const turns = store().turnChangesBySession[SESSION];
+    expect(turns.map((t) => t.clientMessageId)).toEqual(['m1', 'm2']);
+    expect(store().turnChangesFor(SESSION, 'm1')?.files).toHaveLength(2);
+  });
+
+  it('applyTurnChanges appends an unseen turn', () => {
+    store().applyTurnChanges(turn('m1'));
+    expect(store().turnChangesFor(SESSION, 'm1')).toBeDefined();
+    expect(store().turnChangesFor(SESSION, 'nope')).toBeUndefined();
+  });
+
+  it('loadTurnChanges stores the listed turns', async () => {
+    listTurnChanges.mockResolvedValue({ success: true, turns: [turn('m1')] });
+    await store().loadTurnChanges(SESSION);
+    expect(store().turnChangesBySession[SESSION]).toEqual([turn('m1')]);
   });
 });

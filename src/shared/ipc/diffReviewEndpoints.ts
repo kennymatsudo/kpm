@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { resultOf, type EndpointDefinition } from './endpoints';
 import { absolutePath, uuid } from './sharedSchemas';
-import type { DiffReviewComment } from '../diffReview';
+import type { DiffReviewComment, FileDiff, TurnChanges } from '../diffReview';
 
 type Response<T = void> =
   | (T extends void ? { success: true } : { success: true } & T)
@@ -49,6 +49,23 @@ export const diffReviewEndpoints = {
     channel: 'diff-review:delete-comment',
     params: z.object({ id: uuid }),
     result: resultOf<Response>(),
+  },
+  listTurnChanges: {
+    channel: 'diff-review:list-turn-changes',
+    params: z.object({ chatSessionId: uuid }),
+    result: resultOf<Response<{ turns: TurnChanges[] }>>(),
+  },
+  getDiff: {
+    channel: 'diff-review:get-diff',
+    params: z.object({
+      projectId: uuid,
+      chatSessionId: uuid,
+      scope: z.enum(['turn', 'chat', 'uncommitted']),
+      clientMessageId: uuid.optional(),
+      rootPath: absolutePath.optional(),
+      filePath: relativeFilePath.optional(),
+    }),
+    result: resultOf<Response<{ files: FileDiff[] }>>(),
   },
 } satisfies Record<string, EndpointDefinition>;
 

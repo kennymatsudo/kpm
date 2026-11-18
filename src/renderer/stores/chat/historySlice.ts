@@ -273,6 +273,7 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
               segments: [{ type: 'text', content: m.content }],
               timestamp,
               model: m.model ?? undefined,
+              ...(m.role === 'user' && m.client_message_id ? { clientMessageId: m.client_message_id } : {}),
             });
             return acc;
           }, []);
