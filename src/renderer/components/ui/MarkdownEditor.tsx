@@ -31,11 +31,16 @@ import { FrontmatterBlock } from './FrontmatterBlock';
 import { registerPlanRefMonacoProviders } from './planRefMonaco';
 import { Tooltip } from './Tooltip';
 
-export type MarkdownView = 'diff' | 'preview' | 'edit';
+export type MarkdownView = 'diff' | 'preview' | 'edit' | 'comment';
 
 export interface MarkdownEditorDiff {
   added: number;
   removed: number;
+  render: () => ReactNode;
+}
+
+export interface MarkdownEditorComment {
+  count: number;
   render: () => ReactNode;
 }
 
@@ -48,6 +53,8 @@ export interface MarkdownEditorProps {
   actions?: ReactNode;
   /** Adds a read-only Diff tab, opened first, for a proposed document. */
   diff?: MarkdownEditorDiff;
+  /** Adds a Comment tab for line comments the next chat message carries. */
+  comment?: MarkdownEditorComment;
   /** Opens on the editing tab rather than the reading one. */
   startInEdit?: boolean;
   /** Reports the active tab so the host can match its own controls to it. */
@@ -503,6 +510,7 @@ export function MarkdownEditor({
   leading,
   actions,
   diff,
+  comment,
   startInEdit = false,
   onViewChange,
   onEscape,
@@ -910,6 +918,20 @@ export function MarkdownEditor({
               Edit
             </button>
           </Tooltip>
+          {comment && (
+            <button
+              type="button"
+              role="tab"
+              id="md-tab-comment"
+              aria-selected={view === 'comment'}
+              aria-controls="md-panel-comment"
+              onClick={() => changeView('comment')}
+              className={`${tabClass(view === 'comment')} inline-flex items-center gap-1.5`}
+            >
+              Comment
+              {comment.count > 0 && <span className="text-tiny tabular-nums">{comment.count}</span>}
+            </button>
+          )}
         </div>
 
         {leading && <ToolbarDivider />}
@@ -1079,6 +1101,17 @@ export function MarkdownEditor({
             className="absolute inset-0 overflow-y-auto bg-surface-1 px-4 py-4"
           >
             {diff.render()}
+          </div>
+        )}
+
+        {view === 'comment' && comment && (
+          <div
+            id="md-panel-comment"
+            role="tabpanel"
+            aria-labelledby="md-tab-comment"
+            className="absolute inset-0 overflow-y-auto bg-surface-1"
+          >
+            {comment.render()}
           </div>
         )}
 

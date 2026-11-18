@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, type ReactNode } from 'react';
+import { memo, useCallback, useMemo, useState, type ReactNode } from 'react';
 import { useProjectUiDomainStore, useProjectDomainStore, useFocusModeStore, toast } from '../../stores';
 import {
   useWorkspaceStore,
@@ -13,6 +13,9 @@ import type { FocusedResource } from '../../../shared/types';
 import { getBaseName } from '../../utils/path';
 import { LinearPublishChip } from '../linearDocuments';
 import { openWorkspaceHtmlPreview } from '../../services/workspaceFileService';
+import { DiffReviewView } from '../diff-review';
+import { useFileReview } from '../diff-review/useFileReview';
+import { useDiffReviewStore } from '../../stores/diffReviewStore';
 import { isPreviewableHtmlPath } from '../../../shared/htmlPreview';
 
 interface FileEditorProps {
@@ -54,23 +57,55 @@ function useDocumentContent(documentId: string): string {
   );
 }
 
+/** Comments on this file in the viewed chat. Derived in useMemo so the selector returns a stored reference. */
+function useFileCommentCount(chatSessionId: string | null, rootPath: string | null, path: string | null): number {
+  const comments = useDiffReviewStore((s) => (chatSessionId ? s.commentsBySession[chatSessionId] : undefined));
+  return useMemo(
+    () => (comments ?? []).filter((c) => c.rootPath === rootPath && c.filePath === path).length,
+    [comments, rootPath, path],
+  );
+}
+
+const tabClass = (isActive: boolean) =>
+  `h-7 px-2.5 rounded-sm text-sm font-medium transition-colors ${
+    isActive
+      ? 'bg-surface-3 text-text-primary'
+      : 'text-text-muted hover:text-text-primary hover:bg-surface-2'
+  }`;
+
 function MarkdownBody({
   documentId,
+  projectId,
   onChange,
   scrollKey,
   leading,
   actions,
 }: {
   documentId: string;
+  projectId: string | null;
   onChange: (content: string) => void;
   scrollKey: string;
   leading: ReactNode;
   actions: ReactNode;
 }) {
   const content = useDocumentContent(documentId);
+  const { file, chatSessionId, rootPath } = useFileReview(documentId);
+  const count = useFileCommentCount(chatSessionId, rootPath, file?.path ?? null);
+  const comment = useMemo(
+    () => (file && projectId
+      ? {
+          count,
+          render: () => (
+            <DiffReviewView file={file} projectId={projectId} chatSessionId={chatSessionId} expandAll />
+          ),
+        }
+      : undefined),
+    [file, projectId, chatSessionId, count],
+  );
   return (
     <MarkdownEditorLazy
       content={content}
+      comment={comment}
       onChange={onChange}
       scrollKey={scrollKey}
       leading={leading}
@@ -79,9 +114,52 @@ function MarkdownBody({
   );
 }
 
-function CodeBody({ documentId, path, onChange }: { documentId: string; path: string; onChange: (content: string) => void }) {
+function CodeBody({
+  documentId,
+  projectId,
+  path,
+  onChange,
+}: {
+  documentId: string;
+  projectId: string | null;
+  path: string;
+  onChange: (content: string) => void;
+}) {
   const content = useDocumentContent(documentId);
-  return <CodeEditorLazy path={path} content={content} onChange={onChange} />;
+  const [view, setView] = useState<'edit' | 'comment'>('edit');
+  const { file, chatSessionId, rootPath } = useFileReview(documentId);
+  const count = useFileCommentCount(chatSessionId, rootPath, file?.path ?? null);
+  const canComment = file !== null && projectId !== null;
+  return (
+    <div className="flex flex-col h-full">
+      {canComment && (
+        <div role="tablist" aria-label="File view" className="flex items-center gap-0.5 px-3 py-1 border-b border-border-subtle">
+          <button type="button" role="tab" aria-selected={view === 'edit'} onClick={() => setView('edit')} className={tabClass(view === 'edit')}>
+            Edit
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === 'comment'}
+            onClick={() => setView('comment')}
+            className={`${tabClass(view === 'comment')} inline-flex items-center gap-1.5`}
+          >
+            Comment
+            {count > 0 && <span className="text-tiny tabular-nums">{count}</span>}
+          </button>
+        </div>
+      )}
+      <div className="flex-1 overflow-hidden">
+        {view === 'comment' && canComment ? (
+          <div className="h-full overflow-y-auto">
+            <DiffReviewView file={file} projectId={projectId} chatSessionId={chatSessionId} expandAll />
+          </div>
+        ) : (
+          <CodeEditorLazy path={path} content={content} onChange={onChange} />
+        )}
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -276,6 +354,7 @@ export const FileEditor = memo(function FileEditor({ documentId, onClose }: File
         <div className="flex-1 overflow-hidden">
           <MarkdownBody
             documentId={documentId}
+            projectId={projectId}
             onChange={handleContentChange}
             scrollKey={path}
             leading={identity}
@@ -296,7 +375,7 @@ export const FileEditor = memo(function FileEditor({ documentId, onClose }: File
       {saveErrorBanner}
 
       <div className="flex-1 overflow-hidden">
-        <CodeBody documentId={documentId} path={path} onChange={handleContentChange} />
+        <CodeBody documentId={documentId} projectId={projectId} path={path} onChange={handleContentChange} />
       </div>
     </div>
   );
