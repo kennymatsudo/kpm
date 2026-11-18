@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import type { BrowserWindow } from 'electron';
 import type { AppServices } from '../appServices';
 import type { IRepositoryContainer } from '../../db/interfaces';
@@ -175,6 +177,12 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
     modelChoice,
     streamingSessionService,
     slashCommandService: services.slashCommandService,
+    reviewComments: container.diffReviewComments,
+    readReviewFile: (rootPath, filePath) => {
+      const absolute = path.resolve(rootPath, filePath);
+      if (!absolute.startsWith(path.resolve(rootPath) + path.sep)) return null;
+      try { return fs.readFileSync(absolute, 'utf8'); } catch { return null; }
+    },
     emitChatError: ({ projectId, chatSessionId, error }) => {
       emitAppEvent(getMainWindow()?.webContents, chatEvents.error, { projectId, chatSessionId, error });
     },

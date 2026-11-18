@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import type { IChatMessageRepository, IChatSessionRepository, IProjectRepository, IRepoRepository } from '../../db/interfaces';
+import type { IChatMessageRepository, IDiffReviewCommentRepository, IChatSessionRepository, IProjectRepository, IRepoRepository } from '../../db/interfaces';
 import type {
   ChatAttachment,
   ChatChoiceView,
@@ -15,6 +15,7 @@ import type { SlashCommandService } from './SlashCommandService';
 import type { ChatModelChoiceService } from '../../chat/modelChoice';
 import { resolveEffectiveRepoPath } from '../../../shared/repoPath';
 import { unsupportedAttachmentError } from '../../../shared/providerCapabilities';
+import { formatReviewCommentBlock, relocateComment } from '../../chat/prompts/reviewComments';
 
 export interface ChatServiceDeps {
   projects: IProjectRepository;
@@ -27,6 +28,8 @@ export interface ChatServiceDeps {
     'sendChatMessage' | 'disconnectChatSession'
   >;
   slashCommandService?: Pick<SlashCommandService, 'expandPiPromptInvocation'>;
+  reviewComments?: Pick<IDiffReviewCommentRepository, 'getMany' | 'deleteMany'>;
+  readReviewFile?: (rootPath: string, filePath: string) => string | null;
   emitChatError?: (payload: { projectId: string; chatSessionId?: string; error: string }) => void;
 }
 
@@ -36,6 +39,7 @@ export interface SendChatMessageInput {
   attachments?: ChatAttachment[];
   chatSessionId?: string;
   clientMessageId?: string;
+  reviewCommentIds?: string[];
 }
 
 /**
@@ -163,6 +167,15 @@ export function createChatService(deps: ChatServiceDeps) {
             return failure(errorText);
           }
         }
+        const reviewItems = (input.reviewCommentIds?.length && deps.reviewComments)
+          ? deps.reviewComments
+              .getMany(input.reviewCommentIds)
+              .filter((comment) => comment.chatSessionId === chatSessionId)
+              .map((comment) => relocateComment(comment, deps.readReviewFile?.(comment.rootPath, comment.filePath) ?? null))
+          : [];
+        const modelText = reviewItems.length > 0
+          ? `${messageForModel}\n\n${formatReviewCommentBlock(reviewItems)}`
+          : messageForModel;
         const resolvedChoice = await deps.modelChoice.resolveForTurn(projectId, chatSessionId);
         if (!resolvedChoice.ok) {
           emitError(projectId, chatSessionId, resolvedChoice.error);
@@ -176,7 +189,7 @@ export function createChatService(deps: ChatServiceDeps) {
 
         const result = await deps.streamingSessionService.sendChatMessage(
           projectId,
-          messageForModel,
+          modelText,
           {
             choice: resolvedChoice.data,
             focusedResources: resolveFocusedResources(projectId, promptContext?.focusedResources ?? []),
@@ -203,6 +216,13 @@ export function createChatService(deps: ChatServiceDeps) {
           clientMessageId,
           resolvedChoice.data.provider,
         );
+        if (reviewItems.length > 0) {
+          try {
+            deps.reviewComments?.deleteMany(reviewItems.map((item) => item.comment.id));
+          } catch (error) {
+            console.error('Failed to delete sent review comments', error);
+          }
+        }
         return success(undefined);
       } catch (error) {
         const messageText = error instanceof Error ? error.message : 'Unknown error';
