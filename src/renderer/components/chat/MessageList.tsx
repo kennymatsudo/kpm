@@ -23,6 +23,7 @@ import { AttachmentChip } from './AttachmentChip';
 import { useRecordedModelName } from '../../stores/modelCatalogStore';
 import { buildTurnRenderPlan, type TurnRenderNode } from './turnRenderPlan';
 import { sessionModelId } from '../../stores/chat/chatChoice';
+import { assignTurnCards } from './turnCards';
 import { TurnChangesCard } from '../diff-review/TurnChangesCard';
 import { canMergeAssistantTurn } from '../../stores/chat/messageMerge';
 import { prefersReducedMotion } from '../../utils/reducedMotion';
@@ -500,7 +501,7 @@ export const MessageRow = memo(function MessageRow({
   onCancelQueued?: (clientMessageId: string) => void;
   entering?: boolean;
   /** The turn this reply answers; set only where the changes card belongs. */
-  changesFor?: { chatSessionId: string; clientMessageId: string };
+  changesFor?: { chatSessionId: string; clientMessageIds: string[] };
 }) {
   const isUser = message.role === 'user';
   const textContent = useMemo(() => getTextContent(message.segments), [message.segments]);
@@ -540,7 +541,14 @@ export const MessageRow = memo(function MessageRow({
           timestamp={message.timestamp}
           model={message.model}
         >
-          {changesFor && <TurnChangesCard {...changesFor} onOpen={NOOP_OPEN_CHANGES} />}
+          {changesFor?.clientMessageIds.map((clientMessageId) => (
+            <TurnChangesCard
+              key={clientMessageId}
+              chatSessionId={changesFor.chatSessionId}
+              clientMessageId={clientMessageId}
+              onOpen={NOOP_OPEN_CHANGES}
+            />
+          ))}
         </AssistantMessageContent>
       </div>
     );
@@ -680,7 +688,7 @@ const VirtualizedMessageRow = memo(function VirtualizedMessageRow({
   onHeightChange: (id: string, height: number) => void;
   onCancelQueued?: (clientMessageId: string) => void;
   entering?: boolean;
-  changesFor?: { chatSessionId: string; clientMessageId: string };
+  changesFor?: { chatSessionId: string; clientMessageIds: string[] };
 }) {
   const rowRef = useRef<HTMLDivElement>(null);
 
@@ -916,17 +924,7 @@ export function MessageList({
     }
   }, [messages]);
 
-  // Each assistant reply maps to the nearest earlier user message that has an id.
-  const changesForMessage = useMemo(() => {
-    const byMessage = new Map<string, { chatSessionId: string; clientMessageId: string }>();
-    if (!viewedSessionId) return byMessage;
-    let clientMessageId: string | undefined;
-    for (const message of staticMessages) {
-      if (message.role === 'user') clientMessageId = message.clientMessageId ?? clientMessageId;
-      else if (clientMessageId) byMessage.set(message.id, { chatSessionId: viewedSessionId, clientMessageId });
-    }
-    return byMessage;
-  }, [staticMessages, viewedSessionId]);
+  const turnCards = useMemo(() => assignTurnCards(staticMessages), [staticMessages]);
 
   const { totalStaticHeight, virtualizedMessages, rows } = useMemo(() => {
     let runningTop = 0;
@@ -1089,7 +1087,11 @@ export function MessageList({
               onHeightChange={handleMessageHeightChange}
               onCancelQueued={onCancelQueued}
               entering={message.id === newestMessageId}
-              changesFor={changesForMessage.get(message.id)}
+              changesFor={
+                viewedSessionId && turnCards.has(message.id)
+                  ? { chatSessionId: viewedSessionId, clientMessageIds: turnCards.get(message.id)! }
+                  : undefined
+              }
             />
           ))}
         </div>

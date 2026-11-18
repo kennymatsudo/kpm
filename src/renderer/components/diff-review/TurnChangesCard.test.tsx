@@ -61,6 +61,25 @@ describe('TurnChangesCard', () => {
     expect(render()).toContain('Created 1 file');
   });
 
+  const file = (path: string, status: 'added' | 'modified') => ({
+    rootPath: '/r', path, status, additions: 1, deletions: 0,
+  });
+
+  it('reads Edited 1 file for one modified file', () => {
+    seed({ files: [file('a.ts', 'modified')] });
+    expect(render()).toContain('Edited 1 file<');
+  });
+
+  it('reads Created 2 files when all are added', () => {
+    seed({ files: [file('a.ts', 'added'), file('b.ts', 'added')] });
+    expect(render()).toContain('Created 2 files');
+  });
+
+  it('reads Edited for mixed added and modified files', () => {
+    seed({ files: [file('a.ts', 'added'), file('b.ts', 'modified')] });
+    expect(render()).toContain('Edited 2 files');
+  });
+
   it('shows the reason and no button when unavailable', () => {
     seed({ unavailableReason: 'not a git repo' });
     const html = render();
