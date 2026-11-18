@@ -1816,6 +1816,38 @@ it('surfaces max-token truncation after finalizing the partial response', async 
       mockSessionInstances[0].emitMessage({ type: 'result' });
       expect(turnSnapshots.endTurn).toHaveBeenCalledWith('chat-1', { clientMessageId: queuedId });
     });
+    it.each([
+      ['persistHistory is false', { persistHistory: false, clientMessageId: CMID }],
+      ['there is no clientMessageId', {}],
+      ['a focus document is attached', { clientMessageId: CMID, focusDocument: { filePath: 'a.md', content: 'x' } as never }],
+    ])('does not call beginTurn when %s', async (_label, extra) => {
+      const turnSnapshots = makeSnapshots();
+      service = createStreamingSessionService({ ...createDeps(sendSpy), turnSnapshots });
+      const result = await service.sendChatMessage('project-1', 'hi', { chatSessionId: 'chat-1', choice: SONNET, ...extra });
+      expect(result.ok).toBe(true);
+      expect(turnSnapshots.beginTurn).not.toHaveBeenCalled();
+    });
+
+    it('still sends when beginTurn rejects', async () => {
+      const turnSnapshots = makeSnapshots(async () => { throw new Error('boom'); });
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      service = createStreamingSessionService({ ...createDeps(sendSpy), turnSnapshots });
+      const result = await service.sendChatMessage('project-1', 'hi', { chatSessionId: 'chat-1', choice: SONNET, clientMessageId: CMID });
+      expect(result.ok).toBe(true);
+      expect(mockSessionInstances[0].sentMessages).toEqual(['hi']);
+      warn.mockRestore();
+    });
+
+    it.each([
+      ['persistHistory false', { persistHistory: false }],
+      ['a focus document', { focusDocument: { filePath: 'a.md', content: 'x' } as never }],
+    ])('does not call endTurn for a session with %s', async (_label, extra) => {
+      const turnSnapshots = makeSnapshots();
+      service = createStreamingSessionService({ ...createDeps(sendSpy), turnSnapshots });
+      await service.sendChatMessage('project-1', 'hi', { chatSessionId: 'chat-1', choice: SONNET, clientMessageId: CMID, ...extra });
+      mockSessionInstances[0].emitMessage({ type: 'result' });
+      expect(turnSnapshots.endTurn).not.toHaveBeenCalled();
+    });
   });
 });
 

@@ -1416,7 +1416,8 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         getMainWindow: deps.getMainWindow,
         unsubscribeToolProposals,
         onTurnEnded: (end) => {
-          if (!chatSessionId || !deps.turnSnapshots) return;
+          // Focus-document sessions launch with forceApprovalReview and are never snapshotted.
+          if (!chatSessionId || !deps.turnSnapshots || !config.persistHistory || config.forceApprovalReview) return;
           const next = end.cause === 'result' && end.hasQueuedFollowUp ? end.outcome.queuedClientMessageId : undefined;
           void deps.turnSnapshots.endTurn(chatSessionId, next ? { clientMessageId: next } : undefined)
             .catch((error) => console.warn('[StreamingSessionService] Turn snapshot end failed:', error));
@@ -1617,7 +1618,7 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
 
     const liveSession = sessions.get(key);
     const startsTurn = !liveSession || (liveSession.state !== 'processing' && liveSession.state !== 'connecting');
-    if (startsTurn && options.clientMessageId && (options.persistHistory ?? true) && deps.turnSnapshots) {
+    if (startsTurn && options.clientMessageId && (options.persistHistory ?? true) && !options.focusDocument && deps.turnSnapshots) {
       let timer: ReturnType<typeof setTimeout> | undefined;
       const begin = Promise.resolve()
         .then(() => deps.turnSnapshots?.beginTurn({ projectId, chatSessionId, clientMessageId: options.clientMessageId! }))
