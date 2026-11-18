@@ -180,3 +180,22 @@ describe('diffStats', () => {
     expect(await diffStats(snap, snap.tree, snap.tree, options)).toEqual([]);
   });
 });
+
+describe('diffTrees path filter', () => {
+  it('treats the path literally, not as a glob', async () => {
+    const repo = initRepo();
+    const options = { shadowDir: tempDir(), timeoutMs: 10_000 };
+    fs.mkdirSync(path.join(repo, 'app'));
+    fs.writeFileSync(path.join(repo, 'app', '[id].tsx'), 'a\n');
+    fs.writeFileSync(path.join(repo, 'app', 'i.tsx'), 'b\n');
+    const before = await snapshotRoot(repo, options);
+    fs.writeFileSync(path.join(repo, 'app', '[id].tsx'), 'a2\n');
+    fs.writeFileSync(path.join(repo, 'app', 'i.tsx'), 'b2\n');
+    const after = await snapshotRoot(repo, options);
+    const files = parseUnifiedDiff(
+      await diffTrees(before, before.tree, after.tree, { ...options, paths: ['app/[id].tsx'] }),
+      repo,
+    );
+    expect(files.map((f) => f.path)).toEqual(['app/[id].tsx']);
+  });
+});

@@ -105,7 +105,8 @@ export async function diffTrees(
   options: GitSnapshotOptions & { paths?: string[] },
 ): Promise<string> {
   const prefix = snapshot.store === 'shadow' ? shadowArgs(snapshot.rootPath, options) : [];
-  const args = [...prefix, 'diff-tree', '-p', '-r', '-M', '--no-color', '--no-ext-diff', `-U${FULL_CONTEXT}`, from, to];
+  // Literal pathspecs so a file named like a glob (`[id].tsx`) is matched as written.
+  const args = ['--literal-pathspecs', ...prefix, 'diff-tree', '-p', '-r', '-M', '--no-color', '--no-ext-diff', `-U${FULL_CONTEXT}`, from, to];
   if (options.paths?.length) args.push('--', ...options.paths);
   return git(args, snapshot.rootPath, options.timeoutMs);
 }
