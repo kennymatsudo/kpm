@@ -78,7 +78,14 @@ export async function snapshotRoot(rootPath: string, options: GitSnapshotOptions
     const tempIndex = path.join(os.tmpdir(), `kpm-snapshot-${randomUUID()}.index`);
     try {
       const realIndex = path.join(gitDir, 'index');
-      if (fs.existsSync(realIndex)) fs.copyFileSync(realIndex, tempIndex);
+      if (fs.existsSync(realIndex)) {
+        fs.copyFileSync(realIndex, tempIndex);
+        // Git trusts cached file stats only when they are older than the index
+        // file's own mtime. A fresh mtime on the copy would hide edits made in
+        // the same second as the last index write, so keep the original.
+        const { atime, mtime } = fs.statSync(realIndex);
+        fs.utimesSync(tempIndex, atime, mtime);
+      }
       const env = { GIT_INDEX_FILE: tempIndex };
       await git(['add', '-A', '--', '.'], rootPath, options.timeoutMs, env);
       const tree = (await git(['write-tree'], rootPath, options.timeoutMs, env)).trim();
