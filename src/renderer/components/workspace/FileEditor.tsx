@@ -13,7 +13,7 @@ import type { FocusedResource } from '../../../shared/types';
 import { getBaseName } from '../../utils/path';
 import { LinearPublishChip } from '../linearDocuments';
 import { openWorkspaceHtmlPreview } from '../../services/workspaceFileService';
-import { DiffReviewView } from '../diff-review';
+import { CommentPane } from '../diff-review/CommentPane';
 import { useFileReview } from '../diff-review/useFileReview';
 import { useDiffReviewStore } from '../../stores/diffReviewStore';
 import { isPreviewableHtmlPath } from '../../../shared/htmlPreview';
@@ -89,18 +89,20 @@ function MarkdownBody({
   actions: ReactNode;
 }) {
   const content = useDocumentContent(documentId);
-  const { file, chatSessionId, rootPath } = useFileReview(documentId);
-  const count = useFileCommentCount(chatSessionId, rootPath, file?.path ?? null);
+  const { path, chatSessionId, rootPath } = useFileReview(documentId, false);
+  const [fullFile, setFullFile] = useState<boolean | null>(null);
+  const count = useFileCommentCount(chatSessionId, rootPath, path);
+  const canComment = rootPath !== null && path !== null && projectId !== null;
   const comment = useMemo(
-    () => (file && projectId
+    () => (canComment
       ? {
           count,
           render: () => (
-            <DiffReviewView file={file} projectId={projectId} chatSessionId={chatSessionId} expandAll />
+            <CommentPane documentId={documentId} projectId={projectId} fullFile={fullFile} onFullFileChange={setFullFile} />
           ),
         }
       : undefined),
-    [file, projectId, chatSessionId, count],
+    [canComment, count, documentId, projectId, fullFile],
   );
   return (
     <MarkdownEditorLazy
@@ -127,9 +129,10 @@ function CodeBody({
 }) {
   const content = useDocumentContent(documentId);
   const [view, setView] = useState<'edit' | 'comment'>('edit');
-  const { file, chatSessionId, rootPath } = useFileReview(documentId);
-  const count = useFileCommentCount(chatSessionId, rootPath, file?.path ?? null);
-  const canComment = file !== null && projectId !== null;
+  const [fullFile, setFullFile] = useState<boolean | null>(null);
+  const { path: reviewPath, chatSessionId, rootPath } = useFileReview(documentId, false);
+  const count = useFileCommentCount(chatSessionId, rootPath, reviewPath);
+  const canComment = rootPath !== null && reviewPath !== null && projectId !== null;
   return (
     <div className="flex flex-col h-full">
       {canComment && (
@@ -152,7 +155,7 @@ function CodeBody({
       <div className="flex-1 overflow-hidden">
         {view === 'comment' && canComment ? (
           <div className="h-full overflow-y-auto">
-            <DiffReviewView file={file} projectId={projectId} chatSessionId={chatSessionId} expandAll />
+            <CommentPane documentId={documentId} projectId={projectId} fullFile={fullFile} onFullFileChange={setFullFile} />
           </div>
         ) : (
           <CodeEditorLazy path={path} content={content} onChange={onChange} />
