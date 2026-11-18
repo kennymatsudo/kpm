@@ -43,6 +43,7 @@ import { toolLogEndpoints } from '../shared/ipc/toolLogEndpoints';
 import { devSessionEndpoints } from '../shared/ipc/devSessionEndpoints';
 import { agentSessionEndpoints } from '../shared/ipc/agentSessionEndpoints';
 import { playbookEndpoints } from '../shared/ipc/playbookEndpoints';
+import { diffReviewEndpoints } from '../shared/ipc/diffReviewEndpoints';
 import { reviewEndpoints } from '../shared/ipc/reviewEndpoints';
 import { githubEndpoints } from '../shared/ipc/githubEndpoints';
 import { projectEndpoints } from '../shared/ipc/projectEndpoints';
@@ -806,6 +807,7 @@ const agentSessions = {
 };
 
 const playbooks = deriveDomainApi(playbookEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
+const diffReview = deriveDomainApi(diffReviewEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
 
 const fileExplorerInvoke = deriveDomainApi(fileExplorerEndpoints, (channel, payload) => ipcRenderer.invoke(channel, payload));
 const fileExplorerSubscriptions = deriveEventSubscriptions(fileExplorerEvents, ipcRenderer);
@@ -1082,6 +1084,7 @@ export const api = {
   devSessions,
   agentSessions,
   playbooks,
+  diffReview,
   fileExplorer,
   repoFiles,
   shell,

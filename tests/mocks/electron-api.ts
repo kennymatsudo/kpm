@@ -6,6 +6,7 @@
  */
 
 import { vi } from 'vitest';
+import type { DiffReviewComment } from '../../src/shared/diffReview';
 import type {
   Project,
   PlanItem,
@@ -36,6 +37,13 @@ const noopUnsub = vi.fn().mockReturnValue(() => {});
 
 export function createMockApi() {
   return {
+    diffReview: {
+      listComments: vi.fn().mockResolvedValue({ success: true, comments: [] as DiffReviewComment[] }),
+      createComment: vi.fn(),
+      updateComment: vi.fn(),
+      deleteComment: vi.fn().mockResolvedValue({ success: true }),
+    },
+
     usage: {
       getProjectStats: vi.fn(),
       getGlobalStats: vi.fn(),

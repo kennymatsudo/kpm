@@ -42,6 +42,7 @@ import { toolLogEndpoints } from './ipc/toolLogEndpoints';
 import { devSessionEndpoints } from './ipc/devSessionEndpoints';
 import { agentSessionEndpoints } from './ipc/agentSessionEndpoints';
 import { playbookEndpoints } from './ipc/playbookEndpoints';
+import { diffReviewEndpoints } from './ipc/diffReviewEndpoints';
 import { reviewEndpoints } from './ipc/reviewEndpoints';
 import { githubEndpoints } from './ipc/githubEndpoints';
 import { projectEndpoints } from './ipc/projectEndpoints';
@@ -117,6 +118,7 @@ const devSessionChannels = toNestedChannels(devSessionEndpoints);
 const agentSessionChannels = toNestedChannels(agentSessionEndpoints);
 
 const playbookChannels = toNestedChannels(playbookEndpoints);
+const diffReviewChannels = toNestedChannels(diffReviewEndpoints);
 
 const reviewChannels = toNestedChannels(reviewEndpoints);
 
@@ -306,6 +308,7 @@ export const IPC_CHANNELS = {
   // ===========================================================================
   agentSession: agentSessionChannels,
   playbook: playbookChannels,
+  diffReview: diffReviewChannels,
 
   // ===========================================================================
   // Claude Usage Tracking

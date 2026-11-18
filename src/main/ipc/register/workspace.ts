@@ -13,6 +13,7 @@ import { registerPermissionHandlers } from '../handlers/permission';
 import { registerTaskPromptTemplateHandlers } from '../handlers/taskPromptTemplates';
 import { registerActionHandlers } from '../handlers/actions';
 import { registerOnboardingHandlers } from '../handlers/onboarding';
+import { registerDiffReviewHandlers } from '../handlers/diffReview';
 import type { IpcRegistrationContext } from './types';
 
 export function registerWorkspaceHandlers({
@@ -43,4 +44,5 @@ export function registerWorkspaceHandlers({
   registerTaskPromptTemplateHandlers(services.taskPromptTemplateService);
   registerActionHandlers(services.actionService, services.container.actions, services.container.actionRuns);
   registerOnboardingHandlers(getMainWindow, services.onboardingService);
+  registerDiffReviewHandlers({ comments: services.container.diffReviewComments });
 }
