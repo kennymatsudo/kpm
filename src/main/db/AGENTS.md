@@ -16,6 +16,7 @@ Markdown documents are files on disk in the project folder, not rows. `plan_item
 2. Take the next number after the last entry: `id: 1000 + N` and `name: 'NNN_short_description'`, where N is the last entry's N plus one. `id` is the primary key and `name` is unique; applied state is looked up by `name`. Skip gaps; never reuse a number.
 3. Write `up(db)` with `db.exec` for DDL, and `db.prepare(...).run(...)` for data backfills.
 4. Add a test to `migrations.test.ts` if the migration moves or reshapes data (see below).
+- Fork-only migrations use ids from 9001 and names `fork_NNN_*`. The remap functions ignore ids >= 9000.
 
 The migration runs on the next app start.
 

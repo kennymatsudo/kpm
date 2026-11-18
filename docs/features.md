@@ -26,6 +26,7 @@ What a user can do in KPM and where the code lives. Each line names a feature, w
 ## Chat
 
 - **Chat sessions**: multiple tabbed chats per project, each with its own provider (Claude, Codex, or pi), model, and effort; live follow-ups (Claude SDK input, Codex active-turn steering, pi queued turns), image and file attachments, `/` slash commands (Claude only); Codex and pi can't read PDFs. `src/main/services/streaming/StreamingSessionService.ts`, `src/main/claude/streaming/StreamingSession.ts`, `src/main/codex/CodexChatSession.ts`, `src/main/pi/PiChatSession.ts`, `src/renderer/components/chat/`
+- **Diff review**: each reply that changes files shows a card; View changes opens every file in one scroll, and line comments go out with the next message in that chat. Snapshots are git trees per turn. `src/main/services/diffReview/`, `src/renderer/components/diff-review/`
 - **Model catalog**: model lists fetched at launch with a built-in fallback. `src/main/providers/modelCatalog.ts`, `src/shared/providerCapabilities.ts`
 - **Focused resources**: pin files, folders, repos, and plan items to the next message. `src/main/chat/prompts/focusedResources.ts`, `src/renderer/stores/project/uiSlice.ts`
 - **System prompt and overrides**: override any registry prompt in Settings, Prompts; optionally include `~/.claude/CLAUDE.md`. `src/main/chat/prompts/`, `src/main/services/core/PromptOverrideService.ts`
