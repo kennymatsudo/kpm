@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { FileDiff } from '../../../shared/diffReview';
 
+vi.mock('./useSyntaxColors', () => ({ useSyntaxColors: () => null }));
 vi.mock('../../stores/diffReviewStore', () => {
   const state = {
     commentsBySession: {},

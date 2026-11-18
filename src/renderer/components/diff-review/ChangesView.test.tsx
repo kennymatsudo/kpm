@@ -6,6 +6,7 @@ const mockState = vi.hoisted(() => ({
   changesTab: { chatSessionId: 's1', clientMessageId: 'm1', scope: 'turn' },
   commentsBySession: {},
 }));
+vi.mock('./useSyntaxColors', () => ({ useSyntaxColors: () => null }));
 vi.mock('../../stores/diffReviewStore', () => ({
   useDiffReviewStore: (selector: (state: typeof mockState) => unknown) => selector(mockState),
 }));
