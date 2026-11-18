@@ -114,6 +114,12 @@ describe('TurnSnapshotService', () => {
     expect(git.diffTrees).not.toHaveBeenCalled();
   });
 
+  it('isKnownRoot accepts only the project roots', () => {
+    const { service } = setup({ roots: ['/r1', '/r2'] });
+    expect(service.isKnownRoot('p', '/r2')).toBe(true);
+    expect(service.isKnownRoot('p', '/etc')).toBe(false);
+  });
+
   it('deletes the row and emits nothing when nothing changed', async () => {
     const { service, repo, emitted } = setup({ snapshots: { '/r1': ['same', 'same'] } });
     await service.beginTurn(turn);

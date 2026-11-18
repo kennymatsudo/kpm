@@ -10,13 +10,16 @@ type Handlers = { [K in DiffReviewEndpointName]: UnwrappedHandlerFor<typeof diff
 
 export interface DiffReviewHandlerDeps {
   comments: IDiffReviewCommentRepository;
-  turnSnapshots: Pick<TurnSnapshotService, 'listTurnChanges' | 'getDiff'>;
+  turnSnapshots: Pick<TurnSnapshotService, 'listTurnChanges' | 'getDiff' | 'isKnownRoot'>;
 }
 
 export function buildDiffReviewHandlers(deps: DiffReviewHandlerDeps): Handlers {
   return {
     listComments: ({ chatSessionId }) => ({ comments: deps.comments.listBySession(chatSessionId) }),
-    createComment: (input) => ({ comment: deps.comments.create({ ...input, id: randomUUID() }) }),
+    createComment: (input) => {
+      if (!deps.turnSnapshots.isKnownRoot(input.projectId, input.rootPath)) throw new Error('Unknown root');
+      return { comment: deps.comments.create({ ...input, id: randomUUID() }) };
+    },
     updateComment: ({ id, body }) => {
       const comment = deps.comments.update(id, { body });
       if (!comment) throw new Error('Comment not found');

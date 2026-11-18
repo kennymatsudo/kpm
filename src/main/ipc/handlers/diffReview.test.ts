@@ -16,7 +16,7 @@ function fakeComments() {
 }
 
 function fakeTurnSnapshots() {
-  return { listTurnChanges: vi.fn(), getDiff: vi.fn() };
+  return { listTurnChanges: vi.fn(), getDiff: vi.fn(), isKnownRoot: vi.fn().mockReturnValue(true) };
 }
 
 describe('diff review IPC handlers', () => {
@@ -31,6 +31,20 @@ describe('diff review IPC handlers', () => {
 
     expect(result.comment.id).toMatch(UUID_RE);
     expect(result.comment).toMatchObject(input);
+  });
+
+  it('rejects a comment whose root is not one of the project roots', () => {
+    const comments = fakeComments();
+    const turnSnapshots = fakeTurnSnapshots();
+    turnSnapshots.isKnownRoot.mockReturnValue(false);
+    const input = {
+      projectId: 'p', chatSessionId: 's', rootPath: '/etc', filePath: 'a.ts',
+      side: 'new' as const, startLine: 1, endLine: 2, quotedText: 'x', body: 'hi',
+    };
+
+    expect(() => buildDiffReviewHandlers({ comments, turnSnapshots }).createComment(input, {} as never)).toThrow('Unknown root');
+    expect(turnSnapshots.isKnownRoot).toHaveBeenCalledWith('p', '/etc');
+    expect(comments.create).not.toHaveBeenCalled();
   });
 
   it('throws when updating a missing comment', () => {

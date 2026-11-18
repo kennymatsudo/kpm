@@ -290,6 +290,7 @@ export function createTurnSnapshotService(deps: TurnSnapshotServiceDeps) {
     markLate: (chatSessionId: string, clientMessageId: string): void => {
       late.add(lateKey(chatSessionId, clientMessageId));
     },
+    isKnownRoot: (projectId: string, rootPath: string): boolean => resolveRoots(projectId).includes(rootPath),
     listTurnChanges,
     getDiff,
   };
