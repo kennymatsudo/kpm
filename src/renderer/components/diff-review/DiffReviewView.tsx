@@ -36,7 +36,8 @@ export function DiffReviewView({ file, projectId, chatSessionId, expandAll }: Di
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const rows = useMemo(() => buildReviewRows(file, { expanded, expandAll }), [file, expanded, expandAll]);
-  const { selection, committed, start, extend, finish, clear } = useLineSelection();
+  const rowKeys = useMemo(() => rows.map((r) => r.key), [rows]);
+  const { selection, committed, start, extend, finish, clear } = useLineSelection(rowKeys);
 
   const sessionComments = useDiffReviewStore((state) =>
     chatSessionId ? (state.commentsBySession[chatSessionId] ?? NO_COMMENTS) : NO_COMMENTS,
@@ -128,7 +129,7 @@ export function DiffReviewView({ file, projectId, chatSessionId, expandAll }: Di
                 className="absolute left-1 top-1/2 hidden -translate-y-1/2 rounded-sm bg-accent text-text-on-accent group-hover:block"
                 onMouseDown={(event) => {
                   event.preventDefault();
-                  start(index, event.shiftKey);
+                  start(row.key, event.shiftKey);
                 }}
               >
                 <PlusIcon className="h-3 w-3" />
@@ -137,7 +138,7 @@ export function DiffReviewView({ file, projectId, chatSessionId, expandAll }: Di
             const showBox = committed !== null && chatSessionId !== null && index === committed.end;
             return (
               <Fragment key={row.key}>
-                <tr className={`group ${rowClass(line.kind, selected)}`} onMouseEnter={() => extend(index)}>
+                <tr className={`group ${rowClass(line.kind, selected)}`} onMouseEnter={() => extend(row.key)}>
                   <td className="relative select-none pr-2 text-right text-text-tertiary">
                     {gutterOnOld && gutter}
                     {line.oldLine}
@@ -159,8 +160,9 @@ export function DiffReviewView({ file, projectId, chatSessionId, expandAll }: Di
                           initialBody={comment.body}
                           heading={`Edit comment on ${comment.side === 'new' ? 'R' : 'L'}${comment.endLine}`}
                           onSubmit={(body) => {
-                            void editComment(comment.id, comment.chatSessionId, body);
-                            setEditingId(null);
+                            void editComment(comment.id, comment.chatSessionId, body).then((saved) => {
+                              if (saved) setEditingId(null);
+                            });
                           }}
                           onCancel={() => setEditingId(null)}
                         />

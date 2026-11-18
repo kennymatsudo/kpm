@@ -5,7 +5,7 @@ import type { FileDiff } from '../../../shared/diffReview';
 vi.mock('../../stores/diffReviewStore', () => {
   const state = {
     commentsBySession: {},
-    editComment: vi.fn(),
+    editComment: vi.fn().mockResolvedValue(true),
     removeComment: vi.fn(),
     addComment: vi.fn(),
   };

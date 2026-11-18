@@ -81,7 +81,7 @@ describe('editComment and removeComment', () => {
 
   it('replaces an edited comment', async () => {
     updateDiffReviewComment.mockResolvedValue({ success: true, comment: comment('c1', 'new body') });
-    await store().editComment('c1', SESSION, 'new body');
+    await expect(store().editComment('c1', SESSION, 'new body')).resolves.toBe(true);
     expect(store().commentsBySession[SESSION].map((c) => c.body)).toEqual(['new body', 'note']);
   });
 
@@ -94,7 +94,7 @@ describe('editComment and removeComment', () => {
 
   it('keeps the body and toasts when edit fails', async () => {
     updateDiffReviewComment.mockResolvedValue({ success: false, error: 'x' });
-    await store().editComment('c1', SESSION, 'new body');
+    await expect(store().editComment('c1', SESSION, 'new body')).resolves.toBe(false);
     expect(store().commentsBySession[SESSION][0].body).toBe('note');
     expect(toastError).toHaveBeenCalledWith('Could not save the comment.');
   });

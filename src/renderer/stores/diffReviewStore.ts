@@ -16,7 +16,8 @@ interface DiffReviewState {
   /** `isRetry` is set by the store when it re-reads after a stale response. */
   loadComments: (chatSessionId: string, isRetry?: boolean) => Promise<void>;
   addComment: (input: NewDiffReviewComment) => Promise<DiffReviewComment | null>;
-  editComment: (id: string, chatSessionId: string, body: string) => Promise<void>;
+  /** Resolves true when the edit was saved. */
+  editComment: (id: string, chatSessionId: string, body: string) => Promise<boolean>;
   removeComment: (id: string, chatSessionId: string) => Promise<void>;
   setHeld: (chatSessionId: string, held: boolean) => void;
   /** Ids the next send should carry: none while held. */
@@ -75,12 +76,13 @@ export const useDiffReviewStore = create<DiffReviewState>()((set, get) => {
       const result = await updateDiffReviewComment(id, body);
       if (!result.success) {
         toast.error('Could not save the comment.');
-        return;
+        return false;
       }
       mutateSession(
         chatSessionId,
         currentComments(chatSessionId).map((comment) => (comment.id === id ? result.comment : comment)),
       );
+      return true;
     },
 
     removeComment: async (id, chatSessionId) => {
