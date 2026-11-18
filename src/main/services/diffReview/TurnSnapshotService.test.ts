@@ -258,24 +258,29 @@ describe('TurnSnapshotService', () => {
     expect(result.ok && result.data.map((d) => d.path)).toEqual(['a.ts']);
   });
 
-  it('getDiff passes the file filter as paths', async () => {
-    const { service, git } = setup({ snapshots: { '/r1': ['b', 'a'] } });
+  it('getDiff filters by file after diffing so a rename keeps its old path', async () => {
+    const rename = [
+      'diff --git a/old.ts b/new.ts',
+      'similarity index 90%',
+      'rename from old.ts',
+      'rename to new.ts',
+      'index 111..222 100644',
+      '--- a/old.ts',
+      '+++ b/new.ts',
+      '@@ -1,1 +1,2 @@',
+      ' keep',
+      '+added',
+      '',
+    ].join('\n') + PATCH('other.ts');
+    const { service, git } = setup({ snapshots: { '/r1': ['b', 'a'] }, patch: rename });
     await service.beginTurn(turn);
     await service.endTurn('s');
-    await service.getDiff({
-      projectId: 'p',
-      chatSessionId: 's',
-      scope: 'turn',
-      clientMessageId: 'm1',
-      rootPath: '/r1',
-      filePath: 'a.ts',
-    });
-    expect(git.diffTrees).toHaveBeenLastCalledWith(
-      expect.anything(),
-      'b',
-      'a',
-      expect.objectContaining({ paths: ['a.ts'] }),
-    );
+    const input = { projectId: 'p', chatSessionId: 's', scope: 'turn' as const, clientMessageId: 'm1', rootPath: '/r1' };
+    for (const filePath of ['new.ts', 'old.ts']) {
+      const result = await service.getDiff({ ...input, filePath });
+      expect(result.ok && result.data.map((d) => [d.path, d.oldPath, d.status])).toEqual([['new.ts', 'old.ts', 'renamed']]);
+    }
+    expect(git.diffTrees).toHaveBeenLastCalledWith(expect.anything(), 'b', 'a', expect.not.objectContaining({ paths: expect.anything() }));
   });
 
   it('getDiff uncommitted diffs HEAD to a fresh snapshot', async () => {

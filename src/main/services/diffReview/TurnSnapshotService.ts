@@ -217,11 +217,13 @@ export function createTurnSnapshotService(deps: TurnSnapshotServiceDeps) {
     rows: { rootPath: string; store: SnapshotStore; from: string; to: string }[],
     filePath: string | undefined,
   ): Promise<FileDiff[]> {
-    const paths = filePath ? [filePath] : undefined;
+    // Filtering in git would run before rename detection and show a renamed file as added,
+    // so diff everything and pick the file out afterwards.
     const parts = await Promise.all(
       rows.map(async (r) => {
-        const patch = await git.diffTrees(r, r.from, r.to, { ...options, ...(paths ? { paths } : {}) });
-        return parseUnifiedDiff(patch, r.rootPath);
+        const patch = await git.diffTrees(r, r.from, r.to, options);
+        const files = parseUnifiedDiff(patch, r.rootPath);
+        return filePath ? files.filter((f) => f.path === filePath || f.oldPath === filePath) : files;
       }),
     );
     return parts.flat();
