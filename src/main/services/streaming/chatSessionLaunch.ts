@@ -27,7 +27,7 @@ import type { SessionEndReason } from './BaseTurnQueueChatSession';
 import type { SegmentState } from './interpretSdkMessage';
 import { createFollowUpQueue, type FollowUpQueue } from './followUpQueue';
 import { createTurnLifecycle, type TurnLifecycle } from './turnLifecycle';
-import { createTurnReport, type TurnReport } from './turnReport';
+import { createTurnReport, type TurnEnd, type TurnReport } from './turnReport';
 import type { McpElicitationDecision, McpElicitationRequest } from './mcpElicitation';
 import type { ModelType } from '../../claude/sdkOptionsBuilder';
 import type { ChatModelSelection } from '../../chat/modelChoice';
@@ -157,6 +157,8 @@ export interface ChatLaunchRequest {
   getMainWindow: () => BrowserWindow | null;
   /** Torn down by the caller, on launch failure or when the session ends. */
   unsubscribeToolProposals: () => void;
+  /** Called once when each turn ends, for every cause. */
+  onTurnEnded?: (end: TurnEnd) => void;
   buildClaudeSdkOptions: BuildClaudeSdkOptions;
   host: ChatSessionHost;
 }
@@ -287,6 +289,7 @@ export function buildChatSessionLaunch(
         projectId,
         getChatSessionId: () => chatSessionId,
         getMainWindow: request.getMainWindow,
+        onTurnEnded: request.onTurnEnded,
       }),
       suppressLifecycleEventsOnEnd: false,
       followUps: createFollowUpQueue(),

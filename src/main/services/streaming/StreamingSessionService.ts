@@ -54,6 +54,7 @@ import { randomUUID } from 'crypto';
 import { emitAppEvent } from '../../../shared/ipc/appEvents';
 import { runGeneration } from '../../generation';
 import { createChatTitler, type ChatTitler, type ProviderSessionSummary } from './chatTitles';
+import type { TurnSnapshotService } from '../diffReview/TurnSnapshotService';
 import { chatEvents, type ChatProposalEventData } from '../../../shared/ipc/chatEvents';
 import type { TurnCost } from './providerChatMessage';
 
@@ -218,7 +219,12 @@ const getSessionConfig = () => getConfig().session;
 // Dependencies
 // =============================================================================
 
+/** Longest a send waits for the pre-turn snapshot before going ahead without it. */
+export const SNAPSHOT_SEND_WAIT_MS = 1500;
+
 export interface StreamingSessionServiceDeps {
+  /** Records what a chat turn changed on disk. Failures never fail a send. */
+  turnSnapshots?: Pick<TurnSnapshotService, 'beginTurn' | 'endTurn'>;
   /** Project repository for session persistence */
   projectRepository: {
     get(id: string): Project | undefined;
@@ -1409,6 +1415,12 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         mainWindow,
         getMainWindow: deps.getMainWindow,
         unsubscribeToolProposals,
+        onTurnEnded: (end) => {
+          if (!chatSessionId || !deps.turnSnapshots) return;
+          const next = end.cause === 'result' && end.hasQueuedFollowUp ? end.outcome.queuedClientMessageId : undefined;
+          void deps.turnSnapshots.endTurn(chatSessionId, next ? { clientMessageId: next } : undefined)
+            .catch((error) => console.warn('[StreamingSessionService] Turn snapshot end failed:', error));
+        },
         buildClaudeSdkOptions: deps.buildSdkOptions,
         host: buildChatSessionHost(config, mainWindow, launched),
       });
@@ -1602,6 +1614,19 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
     const messageText = prefixLines.length > 0 ? `${prefixLines.join('\n\n')}\n\n${messageWithContext}` : messageWithContext;
 
     const envelope: MessageEnvelope = { text: messageText, attachments: options.attachments };
+
+    const liveSession = sessions.get(key);
+    const startsTurn = !liveSession || (liveSession.state !== 'processing' && liveSession.state !== 'connecting');
+    if (startsTurn && options.clientMessageId && (options.persistHistory ?? true) && deps.turnSnapshots) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const begin = Promise.resolve()
+        .then(() => deps.turnSnapshots?.beginTurn({ projectId, chatSessionId, clientMessageId: options.clientMessageId! }))
+        .catch((error) => console.warn('[StreamingSessionService] Turn snapshot failed:', error));
+      const wait = new Promise<void>((resolve) => { timer = setTimeout(resolve, SNAPSHOT_SEND_WAIT_MS); });
+      await Promise.race([begin, wait]);
+      clearTimeout(timer);
+    }
+
     const result = await sendMessageToSession(
       key,
       envelope,

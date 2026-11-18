@@ -17,6 +17,7 @@ import type { Activity, AgentBackgroundTask, PlanAction, SlashCommandInfo } from
 import type { ModelCatalog } from '../modelCatalog';
 import type { ConfigChange } from '../configKinds';
 import type { BoardChange } from '../boardChanges';
+import type { TurnChanges } from '../diffReview';
 
 export interface ChunkEventData {
   projectId: string;
@@ -173,6 +174,7 @@ export interface McpStatusEventData {
 export const chatEvents = {
   chunk: { channel: 'chat:chunk', payload: payloadOf<ChunkEventData>() },
   proposal: { channel: 'chat:proposal', payload: payloadOf<ChatProposalEventData>() },
+  turnChanges: { channel: 'chat:turn-changes', payload: payloadOf<{ projectId: string; changes: TurnChanges }>() },
   done: { channel: 'chat:done', payload: payloadOf<TurnDoneEventData>() },
   queueCleared: { channel: 'chat:queue-cleared', payload: payloadOf<QueueClearedEventData>() },
   error: { channel: 'chat:error', payload: payloadOf<ErrorEventData>() },

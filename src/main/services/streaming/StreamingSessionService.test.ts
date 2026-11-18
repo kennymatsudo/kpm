@@ -6,6 +6,7 @@ import type { KpmToolProposal, PlanActionsEvent } from '../../kpmTools/runtimeRe
 import {
   buildContinuationHistory,
   createStreamingSessionService,
+  SNAPSHOT_SEND_WAIT_MS,
   type StreamingSessionServiceDeps,
 } from './StreamingSessionService';
 import { FollowUpDroppedError } from './IChatSession';
@@ -1738,6 +1739,82 @@ it('surfaces max-token truncation after finalizing the partial response', async 
         ttftMs: 1_000,
         durationMs: 6_000,
       }));
+    });
+  });
+
+  describe('turn snapshots', () => {
+    const CMID = '77777777-7777-4777-8777-777777777777';
+    const makeSnapshots = (beginTurn: () => Promise<void> = async () => {}) => ({
+      beginTurn: vi.fn(beginTurn),
+      endTurn: vi.fn(async () => {}),
+    });
+
+    it('awaits beginTurn before the provider receives a message to an idle chat', async () => {
+      let release!: () => void;
+      const turnSnapshots = makeSnapshots(() => new Promise<void>((resolve) => { release = resolve; }));
+      service = createStreamingSessionService({ ...createDeps(sendSpy), turnSnapshots });
+
+      const sending = service.sendChatMessage('project-1', 'hi', { chatSessionId: 'chat-1', choice: SONNET, clientMessageId: CMID });
+      await Promise.resolve();
+      expect(turnSnapshots.beginTurn).toHaveBeenCalledWith({ projectId: 'project-1', chatSessionId: 'chat-1', clientMessageId: CMID });
+      expect(mockSessionInstances).toHaveLength(0);
+
+      release();
+      await sending;
+      expect(mockSessionInstances[0].sentMessages).toEqual(['hi']);
+    });
+
+    it('does not call beginTurn for a follow-up sent while processing', async () => {
+      const turnSnapshots = makeSnapshots();
+      service = createStreamingSessionService({ ...createDeps(sendSpy), turnSnapshots });
+      await service.sendChatMessage('project-1', 'first', { chatSessionId: 'chat-1', choice: SONNET, clientMessageId: CMID });
+      turnSnapshots.beginTurn.mockClear();
+
+      await service.sendChatMessage('project-1', 'second', {
+        chatSessionId: 'chat-1',
+        choice: SONNET,
+        clientMessageId: '88888888-8888-4888-8888-888888888888',
+      });
+      expect(turnSnapshots.beginTurn).not.toHaveBeenCalled();
+    });
+
+    it('delays a send by no more than SNAPSHOT_SEND_WAIT_MS when beginTurn never resolves', async () => {
+      vi.useFakeTimers();
+      try {
+        const turnSnapshots = makeSnapshots(() => new Promise<void>(() => {}));
+        service = createStreamingSessionService({ ...createDeps(sendSpy), turnSnapshots });
+
+        const sending = service.sendChatMessage('project-1', 'hi', { chatSessionId: 'chat-1', choice: SONNET, clientMessageId: CMID });
+        await vi.advanceTimersByTimeAsync(SNAPSHOT_SEND_WAIT_MS - 1);
+        expect(mockSessionInstances).toHaveLength(0);
+
+        await vi.advanceTimersByTimeAsync(1);
+        const result = await sending;
+        expect(result.ok).toBe(true);
+        expect(mockSessionInstances[0].sentMessages).toEqual(['hi']);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('ends the snapshot turn with no next turn when no follow-up is queued', async () => {
+      const turnSnapshots = makeSnapshots();
+      service = createStreamingSessionService({ ...createDeps(sendSpy), turnSnapshots });
+      await service.sendChatMessage('project-1', 'hi', { chatSessionId: 'chat-1', choice: SONNET, clientMessageId: CMID });
+
+      mockSessionInstances[0].emitMessage({ type: 'result' });
+      expect(turnSnapshots.endTurn).toHaveBeenCalledWith('chat-1', undefined);
+    });
+
+    it('hands the queued follow-up id to endTurn', async () => {
+      const turnSnapshots = makeSnapshots();
+      service = createStreamingSessionService({ ...createDeps(sendSpy), turnSnapshots });
+      await service.sendChatMessage('project-1', 'hi', { chatSessionId: 'chat-1', choice: SONNET, clientMessageId: CMID });
+      const queuedId = '99999999-9999-4999-8999-999999999999';
+      await service.sendChatMessage('project-1', 'next', { chatSessionId: 'chat-1', choice: SONNET, clientMessageId: queuedId });
+
+      mockSessionInstances[0].emitMessage({ type: 'result' });
+      expect(turnSnapshots.endTurn).toHaveBeenCalledWith('chat-1', { clientMessageId: queuedId });
     });
   });
 });

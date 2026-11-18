@@ -1,9 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { BrowserWindow } from 'electron';
 import { createTurnLifecycle, type TurnLifecycle } from './turnLifecycle';
-import { createTurnReport, type TurnOutcome } from './turnReport';
+import { createTurnReport, type TurnEnd, type TurnOutcome } from './turnReport';
 
-function setup(options: { inFlight?: boolean } = {}) {
+function setup(options: { inFlight?: boolean; onTurnEnded?: (end: TurnEnd) => void } = {}) {
   const sent: { channel: string; payload: Record<string, unknown> }[] = [];
   const window = {
     webContents: {
@@ -22,6 +22,7 @@ function setup(options: { inFlight?: boolean } = {}) {
       projectId: 'project-1',
       getChatSessionId: () => 'session-1',
       getMainWindow: () => window,
+      onTurnEnded: options.onTurnEnded,
     }),
   };
 }
@@ -125,5 +126,21 @@ describe('endTurn', () => {
     });
 
     expect(channels()).toEqual([]);
+  });
+});
+
+describe('onTurnEnded', () => {
+  const ends: TurnEnd[] = [
+    { cause: 'result', hasQueuedFollowUp: false, outcome },
+    { cause: 'timed-out' },
+    { cause: 'disconnected', silent: true, reason: 'r', source: 's', previousState: 'processing' },
+    { cause: 'session-ended', reason: 'r', source: 's', previousState: 'idle', suppressLifecycle: true },
+  ];
+
+  it.each(ends)('calls the hook once for $cause', (end) => {
+    const onTurnEnded = vi.fn();
+    setup({ onTurnEnded }).report.endTurn(end);
+    expect(onTurnEnded).toHaveBeenCalledTimes(1);
+    expect(onTurnEnded).toHaveBeenCalledWith(end);
   });
 });
