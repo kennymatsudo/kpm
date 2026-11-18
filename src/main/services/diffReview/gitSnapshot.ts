@@ -4,6 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { promisify } from 'util';
+import type { FileChangeStatus, TurnFileChange } from '../../../shared/diffReview';
 
 const execFileAsync = promisify(execFile);
 
@@ -107,6 +108,51 @@ export async function diffTrees(
   const args = [...prefix, 'diff-tree', '-p', '-r', '-M', '--no-color', '--no-ext-diff', `-U${FULL_CONTEXT}`, from, to];
   if (options.paths?.length) args.push('--', ...options.paths);
   return git(args, snapshot.rootPath, options.timeoutMs);
+}
+
+const STATUS_BY_LETTER: Record<string, FileChangeStatus> = { A: 'added', D: 'deleted', R: 'renamed' };
+const NUMSTAT_RECORD = /^(\S+)\t(\S+)\t([\s\S]*)$/;
+
+/** Per-file status and line counts between two trees, without building a patch. Binary files count 0. */
+export async function diffStats(
+  snapshot: { rootPath: string; store: SnapshotStore },
+  from: string,
+  to: string,
+  options: GitSnapshotOptions,
+): Promise<TurnFileChange[]> {
+  const prefix = snapshot.store === 'shadow' ? shadowArgs(snapshot.rootPath, options) : [];
+  const out = await git(
+    [...prefix, 'diff-tree', '-r', '-M', '--no-color', '--no-ext-diff', '-z', '--raw', '--numstat', from, to],
+    snapshot.rootPath,
+    options.timeoutMs,
+  );
+  const tokens = out.split('\0');
+  const files: TurnFileChange[] = [];
+  let i = 0;
+  // With -z, every raw record comes first, then every numstat record.
+  for (; i < tokens.length && tokens[i].startsWith(':'); i++) {
+    const letter = tokens[i].split(' ').pop()![0];
+    const status = STATUS_BY_LETTER[letter] ?? 'modified';
+    if (status === 'renamed') {
+      files.push({ rootPath: snapshot.rootPath, path: tokens[i + 2], oldPath: tokens[i + 1], status, additions: 0, deletions: 0 });
+      i += 2;
+    } else {
+      files.push({ rootPath: snapshot.rootPath, path: tokens[++i], status, additions: 0, deletions: 0 });
+    }
+  }
+  const byPath = new Map(files.map((file) => [file.path, file]));
+  for (; i < tokens.length; i++) {
+    const match = NUMSTAT_RECORD.exec(tokens[i]);
+    if (!match) continue;
+    const [, added, deleted, inlinePath] = match;
+    // A rename's numstat record has an empty path, then the old and new paths.
+    const newPath = inlinePath === '' ? tokens[(i += 2)] : inlinePath;
+    const file = byPath.get(newPath);
+    if (!file) continue;
+    file.additions = added === '-' ? 0 : Number(added);
+    file.deletions = deleted === '-' ? 0 : Number(deleted);
+  }
+  return files;
 }
 
 export async function headTree(rootPath: string, options: GitSnapshotOptions): Promise<string | null> {

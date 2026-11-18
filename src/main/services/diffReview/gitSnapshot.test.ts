@@ -3,7 +3,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { diffTrees, headTree, snapshotRoot } from './gitSnapshot';
+import { diffStats, diffTrees, headTree, snapshotRoot } from './gitSnapshot';
 import { parseUnifiedDiff } from '../../../shared/unifiedDiff';
 
 const dirs: string[] = [];
@@ -142,5 +142,41 @@ describe('snapshotRoot outside git', () => {
     expect(gitOut(repo, 'status', '--porcelain')).toBe(statusBefore);
     expect(gitOut(repo, 'diff', '--cached', '--name-only')).toBe('');
     expect(fs.readdirSync(folder)).toEqual(['x.md']);
+  });
+});
+
+describe('diffStats', () => {
+  it('reports modified, added, deleted, renamed and binary files without a patch', async () => {
+    const repo = initRepo();
+    const options = { shadowDir: tempDir(), timeoutMs: 10_000 };
+    const write = (name: string, data: string | Buffer) => fs.writeFileSync(path.join(repo, name), data);
+    write('mod.txt', 'one\ntwo\n');
+    write('gone.txt', 'bye\n');
+    write('move.txt', 'a\nb\nc\nd\ne\nf\n');
+    write('bin.dat', Buffer.from([0, 1, 2, 3]));
+    const before = await snapshotRoot(repo, options);
+
+    write('mod.txt', 'one\nthree\nfour\n');
+    write('new.txt', 'n1\nn2\n');
+    fs.rmSync(path.join(repo, 'gone.txt'));
+    fs.renameSync(path.join(repo, 'move.txt'), path.join(repo, 'moved.txt'));
+    write('bin.dat', Buffer.from([0, 9, 8, 7, 6, 0]));
+    const after = await snapshotRoot(repo, options);
+
+    const stats = await diffStats(before, before.tree, after.tree, options);
+    const byPath = Object.fromEntries(stats.map((f) => [f.path, f]));
+    expect(Object.keys(byPath).sort()).toEqual(['bin.dat', 'mod.txt', 'moved.txt', 'new.txt', 'gone.txt'].sort());
+    expect(byPath['mod.txt']).toMatchObject({ rootPath: repo, status: 'modified', additions: 2, deletions: 1 });
+    expect(byPath['new.txt']).toMatchObject({ status: 'added', additions: 2, deletions: 0 });
+    expect(byPath['gone.txt']).toMatchObject({ status: 'deleted', additions: 0, deletions: 1 });
+    expect(byPath['moved.txt']).toMatchObject({ status: 'renamed', oldPath: 'move.txt', additions: 0, deletions: 0 });
+    expect(byPath['bin.dat']).toMatchObject({ status: 'modified', additions: 0, deletions: 0 });
+  });
+
+  it('returns nothing for identical trees', async () => {
+    const repo = initRepo();
+    const options = { shadowDir: tempDir(), timeoutMs: 10_000 };
+    const snap = await snapshotRoot(repo, options);
+    expect(await diffStats(snap, snap.tree, snap.tree, options)).toEqual([]);
   });
 });

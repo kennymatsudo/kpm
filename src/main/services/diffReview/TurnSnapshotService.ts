@@ -1,11 +1,10 @@
 import { randomUUID } from 'crypto';
 import type { DiffScope, FileDiff, TurnChanges, TurnFileChange } from '../../../shared/diffReview';
-import { toTurnFileChange } from '../../../shared/diffReview';
 import { parseUnifiedDiff } from '../../../shared/unifiedDiff';
 import type { ITurnSnapshotRepository, TurnSnapshotRow } from '../../db/interfaces';
 import { failure, success, type AsyncResult, type ServiceResult } from '../result';
 import * as realGit from './gitSnapshot';
-import type { SnapshotStore, diffTrees, headTree, snapshotRoot } from './gitSnapshot';
+import type { SnapshotStore, diffStats, diffTrees, headTree, snapshotRoot } from './gitSnapshot';
 
 const DEFAULT_TIMEOUT_MS = 20_000;
 const EXPIRED_MARKERS = ['bad object', 'not a tree object', 'Invalid revision'];
@@ -16,7 +15,12 @@ export interface TurnSnapshotServiceDeps {
   shadowDir: string;
   timeoutMs?: number;
   emitTurnChanges: (projectId: string, changes: TurnChanges) => void;
-  git?: { snapshotRoot: typeof snapshotRoot; diffTrees: typeof diffTrees; headTree: typeof headTree };
+  git?: {
+    snapshotRoot: typeof snapshotRoot;
+    diffTrees: typeof diffTrees;
+    diffStats: typeof diffStats;
+    headTree: typeof headTree;
+  };
 }
 
 interface OpenRoot {
@@ -128,8 +132,7 @@ export function createTurnSnapshotService(deps: TurnSnapshotServiceDeps) {
         try {
           let files: TurnFileChange[] = [];
           if (after.tree !== root.beforeTree) {
-            const patch = await git.diffTrees(after, root.beforeTree, after.tree, options);
-            files = parseUnifiedDiff(patch, root.rootPath).map(toTurnFileChange);
+            files = await git.diffStats(after, root.beforeTree, after.tree, options);
           }
           if (files.length > 0) snapshots.finish(root.rowId, after.tree, files, incomplete);
           else snapshots.delete(root.rowId);

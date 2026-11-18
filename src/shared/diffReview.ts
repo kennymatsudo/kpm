@@ -79,14 +79,3 @@ export interface FileDiff {
   binary: boolean;
   hunks: DiffHunk[];
 }
-
-export function toTurnFileChange(diff: FileDiff): TurnFileChange {
-  return {
-    rootPath: diff.rootPath,
-    path: diff.path,
-    ...(diff.oldPath ? { oldPath: diff.oldPath } : {}),
-    status: diff.status,
-    additions: diff.additions,
-    deletions: diff.deletions,
-  };
-}

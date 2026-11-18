@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { TurnChanges, TurnFileChange } from '../../../shared/diffReview';
 import type { ITurnSnapshotRepository, TurnSnapshotRow } from '../../db/interfaces';
+import { parseUnifiedDiff } from '../../../shared/unifiedDiff';
 import { createTurnSnapshotService } from './TurnSnapshotService';
 
 class FakeRepo implements ITurnSnapshotRepository {
@@ -54,6 +55,11 @@ function setup(opts: { roots?: string[]; snapshots?: Record<string, string[]>; p
       return { rootPath, store: 'repo' as const, tree: next };
     }),
     diffTrees: vi.fn(async (_s: unknown, from: string, to: string) => (from === to ? '' : (opts.patch ?? PATCH('a.ts')))),
+    diffStats: vi.fn(async (s: { rootPath: string }, from: string, to: string) =>
+      from === to
+        ? []
+        : parseUnifiedDiff(opts.patch ?? PATCH('a.ts'), s.rootPath).map(({ hunks: _hunks, ...file }) => file),
+    ),
     headTree: vi.fn(async () => 'head'),
   };
   const repo = new FakeRepo();
@@ -98,6 +104,14 @@ describe('TurnSnapshotService', () => {
     await service.beginTurn(turn);
     await service.endTurn('s');
     expect(emitted[0].incomplete).toBeUndefined();
+  });
+
+  it('counts files with diffStats, not a full-context patch', async () => {
+    const { service, git } = setup({ snapshots: { '/r1': ['before', 'after'] } });
+    await service.beginTurn(turn);
+    await service.endTurn('s');
+    expect(git.diffStats).toHaveBeenCalledWith(expect.anything(), 'before', 'after', expect.anything());
+    expect(git.diffTrees).not.toHaveBeenCalled();
   });
 
   it('deletes the row and emits nothing when nothing changed', async () => {
@@ -209,7 +223,7 @@ describe('TurnSnapshotService', () => {
   it('opens the next turn from the after tree when diffing fails', async () => {
     const { service, repo, git, emitted } = setup({ snapshots: { '/r1': ['b', 'a'] } });
     await service.beginTurn(turn);
-    git.diffTrees.mockRejectedValueOnce(new Error('diff boom'));
+    git.diffStats.mockRejectedValueOnce(new Error('diff boom'));
     await service.endTurn('s', { clientMessageId: 'm2' });
     expect(repo.rows.find((r) => r.clientMessageId === 'm1')?.error).toBe('diff boom');
     expect(repo.rows.find((r) => r.clientMessageId === 'm2')?.beforeTree).toBe('a');
