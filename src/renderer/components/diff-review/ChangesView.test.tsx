@@ -14,7 +14,7 @@ vi.mock('../../services/diffReviewService', () => ({ getDiff: vi.fn() }));
 
 import { ChangesFileSection } from './ChangesFileSection';
 import { ChangesFileTree } from './ChangesFileTree';
-import { ChangesHeader, ChangesView } from './ChangesView';
+import { ChangesError, ChangesHeader, ChangesView } from './ChangesView';
 import { buildChangesTree } from './changesTree';
 
 const file = (path: string, additions = 1, deletions = 0): FileDiff => ({
@@ -30,6 +30,17 @@ const file = (path: string, additions = 1, deletions = 0): FileDiff => ({
 describe('ChangesView', () => {
   it('shows a loading state before the diff arrives', () => {
     expect(renderToStaticMarkup(<ChangesView projectId="p1" />)).toContain('Loading changes');
+  });
+});
+
+describe('ChangesError', () => {
+  it.each(['chat', 'uncommitted', 'turn'] as const)('shows the error and the scope menu in %s scope', (scope) => {
+    const html = renderToStaticMarkup(
+      <ChangesError error="Snapshot expired" scope={scope} canSelectTurn onScope={() => {}} />,
+    );
+    expect(html).toContain('Snapshot expired');
+    expect(html).toContain('aria-label="Changes scope"');
+    expect(html.includes('Show uncommitted changes')).toBe(scope === 'turn');
   });
 });
 

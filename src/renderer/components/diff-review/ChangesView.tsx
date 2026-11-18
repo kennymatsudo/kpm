@@ -66,14 +66,12 @@ export function ChangesView({ projectId }: { projectId: string }) {
   }
   if (load.status === 'error') {
     return (
-      <div className="flex flex-col items-start gap-3 p-4 text-sm text-text-secondary">
-        <span>{load.error}</span>
-        {scope === 'turn' && (
-          <button type="button" className="btn btn-secondary" onClick={() => setScope('uncommitted')}>
-            Show uncommitted changes
-          </button>
-        )}
-      </div>
+      <ChangesError
+        error={load.error}
+        scope={scope}
+        canSelectTurn={clientMessageId !== null}
+        onScope={setScope}
+      />
     );
   }
 
@@ -119,6 +117,59 @@ const SCOPE_LABELS: Record<DiffScope, string> = {
   uncommitted: 'Uncommitted',
 };
 
+/** A failed load keeps the scope menu, so any scope can be left for another. */
+export function ChangesError({
+  error,
+  scope,
+  canSelectTurn,
+  onScope,
+}: {
+  error: string;
+  scope: DiffScope;
+  canSelectTurn: boolean;
+  onScope: (scope: DiffScope) => void;
+}) {
+  return (
+    <div className="flex flex-col items-start gap-3 p-4 text-sm text-text-secondary">
+      <ScopeSelect scope={scope} canSelectTurn={canSelectTurn} onScope={onScope} />
+      <span>{error}</span>
+      {scope === 'turn' && (
+        <button type="button" className="btn btn-secondary" onClick={() => onScope('uncommitted')}>
+          Show uncommitted changes
+        </button>
+      )}
+    </div>
+  );
+}
+
+function ScopeSelect({
+  scope,
+  canSelectTurn,
+  onScope,
+}: {
+  scope: DiffScope;
+  canSelectTurn: boolean;
+  onScope: (scope: DiffScope) => void;
+}) {
+  return (
+    <Select value={scope} onValueChange={(value) => onScope(value as DiffScope)}>
+      <SelectTrigger
+        aria-label="Changes scope"
+        className="flex items-center gap-2 rounded-md border border-border-subtle bg-surface-2 px-2 py-1 text-sm text-text-primary"
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {(Object.keys(SCOPE_LABELS) as DiffScope[]).map((value) => (
+          <SelectItem key={value} value={value} disabled={value === 'turn' && !canSelectTurn}>
+            <SelectItemText>{SCOPE_LABELS[value]}</SelectItemText>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
 export function ChangesHeader({
   scope,
   canSelectTurn,
@@ -138,21 +189,7 @@ export function ChangesHeader({
 }) {
   return (
     <div className="flex flex-shrink-0 items-center gap-3 border-b border-border-subtle px-3 py-2 text-sm">
-      <Select value={scope} onValueChange={(value) => onScope(value as DiffScope)}>
-        <SelectTrigger
-          aria-label="Changes scope"
-          className="flex items-center gap-2 rounded-md border border-border-subtle bg-surface-2 px-2 py-1 text-sm text-text-primary"
-        >
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {(Object.keys(SCOPE_LABELS) as DiffScope[]).map((value) => (
-            <SelectItem key={value} value={value} disabled={value === 'turn' && !canSelectTurn}>
-              <SelectItemText>{SCOPE_LABELS[value]}</SelectItemText>
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <ScopeSelect scope={scope} canSelectTurn={canSelectTurn} onScope={onScope} />
       <span className="text-text-primary">
         {files} {files === 1 ? 'file' : 'files'} changed
       </span>
