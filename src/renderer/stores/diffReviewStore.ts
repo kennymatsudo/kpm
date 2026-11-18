@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { DiffReviewComment, NewDiffReviewComment, TurnChanges } from '../../shared/diffReview';
+import type { DiffReviewComment, DiffScope, NewDiffReviewComment, TurnChanges } from '../../shared/diffReview';
 import {
   createDiffReviewComment,
   deleteDiffReviewComment,
@@ -10,7 +10,20 @@ import {
 import { subscribe } from './storeEvents';
 import { toast } from './toastStore';
 
+export interface ChangesTabTarget {
+  chatSessionId: string;
+  clientMessageId: string | null;
+  scope: DiffScope;
+  focusFile?: { rootPath: string; path: string };
+}
+
 interface DiffReviewState {
+  /** The open Changes tab, or null when it is closed. Not persisted. */
+  changesTab: ChangesTabTarget | null;
+  /** True while the Changes view, not a document, fills the editor panel. */
+  changesTabActive: boolean;
+  setChangesTab: (target: ChangesTabTarget | null) => void;
+  setChangesTabActive: (active: boolean) => void;
   commentsBySession: Record<string, DiffReviewComment[]>;
   /** Sessions whose comments the user chose to hold back from the next send. */
   heldBySession: Record<string, boolean>;
@@ -51,6 +64,11 @@ export const useDiffReviewStore = create<DiffReviewState>()((set, get) => {
   const currentComments = (chatSessionId: string) => get().commentsBySession[chatSessionId] ?? [];
 
   return {
+    changesTab: null,
+    changesTabActive: false,
+    setChangesTab: (target) => set({ changesTab: target }),
+    setChangesTabActive: (active) => set({ changesTabActive: active }),
+
     commentsBySession: {},
     heldBySession: {},
     turnChangesBySession: {},
@@ -129,7 +147,8 @@ export const useDiffReviewStore = create<DiffReviewState>()((set, get) => {
       mutateSession(chatSessionId, currentComments(chatSessionId).filter((comment) => !forgotten.has(comment.id)));
     },
 
-    resetProjectState: () => set({ commentsBySession: {}, heldBySession: {}, turnChangesBySession: {} }),
+    resetProjectState: () =>
+      set({ changesTab: null, changesTabActive: false, commentsBySession: {}, heldBySession: {}, turnChangesBySession: {} }),
   };
 });
 

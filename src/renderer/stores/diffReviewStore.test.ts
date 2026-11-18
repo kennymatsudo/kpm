@@ -248,3 +248,29 @@ describe('turn changes', () => {
     expect(store().turnChangesBySession[SESSION]).toEqual([turn('m1')]);
   });
 });
+
+describe('changes tab', () => {
+  const target = { chatSessionId: SESSION, clientMessageId: 'm1', scope: 'turn' as const };
+
+  it('starts closed and inactive', () => {
+    expect(store().changesTab).toBeNull();
+    expect(store().changesTabActive).toBe(false);
+  });
+
+  it('stores the target and the active flag independently', () => {
+    store().setChangesTab(target);
+    store().setChangesTabActive(true);
+    expect(store().changesTab).toEqual(target);
+    expect(store().changesTabActive).toBe(true);
+    store().setChangesTabActive(false);
+    expect(store().changesTab).toEqual(target);
+  });
+
+  it('is cleared on project reset', () => {
+    store().setChangesTab(target);
+    store().setChangesTabActive(true);
+    store().resetProjectState();
+    expect(store().changesTab).toBeNull();
+    expect(store().changesTabActive).toBe(false);
+  });
+});

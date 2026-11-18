@@ -25,6 +25,7 @@ import { buildTurnRenderPlan, type TurnRenderNode } from './turnRenderPlan';
 import { sessionModelId } from '../../stores/chat/chatChoice';
 import { assignTurnCards } from './turnCards';
 import { TurnChangesCard } from '../diff-review/TurnChangesCard';
+import { useChangesTab } from '../diff-review/useChangesTab';
 import { canMergeAssistantTurn } from '../../stores/chat/messageMerge';
 import { prefersReducedMotion } from '../../utils/reducedMotion';
 import { findPinnedPromptId, type TranscriptRow } from './pinnedPrompt';
@@ -314,8 +315,6 @@ const TurnNodes = memo(function TurnNodes({ nodes }: { nodes: TurnRenderNode[] }
   );
 });
 
-const NOOP_OPEN_CHANGES = () => {};
-
 const ASSISTANT_TURN_CONTENT_CLASS = 'chat-message-content text-text-primary';
 
 /** The one wrapper an assistant turn's content renders through. Both the
@@ -503,6 +502,7 @@ export const MessageRow = memo(function MessageRow({
   /** The turn this reply answers; set only where the changes card belongs. */
   changesFor?: { chatSessionId: string; clientMessageIds: string[] };
 }) {
+  const { openChanges } = useChangesTab();
   const isUser = message.role === 'user';
   const textContent = useMemo(() => getTextContent(message.segments), [message.segments]);
   // Phase 2: prefer the structured `attachments` carried on the message; fall
@@ -546,7 +546,7 @@ export const MessageRow = memo(function MessageRow({
               key={clientMessageId}
               chatSessionId={changesFor.chatSessionId}
               clientMessageId={clientMessageId}
-              onOpen={NOOP_OPEN_CHANGES}
+              onOpen={openChanges}
             />
           ))}
         </AssistantMessageContent>
