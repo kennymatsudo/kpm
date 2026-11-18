@@ -132,6 +132,19 @@ describe('send', () => {
     expect(onReviewCommentsSent).not.toHaveBeenCalled();
   });
 
+  it('keeps review comments on the chip when the send is queued behind a live turn', async () => {
+    const chatState = makeChatState(makeSession({ isStreaming: true }));
+    const onReviewCommentsSent = vi.fn();
+    const { deps, services } = makeDeps(chatState, { getReviewCommentIds: () => ['k1'], onReviewCommentsSent });
+
+    await createChatSender(deps).send('hi', undefined, CLIENT_MESSAGE_ID);
+
+    expect(services.sendChatMessage).toHaveBeenCalledWith(
+      expect.not.objectContaining({ reviewCommentIds: expect.anything() }),
+    );
+    expect(onReviewCommentsSent).not.toHaveBeenCalled();
+  });
+
   it('omits reviewCommentIds when there are none', async () => {
     const { deps, services } = makeDeps(makeChatState(), { getReviewCommentIds: () => [] });
     await createChatSender(deps).send('hi', undefined, CLIENT_MESSAGE_ID);

@@ -158,7 +158,9 @@ export function createChatSender(deps: ChatSenderDeps): ChatSender {
     const turn = await prepareTurn(chatSessionId);
     if (!turn.ready) return effectiveClientMessageId;
 
-    const reviewCommentIds = deps.getReviewCommentIds?.(chatSessionId) ?? [];
+    // A queued follow-up can be withdrawn after the backend accepts it, and
+    // acceptance deletes the comments. Keep them on the chip for the next idle send.
+    const reviewCommentIds = turn.turnInFlight ? [] : (deps.getReviewCommentIds?.(chatSessionId) ?? []);
 
     // A live turn is never interrupted: the bubble appears at once with a
     // queued indicator while the backend holds the message for the SDK's input
