@@ -1234,3 +1234,17 @@ describe('136_usage_cumulative_token_snapshots', () => {
     }
   });
 });
+
+describe('fork_002_turn_snapshot_incomplete', () => {
+  it('adds a nullable incomplete column to chat_turn_snapshots', () => {
+    const db = new BetterSqlite3(':memory:');
+    try {
+      runMigrations(db);
+      const cols = db.prepare("PRAGMA table_info('chat_turn_snapshots')").all() as { name: string; notnull: number }[];
+      expect(cols.find((c) => c.name === 'incomplete')).toMatchObject({ notnull: 0 });
+      expect(db.prepare('SELECT id FROM schema_migrations WHERE name = ?').get('fork_002_turn_snapshot_incomplete')).toEqual({ id: 9002 });
+    } finally {
+      db.close();
+    }
+  });
+});

@@ -6,10 +6,11 @@ import { createTurnSnapshotService } from './TurnSnapshotService';
 class FakeRepo implements ITurnSnapshotRepository {
   rows: TurnSnapshotRow[] = [];
   insertBefore(row: Parameters<ITurnSnapshotRepository['insertBefore']>[0]): void {
-    this.rows.push({ ...row, afterTree: null, files: null, error: null, createdAt: `t${this.rows.length}` });
+    this.rows.push({ ...row, afterTree: null, files: null, error: null, incomplete: false, createdAt: `t${this.rows.length}` });
   }
-  finish(id: string, afterTree: string, files: TurnFileChange[]): void {
+  finish(id: string, afterTree: string, files: TurnFileChange[], incomplete = false): void {
     const row = this.rows.find((r) => r.id === id)!;
+    row.incomplete = incomplete;
     row.afterTree = afterTree;
     row.files = files;
   }
@@ -80,6 +81,23 @@ describe('TurnSnapshotService', () => {
     expect(emitted).toHaveLength(1);
     expect(emitted[0]).toMatchObject({ chatSessionId: 's', clientMessageId: 'm1' });
     expect(emitted[0].files.map((f) => f.path)).toEqual(['a.ts']);
+  });
+
+  it('marks a turn incomplete when the send stopped waiting for the before snapshot', async () => {
+    const { service, repo, emitted } = setup({ snapshots: { '/r1': ['before', 'after'] } });
+    await service.beginTurn(turn);
+    service.markLate('s', 'm1');
+    await service.endTurn('s');
+    expect(emitted[0].incomplete).toBe(true);
+    expect(repo.rows[0].incomplete).toBe(true);
+    expect(service.listTurnChanges('s')).toMatchObject({ ok: true, data: [{ clientMessageId: 'm1', incomplete: true }] });
+  });
+
+  it('leaves incomplete unset for a turn that was not late', async () => {
+    const { service, emitted } = setup({ snapshots: { '/r1': ['before', 'after'] } });
+    await service.beginTurn(turn);
+    await service.endTurn('s');
+    expect(emitted[0].incomplete).toBeUndefined();
   });
 
   it('deletes the row and emits nothing when nothing changed', async () => {

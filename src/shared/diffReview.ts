@@ -48,6 +48,8 @@ export interface TurnChanges {
   clientMessageId: string;
   createdAt: string;
   files: TurnFileChange[];
+  /** Set when the before-snapshot finished after the agent started, so edits made first may be missing. */
+  incomplete?: boolean;
   /** Set when no root could be snapshotted or diffed. */
   unavailableReason?: string;
 }

@@ -61,6 +61,9 @@ export const TurnChangesCard = memo(function TurnChangesCard({
           View changes
         </button>
       </div>
+      {turn.incomplete && (
+        <p className="px-3 pb-2 text-tiny text-text-tertiary">Changes may be incomplete</p>
+      )}
       <ul className="border-t border-border-subtle">
         {turn.files.map((file) => {
           const { dir, base } = splitForDisplay(file.path);

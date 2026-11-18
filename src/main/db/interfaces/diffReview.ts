@@ -11,6 +11,7 @@ export interface TurnSnapshotRow {
   afterTree: string | null;
   files: TurnFileChange[] | null;
   error: string | null;
+  incomplete: boolean;
   createdAt: string;
 }
 
@@ -24,7 +25,7 @@ export interface ITurnSnapshotRepository {
     store: 'repo' | 'shadow';
     beforeTree: string;
   }): void;
-  finish(id: string, afterTree: string, files: TurnFileChange[]): void;
+  finish(id: string, afterTree: string, files: TurnFileChange[], incomplete?: boolean): void;
   fail(id: string, error: string): void;
   delete(id: string): void;
   listBySession(chatSessionId: string): TurnSnapshotRow[];

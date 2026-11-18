@@ -25,6 +25,23 @@ describe('TurnSnapshotRepository', () => {
     }
   });
 
+  it('stores the incomplete flag on finish and clears it on retry', () => {
+    const db = createTestDb();
+    try {
+      seedProject(db, 'p1');
+      const repo = new TurnSnapshotRepository(db);
+      const before = { projectId: 'p1', chatSessionId: 'c1', clientMessageId: 'm1', rootPath: '/r', store: 'repo' as const };
+      repo.insertBefore({ ...before, id: 's1', beforeTree: 'aaa' });
+      expect(repo.listByTurn('c1', 'm1')[0].incomplete).toBe(false);
+      repo.finish('s1', 'bbb', [], true);
+      expect(repo.listByTurn('c1', 'm1')[0].incomplete).toBe(true);
+      repo.insertBefore({ ...before, id: 's2', beforeTree: 'ccc' });
+      expect(repo.listByTurn('c1', 'm1')[0].incomplete).toBe(false);
+    } finally {
+      db.close();
+    }
+  });
+
   it('resets a retried turn, records failures, and deletes', () => {
     const db = createTestDb();
     try {

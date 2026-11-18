@@ -224,7 +224,7 @@ export const SNAPSHOT_SEND_WAIT_MS = 1500;
 
 export interface StreamingSessionServiceDeps {
   /** Records what a chat turn changed on disk. Failures never fail a send. */
-  turnSnapshots?: Pick<TurnSnapshotService, 'beginTurn' | 'endTurn'>;
+  turnSnapshots?: Pick<TurnSnapshotService, 'beginTurn' | 'endTurn' | 'markLate'>;
   /** Project repository for session persistence */
   projectRepository: {
     get(id: string): Project | undefined;
@@ -1624,8 +1624,10 @@ export function createStreamingSessionService(deps: StreamingSessionServiceDeps)
         .then(() => deps.turnSnapshots?.beginTurn({ projectId, chatSessionId, clientMessageId: options.clientMessageId! }))
         .catch((error) => console.warn('[StreamingSessionService] Turn snapshot failed:', error));
       const wait = new Promise<void>((resolve) => { timer = setTimeout(resolve, SNAPSHOT_SEND_WAIT_MS); });
-      await Promise.race([begin, wait]);
+      const waitExpired = wait.then(() => true);
+      const expired = await Promise.race([begin.then(() => false), waitExpired]);
       clearTimeout(timer);
+      if (expired) deps.turnSnapshots.markLate(chatSessionId, options.clientMessageId);
     }
 
     const result = await sendMessageToSession(

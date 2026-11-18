@@ -4995,6 +4995,13 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    id: 9002,
+    name: 'fork_002_turn_snapshot_incomplete',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec('ALTER TABLE chat_turn_snapshots ADD COLUMN incomplete INTEGER');
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

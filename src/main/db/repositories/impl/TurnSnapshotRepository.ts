@@ -13,6 +13,7 @@ interface RawRow {
   after_tree: string | null;
   files_json: string | null;
   error: string | null;
+  incomplete: number | null;
   created_at: string;
 }
 
@@ -38,6 +39,7 @@ function toRow(raw: RawRow): TurnSnapshotRow {
     afterTree: raw.after_tree,
     files: parseFiles(raw.files_json),
     error: raw.error,
+    incomplete: raw.incomplete === 1,
     createdAt: raw.created_at,
   };
 }
@@ -61,9 +63,9 @@ export class TurnSnapshotRepository implements ITurnSnapshotRepository {
         INSERT INTO chat_turn_snapshots (id, project_id, chat_session_id, client_message_id, root_path, store, before_tree)
         VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(chat_session_id, client_message_id, root_path)
-        DO UPDATE SET before_tree = excluded.before_tree, after_tree = NULL, files_json = NULL, error = NULL, id = excluded.id
+        DO UPDATE SET before_tree = excluded.before_tree, after_tree = NULL, files_json = NULL, error = NULL, incomplete = NULL, id = excluded.id
       `),
-      finish: db.prepare('UPDATE chat_turn_snapshots SET after_tree = ?, files_json = ?, error = NULL WHERE id = ?'),
+      finish: db.prepare('UPDATE chat_turn_snapshots SET after_tree = ?, files_json = ?, incomplete = ?, error = NULL WHERE id = ?'),
       fail: db.prepare('UPDATE chat_turn_snapshots SET error = ? WHERE id = ?'),
       delete: db.prepare('DELETE FROM chat_turn_snapshots WHERE id = ?'),
       listBySession: db.prepare('SELECT * FROM chat_turn_snapshots WHERE chat_session_id = ? ORDER BY created_at, rowid'),
@@ -85,8 +87,8 @@ export class TurnSnapshotRepository implements ITurnSnapshotRepository {
     );
   }
 
-  finish(id: string, afterTree: string, files: TurnFileChange[]): void {
-    this.stmts.finish.run(afterTree, JSON.stringify(files), id);
+  finish(id: string, afterTree: string, files: TurnFileChange[], incomplete = false): void {
+    this.stmts.finish.run(afterTree, JSON.stringify(files), incomplete ? 1 : null, id);
   }
 
   fail(id: string, error: string): void {

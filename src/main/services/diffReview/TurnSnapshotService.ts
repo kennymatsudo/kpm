@@ -40,6 +40,9 @@ export function createTurnSnapshotService(deps: TurnSnapshotServiceDeps) {
   const open = new Map<string, OpenTurn>();
   const sessionChains = new Map<string, Promise<unknown>>();
   const rootChains = new Map<string, Promise<unknown>>();
+  /** Turns whose before-snapshot outlasted the send wait; keyed by session and user message. */
+  const late = new Set<string>();
+  const lateKey = (chatSessionId: string, clientMessageId: string) => `${chatSessionId}\n${clientMessageId}`;
 
   const git = deps.git ?? realGit;
 
@@ -102,6 +105,7 @@ export function createTurnSnapshotService(deps: TurnSnapshotServiceDeps) {
     const turn = open.get(chatSessionId);
     if (!turn) return;
     open.delete(chatSessionId);
+    const incomplete = late.delete(lateKey(chatSessionId, turn.clientMessageId));
 
     const outcomes = await Promise.all(
       turn.roots.map(async (root) => {
@@ -127,7 +131,7 @@ export function createTurnSnapshotService(deps: TurnSnapshotServiceDeps) {
             const patch = await git.diffTrees(after, root.beforeTree, after.tree, options);
             files = parseUnifiedDiff(patch, root.rootPath).map(toTurnFileChange);
           }
-          if (files.length > 0) snapshots.finish(root.rowId, after.tree, files);
+          if (files.length > 0) snapshots.finish(root.rowId, after.tree, files, incomplete);
           else snapshots.delete(root.rowId);
           return { root, afterTree: after.tree, files, error: null as string | null };
         } catch (error) {
@@ -146,6 +150,7 @@ export function createTurnSnapshotService(deps: TurnSnapshotServiceDeps) {
         clientMessageId: turn.clientMessageId,
         createdAt: new Date().toISOString(),
         files,
+        ...(incomplete ? { incomplete } : {}),
         ...(files.length === 0 ? { unavailableReason: [...new Set(errors)].join('; ') } : {}),
       });
     }
@@ -186,10 +191,12 @@ export function createTurnSnapshotService(deps: TurnSnapshotServiceDeps) {
             createdAt: row.createdAt,
             files: [],
             errors: [],
+            ...(row.incomplete ? { incomplete: true } : {}),
           };
           turns.set(row.clientMessageId, entry);
         }
         entry.files.push(...(row.files ?? []));
+        if (row.incomplete) entry.incomplete = true;
         if (row.error) entry.errors.push(row.error);
       }
       const result: TurnChanges[] = [];
@@ -274,6 +281,10 @@ export function createTurnSnapshotService(deps: TurnSnapshotServiceDeps) {
       chain(sessionChains, input.chatSessionId, () => begin(input)),
     endTurn: (chatSessionId: string, next?: { clientMessageId: string }): Promise<void> =>
       chain(sessionChains, chatSessionId, () => end(chatSessionId, next)),
+    /** The send gave up waiting for beginTurn, so the agent may have edited before the snapshot. */
+    markLate: (chatSessionId: string, clientMessageId: string): void => {
+      late.add(lateKey(chatSessionId, clientMessageId));
+    },
     listTurnChanges,
     getDiff,
   };

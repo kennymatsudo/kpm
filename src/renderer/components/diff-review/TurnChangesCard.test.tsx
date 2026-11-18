@@ -54,6 +54,14 @@ describe('TurnChangesCard', () => {
     expect(html).toContain('View changes');
   });
 
+  it('warns when the turn is incomplete', () => {
+    const file = { rootPath: '/r', path: 'a.ts', status: 'modified' as const, additions: 1, deletions: 0 };
+    seed({ files: [file], incomplete: true });
+    expect(render()).toMatch(/text-text-tertiary[^>]*>Changes may be incomplete</);
+    seed({ files: [file] });
+    expect(render()).not.toContain('incomplete');
+  });
+
   it('says Created when every file is added', () => {
     seed({
       files: [{ rootPath: '/r', path: 'new.ts', status: 'added', additions: 3, deletions: 0 }],

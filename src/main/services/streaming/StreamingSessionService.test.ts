@@ -1747,6 +1747,7 @@ it('surfaces max-token truncation after finalizing the partial response', async 
     const makeSnapshots = (beginTurn: () => Promise<void> = async () => {}) => ({
       beginTurn: vi.fn(beginTurn),
       endTurn: vi.fn(async () => {}),
+      markLate: vi.fn(),
     });
 
     it('awaits beginTurn before the provider receives a message to an idle chat', async () => {
@@ -1762,6 +1763,13 @@ it('surfaces max-token truncation after finalizing the partial response', async 
       release();
       await sending;
       expect(mockSessionInstances[0].sentMessages).toEqual(['hi']);
+    });
+
+    it('does not mark the turn late when beginTurn finishes in time', async () => {
+      const turnSnapshots = makeSnapshots();
+      service = createStreamingSessionService({ ...createDeps(sendSpy), turnSnapshots });
+      await service.sendChatMessage('project-1', 'hi', { chatSessionId: 'chat-1', choice: SONNET, clientMessageId: CMID });
+      expect(turnSnapshots.markLate).not.toHaveBeenCalled();
     });
 
     it('does not call beginTurn for a follow-up sent while processing', async () => {
@@ -1792,6 +1800,7 @@ it('surfaces max-token truncation after finalizing the partial response', async 
         const result = await sending;
         expect(result.ok).toBe(true);
         expect(mockSessionInstances[0].sentMessages).toEqual(['hi']);
+        expect(turnSnapshots.markLate).toHaveBeenCalledWith('chat-1', CMID);
       } finally {
         vi.useRealTimers();
       }
