@@ -22,8 +22,9 @@ export function CommentPane({
   fullFile: boolean | null;
   onFullFileChange: (fullFile: boolean) => void;
 }) {
-  const { file, chatSessionId, hasTurnDiff, error } = useFileReview(documentId, true);
+  const { file, chatSessionId, hasTurnDiff, error, loading } = useFileReview(documentId, true);
   const expandAll = fullFile ?? !hasTurnDiff;
+  if (loading) return <p className="px-3 py-2 text-sm text-text-muted">Loading changes</p>;
   if (!file) return null;
   return (
     <div>

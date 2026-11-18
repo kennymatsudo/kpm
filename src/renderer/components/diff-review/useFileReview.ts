@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useReducer } from 'react';
 import type { FileDiff } from '../../../shared/diffReview';
 import { fileDiffFromText } from '../../../shared/diffRows';
 import { resolveEffectiveRepoPath } from '../../../shared/repoPath';
@@ -8,6 +8,7 @@ import { useDiffReviewStore } from '../../stores/diffReviewStore';
 import { useProjectDomainStore, useResourceDomainStore } from '../../stores/projectDomains';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { latestTurnForFile } from './latestTurnForFile';
+import { initialTurnDiffState, turnDiffReducer, viewTurnDiff } from './turnDiffState';
 
 interface FileReview {
   /** Null until `active`, and when the file has no resolvable root. */
@@ -19,12 +20,8 @@ interface FileReview {
   hasTurnDiff: boolean;
   /** Why the reply's diff could not be loaded; `file` is then the plain text. */
   error: string | null;
-}
-
-interface TurnDiffState {
-  key: string;
-  file: FileDiff | null;
-  error: string | null;
+  /** A turn diff is being fetched for the first time; show a loading state. */
+  loading: boolean;
 }
 
 /**
@@ -54,38 +51,41 @@ export function useFileReview(documentId: string, active: boolean): FileReview {
     [turns, rootPath, path],
   );
 
-  const [turnDiff, setTurnDiff] = useState<TurnDiffState | null>(null);
-  const requestKey =
-    active && projectId && chatSessionId && rootPath && path && clientMessageId
-      ? [projectId, chatSessionId, clientMessageId, rootPath, path, savedContent].join('\u0000')
-      : null;
+  const [turnDiff, dispatch] = useReducer(turnDiffReducer, initialTurnDiffState);
+  const identity = clientMessageId && rootPath && path && chatSessionId ? [chatSessionId, clientMessageId, rootPath, path].join('\u0000') : null;
+  const requestKey = active && identity ? `${identity}\u0000${savedContent}` : null;
 
   useEffect(() => {
-    if (!requestKey || !projectId || !chatSessionId || !rootPath || !path || !clientMessageId) return;
+    if (!requestKey || !identity || !projectId || !chatSessionId || !rootPath || !path || !clientMessageId) return;
     let cancelled = false;
-    void getDiff({ projectId, chatSessionId, scope: 'turn', clientMessageId, rootPath, filePath: path }).then(
-      (result) => {
+    dispatch({ type: 'start', identity, key: requestKey });
+    const fail = (error: string) => {
+      if (!cancelled) dispatch({ type: 'failure', key: requestKey, error });
+    };
+    getDiff({ projectId, chatSessionId, scope: 'turn', clientMessageId, rootPath, filePath: path })
+      .then((result) => {
         if (cancelled) return;
         if (!result.success) {
-          setTurnDiff({ key: requestKey, file: null, error: result.error });
+          fail(result.error);
           return;
         }
         const match = result.files.find((f) => f.rootPath === rootPath && f.path === path) ?? null;
-        setTurnDiff({ key: requestKey, file: match, error: null });
-      },
-    );
+        dispatch({ type: 'success', key: requestKey, file: match });
+      })
+      .catch((err: unknown) => fail(err instanceof Error ? err.message : 'Could not load the reply\'s changes.'));
     return () => {
       cancelled = true;
     };
     // content is read through requestKey (savedContent), not on every keystroke.
-  }, [requestKey, projectId, chatSessionId, rootPath, path, clientMessageId]);
+  }, [requestKey, identity, projectId, chatSessionId, rootPath, path, clientMessageId]);
 
-  const current = turnDiff?.key === requestKey ? turnDiff : null;
-  const turnFile = current?.file ?? null;
+  const view = requestKey && identity ? viewTurnDiff(turnDiff, identity) : null;
+  const turnFile = view?.file ?? null;
+  const loading = view?.loading ?? false;
 
   const textFile = useMemo(
-    () => (active && !turnFile && rootPath && path ? fileDiffFromText(rootPath, path, content) : null),
-    [active, turnFile, rootPath, path, content],
+    () => (active && !turnFile && !loading && rootPath && path ? fileDiffFromText(rootPath, path, content) : null),
+    [active, turnFile, loading, rootPath, path, content],
   );
 
   return {
@@ -94,6 +94,7 @@ export function useFileReview(documentId: string, active: boolean): FileReview {
     chatSessionId,
     rootPath,
     hasTurnDiff: turnFile !== null,
-    error: current?.error ?? null,
+    error: view?.error ?? null,
+    loading,
   };
 }
