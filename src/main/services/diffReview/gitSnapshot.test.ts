@@ -3,7 +3,8 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { diffStats, diffTrees, headTree, snapshotRoot } from './gitSnapshot';
+import { changedPaths, diffStats, diffTrees, filesInCommitsSince, headCommit, headTree, snapshotRoot } from './gitSnapshot';
+import { attributeHeadMove } from './headMove';
 import { parseUnifiedDiff } from '../../../shared/unifiedDiff';
 
 const dirs: string[] = [];
@@ -197,5 +198,73 @@ describe('diffTrees path filter', () => {
       repo,
     );
     expect(files.map((f) => f.path)).toEqual(['app/[id].tsx']);
+  });
+});
+
+describe('HEAD move attribution', () => {
+  const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
+
+  it('returns null for an unborn HEAD and the commit otherwise', async () => {
+    const options = { shadowDir: tempDir(), timeoutMs: 10_000 };
+    const empty = tempDir();
+    execFileSync('git', ['init', '-q'], { cwd: empty });
+    expect(await headCommit(empty, options)).toBeNull();
+    const repo = initRepo();
+    expect(await headCommit(repo, options)).toBe(gitOut(repo, 'rev-parse', 'HEAD').trim());
+  });
+
+  it('drops pulled files and keeps uncommitted edits and commits made during the turn', async () => {
+    const repo = initRepo();
+    const options = { shadowDir: tempDir(), timeoutMs: 10_000 };
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo });
+    const write = (name: string, data: string) => fs.writeFileSync(path.join(repo, name), data);
+    const base = gitOut(repo, 'rev-parse', '--abbrev-ref', 'HEAD').trim();
+    git('checkout', '-qb', 'upstream');
+    write('pulled.txt', 'p\n');
+    git('add', '.');
+    execFileSync('git', ['commit', '-qm', 'upstream work'], {
+      cwd: repo,
+      env: { ...process.env, GIT_COMMITTER_DATE: '2020-01-01T00:00:00Z' },
+    });
+    git('checkout', '-q', base);
+
+    const startedAt = Math.floor(Date.now() / 1000);
+    const before = await snapshotRoot(repo, options);
+    const beforeHead = await headCommit(repo, options);
+
+    git('merge', '--ff-only', '-q', 'upstream');
+    write('a.txt', 'one\nedited\n');
+    write('committed.txt', 'c\n');
+    git('add', 'committed.txt');
+    git('commit', '-qm', 'agent commit');
+    const after = await snapshotRoot(repo, options);
+    const afterHead = await headCommit(repo, options);
+
+    const files = await diffStats(after, before.tree, after.tree, options);
+    expect(files.map((f) => f.path).sort()).toEqual(['a.txt', 'committed.txt', 'pulled.txt']);
+    const kept = attributeHeadMove({
+      files,
+      dirtyBefore: await changedPaths(before, beforeHead ?? EMPTY_TREE, before.tree, options),
+      dirtyAfter: await changedPaths(after, afterHead!, after.tree, options),
+      headMoved: await changedPaths(after, beforeHead!, afterHead!, options),
+      turnCommitFiles: await filesInCommitsSince(repo, beforeHead, afterHead!, startedAt - 2, options),
+    });
+    expect(kept.map((f) => f.path).sort()).toEqual(['a.txt', 'committed.txt']);
+  });
+
+  it('excludes commits older than the turn start', async () => {
+    const repo = initRepo();
+    const options = { shadowDir: tempDir(), timeoutMs: 10_000 };
+    const first = gitOut(repo, 'rev-parse', 'HEAD').trim();
+    fs.writeFileSync(path.join(repo, 'old.txt'), 'o\n');
+    execFileSync('git', ['add', '.'], { cwd: repo });
+    execFileSync('git', ['commit', '-qm', 'old'], {
+      cwd: repo,
+      env: { ...process.env, GIT_COMMITTER_DATE: '2020-01-01T00:00:00Z' },
+    });
+    const head = gitOut(repo, 'rev-parse', 'HEAD').trim();
+    const since = Math.floor(Date.now() / 1000);
+    expect([...(await filesInCommitsSince(repo, first, head, since, options))]).toEqual([]);
+    expect([...(await filesInCommitsSince(repo, null, head, 1_500_000_000, options))].sort()).toEqual(['.gitignore', 'a.txt', 'old.txt']);
   });
 });

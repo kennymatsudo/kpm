@@ -170,3 +170,44 @@ export async function headTree(rootPath: string, options: GitSnapshotOptions): P
     return null;
   }
 }
+
+/** The commit HEAD points at, or null when the repo has no commits yet. */
+export async function headCommit(rootPath: string, options: GitSnapshotOptions): Promise<string | null> {
+  try {
+    return (await git(['rev-parse', '--verify', '-q', 'HEAD'], rootPath, options.timeoutMs)).trim() || null;
+  } catch {
+    // `rev-parse --verify -q` exits 1 with no output for an unborn HEAD.
+    return null;
+  }
+}
+
+const splitNul = (out: string): Set<string> => new Set(out.split('\0').filter(Boolean));
+
+/** Paths that differ between two tree-ish values (commits are accepted). Both sides of a rename are listed. */
+export async function changedPaths(
+  snapshot: { rootPath: string; store: SnapshotStore },
+  fromTreeish: string,
+  toTreeish: string,
+  options: GitSnapshotOptions,
+): Promise<Set<string>> {
+  const prefix = snapshot.store === 'shadow' ? shadowArgs(snapshot.rootPath, options) : [];
+  const out = await git(
+    [...prefix, 'diff-tree', '-r', '--no-renames', '--name-only', '-z', fromTreeish, toTreeish],
+    snapshot.rootPath,
+    options.timeoutMs,
+  );
+  return splitNul(out);
+}
+
+/** Paths touched by non-merge commits in `toCommit` and not in `fromCommit`, committed at or after `sinceEpochSeconds`. */
+export async function filesInCommitsSince(
+  rootPath: string,
+  fromCommit: string | null,
+  toCommit: string,
+  sinceEpochSeconds: number,
+  options: GitSnapshotOptions,
+): Promise<Set<string>> {
+  const args = ['log', '--no-merges', '--no-renames', '--format=', '--name-only', '-z', `--since=@${Math.floor(sinceEpochSeconds)}`, toCommit];
+  if (fromCommit) args.push(`^${fromCommit}`);
+  return splitNul(await git(args, rootPath, options.timeoutMs));
+}

@@ -3,6 +3,8 @@ import { FileTextIcon } from '../icons';
 import { useDiffReviewStore } from '../../stores/diffReviewStore';
 import { splitForDisplay } from '../../../shared/pathDisplay';
 
+const MAX_LISTED_FILES = 10;
+
 export interface TurnChangesTarget {
   chatSessionId: string;
   clientMessageId: string;
@@ -48,6 +50,7 @@ export const TurnChangesCard = memo(function TurnChangesCard({
   const allAdded = turn.files.every((file) => file.status === 'added');
   const count = turn.files.length;
   const title = `${allAdded ? 'Created' : 'Edited'} ${count} ${count === 1 ? 'file' : 'files'}`;
+  const hidden = count - MAX_LISTED_FILES;
   const open = (focusFile?: { rootPath: string; path: string }) =>
     onOpen({ chatSessionId, clientMessageId, scope: 'turn', focusFile });
 
@@ -65,7 +68,7 @@ export const TurnChangesCard = memo(function TurnChangesCard({
         <p className="px-3 pb-2 text-tiny text-text-tertiary">Changes may be incomplete</p>
       )}
       <ul className="border-t border-border-subtle">
-        {turn.files.map((file) => {
+        {turn.files.slice(0, MAX_LISTED_FILES).map((file) => {
           const { dir, base } = splitForDisplay(file.path);
           return (
             <li key={`${file.rootPath}:${file.path}`}>
@@ -90,6 +93,11 @@ export const TurnChangesCard = memo(function TurnChangesCard({
           );
         })}
       </ul>
+      {hidden > 0 && (
+        <p className="border-t border-border-subtle px-3 py-1.5 text-tiny text-text-muted">
+          and {hidden} more {hidden === 1 ? 'file' : 'files'}
+        </p>
+      )}
     </div>
   );
 });

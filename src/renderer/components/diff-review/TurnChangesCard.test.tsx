@@ -94,4 +94,35 @@ describe('TurnChangesCard', () => {
     expect(html).toContain('Diff unavailable: not a git repo');
     expect(html).not.toContain('View changes');
   });
+
+  it('lists at most 10 files and counts the rest', () => {
+    const files = Array.from({ length: 13 }, (_, i) => ({
+      rootPath: '/r',
+      path: `f${i}.ts`,
+      status: 'modified' as const,
+      additions: 1,
+      deletions: 0,
+    }));
+    seed({ files });
+    const html = render();
+    expect(html).toContain('Edited 13 files');
+    expect(html).toContain('f9.ts');
+    expect(html).not.toContain('f10.ts');
+    expect(html).toContain('and 3 more files');
+  });
+
+  it('uses the singular for one more file and shows no line at 10 files', () => {
+    const make = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({
+        rootPath: '/r',
+        path: `f${i}.ts`,
+        status: 'modified' as const,
+        additions: 1,
+        deletions: 0,
+      }));
+    seed({ files: make(11) });
+    expect(render()).toContain('and 1 more file<');
+    seed({ files: make(10) });
+    expect(render()).not.toContain('more file');
+  });
 });

@@ -41,10 +41,22 @@ const PATCH = (file: string): string =>
     '',
   ].join('\n');
 
-function setup(opts: { roots?: string[]; snapshots?: Record<string, string[]>; patch?: string } = {}) {
+interface SetupOptions {
+  roots?: string[];
+  snapshots?: Record<string, string[]>;
+  patch?: string;
+  /** HEAD commits returned per root, in call order; the last one repeats. */
+  heads?: Record<string, (string | null)[]>;
+  /** Paths changed between two tree-ish values, keyed `from..to`. */
+  changed?: Record<string, string[]>;
+  commitFiles?: string[];
+}
+
+function setup(opts: SetupOptions = {}) {
   const roots = opts.roots ?? ['/r1'];
   const calls: string[] = [];
   const queues = new Map(Object.entries(opts.snapshots ?? {}).map(([k, v]) => [k, [...v]]));
+  const heads = new Map(Object.entries(opts.heads ?? {}).map(([k, v]) => [k, [...v]]));
   let n = 0;
   const git = {
     snapshotRoot: vi.fn(async (rootPath: string) => {
@@ -61,6 +73,13 @@ function setup(opts: { roots?: string[]; snapshots?: Record<string, string[]>; p
         : parseUnifiedDiff(opts.patch ?? PATCH('a.ts'), s.rootPath).map(({ hunks: _hunks, ...file }) => file),
     ),
     headTree: vi.fn(async () => 'head'),
+    headCommit: vi.fn(async (rootPath: string) => {
+      const q = heads.get(rootPath);
+      if (!q) return 'h0';
+      return q.length > 1 ? q.shift()! : q[0];
+    }),
+    changedPaths: vi.fn(async (_s: unknown, from: string, to: string) => new Set(opts.changed?.[`${from}..${to}`] ?? [])),
+    filesInCommitsSince: vi.fn(async () => new Set(opts.commitFiles ?? [])),
   };
   const repo = new FakeRepo();
   const emitted: TurnChanges[] = [];
@@ -312,5 +331,91 @@ describe('TurnSnapshotService', () => {
     git.diffTrees.mockRejectedValueOnce(new Error('kaput'));
     const result = await service.getDiff({ projectId: 'p', chatSessionId: 's', scope: 'turn', clientMessageId: 'm1' });
     expect(result).toEqual({ ok: false, error: 'kaput' });
+  });
+
+  describe('HEAD moves', () => {
+    const moved = { heads: { '/r1': ['h1', 'h2'] }, snapshots: { '/r1': ['b', 'a'] } };
+
+    it('makes no extra git calls when HEAD did not move', async () => {
+      const { service, git, emitted } = setup({ snapshots: { '/r1': ['b', 'a'] } });
+      await service.beginTurn(turn);
+      await service.endTurn('s');
+      expect(git.changedPaths).not.toHaveBeenCalled();
+      expect(git.filesInCommitsSince).not.toHaveBeenCalled();
+      expect(emitted[0].files.map((f) => f.path)).toEqual(['a.ts']);
+    });
+
+    it('drops files that only the HEAD move changed', async () => {
+      const { service, git, repo, emitted } = setup({ ...moved, changed: { 'h1..h2': ['a.ts'] } });
+      await service.beginTurn(turn);
+      await service.endTurn('s');
+      expect(git.filesInCommitsSince).toHaveBeenCalledWith('/r1', 'h1', 'h2', expect.any(Number), expect.anything());
+      expect(emitted).toHaveLength(0);
+      expect(repo.rows).toHaveLength(0);
+    });
+
+    it('keeps a moved file the agent committed during the turn', async () => {
+      const { service, emitted } = setup({ ...moved, changed: { 'h1..h2': ['a.ts'] }, commitFiles: ['a.ts'] });
+      await service.beginTurn(turn);
+      await service.endTurn('s');
+      expect(emitted[0].files.map((f) => f.path)).toEqual(['a.ts']);
+    });
+
+    it('keeps a moved file that was dirty before or after', async () => {
+      const dirtyBefore = setup({ ...moved, changed: { 'h1..h2': ['a.ts'], 'h1..b': ['a.ts'] } });
+      await dirtyBefore.service.beginTurn(turn);
+      await dirtyBefore.service.endTurn('s');
+      expect(dirtyBefore.emitted[0].files).toHaveLength(1);
+      const dirtyAfter = setup({ ...moved, changed: { 'h1..h2': ['a.ts'], 'h2..a': ['a.ts'] } });
+      await dirtyAfter.service.beginTurn(turn);
+      await dirtyAfter.service.endTurn('s');
+      expect(dirtyAfter.emitted[0].files).toHaveLength(1);
+    });
+
+    it('opens the next turn from the after HEAD commit', async () => {
+      const { service, git } = setup({ heads: { '/r1': ['h1', 'h2', 'h3'] }, snapshots: { '/r1': ['b', 'a', 'a2'] } });
+      await service.beginTurn(turn);
+      await service.endTurn('s', { clientMessageId: 'm2' });
+      await service.endTurn('s');
+      expect(git.filesInCommitsSince).toHaveBeenLastCalledWith('/r1', 'h2', 'h3', expect.any(Number), expect.anything());
+    });
+
+    it('keeps every file when the HEAD lookup fails', async () => {
+      const { service, git, emitted } = setup({ snapshots: { '/r1': ['b', 'a'] } });
+      git.headCommit.mockResolvedValueOnce('h1').mockRejectedValueOnce(new Error('boom'));
+      await service.beginTurn(turn);
+      await service.endTurn('s');
+      expect(emitted[0].files).toHaveLength(1);
+    });
+  });
+
+  describe('getDiff only lists files in the stored turns', () => {
+    const two = (paths: string[]) =>
+      paths.flatMap((p) => PATCH(p).split('diff --git').filter(Boolean).map((x) => `diff --git${x}`)).join('');
+
+    it('turn scope drops files the stored list left out', async () => {
+      const { service, repo } = setup({ snapshots: { '/r1': ['b', 'a'] }, patch: two(['a.ts', 'pulled.ts']) });
+      await service.beginTurn(turn);
+      await service.endTurn('s');
+      repo.rows[0].files = repo.rows[0].files!.filter((f) => f.path === 'a.ts');
+      const result = await service.getDiff({ projectId: 'p', chatSessionId: 's', scope: 'turn', clientMessageId: 'm1' });
+      expect(result.ok && result.data.map((d) => d.path)).toEqual(['a.ts']);
+    });
+
+    it('chat scope keeps files listed in any stored turn', async () => {
+      const { service, repo } = setup({ snapshots: { '/r1': ['b1', 'a1', 'a2'] }, patch: two(['a.ts', 'pulled.ts']) });
+      await service.beginTurn(turn);
+      await service.endTurn('s', { clientMessageId: 'm2' });
+      await service.endTurn('s');
+      for (const row of repo.rows) row.files = row.files!.filter((f) => f.path === 'a.ts');
+      const result = await service.getDiff({ projectId: 'p', chatSessionId: 's', scope: 'chat' });
+      expect(result.ok && result.data.map((d) => d.path)).toEqual(['a.ts']);
+    });
+
+    it('uncommitted scope is unfiltered', async () => {
+      const { service } = setup({ snapshots: { '/r1': ['now'] }, patch: two(['a.ts', 'pulled.ts']) });
+      const result = await service.getDiff({ projectId: 'p', chatSessionId: 's', scope: 'uncommitted' });
+      expect(result.ok && result.data.map((d) => d.path)).toEqual(['a.ts', 'pulled.ts']);
+    });
   });
 });
