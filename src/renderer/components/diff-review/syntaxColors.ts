@@ -14,7 +14,8 @@ export function languageIdForPath(path: string, languages: readonly LanguageInfo
 
 /** Splits `monaco.editor.colorize` output into one HTML string per source line. */
 export function splitColorizedHtml(html: string, expectedLines: number): string[] | null {
-  const lines = html.split(/<br\s*\/?>/);
+  // Monaco ends every line with a break, including the last one.
+  const lines = html.replace(/<br\s*\/?>$/, '').split(/<br\s*\/?>/);
   return lines.length === expectedLines ? lines : null;
 }
 

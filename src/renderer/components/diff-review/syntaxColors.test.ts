@@ -27,6 +27,14 @@ describe('splitColorizedHtml', () => {
     expect(splitColorizedHtml('<span>a</span><br/><span>b</span>', 2)).toEqual(['<span>a</span>', '<span>b</span>']);
   });
 
+  it('drops the break Monaco adds after the last line', () => {
+    expect(splitColorizedHtml('<span>a</span><br/><span>b</span><br/>', 2)).toEqual(['<span>a</span>', '<span>b</span>']);
+  });
+
+  it('keeps an empty last line that is real', () => {
+    expect(splitColorizedHtml('<span>a</span><br/><br/>', 2)).toEqual(['<span>a</span>', '']);
+  });
+
   it('returns null when the line count differs', () => {
     expect(splitColorizedHtml('a<br/>b', 3)).toBeNull();
   });
