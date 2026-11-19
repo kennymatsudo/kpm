@@ -219,8 +219,12 @@ const getSessionConfig = () => getConfig().session;
 // Dependencies
 // =============================================================================
 
-/** Longest a send waits for the pre-turn snapshot before going ahead without it. */
-export const SNAPSHOT_SEND_WAIT_MS = 1500;
+/**
+ * Longest a send waits for the pre-turn snapshot before going ahead without it.
+ * The send starts as soon as the snapshot finishes, so this only bounds slow
+ * repos; a 77k-file repo takes about 1.8 s.
+ */
+export const SNAPSHOT_SEND_WAIT_MS = 5000;
 
 export interface StreamingSessionServiceDeps {
   /** Records what a chat turn changed on disk. Failures never fail a send. */
