@@ -1,5 +1,7 @@
 import { useEffect } from 'react';
 import { useChatStore, useProposedChangeDisposal, useGeneralSettingsStore } from '../stores';
+import { useDiffReviewStore } from '../stores/diffReviewStore';
+import { subscribeToTurnChanges } from '../services/diffReviewService';
 import { emit } from '../stores/storeEvents';
 import {
   getActiveChatSessions,
@@ -40,6 +42,9 @@ export function useChatIpcBridge(projectId: string | null): void {
     void router.initialize();
 
     const unsubscribeChatEvents = subscribeToChatEvents(router.handlers);
+    const unsubscribeTurnChanges = subscribeToTurnChanges((payload) => {
+      if (payload.projectId === projectId) useDiffReviewStore.getState().applyTurnChanges(payload.changes);
+    });
     const watchdogInterval = setInterval(() => {
       void router.tick();
     }, WATCHDOG_POLL_MS);
@@ -48,6 +53,7 @@ export function useChatIpcBridge(projectId: string | null): void {
       router.dispose();
       clearInterval(watchdogInterval);
       unsubscribeChatEvents();
+      unsubscribeTurnChanges();
     };
   }, [projectId]);
 }

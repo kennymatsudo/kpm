@@ -148,7 +148,7 @@ describe('resetAllProjectScopedStores', () => {
     expect(getRegisteredStoreNames()).toEqual([
       'chat', 'tracker', 'export', 'trackerConfig', 'sync', 'syncReview', 'fileTree',
       'devSessions', 'workspace', 'project', 'taskPromptTemplates',
-      'linearDocuments', 'proposedChanges', 'terminals',
+      'linearDocuments', 'proposedChanges', 'diffReview', 'terminals',
     ]);
   });
 

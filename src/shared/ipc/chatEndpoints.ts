@@ -96,6 +96,7 @@ export const chatEndpoints = {
       clientMessageId: uuid.optional(),
       currentView: chatViewModeSchema,
       focusDocument: focusChatDocumentSchema.optional(),
+      reviewCommentIds: z.array(uuid).max(200).optional(),
     }),
     result: resultOf<RegistryResponse>(),
   },

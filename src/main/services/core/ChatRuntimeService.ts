@@ -1,6 +1,10 @@
-import type { BrowserWindow } from 'electron';
+import * as fs from 'fs';
+import * as path from 'path';
+import { app, type BrowserWindow } from 'electron';
 import type { AppServices } from '../appServices';
 import type { IRepositoryContainer } from '../../db/interfaces';
+import { createTurnSnapshotService } from '../diffReview/TurnSnapshotService';
+import { resolveEffectiveRepoPath } from '../../../shared/repoPath';
 import { createStreamingSessionService } from '../streaming/StreamingSessionService';
 import { createContextBuilder } from '../../claude/contextBuilders';
 import type { OnElicitation } from '@anthropic-ai/claude-agent-sdk';
@@ -69,7 +73,22 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
     getModelCatalog,
   });
 
+  const turnSnapshotService = createTurnSnapshotService({
+    snapshots: container.turnSnapshots,
+    resolveRoots: (projectId) => {
+      const project = container.projects.get(projectId);
+      if (!project) return [];
+      return [project.folder_path, ...container.repos.getByProject(projectId).map(resolveEffectiveRepoPath)]
+        .filter((root, i, all) => root && all.indexOf(root) === i && fs.existsSync(root));
+    },
+    shadowDir: path.join(app.getPath('userData'), 'diff-review'),
+    emitTurnChanges: (projectId, changes) => {
+      emitAppEvent(getMainWindow()?.webContents, chatEvents.turnChanges, { projectId, changes });
+    },
+  });
+
   const streamingSessionService = createStreamingSessionService({
+    turnSnapshots: turnSnapshotService,
     projectRepository: {
       get: container.projects.get.bind(container.projects),
       updateTokens: container.projects.updateTokens.bind(container.projects),
@@ -175,6 +194,12 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
     modelChoice,
     streamingSessionService,
     slashCommandService: services.slashCommandService,
+    reviewComments: container.diffReviewComments,
+    readReviewFile: (rootPath, filePath) => {
+      const absolute = path.resolve(rootPath, filePath);
+      if (!absolute.startsWith(path.resolve(rootPath) + path.sep)) return null;
+      try { return fs.readFileSync(absolute, 'utf8'); } catch { return null; }
+    },
     emitChatError: ({ projectId, chatSessionId, error }) => {
       emitAppEvent(getMainWindow()?.webContents, chatEvents.error, { projectId, chatSessionId, error });
     },
@@ -183,6 +208,7 @@ export function createChatRuntimeService(deps: ChatRuntimeServiceDeps) {
   return {
     toolCallLogger,
     streamingSessionService,
+    turnSnapshotService,
     chatService,
     modelChoice,
   };

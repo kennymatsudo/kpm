@@ -548,3 +548,28 @@ describe('historySlice.loadFromHistory model choice hydration', () => {
     expect(openChatChoice).not.toHaveBeenCalled();
   });
 });
+
+describe('historySlice.loadFromHistory', () => {
+  it('carries client_message_id onto user messages only', async () => {
+    const store = createTestStore();
+    const row = (id: string, role: 'user' | 'assistant', clientMessageId: string | null) => ({
+      id,
+      session_id: 'project-a',
+      chat_session_id: 'chat-a',
+      provider: 'claude' as const,
+      role,
+      content: id,
+      client_message_id: clientMessageId,
+      created_at: '2026-01-01T00:00:00.000Z',
+    });
+    vi.mocked(loadChatSession).mockResolvedValue({
+      success: true,
+      messages: [row('u1', 'user', 'cm-1'), row('a1', 'assistant', 'cm-1'), row('u2', 'user', null)],
+    });
+
+    await store.getState().loadFromHistory('project-a', 'chat-a');
+
+    const messages = store.getState().sessions.get('chat-a')!.messages;
+    expect(messages.map((m) => m.clientMessageId)).toEqual(['cm-1', undefined, undefined]);
+  });
+});

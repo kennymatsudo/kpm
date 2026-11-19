@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useWorkspaceStore, documentId } from './workspaceStore';
+import { useDiffReviewStore } from './diffReviewStore';
 
 const writeWorkspaceFile = vi.hoisted(() => vi.fn());
 const readWorkspaceFile = vi.hoisted(() => vi.fn());
@@ -317,5 +318,40 @@ describe('tab arrangement persistence', () => {
     store().openDocument('project', 'a.md', 'A');
 
     expect(writePersistedDocuments).not.toHaveBeenCalled();
+  });
+});
+
+describe('Changes tab and document events', () => {
+  const changes = () => useDiffReviewStore.getState();
+  const showChanges = () => {
+    changes().setChangesTab({ chatSessionId: 's1', clientMessageId: null, scope: 'chat' });
+    changes().setChangesTabActive(true);
+  };
+
+  beforeEach(() => {
+    changes().resetProjectState();
+  });
+
+  it('openDocument deactivates Changes, even for the already active document', () => {
+    store().openDocument('project', 'a.md', 'A');
+    showChanges();
+    store().openDocument('project', 'a.md', 'A');
+    expect(changes().changesTabActive).toBe(false);
+    expect(changes().changesTab).not.toBeNull();
+  });
+
+  it('setActiveDocument deactivates Changes, even for the already active document', () => {
+    store().openDocument('project', 'a.md', 'A');
+    showChanges();
+    store().setActiveDocument(idOf('a.md'));
+    expect(changes().changesTabActive).toBe(false);
+  });
+
+  it('closeDocument leaves Changes active', async () => {
+    store().openDocument('project', 'a.md', 'A');
+    store().openDocument('project', 'b.md', 'B');
+    showChanges();
+    await store().closeDocument(idOf('b.md'));
+    expect(changes().changesTabActive).toBe(true);
   });
 });

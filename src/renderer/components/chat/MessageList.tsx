@@ -23,6 +23,9 @@ import { AttachmentChip } from './AttachmentChip';
 import { useRecordedModelName } from '../../stores/modelCatalogStore';
 import { buildTurnRenderPlan, type TurnRenderNode } from './turnRenderPlan';
 import { sessionModelId } from '../../stores/chat/chatChoice';
+import { assignTurnCards } from './turnCards';
+import { TurnChangesCard } from '../diff-review/TurnChangesCard';
+import { useChangesTab } from '../diff-review/useChangesTab';
 import { canMergeAssistantTurn } from '../../stores/chat/messageMerge';
 import { prefersReducedMotion } from '../../utils/reducedMotion';
 import { findPinnedPromptId, type TranscriptRow } from './pinnedPrompt';
@@ -214,9 +217,11 @@ export const AssistantMessageContent = memo(function AssistantMessageContent({
   turnId,
   timestamp,
   model,
+  children,
 }: {
   segments: MessageSegment[];
   interrupted?: boolean;
+  children?: ReactNode;
   /** Namespaces the process strip's remembered open state. */
   turnId?: string;
   /** The message's own start time — anchors the gap shown by the first checkpoint divider. */
@@ -248,6 +253,7 @@ export const AssistantMessageContent = memo(function AssistantMessageContent({
     >
       {interrupted && <InterruptedIndicator />}
       {plan.hasPlanUpdate && <PlanUpdateIndicator />}
+      {children}
     </AssistantTurnContent>
   );
 });
@@ -488,11 +494,17 @@ export const MessageRow = memo(function MessageRow({
   onCancelQueued,
   /** Only the newest turn animates in; see `.chat-message-enter`. */
   entering,
+  changesSessionId,
+  changesClientMessageIds,
 }: {
   message: Message;
   onCancelQueued?: (clientMessageId: string) => void;
   entering?: boolean;
+  /** The turn this reply answers; set only where the changes card belongs. */
+  changesSessionId?: string;
+  changesClientMessageIds?: string[];
 }) {
+  const { openChanges } = useChangesTab();
   const isUser = message.role === 'user';
   const textContent = useMemo(() => getTextContent(message.segments), [message.segments]);
   // Phase 2: prefer the structured `attachments` carried on the message; fall
@@ -530,7 +542,16 @@ export const MessageRow = memo(function MessageRow({
           turnId={message.id}
           timestamp={message.timestamp}
           model={message.model}
-        />
+        >
+          {changesSessionId && changesClientMessageIds?.map((clientMessageId) => (
+            <TurnChangesCard
+              key={clientMessageId}
+              chatSessionId={changesSessionId}
+              clientMessageId={clientMessageId}
+              onOpen={openChanges}
+            />
+          ))}
+        </AssistantMessageContent>
       </div>
     );
   }
@@ -662,12 +683,16 @@ const VirtualizedMessageRow = memo(function VirtualizedMessageRow({
   onHeightChange,
   onCancelQueued,
   entering,
+  changesSessionId,
+  changesClientMessageIds,
 }: {
   message: Message;
   top: number;
   onHeightChange: (id: string, height: number) => void;
   onCancelQueued?: (clientMessageId: string) => void;
   entering?: boolean;
+  changesSessionId?: string;
+  changesClientMessageIds?: string[];
 }) {
   const rowRef = useRef<HTMLDivElement>(null);
 
@@ -691,7 +716,13 @@ const VirtualizedMessageRow = memo(function VirtualizedMessageRow({
       className="absolute left-0 right-0"
       style={{ top }}
     >
-      <MessageRow message={message} onCancelQueued={onCancelQueued} entering={entering} />
+      <MessageRow
+        message={message}
+        onCancelQueued={onCancelQueued}
+        entering={entering}
+        changesSessionId={changesSessionId}
+        changesClientMessageIds={changesClientMessageIds}
+      />
     </div>
   );
 });
@@ -898,6 +929,8 @@ export function MessageList({
     }
   }, [messages]);
 
+  const turnCards = useMemo(() => assignTurnCards(staticMessages), [staticMessages]);
+
   const { totalStaticHeight, virtualizedMessages, rows } = useMemo(() => {
     let runningTop = 0;
     const measurements = staticMessages.map((message) => {
@@ -1059,6 +1092,8 @@ export function MessageList({
               onHeightChange={handleMessageHeightChange}
               onCancelQueued={onCancelQueued}
               entering={message.id === newestMessageId}
+              changesSessionId={viewedSessionId ?? undefined}
+              changesClientMessageIds={turnCards.get(message.id)}
             />
           ))}
         </div>

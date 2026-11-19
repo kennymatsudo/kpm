@@ -122,3 +122,5 @@ export type { NotificationRecord } from './notificationStore';
 
 // Planning view selection and search (shell-level, not persisted)
 export { usePlanViewStore } from './planViewStore';
+
+export { useDiffReviewStore } from './diffReviewStore';

@@ -501,3 +501,46 @@ describe('ChatService.getOrCreateFocusDocumentSession', () => {
     );
   });
 });
+
+describe('ChatService.sendMessage review comments', () => {
+  const comment = {
+    id: '33333333-3333-4333-8333-333333333333', projectId: 'project-1', chatSessionId: 'chat-1',
+    rootPath: '/tmp/test-project', filePath: 'a.md', side: 'new' as const, startLine: 1, endLine: 1,
+    quotedText: 'hello', body: 'Say hi instead', createdAt: '',
+  };
+
+  it('appends the comment block to the model text and deletes sent comments', async () => {
+    const getMany = vi.fn(() => [comment]);
+    const deleteMany = vi.fn();
+    const { deps, spies } = makeDeps({
+      reviewComments: { getMany, deleteMany },
+      readReviewFile: () => 'hello',
+    });
+    await createChatService(deps).sendMessage({ projectId: 'project-1', chatSessionId: 'chat-1', message: 'Address review comments', reviewCommentIds: [comment.id] });
+    const sentText = spies.sendChatMessage.mock.calls[0][1] as string;
+    expect(sentText).toContain('Address review comments\n\nReview comments (1):');
+    expect(sentText).toContain('/tmp/test-project/a.md:1');
+    expect(deleteMany).toHaveBeenCalledWith([comment.id]);
+    expect(spies.addMessage.mock.calls[0][2]).toBe('Address review comments');
+  });
+
+  it('ignores comments from another chat', async () => {
+    const getMany = vi.fn(() => [{ ...comment, chatSessionId: 'other' }]);
+    const deleteMany = vi.fn();
+    const { deps, spies } = makeDeps({ reviewComments: { getMany, deleteMany }, readReviewFile: () => 'hello' });
+    await createChatService(deps).sendMessage({ projectId: 'project-1', chatSessionId: 'chat-1', message: 'hi', reviewCommentIds: [comment.id] });
+    expect(spies.sendChatMessage.mock.calls[0][1]).toBe('hi');
+    expect(deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('keeps comments when the send is withdrawn', async () => {
+    const deleteMany = vi.fn();
+    const { deps } = makeDeps({
+      reviewComments: { getMany: vi.fn(() => [comment]), deleteMany },
+      readReviewFile: () => 'hello',
+      streamingSessionService: { sendChatMessage: vi.fn(async () => success<ChatSendDisposition>('withdrawn')), disconnectChatSession: vi.fn() },
+    });
+    await createChatService(deps).sendMessage({ projectId: 'project-1', chatSessionId: 'chat-1', message: 'hi', reviewCommentIds: [comment.id] });
+    expect(deleteMany).not.toHaveBeenCalled();
+  });
+});

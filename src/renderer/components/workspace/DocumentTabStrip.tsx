@@ -3,6 +3,8 @@ import { useShallow } from 'zustand/react/shallow';
 import { useWorkspaceStore, isDocumentDirty } from '../../stores/workspaceStore';
 import { CloseIcon } from '../icons';
 import { Tooltip } from '../ui/Tooltip';
+import { useDiffReviewStore } from '../../stores/diffReviewStore';
+import { useChangesTab } from '../diff-review/useChangesTab';
 import { buildTabLabels } from './documentTabLabels';
 
 /** Width of the fade that stands in for a scrollbar the strip deliberately hides. */
@@ -29,6 +31,9 @@ export function DocumentTabStrip() {
       closeDocument: state.closeDocument,
     }))
   );
+  const changesOpen = useDiffReviewStore((state) => state.changesTab !== null);
+  const changesActive = useDiffReviewStore((state) => state.changesTab !== null && state.changesTabActive);
+  const { closeChanges } = useChangesTab();
 
   const documents = useMemo(
     () =>
@@ -69,7 +74,7 @@ export function DocumentTabStrip() {
     };
   }, [documents.length]);
 
-  if (documents.length === 0) return null;
+  if (documents.length === 0 && !changesOpen) return null;
 
   const fadeMask = clipped.start || clipped.end
     ? `linear-gradient(to right, transparent 0, #000 ${clipped.start ? EDGE_FADE : '0px'}, ` +
@@ -87,6 +92,39 @@ export function DocumentTabStrip() {
                  px-2 py-1 bg-surface-1 border-b border-border-subtle"
       style={{ maskImage: fadeMask, WebkitMaskImage: fadeMask }}
     >
+      {changesOpen && (
+        <div
+          role="tab"
+          tabIndex={changesActive ? 0 : -1}
+          aria-selected={changesActive}
+          onClick={() => useDiffReviewStore.getState().setChangesTabActive(true)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              useDiffReviewStore.getState().setChangesTabActive(true);
+            }
+          }}
+          className={`
+            group flex h-7 items-center gap-1.5 pl-2 pr-1 rounded-sm text-xs cursor-pointer
+            transition-colors duration-150 min-w-[96px] max-w-[240px]
+            focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-selected
+            ${changesActive
+              ? 'bg-surface-selected text-text-primary font-medium'
+              : 'text-text-tertiary hover:text-text-secondary hover:bg-surface-2'
+            }
+          `}
+        >
+          <span className="flex-1 min-w-0 truncate">Changes</span>
+          <button
+            onClick={(e) => { e.stopPropagation(); closeChanges(); }}
+            tabIndex={-1}
+            className="p-0.5 rounded-sm text-text-muted hover:text-danger"
+            aria-label="Close Changes"
+          >
+            <CloseIcon className="w-3 h-3" />
+          </button>
+        </div>
+      )}
       {documents.map((document, index) => (
         <DocumentTab
           key={document.id}

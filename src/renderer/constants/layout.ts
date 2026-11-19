@@ -19,6 +19,12 @@ export const PANEL_SIZES = {
     default: 240,
     maxAbs: 480,
   },
+  changesFileTree: {
+    storageKey: 'kpm-changes-file-tree-width',
+    min: 140,
+    default: 224,
+    maxAbs: 480,
+  },
   planningChat: {
     storageKey: 'kpm-chat-width',
     min: 280,

@@ -16,6 +16,7 @@ import type { IAgentReviewRepository, IReviewOwnershipRepository, IReviewSyncSta
 import type { IClaudeUsageRepository } from './usage';
 import type { IPlaybookRepository } from './playbook';
 import type { IActionRepository, IActionRunRepository } from './actions';
+import type { ITurnSnapshotRepository, IDiffReviewCommentRepository } from './diffReview';
 
 /**
  * Container holding all repository instances.
@@ -41,6 +42,8 @@ export interface IRepositoryContainer {
   confluenceLinks: IConfluenceLinkRepository;
   linearDocumentLinks: ILinearDocumentLinkRepository;
   projectWriteGrants: IProjectWriteGrantRepository;
+  turnSnapshots: ITurnSnapshotRepository;
+  diffReviewComments: IDiffReviewCommentRepository;
   reviewTasks: IReviewTaskRepository;
   agentReviews: IAgentReviewRepository;
   reviewOwnership: IReviewOwnershipRepository;

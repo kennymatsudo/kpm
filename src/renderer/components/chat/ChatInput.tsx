@@ -1,5 +1,6 @@
 import { useState, type KeyboardEvent, type ClipboardEvent, type DragEvent, type SyntheticEvent, useRef, useEffect, useCallback } from 'react';
-import { useChatStore } from '../../stores';
+import { useChatStore, useDiffReviewStore } from '../../stores';
+import { ReviewCommentsChip } from '../diff-review/ReviewCommentsChip';
 import { deleteTempImage, saveTempImage } from '../../services/tempImageService';
 import { isSupportedImageFormat } from '../../../shared/ipc/tempImageEndpoints';
 import { ContextWindowBar } from './ContextWindowBar';
@@ -21,6 +22,9 @@ import { sessionContextWindow, sessionModelId, sessionProvider } from '../../sto
 const FOLLOW_UP_PLACEHOLDER = 'Reply or ask a follow-up…';
 /** Shown on an empty conversation, where "follow-up" refers to nothing. */
 const OPENING_PLACEHOLDER = 'Ask anything about this project…';
+
+/** Sent when the user submits only review comments. */
+const REVIEW_COMMENTS_MESSAGE = 'Address the review comments.';
 
 const NO_ATTACHMENTS: ChatAttachment[] = [];
 const NO_SUGGESTIONS: string[] = [];
@@ -86,6 +90,11 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource }: Ch
   // subscribers). The store is the durable copy — persists across view switches
   // and first-keystroke session creation — so we mirror local → store on idle,
   // on blur, on send, and on unmount rather than on every character.
+  const sendableCommentCount = useDiffReviewStore((state) =>
+    viewedSessionId && !state.heldBySession[viewedSessionId]
+      ? state.commentsBySession[viewedSessionId]?.length ?? 0
+      : 0,
+  );
   const [draft, setDraft] = useState(viewedSessionDraftMessage);
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingRef = useRef<{ sessionId: string; value: string } | null>(null);
@@ -377,11 +386,11 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource }: Ch
     const trimmed = message.trim();
     // Allow sending if there's text OR if there are attachments.
     // Live follow-ups use the selected provider's steering or queue behavior.
-    if ((trimmed || attachments.length > 0) && !unsupportedAttachment && !disabled && !sendDisabledWhileStreaming) {
+    if ((trimmed || attachments.length > 0 || sendableCommentCount > 0) && !unsupportedAttachment && !disabled && !sendDisabledWhileStreaming) {
       const chatSessionId = viewedSessionId ?? getChatSessionId();
       getOrCreateSession(chatSessionId);
       onSend(
-        trimmed,
+        trimmed || REVIEW_COMMENTS_MESSAGE,
         attachments.length > 0 ? attachments : undefined,
         chatSessionId,
       );
@@ -516,8 +525,9 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource }: Ch
       )}
 
       {/* Attachment chips */}
-      {attachments.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-2">
+      {(attachments.length > 0 || viewedSessionId) && (
+        <div className="flex flex-wrap gap-2 mb-2 empty:hidden">
+          {viewedSessionId && <ReviewCommentsChip chatSessionId={viewedSessionId} />}
           {attachments.map((attachment) => (
             <AttachmentChip
               key={attachment.path}
@@ -633,7 +643,7 @@ export function ChatInput({ onSend, onCancel, disabled, addFocusedResource }: Ch
           )}
           <button
             onClick={handleSend}
-            disabled={(!message.trim() && attachments.length === 0) || Boolean(unsupportedAttachment) || disabled || sendDisabledWhileStreaming}
+            disabled={(!message.trim() && attachments.length === 0 && sendableCommentCount === 0) || Boolean(unsupportedAttachment) || disabled || sendDisabledWhileStreaming}
             className="btn btn-primary h-8 w-8 !p-0 flex-shrink-0 rounded-lg transition-transform active:scale-90"
             title={
               sendDisabledWhileStreaming

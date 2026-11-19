@@ -4954,6 +4954,47 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    id: 1137,
+    name: '137_diff_review',
+    up: (db: BetterSqliteDatabase) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS chat_turn_snapshots (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          chat_session_id TEXT NOT NULL,
+          client_message_id TEXT NOT NULL,
+          root_path TEXT NOT NULL,
+          store TEXT NOT NULL CHECK (store IN ('repo', 'shadow')),
+          before_tree TEXT NOT NULL,
+          after_tree TEXT,
+          files_json TEXT,
+          error TEXT,
+          incomplete INTEGER,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE (chat_session_id, client_message_id, root_path)
+        );
+        CREATE INDEX IF NOT EXISTS idx_chat_turn_snapshots_session
+          ON chat_turn_snapshots(chat_session_id, created_at);
+
+        CREATE TABLE IF NOT EXISTS diff_review_comments (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          chat_session_id TEXT NOT NULL,
+          root_path TEXT NOT NULL,
+          file_path TEXT NOT NULL,
+          side TEXT NOT NULL CHECK (side IN ('new', 'old')),
+          start_line INTEGER NOT NULL,
+          end_line INTEGER NOT NULL,
+          quoted_text TEXT NOT NULL,
+          body TEXT NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_diff_review_comments_session
+          ON diff_review_comments(chat_session_id, created_at);
+      `);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: BetterSqliteDatabase): void {

@@ -77,5 +77,8 @@ export type {
   ActionRunCreate,
 } from './actions';
 
+// Diff review domain
+export type { ITurnSnapshotRepository, IDiffReviewCommentRepository, TurnSnapshotRow } from './diffReview';
+
 // Container
 export type { IRepositoryContainer } from './container';

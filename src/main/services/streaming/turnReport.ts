@@ -51,6 +51,8 @@ export interface TurnReportDeps {
   projectId: string;
   getChatSessionId: () => string | undefined;
   getMainWindow: () => BrowserWindow | null;
+  /** Runs once after the renderer events for every cause, including silent ones. */
+  onTurnEnded?: (end: TurnEnd) => void;
 }
 
 export function createTurnReport(deps: TurnReportDeps): TurnReport {
@@ -67,18 +69,18 @@ export function createTurnReport(deps: TurnReportDeps): TurnReport {
         if (settledHere) {
           emitAppEvent(mainWindow?.webContents, chatEvents.done, { ...ids, ...end.outcome });
         }
-        return;
+        break;
       }
 
       case 'timed-out': {
         if (settledHere) {
           emitAppEvent(mainWindow?.webContents, chatEvents.done, ids);
         }
-        return;
+        break;
       }
 
       case 'disconnected': {
-        if (end.silent) return;
+        if (end.silent) break;
         emitAppEvent(mainWindow?.webContents, chatEvents.sessionDeactivated, {
           ...ids,
           reason: end.reason,
@@ -86,14 +88,14 @@ export function createTurnReport(deps: TurnReportDeps): TurnReport {
           previousState: end.previousState,
         });
         emitAppEvent(mainWindow?.webContents, chatEvents.done, ids);
-        return;
+        break;
       }
 
       case 'session-ended': {
         // A turn that ended before this callback means the renderer already has
         // its finalized bubble; re-announcing teardown would undo it. A session
         // being closed deliberately still reports, so its tab stops looking live.
-        if (end.suppressLifecycle || (!settledHere && end.previousState !== 'closing')) return;
+        if (end.suppressLifecycle || (!settledHere && end.previousState !== 'closing')) break;
 
         emitAppEvent(mainWindow?.webContents, chatEvents.sessionDeactivated, {
           ...ids,
@@ -105,9 +107,11 @@ export function createTurnReport(deps: TurnReportDeps): TurnReport {
         if (end.error) {
           emitAppEvent(mainWindow?.webContents, chatEvents.sessionError, { ...ids, error: end.error });
         }
-        return;
+        break;
       }
     }
+
+    deps.onTurnEnded?.(end);
   }
 
   return { endTurn };

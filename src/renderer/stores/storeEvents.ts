@@ -148,7 +148,21 @@ export interface SyncReviewCustomFieldOverridesUpdatedEvent {
   };
 }
 
+/** A chat session's history finished loading into the chat store. */
+export interface ChatSessionLoadedEvent {
+  type: 'chat-session-loaded';
+  payload: { projectId: string; chatSessionId: string };
+}
+
+/** A document was opened or activated in the workspace, even if it was already active. */
+export interface DocumentOpenedEvent {
+  type: 'document-opened';
+  payload: { id: string };
+}
+
 export type StoreEvent =
+  | DocumentOpenedEvent
+  | ChatSessionLoadedEvent
   | StatusChangedEvent
   | PlanItemCreatedEvent
   | NavigateToViewEvent

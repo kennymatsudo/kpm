@@ -37,6 +37,7 @@ import { useTaskPromptTemplateStore } from './taskPromptTemplateStore';
 import { useProposedChangeDisposal } from './proposedChangeDisposal';
 import { useTerminalStore } from './terminalStore';
 import { useLinearDocumentsStore } from './linearDocumentsStore';
+import { useDiffReviewStore } from './diffReviewStore';
 
 interface ProjectScopedStore {
   name: string;
@@ -60,6 +61,7 @@ const PROJECT_SCOPED_STORES: ProjectScopedStore[] = [
   { name: 'taskPromptTemplates', store: useTaskPromptTemplateStore },
   { name: 'linearDocuments', store: useLinearDocumentsStore },
   { name: 'proposedChanges', store: useProposedChangeDisposal },
+  { name: 'diffReview', store: useDiffReviewStore },
   // Clears the tab list only. Main keeps the shells running, so switching back
   // re-lists them from there rather than respawning.
   { name: 'terminals', store: useTerminalStore },

@@ -4,6 +4,8 @@ import { useFileTreeStore } from '../../stores';
 import { documentId, isDocumentDirty, useWorkspaceStore } from '../../stores/workspaceStore';
 import { ChatPanel } from '../chat/ChatPanel';
 import { ErrorBoundary } from '../app/ErrorBoundary';
+import { ChangesView } from '../diff-review/ChangesView';
+import { useDiffReviewStore } from '../../stores/diffReviewStore';
 import { DocumentTabStrip } from './DocumentTabStrip';
 import { FileEditor } from './FileEditor';
 import { useDocumentAutosave } from './useDocumentAutosave';
@@ -37,6 +39,8 @@ export const WorkspaceView = memo(function WorkspaceView({ projectId, chatCollap
   // panel on every keystroke. The editor subscribes to its own document.
   const activeDocumentId = useWorkspaceStore((state) => state.activeDocumentId);
   const hasOpenDocuments = useWorkspaceStore((state) => state.openDocuments.length > 0);
+  const changesOpen = useDiffReviewStore((state) => state.changesTab !== null);
+  const changesActive = useDiffReviewStore((state) => state.changesTab !== null && state.changesTabActive);
   const setCurrentProjectId = useWorkspaceStore((state) => state.setCurrentProjectId);
 
   useDocumentAutosave();
@@ -128,7 +132,7 @@ export const WorkspaceView = memo(function WorkspaceView({ projectId, chatCollap
   const chatPanelStyle = useMemo(() => ({ width: workspaceChatWidth }), [workspaceChatWidth]);
 
   // Track if the editor panel is showing, for layout transitions
-  const isEditing = hasOpenDocuments;
+  const isEditing = hasOpenDocuments || changesOpen;
 
   // Which of the two prose columns the user is actually reading. The document
   // and the chat answer are the same size and the same color, so side by side
@@ -211,7 +215,8 @@ export const WorkspaceView = memo(function WorkspaceView({ projectId, chatCollap
             <DocumentTabStrip />
             <div className="flex-1 min-h-0">
               <ErrorBoundary name="FileEditor">
-                {activeDocumentId && (
+                {changesActive && <ChangesView projectId={projectId} />}
+                {!changesActive && activeDocumentId && (
                   <FileEditor
                     // Remounting per document is deliberate: the markdown editor
                     // keeps its own buffer, view mode, and a live Monaco model,

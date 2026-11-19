@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useChatStore, useProjectUiDomainStore } from '../stores';
+import { useChatStore, useDiffReviewStore, useProjectUiDomainStore } from '../stores';
 import type { ChatViewMode } from '../../shared/types';
 import {
   cancelChatSession,
@@ -22,6 +22,8 @@ export function useChat(projectId: string | null, currentView?: ChatViewMode): C
       const { focusedResources, focusedResourcesBySession } = useProjectUiDomainStore.getState();
       return focusedResourcesBySession[chatSessionId] ?? focusedResources;
     },
+    getReviewCommentIds: (id) => useDiffReviewStore.getState().sendableCommentIds(id),
+    onReviewCommentsSent: (id, ids) => useDiffReviewStore.getState().forgetComments(id, ids),
     services: { sendChatMessage, cancelChatSession, cancelQueuedChatMessage },
   }), [projectId, currentView]);
 }

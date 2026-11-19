@@ -5,6 +5,7 @@ import { createInitialPerSessionState } from './baseState';
 import { readPersistedTabs } from './persistence';
 import { mergeAssistantTurns } from './messageMerge';
 import { createIdleStreamingCluster } from './chatStreamReducer';
+import { emit } from '../storeEvents';
 
 const SESSION_HISTORY_LIMIT = 10;
 
@@ -272,6 +273,7 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
               segments: [{ type: 'text', content: m.content }],
               timestamp,
               model: m.model ?? undefined,
+              ...(m.role === 'user' && m.client_message_id ? { clientMessageId: m.client_message_id } : {}),
             });
             return acc;
           }, []);
@@ -306,6 +308,7 @@ export function createHistorySlice(set: ChatSet, get: ChatGet): Pick<ChatState,
             viewedSessionId: chatSessionId,
             nextSessionNumber: existingSession ? state.nextSessionNumber : state.nextSessionNumber + 1,
           });
+          emit({ type: 'chat-session-loaded', payload: { projectId, chatSessionId } });
         } else {
           markHydrationFailed(result.error || 'Failed to load conversation history');
         }

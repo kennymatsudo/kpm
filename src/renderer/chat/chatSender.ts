@@ -28,6 +28,7 @@ export interface ChatSenderServices {
     chatSessionId: string;
     currentView?: ChatViewMode;
     clientMessageId: string;
+    reviewCommentIds?: string[];
   }) => Promise<ChatSendOutcome>;
   cancelChatSession: (projectId: string, chatSessionId: string) => Promise<unknown>;
   cancelQueuedChatMessage: (
@@ -43,6 +44,10 @@ export interface ChatSenderDeps {
   getChatState: () => ChatSenderStoreView;
   getFocusedResources: (chatSessionId: string) => FocusedResource[];
   services: ChatSenderServices;
+  /** Diff review comment ids the next send should carry. */
+  getReviewCommentIds?: (chatSessionId: string) => string[];
+  /** Called once the backend accepted a send that carried review comments. */
+  onReviewCommentsSent?: (chatSessionId: string, ids: string[]) => void;
 }
 
 export interface ChatSender {
@@ -153,6 +158,10 @@ export function createChatSender(deps: ChatSenderDeps): ChatSender {
     const turn = await prepareTurn(chatSessionId);
     if (!turn.ready) return effectiveClientMessageId;
 
+    // A queued follow-up can be withdrawn after the backend accepts it, and
+    // acceptance deletes the comments. Keep them on the chip for the next idle send.
+    const reviewCommentIds = turn.turnInFlight ? [] : (deps.getReviewCommentIds?.(chatSessionId) ?? []);
+
     // A live turn is never interrupted: the bubble appears at once with a
     // queued indicator while the backend holds the message for the SDK's input
     // generator to pull when the current turn finishes.
@@ -173,6 +182,7 @@ export function createChatSender(deps: ChatSenderDeps): ChatSender {
         chatSessionId,
         currentView,
         clientMessageId: effectiveClientMessageId,
+        reviewCommentIds: reviewCommentIds.length > 0 ? reviewCommentIds : undefined,
       });
     } catch (error) {
       rollbackTurn(
@@ -186,6 +196,8 @@ export function createChatSender(deps: ChatSenderDeps): ChatSender {
 
     if (!outcome.success) {
       rollbackTurn(chatSessionId, effectiveClientMessageId, queuedBehindLiveTurn, outcome.error);
+    } else if (reviewCommentIds.length > 0) {
+      deps.onReviewCommentsSent?.(chatSessionId, reviewCommentIds);
     }
 
     return effectiveClientMessageId;

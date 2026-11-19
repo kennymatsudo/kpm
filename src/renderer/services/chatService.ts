@@ -73,6 +73,7 @@ export function sendChatMessage(params: {
   currentView?: ChatViewMode;
   clientMessageId: string;
   focusDocument?: FocusChatDocument;
+  reviewCommentIds?: string[];
 }) {
   return window.api.chat.sendMessage({
     projectId: params.projectId,
@@ -83,6 +84,7 @@ export function sendChatMessage(params: {
     currentView: params.currentView,
     clientMessageId: params.clientMessageId,
     focusDocument: params.focusDocument,
+    reviewCommentIds: params.reviewCommentIds,
   });
 }
 
