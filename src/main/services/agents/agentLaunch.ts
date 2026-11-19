@@ -32,9 +32,10 @@ const BOARD_PROVIDERS: readonly AgentType[] = ['claude', 'codex', 'gemini', 'pi'
 
 /**
  * Board agents are one-shot: never pause on the built-in option picker or goal
- * approval, and never let a workflow take over the run.
+ * approval, and never let a workflow take over the run. SetGoal is the goal
+ * tool; ProposeGoal is its old name, which older Claude binaries still use.
  */
-const BOARD_DISALLOWED_TOOLS = ['AskUserQuestion', 'Workflow', 'ProposeGoal'];
+const BOARD_DISALLOWED_TOOLS = ['AskUserQuestion', 'Workflow', 'SetGoal', 'ProposeGoal'];
 
 /**
  * `implement` is the main run the user started; `subagent` is any playbook step

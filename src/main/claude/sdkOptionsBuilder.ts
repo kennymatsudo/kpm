@@ -155,11 +155,13 @@ export function buildSdkOptions(params: BuildSdkOptionsParams): SDKOptions {
     // onboarding names are listed: the binary renamed the tool, and disallowing a
     // name it no longer ships is a harmless no-op, so keep the old one until a
     // probe confirms no supported binary still uses it.
-    // ProposeGoal sets a session completion condition through an approval dialog
-    // KPM has no renderer for, and its only escape hatch is the CLI's /goal command.
+    // SetGoal sets a session completion condition through an approval dialog KPM
+    // has no renderer for, and its only escape hatch is the CLI's /goal command.
+    // ProposeGoal is its old name, kept for the same reason as the onboarding pair.
     // Also disable any managed MCP tools the user has turned off.
     disallowedTools: [
       'AskUserQuestion',
+      'SetGoal',
       'ProposeGoal',
       'TaskCreate',
       'TaskGet',
