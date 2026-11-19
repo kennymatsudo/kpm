@@ -380,11 +380,44 @@ describe('TurnSnapshotService', () => {
       expect(git.filesInCommitsSince).toHaveBeenLastCalledWith('/r1', 'h2', 'h3', expect.any(Number), expect.anything());
     });
 
-    it('keeps every file when the HEAD lookup fails', async () => {
+    it('keeps every file and warns when the HEAD lookup fails', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
       const { service, git, emitted } = setup({ snapshots: { '/r1': ['b', 'a'] } });
       git.headCommit.mockResolvedValueOnce('h1').mockRejectedValueOnce(new Error('boom'));
       await service.beginTurn(turn);
       await service.endTurn('s');
+      expect(emitted[0].files).toHaveLength(1);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('/r1'));
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('boom'));
+      warn.mockRestore();
+    });
+
+    it.each(['changedPaths', 'filesInCommitsSince'] as const)(
+      'keeps every file and warns when %s rejects at turn end',
+      async (helper) => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const { service, git, emitted } = setup({ ...moved, changed: { 'h1..h2': ['a.ts'] } });
+        git[helper].mockRejectedValueOnce(new Error('git down'));
+        await service.beginTurn(turn);
+        await service.endTurn('s');
+        expect(emitted[0].files.map((f) => f.path)).toEqual(['a.ts']);
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('git down'));
+        warn.mockRestore();
+      },
+    );
+
+    it('never calls the head helpers for a shadow root', async () => {
+      const { service, git, emitted } = setup({ snapshots: { '/r1': ['b', 'a'] } });
+      git.snapshotRoot.mockImplementation(async (rootPath: string) => ({
+        rootPath,
+        store: 'shadow' as 'repo' | 'shadow' as 'repo',
+        tree: git.snapshotRoot.mock.calls.length === 1 ? 'b' : 'a',
+      }));
+      await service.beginTurn(turn);
+      await service.endTurn('s');
+      expect(git.headCommit).not.toHaveBeenCalled();
+      expect(git.changedPaths).not.toHaveBeenCalled();
+      expect(git.filesInCommitsSince).not.toHaveBeenCalled();
       expect(emitted[0].files).toHaveLength(1);
     });
   });

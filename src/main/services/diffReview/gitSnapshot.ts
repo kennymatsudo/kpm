@@ -175,9 +175,11 @@ export async function headTree(rootPath: string, options: GitSnapshotOptions): P
 export async function headCommit(rootPath: string, options: GitSnapshotOptions): Promise<string | null> {
   try {
     return (await git(['rev-parse', '--verify', '-q', 'HEAD'], rootPath, options.timeoutMs)).trim() || null;
-  } catch {
-    // `rev-parse --verify -q` exits 1 with no output for an unborn HEAD.
-    return null;
+  } catch (error) {
+    // `rev-parse --verify -q` exits 1 with no output for an unborn HEAD. Anything else (timeout, corrupt repo) is a real failure.
+    const { code, stdout } = error as { code?: unknown; stdout?: string };
+    if (code === 1 && !stdout?.trim()) return null;
+    throw error;
   }
 }
 

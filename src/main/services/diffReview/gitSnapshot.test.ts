@@ -213,6 +213,11 @@ describe('HEAD move attribution', () => {
     expect(await headCommit(repo, options)).toBe(gitOut(repo, 'rev-parse', 'HEAD').trim());
   });
 
+  it('rethrows a git failure that is not an unborn HEAD', async () => {
+    const options = { shadowDir: tempDir(), timeoutMs: 10_000 };
+    await expect(headCommit(tempDir(), options)).rejects.toThrow();
+  });
+
   it('drops pulled files and keeps uncommitted edits and commits made during the turn', async () => {
     const repo = initRepo();
     const options = { shadowDir: tempDir(), timeoutMs: 10_000 };

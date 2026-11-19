@@ -91,7 +91,8 @@ export function createTurnSnapshotService(deps: TurnSnapshotServiceDeps) {
     if (root.store !== 'repo') return undefined;
     try {
       return await git.headCommit(root.rootPath, options);
-    } catch {
+    } catch (error) {
+      console.warn(`[TurnSnapshot] could not read HEAD of ${root.rootPath}: ${messageOf(error)}`);
       return undefined;
     }
   }
@@ -131,10 +132,10 @@ export function createTurnSnapshotService(deps: TurnSnapshotServiceDeps) {
   async function begin(input: { projectId: string; chatSessionId: string; clientMessageId: string }): Promise<void> {
     if (open.has(input.chatSessionId)) await end(input.chatSessionId);
     const rootPaths = resolveRoots(input.projectId);
+    const startedAt = Math.floor(Date.now() / 1000);
     const results = await Promise.allSettled(rootPaths.map((rootPath) => snapshot(rootPath)));
     const roots: OpenRoot[] = [];
     const heads = await Promise.all(results.map(async (r) => (r.status === 'fulfilled' ? currentHead(r.value) : undefined)));
-    const startedAt = Math.floor(Date.now() / 1000);
     results.forEach((result, index) => {
       if (result.status === 'rejected') {
         console.warn(`[TurnSnapshot] skipped ${rootPaths[index]}: ${messageOf(result.reason)}`);
