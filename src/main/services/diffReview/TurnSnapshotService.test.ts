@@ -410,7 +410,7 @@ describe('TurnSnapshotService', () => {
       const { service, git, emitted } = setup({ snapshots: { '/r1': ['b', 'a'] } });
       git.snapshotRoot.mockImplementation(async (rootPath: string) => ({
         rootPath,
-        store: 'shadow' as 'repo' | 'shadow' as 'repo',
+        store: 'shadow' as unknown as 'repo',
         tree: git.snapshotRoot.mock.calls.length === 1 ? 'b' : 'a',
       }));
       await service.beginTurn(turn);
