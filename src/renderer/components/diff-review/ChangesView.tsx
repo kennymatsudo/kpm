@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import type { DiffScope } from '../../../shared/diffReview';
 import { getDiff } from '../../services/diffReviewService';
 import { useDiffReviewStore } from '../../stores/diffReviewStore';
+import { PANEL_SIZES } from '../../constants/layout';
+import { Z_INDEX } from '../../constants/zIndex';
+import { useResizablePanel } from '../layout/hooks';
 import { Select, SelectContent, SelectItem, SelectItemText, SelectTrigger, SelectValue } from '../ui/Select';
 import { ChangesFileSection } from './ChangesFileSection';
 import { ChangesFileTree } from './ChangesFileTree';
@@ -21,6 +24,7 @@ export function ChangesView({ projectId }: { projectId: string }) {
   );
   const [{ load }, dispatch] = useReducer(changesFetchReducer, INITIAL_CHANGES_FETCH);
   const sections = useRef(new Map<string, HTMLElement>());
+  const { width: treeWidth, handleResizeStart: handleTreeResizeStart } = useResizablePanel(PANEL_SIZES.changesFileTree);
 
   useEffect(() => {
     if (!chatSessionId) return;
@@ -87,7 +91,17 @@ export function ChangesView({ projectId }: { projectId: string }) {
         commentCount={comments.length}
       />
       <div className="flex min-h-0 flex-1">
-        <ChangesFileTree roots={tree} onSelect={scrollTo} />
+        <ChangesFileTree roots={tree} width={treeWidth} onSelect={scrollTo} />
+        <div
+          onMouseDown={handleTreeResizeStart}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize file list"
+          className="relative w-px flex-shrink-0 cursor-col-resize bg-border-subtle hover:bg-accent/50 active:bg-accent/70 transition-colors"
+          style={{ zIndex: Z_INDEX.resizeHandle }}
+        >
+          <div className="absolute inset-y-0 -left-1 -right-1" />
+        </div>
         <div className="min-w-0 flex-1 overflow-y-auto">
           {load.files.length === 0 && <div className="p-4 text-sm text-text-muted">No changes</div>}
           {load.files.map((file) => {

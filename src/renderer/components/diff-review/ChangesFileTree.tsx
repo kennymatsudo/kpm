@@ -1,9 +1,17 @@
 import type { TreeRoot } from './changesTree';
 
 /** Changed files grouped by root and directory; a click jumps to the file's section. */
-export function ChangesFileTree({ roots, onSelect }: { roots: TreeRoot[]; onSelect: (key: string) => void }) {
+export function ChangesFileTree({
+  roots,
+  width,
+  onSelect,
+}: {
+  roots: TreeRoot[];
+  width: number;
+  onSelect: (key: string) => void;
+}) {
   return (
-    <nav aria-label="Changed files" className="w-56 flex-shrink-0 overflow-y-auto border-r border-border-subtle py-2">
+    <nav aria-label="Changed files" className="flex-shrink-0 overflow-y-auto py-2" style={{ width }}>
       {roots.map((root) => (
         <div key={root.rootPath} className="mb-2">
           <div className="truncate px-3 py-1 text-tiny font-medium uppercase text-text-muted" title={root.rootPath}>

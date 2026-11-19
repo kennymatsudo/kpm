@@ -7,6 +7,9 @@ const mockState = vi.hoisted(() => ({
   commentsBySession: {},
 }));
 vi.mock('./useSyntaxColors', () => ({ useSyntaxColors: () => null }));
+vi.mock('../layout/hooks', () => ({
+  useResizablePanel: () => ({ width: 224, isResizing: false, handleResizeStart: () => {} }),
+}));
 vi.mock('../../stores/diffReviewStore', () => ({
   useDiffReviewStore: (selector: (state: typeof mockState) => unknown) => selector(mockState),
 }));
@@ -76,12 +79,13 @@ describe('ChangesHeader', () => {
 describe('ChangesFileTree', () => {
   it('lists files by root and directory with comment counts', () => {
     const roots = buildChangesTree([file('src/a.ts'), file('b.ts')], new Map([['/r/proj:src/a.ts', 3]]));
-    const html = renderToStaticMarkup(<ChangesFileTree roots={roots} onSelect={() => {}} />);
+    const html = renderToStaticMarkup(<ChangesFileTree roots={roots} width={224} onSelect={() => {}} />);
     expect(html).toContain('proj');
     expect(html).toContain('src');
     expect(html).toContain('a.ts');
     expect(html).toContain('b.ts');
     expect(html).toContain('>3<');
+    expect(html).toContain('width:224px');
   });
 });
 
